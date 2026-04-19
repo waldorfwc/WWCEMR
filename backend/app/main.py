@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard
+from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch
 
 
 @asynccontextmanager
@@ -49,6 +49,7 @@ app.include_router(chart.router, prefix="/api")
 app.include_router(fax.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(fax_batch.router, prefix="/api")
 
 
 @app.get("/api/health")
