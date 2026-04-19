@@ -10,7 +10,12 @@ from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashbo
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    yield
+    from app.services.fax_poller import start_scheduler
+    sched = start_scheduler()
+    try:
+        yield
+    finally:
+        sched.shutdown(wait=False)
 
 
 app = FastAPI(
