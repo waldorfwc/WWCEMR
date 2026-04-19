@@ -16,12 +16,10 @@ router = APIRouter(prefix="/fax", tags=["fax"])
 
 
 @router.post("/send")
-def fax_document(
-    payload: dict,
-    db: Session = Depends(get_db),
-):
+def fax_document(payload: dict, db: Session = Depends(get_db)):
     """
-    Send a document via fax.
+    Legacy single-doc fax. Delegates to the new send-batch path so every
+    send is tracked in fax_logs.
     Body: { fax_number, doc_type ("document" or "intake"), doc_id, cover_text? }
     """
     fax_number = payload.get("fax_number", "").strip()
@@ -34,47 +32,52 @@ def fax_document(
     if not doc_id:
         raise HTTPException(status_code=400, detail="doc_id is required")
 
-    # Find the file
-    file_path = None
-    patient_name = None
-
     if doc_type == "intake":
-        doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
-        if not doc:
+        # Intake docs aren't keyed by chart_number; keep legacy behavior — direct send,
+        # no FaxLog row (FaxLog is scoped to PatientDocument-based chart flows).
+        intake_doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
+        if not intake_doc:
             raise HTTPException(status_code=404, detail="Intake document not found")
-        file_path = doc.file_path
-        patient_name = doc.patient_name_raw
-    else:
-        doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
-        if not doc:
-            raise HTTPException(status_code=404, detail="Document not found")
-        file_path = doc.file_path
-        # Get patient name from directory
-        from app.models.patient_directory import PatientDirectory
-        patient = db.query(PatientDirectory).filter(
-            PatientDirectory.chart_number == doc.chart_number
-        ).first()
-        patient_name = patient.patient_name if patient else doc.chart_number
+        result = send_fax(
+            to_number=fax_number, file_path=intake_doc.file_path,
+            cover_page_text=cover_text,
+            patient_name=intake_doc.patient_name_raw,
+        )
+        if result.get("error"):
+            log_action(db, "FAX_FAILED", "fax",
+                       description=f"Intake fax failed to {fax_number}: {result['error']}")
+            raise HTTPException(status_code=500, detail=result["error"])
+        log_action(db, "FAX_SENT", "fax",
+                   description=f"Faxed intake to {fax_number} for {intake_doc.patient_name_raw} — msg {result.get('message_id')}")
+        return result
 
-    if not file_path:
-        raise HTTPException(status_code=404, detail="File not available on disk")
+    # Patient-doc path delegates to the batch endpoint.
+    doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
 
-    result = send_fax(
-        to_number=fax_number,
-        file_path=file_path,
-        cover_page_text=cover_text,
-        patient_name=patient_name,
+    from app.routers.fax_batch import send_batch, SendBatchPayload
+    batch_result = send_batch(
+        SendBatchPayload(
+            chart_number=doc.chart_number,
+            doc_ids=[str(doc.id)],
+            dest_fax=fax_number,
+            grouping_mode="separate",
+            cover_text=cover_text or None,
+        ),
+        db=db,
     )
-
-    if result.get("error"):
-        log_action(db, "FAX_FAILED", "fax",
-                   description=f"Fax failed to {fax_number}: {result['error']}")
-        raise HTTPException(status_code=500, detail=result["error"])
-
-    log_action(db, "FAX_SENT", "fax",
-               description=f"Faxed {doc_type} to {fax_number} for {patient_name} — msg {result.get('message_id')}")
-
-    return result
+    fax = batch_result["faxes"][0]
+    if fax["status"] == "failed":
+        raise HTTPException(status_code=500, detail=fax["error"])
+    return {
+        "success": True,
+        "message_id": fax["ringcentral_message_id"],
+        "status": "Sent",
+        "to": fax_number,
+        "pages": None,
+        "error": None,
+    }
 
 
 @router.get("/status/{message_id}")
