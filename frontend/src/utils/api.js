@@ -30,6 +30,20 @@ export const fmt = {
   date: (val) => val ? new Date(val + 'T00:00:00').toLocaleDateString('en-US') : '—',
   dateTime: (val) => val ? new Date(val).toLocaleString('en-US') : '—',
   pct: (val) => `${parseFloat(val || 0).toFixed(1)}%`,
+  faxStatus: (status) => {
+    switch (status) {
+      case 'queued':    return '⟳ Queued'
+      case 'sent':      return '⟳ Sending'
+      case 'delivered': return '✓ Delivered'
+      case 'failed':    return '✗ Failed'
+      default:          return status || '—'
+    }
+  },
+  faxDate: (iso) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  },
 }
 
 export const statusColors = {
