@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import waystar, ar, documents, intake, chart, fax, auth
+from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard
 
 
 @asynccontextmanager
@@ -48,14 +48,9 @@ app.include_router(intake.router, prefix="/api")
 app.include_router(chart.router, prefix="/api")
 app.include_router(fax.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")
 
 
 @app.get("/api/health")
 def health():
     return {"status": "ok", "service": "GW Migration System"}
-
-
-@app.get("/api/dashboard")
-def dashboard(db=None):
-    from fastapi import Depends
-    return {"message": "Use /api/claims/summary and /api/denials/summary for dashboard data"}
