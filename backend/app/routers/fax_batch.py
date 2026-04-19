@@ -274,3 +274,34 @@ def fax_by_chart(chart_number: str, db: Session = Depends(get_db)):
         "error": r.error,
         "ringcentral_message_id": r.ringcentral_message_id,
     } for r in rows]
+
+
+@router.post("/retry/{fax_log_id}")
+def fax_retry(fax_log_id: str, db: Session = Depends(get_db)):
+    """Resend a fax with the same doc_ids / dest / grouping as the original.
+    Creates a new FaxLog row that points back to the original via retry_of.
+    """
+    original = db.query(FaxLog).filter(FaxLog.id == fax_log_id).first()
+    if not original:
+        raise HTTPException(status_code=404, detail="Fax log not found")
+
+    mode = original.grouping_mode.value if hasattr(original.grouping_mode, "value") else original.grouping_mode
+    batch = send_batch(
+        SendBatchPayload(
+            chart_number=original.chart_number,
+            doc_ids=list(original.doc_ids or []),
+            dest_fax=original.dest_fax,
+            grouping_mode=mode,
+            cover_text=None,  # cover text isn't persisted; retry regenerates
+        ),
+        db=db,
+    )
+    # Link every new FaxLog in the batch to the original
+    for fax in batch["faxes"]:
+        new_id = fax.get("fax_log_id")
+        if new_id:
+            new_log = db.query(FaxLog).filter(FaxLog.id == new_id).first()
+            if new_log:
+                new_log.retry_of = original.id
+    db.commit()
+    return batch
