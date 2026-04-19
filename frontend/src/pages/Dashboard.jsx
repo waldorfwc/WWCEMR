@@ -1,163 +1,169 @@
 import { useQuery } from '@tanstack/react-query'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { AlertTriangle, CheckCircle, Clock, DollarSign, FileText, TrendingUp } from 'lucide-react'
+import { format } from 'date-fns'
 import api, { fmt } from '../utils/api'
 
-function StatCard({ label, value, sub, icon: Icon, color = 'text-primary-500' }) {
+function Stat({ label, value, sub, subColor = 'text-muted', accent }) {
   return (
-    <div className="stat-card">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-xs text-gray-500 font-medium uppercase tracking-wide">{label}</div>
-          <div className={`text-2xl font-bold mt-1 ${color}`}>{value}</div>
-          {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
-        </div>
-        <div className={`p-2 rounded-lg bg-gray-50 ${color}`}>
-          <Icon size={20} />
-        </div>
-      </div>
+    <div
+      className="stat"
+      style={accent ? { borderLeft: `3px solid ${accent}` } : undefined}
+    >
+      <div className="eyebrow">{label}</div>
+      <div className="display-number text-[26px] leading-none mt-1">{value}</div>
+      {sub && <div className={`text-[11px] mt-1 ${subColor}`}>{sub}</div>}
     </div>
   )
 }
 
-const STATUS_COLORS = {
-  paid: '#2E7D32',
-  denied: '#C62828',
-  partial: '#F57C00',
-  pending: '#9E9E9E',
-  adjusted: '#1976D2',
-  written_off: '#6A1B9A',
+function greeting(hour) {
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
 }
 
 export default function Dashboard() {
-  const { data: claimSummary } = useQuery({
-    queryKey: ['claim-summary'],
-    queryFn: () => api.get('/claims/summary').then(r => r.data),
+  const { data, isLoading } = useQuery({
+    queryKey: ['dashboard-summary'],
+    queryFn: () => api.get('/dashboard/summary').then(r => r.data),
   })
 
-  const { data: denialSummary } = useQuery({
-    queryKey: ['denial-summary'],
-    queryFn: () => api.get('/denials/summary').then(r => r.data),
+  const { data: faxes } = useQuery({
+    queryKey: ['fax-recent'],
+    queryFn: () => api.get('/fax/recent?limit=5')
+      .then(r => Array.isArray(r.data) ? r.data : [])
+      .catch(() => []),  // 404 / error → empty list, card renders empty state
   })
 
-  const statusData = claimSummary?.by_status
-    ? Object.entries(claimSummary.by_status).map(([status, d]) => ({
-        status: status.charAt(0).toUpperCase() + status.slice(1),
-        count: d.count,
-        amount: d.billed,
-      }))
-    : []
-
-  const denialByCat = denialSummary?.by_category
-    ? Object.entries(denialSummary.by_category).map(([cat, d]) => ({
-        category: cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-        count: d.count,
-        amount: d.amount,
-      }))
-    : []
+  const now = new Date()
+  const delta = data && data.collected_prior_30d > 0
+    ? Math.round(((data.collected_30d - data.collected_prior_30d) / data.collected_prior_30d) * 100)
+    : null
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-500 text-sm mt-1">ERA 835 Payment Posting — Maryland</p>
-      </div>
-
-      {/* Stat Row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatCard
-          label="Total Claims"
-          value={claimSummary?.total_claims?.toLocaleString() || '—'}
-          sub="All time"
-          icon={FileText}
-        />
-        <StatCard
-          label="Total Billed"
-          value={claimSummary ? fmt.currency(claimSummary.total_billed) : '—'}
-          sub={`Paid: ${claimSummary ? fmt.currency(claimSummary.total_paid) : '—'}`}
-          icon={DollarSign}
-          color="text-success"
-        />
-        <StatCard
-          label="Outstanding Balance"
-          value={claimSummary ? fmt.currency(claimSummary.total_balance) : '—'}
-          sub="Patient + Insurance"
-          icon={TrendingUp}
-          color="text-warning"
-        />
-        <StatCard
-          label="Open Denials"
-          value={denialSummary?.open?.toLocaleString() || '—'}
-          sub={denialSummary ? fmt.currency(denialSummary.total_denied_amount) + ' at risk' : ''}
-          icon={AlertTriangle}
-          color="text-danger"
-        />
-      </div>
-
-      {/* Urgent Denials Banner */}
-      {denialSummary?.urgent > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center gap-3">
-          <AlertTriangle size={20} className="text-red-600 shrink-0" />
-          <div>
-            <span className="font-semibold text-red-700">{denialSummary.urgent} appeal deadline(s) within 30 days!</span>
-            <span className="text-red-600 text-sm ml-2">
-              {denialSummary.overdue > 0 && `— ${denialSummary.overdue} already past deadline`}
-            </span>
+    <div>
+      {/* Header row */}
+      <div className="flex items-baseline justify-between mb-5">
+        <div>
+          <h1 className="font-serif font-semibold text-ink text-[26px] tracking-tight m-0">
+            {greeting(now.getHours())}
+          </h1>
+          <div className="text-muted text-[13px] mt-0.5">
+            {format(now, 'EEEE, MMMM d')} · snapshot as of {format(now, 'h:mm a')}
           </div>
-          <a href="/denials?urgent=1" className="ml-auto btn-danger text-xs">Review Now</a>
         </div>
-      )}
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Claims by Status</h2>
-          {statusData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={statusData}>
-                <XAxis dataKey="status" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip formatter={(v) => v.toLocaleString()} />
-                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                  {statusData.map((entry) => (
-                    <Cell
-                      key={entry.status}
-                      fill={STATUS_COLORS[entry.status.toLowerCase()] || '#9E9E9E'}
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="text-center text-gray-400 py-12 text-sm">No claim data yet</div>
-          )}
-        </div>
-
-        <div className="card">
-          <h2 className="text-sm font-semibold text-gray-700 mb-4">Open Denials by Category</h2>
-          {denialByCat.length > 0 ? (
-            <ResponsiveContainer width="100%" height={200}>
-              <BarChart data={denialByCat} layout="vertical">
-                <XAxis type="number" tick={{ fontSize: 10 }} />
-                <YAxis dataKey="category" type="category" tick={{ fontSize: 10 }} width={110} />
-                <Tooltip formatter={(v, n) => n === 'count' ? v : fmt.currency(v)} />
-                <Bar dataKey="count" fill="#1B4F8A" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="text-center text-gray-400 py-12 text-sm">No denial data yet</div>
-          )}
+        <div className="flex gap-2">
+          <button className="btn-secondary" disabled title="Window selector — Phase 2">
+            Last 30 days ▾
+          </button>
+          <a href="/claims" className="btn-primary">+ New claim</a>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="card">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <a href="/import" className="btn-primary">Import ERA 835 File</a>
-          <a href="/denials" className="btn-secondary">Review Denials</a>
-          <a href="/patients" className="btn-secondary">Patient Ledgers</a>
-          <a href="/appeals" className="btn-secondary">Manage Appeals</a>
+      {/* Hero KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+        <Stat
+          label="Collected · 30d"
+          value={data ? fmt.currency(data.collected_30d) : '—'}
+          sub={delta !== null ? `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)}% vs prior 30` : 'no prior data'}
+          subColor={delta !== null && delta >= 0 ? 'text-success' : 'text-muted'}
+        />
+        <Stat
+          label="Outstanding"
+          value={data ? fmt.currency(data.outstanding_total) : '—'}
+          sub={data ? `across ${data.outstanding_count.toLocaleString()} charges` : ''}
+        />
+        <Stat
+          label="Open claims"
+          value={data ? data.open_claims.toLocaleString() : '—'}
+          sub={data ? `${data.claims_submitted_7d} submitted this week` : ''}
+        />
+        <Stat
+          label="Timely filing · ≤7d"
+          value={data ? data.timely_filing_at_risk_7d.toLocaleString() : '—'}
+          sub={data && data.timely_filing_at_risk_7d > 0 ? 'needs submission' : 'clear'}
+          subColor={data && data.timely_filing_at_risk_7d > 0 ? 'text-danger' : 'text-success'}
+          accent={data && data.timely_filing_at_risk_7d > 0 ? '#C62828' : undefined}
+        />
+      </div>
+
+      {/* Resolved by window + denials */}
+      <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="card col-span-2">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-serif font-semibold text-ink text-[15px] m-0">Claims resolved</h2>
+            <div className="text-[11px] text-muted">by window</div>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            {(['30d', '60d', '90d']).map(k => (
+              <div key={k}>
+                <div className="eyebrow">Last {k}</div>
+                <div className="display-number text-[20px] mt-1">
+                  {data ? data.resolved[k].count.toLocaleString() : '—'}
+                </div>
+                <div className="text-[11px] text-muted">
+                  {data ? `${fmt.currency(data.resolved[k].collected)} collected` : ''}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <Stat
+          label="Denied claims"
+          value={data ? data.denied_open.toLocaleString() : '—'}
+          sub={data && data.denied_delta_7d > 0 ? `▲ ${data.denied_delta_7d} since last week` : 'no new denials'}
+          subColor={data && data.denied_delta_7d > 0 ? 'text-danger' : 'text-muted'}
+        />
+      </div>
+
+      {/* Recent faxes + attention */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="card">
+          <h2 className="font-serif font-semibold text-ink text-[15px] m-0 mb-2">
+            Recent faxes to EMA
+          </h2>
+          {faxes && faxes.length > 0 ? (
+            <div>
+              {faxes.map(f => (
+                <div
+                  key={f.id}
+                  className="text-[12px] text-ink flex justify-between py-1.5 border-b border-plum-100 last:border-b-0"
+                >
+                  <span>{f.patient_name || f.chart_number}</span>
+                  <span className={f.status === 'failed' ? 'text-warning' : 'text-success'}>
+                    {f.status === 'sent' ? `✓ ${f.sent_at ? format(new Date(f.sent_at), 'h:mm a') : ''}` : f.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[12px] text-muted py-6 text-center">No recent faxes yet.</div>
+          )}
+        </div>
+
+        <div className="card">
+          <h2 className="font-serif font-semibold text-ink text-[15px] m-0 mb-2">
+            Needs your attention
+          </h2>
+          {data ? (
+            <div className="text-[13px] text-ink">
+              <div className="py-1.5 border-b border-plum-100 flex justify-between">
+                <span>Claims approaching timely filing</span>
+                <span className="font-medium">{data.attention.timely_filing}</span>
+              </div>
+              <div className="py-1.5 border-b border-plum-100 flex justify-between">
+                <span>ERAs waiting to be posted</span>
+                <span className="font-medium">{data.attention.eras_unposted}</span>
+              </div>
+              <div className="py-1.5 flex justify-between">
+                <span>Fax failures to retry</span>
+                <span className="font-medium">{data.attention.fax_failures}</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[12px] text-muted py-6 text-center">
+              {isLoading ? 'Loading...' : 'Dashboard unavailable.'}
+            </div>
+          )}
         </div>
       </div>
     </div>
