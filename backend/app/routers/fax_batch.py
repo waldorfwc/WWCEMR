@@ -217,3 +217,37 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                     os.unlink(merged_path)
 
     return {"batch_id": None, "faxes": faxes}
+
+
+@router.get("/recent")
+def fax_recent(limit: int = 5, db: Session = Depends(get_db)):
+    """Recent fax activity for the Dashboard card."""
+    rows = (
+        db.query(FaxLog)
+        .order_by(FaxLog.sent_at.desc())
+        .limit(max(1, min(limit, 100)))
+        .all()
+    )
+    if not rows:
+        return []
+
+    charts = {r.chart_number for r in rows}
+    patients = {
+        p.chart_number: p.patient_name
+        for p in db.query(PatientDirectory)
+        .filter(PatientDirectory.chart_number.in_(charts))
+        .all()
+    }
+
+    def row_to_dict(r: FaxLog) -> dict:
+        return {
+            "id": str(r.id),
+            "chart_number": r.chart_number,
+            "patient_name": patients.get(r.chart_number, r.chart_number),
+            "status": r.status.value if hasattr(r.status, "value") else r.status,
+            "sent_at": r.sent_at.isoformat() + "Z" if r.sent_at else None,
+            "dest_fax": r.dest_fax,
+            "doc_count": len(r.doc_ids or []),
+        }
+
+    return [row_to_dict(r) for r in rows]
