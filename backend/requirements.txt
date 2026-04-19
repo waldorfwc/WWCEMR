@@ -16,3 +16,6 @@ httpx
 python-dateutil
 aiofiles
 paramiko
+
+pytest
+pytest-asyncio
