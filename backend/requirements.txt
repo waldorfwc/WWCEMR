@@ -19,3 +19,6 @@ paramiko
 
 pytest
 pytest-asyncio
+pypdf
+apscheduler
+respx
