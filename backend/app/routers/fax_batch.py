@@ -251,3 +251,26 @@ def fax_recent(limit: int = 5, db: Session = Depends(get_db)):
         }
 
     return [row_to_dict(r) for r in rows]
+
+
+@router.get("/by-chart/{chart_number}")
+def fax_by_chart(chart_number: str, db: Session = Depends(get_db)):
+    """Every fax attempt for a single chart, newest first. Used by the chart-view chips."""
+    rows = (
+        db.query(FaxLog)
+        .filter(FaxLog.chart_number == chart_number)
+        .order_by(FaxLog.sent_at.desc())
+        .all()
+    )
+    return [{
+        "id": str(r.id),
+        "chart_number": r.chart_number,
+        "doc_ids": r.doc_ids or [],
+        "grouping_mode": r.grouping_mode.value if hasattr(r.grouping_mode, "value") else r.grouping_mode,
+        "dest_fax": r.dest_fax,
+        "status": r.status.value if hasattr(r.status, "value") else r.status,
+        "sent_at": r.sent_at.isoformat() + "Z" if r.sent_at else None,
+        "delivered_at": r.delivered_at.isoformat() + "Z" if r.delivered_at else None,
+        "error": r.error,
+        "ringcentral_message_id": r.ringcentral_message_id,
+    } for r in rows]
