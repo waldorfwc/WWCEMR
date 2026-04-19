@@ -2,6 +2,7 @@
 
 Combined and by_type modes are added in later tasks.
 """
+import os
 from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +14,7 @@ from app.models.document import PatientDocument
 from app.models.patient_directory import PatientDirectory
 from app.models.fax_log import FaxLog, FaxLogStatus, GroupingMode
 from app.services.fax_service import send_fax
+from app.services.pdf_merge import merge_pdfs
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/fax", tags=["fax-batch"])
@@ -117,8 +119,49 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                 file_path=doc.file_path, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
             ))
+    elif mode == "combined":
+        # Validate every doc exists first.
+        docs = []
+        missing = []
+        for doc_id in payload.doc_ids:
+            doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
+            if not doc:
+                missing.append(doc_id)
+            else:
+                docs.append(doc)
+
+        if missing:
+            # Record one failed batch and return
+            faxes.append(_send_one_and_log(
+                db, payload.chart_number, payload.dest_fax, list(payload.doc_ids),
+                file_path=None, cover_text=payload.cover_text,
+                patient_name=patient_name, grouping_mode=mode,
+                not_found_error=f"Documents not found: {', '.join(missing)}",
+            ))
+            return {"batch_id": None, "faxes": faxes}
+
+        merged_path = None
+        try:
+            merged_path = merge_pdfs([d.file_path for d in docs])
+            faxes.append(_send_one_and_log(
+                db, payload.chart_number, payload.dest_fax,
+                [str(d.id) for d in docs],
+                file_path=merged_path, cover_text=payload.cover_text,
+                patient_name=patient_name, grouping_mode=mode,
+            ))
+        except (FileNotFoundError, ValueError) as e:
+            faxes.append(_send_one_and_log(
+                db, payload.chart_number, payload.dest_fax,
+                [str(d.id) for d in docs],
+                file_path=None, cover_text=payload.cover_text,
+                patient_name=patient_name, grouping_mode=mode,
+                not_found_error=f"PDF merge failed: {e}",
+            ))
+        finally:
+            if merged_path and os.path.isfile(merged_path):
+                os.unlink(merged_path)
     else:
-        # combined / by_type implemented in Tasks 4 and 5
+        # by_type implemented in Task 5
         raise HTTPException(status_code=501, detail=f"Grouping mode {mode!r} not implemented yet")
 
     return {"batch_id": None, "faxes": faxes}

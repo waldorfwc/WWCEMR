@@ -128,3 +128,64 @@ def test_send_batch_validates_payload(client, db):
         "grouping_mode": "separate",
     })
     assert r.status_code == 400
+
+
+def _write_pdf(path, body=b"%PDF-1.4\n%content\n%%EOF"):
+    path.write_bytes(body)
+    return path
+
+
+def test_send_batch_combined_merges_into_one_fax(client, db, tmp_path, monkeypatch):
+    doc_a = _seed_doc(db, tmp_path, chart_number="33333")
+    doc_b = _seed_doc(db, tmp_path, chart_number="33333")
+
+    calls = []
+    def mock(to_number, file_path, cover_page_text=None, patient_name=None):
+        calls.append(file_path)
+        return {"success": True, "message_id": f"msg-{len(calls)}",
+                "status": "Sent", "to": to_number, "pages": 2, "error": None}
+    monkeypatch.setattr("app.routers.fax_batch.send_fax", mock)
+
+    # Make the seeded docs valid single-page PDFs so pypdf can open them.
+    # Use a minimal-but-valid one-page PDF for both.
+    from pypdf import PdfWriter
+    for d in (doc_a, doc_b):
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        with open(d.file_path, "wb") as f:
+            writer.write(f)
+
+    r = client.post("/api/fax/send-batch", json={
+        "chart_number": "33333",
+        "doc_ids": [str(doc_a.id), str(doc_b.id)],
+        "dest_fax": "2402522141",
+        "grouping_mode": "combined",
+    })
+    assert r.status_code == 200, r.text
+    faxes = r.json()["faxes"]
+    assert len(faxes) == 1
+    assert faxes[0]["status"] == "sent"
+    assert set(faxes[0]["doc_ids"]) == {str(doc_a.id), str(doc_b.id)}
+    # send_fax called exactly once with the merged PDF path
+    assert len(calls) == 1
+    assert calls[0].endswith(".pdf")
+
+
+def test_send_batch_combined_reports_single_failure(client, db, tmp_path, monkeypatch):
+    doc_a = _seed_doc(db, tmp_path, chart_number="44444")
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    with open(doc_a.file_path, "wb") as f:
+        writer.write(f)
+
+    monkeypatch.setattr("app.routers.fax_batch.send_fax", _fake_send_fax_fail)
+
+    r = client.post("/api/fax/send-batch", json={
+        "chart_number": "44444",
+        "doc_ids": [str(doc_a.id)],
+        "dest_fax": "2402522141",
+        "grouping_mode": "combined",
+    })
+    assert r.status_code == 200
+    assert r.json()["faxes"][0]["status"] == "failed"
