@@ -189,3 +189,51 @@ def test_send_batch_combined_reports_single_failure(client, db, tmp_path, monkey
     })
     assert r.status_code == 200
     assert r.json()["faxes"][0]["status"] == "failed"
+
+
+def _seed_doc_type(db, tmp_path, chart_number, doc_type, idx=0):
+    pdf_path = tmp_path / f"{chart_number}-{doc_type}-{idx}.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%content\n%%EOF")
+    from pypdf import PdfWriter
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    with open(pdf_path, "wb") as f:
+        writer.write(f)
+    doc = PatientDocument(
+        chart_number=chart_number, doc_type=doc_type,
+        doc_id=f"D{idx}", filename=pdf_path.name, file_path=str(pdf_path),
+    )
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+    return doc
+
+
+def test_send_batch_by_type_groups_docs(client, db, tmp_path, monkeypatch):
+    db.merge(PatientDirectory(chart_number="55555", patient_name="Nguyen, Mai"))
+    db.commit()
+
+    card_a = _seed_doc_type(db, tmp_path, "55555", "insurance_card", 0)
+    card_b = _seed_doc_type(db, tmp_path, "55555", "insurance_card", 1)
+    note_a = _seed_doc_type(db, tmp_path, "55555", "office_visit_note", 0)
+
+    calls = []
+    def mock(to_number, file_path, cover_page_text=None, patient_name=None):
+        calls.append((file_path, cover_page_text))
+        return {"success": True, "message_id": f"msg-{len(calls)}",
+                "status": "Sent", "to": to_number, "pages": 1, "error": None}
+    monkeypatch.setattr("app.routers.fax_batch.send_fax", mock)
+
+    r = client.post("/api/fax/send-batch", json={
+        "chart_number": "55555",
+        "doc_ids": [str(card_a.id), str(card_b.id), str(note_a.id)],
+        "dest_fax": "2402522141",
+        "grouping_mode": "by_type",
+    })
+    assert r.status_code == 200, r.text
+    faxes = r.json()["faxes"]
+    assert len(faxes) == 2  # one per doc_type
+    # Each group's doc_ids are the ones matching its type
+    sizes = sorted(len(f["doc_ids"]) for f in faxes)
+    assert sizes == [1, 2]
+    assert len(calls) == 2

@@ -160,8 +160,60 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
         finally:
             if merged_path and os.path.isfile(merged_path):
                 os.unlink(merged_path)
-    else:
-        # by_type implemented in Task 5
-        raise HTTPException(status_code=501, detail=f"Grouping mode {mode!r} not implemented yet")
+    elif mode == "by_type":
+        # Group loaded docs by their doc_type, merge each group, send one fax per group.
+        loaded = []
+        missing = []
+        for doc_id in payload.doc_ids:
+            doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
+            if doc is None:
+                missing.append(doc_id)
+            else:
+                loaded.append(doc)
+
+        if missing:
+            faxes.append(_send_one_and_log(
+                db, payload.chart_number, payload.dest_fax, list(payload.doc_ids),
+                file_path=None, cover_text=payload.cover_text,
+                patient_name=patient_name, grouping_mode=mode,
+                not_found_error=f"Documents not found: {', '.join(missing)}",
+            ))
+            return {"batch_id": None, "faxes": faxes}
+
+        groups: dict[str, list[PatientDocument]] = {}
+        for doc in loaded:
+            groups.setdefault(doc.doc_type, []).append(doc)
+
+        for doc_type, group in groups.items():
+            merged_path = None
+            try:
+                if len(group) == 1:
+                    # No merge needed; send the single file directly
+                    faxes.append(_send_one_and_log(
+                        db, payload.chart_number, payload.dest_fax,
+                        [str(group[0].id)],
+                        file_path=group[0].file_path, cover_text=payload.cover_text,
+                        patient_name=patient_name, grouping_mode=mode,
+                    ))
+                    continue
+
+                merged_path = merge_pdfs([d.file_path for d in group])
+                faxes.append(_send_one_and_log(
+                    db, payload.chart_number, payload.dest_fax,
+                    [str(d.id) for d in group],
+                    file_path=merged_path, cover_text=payload.cover_text,
+                    patient_name=patient_name, grouping_mode=mode,
+                ))
+            except (FileNotFoundError, ValueError) as e:
+                faxes.append(_send_one_and_log(
+                    db, payload.chart_number, payload.dest_fax,
+                    [str(d.id) for d in group],
+                    file_path=None, cover_text=payload.cover_text,
+                    patient_name=patient_name, grouping_mode=mode,
+                    not_found_error=f"PDF merge failed for doc_type={doc_type}: {e}",
+                ))
+            finally:
+                if merged_path and os.path.isfile(merged_path):
+                    os.unlink(merged_path)
 
     return {"batch_id": None, "faxes": faxes}
