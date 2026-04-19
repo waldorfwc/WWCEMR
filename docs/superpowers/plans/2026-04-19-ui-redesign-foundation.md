@@ -807,12 +807,12 @@ def dashboard_summary(db: Session = Depends(get_db)):
         Claim.date_of_service_from <= horizon_warn,
     ).scalar() or 0
 
-    # Denials
+    # Denials — Denial.status is an SAEnum of DenialStatus ('open', 'appealing', 'overturned', ...)
     denied_open = db.query(func.count(Denial.id)).filter(
-        Denial.resolution_status == 'open',
+        Denial.status == 'open',
     ).scalar() or 0
     denied_last_week = db.query(func.count(Denial.id)).filter(
-        Denial.resolution_status == 'open',
+        Denial.status == 'open',
         Denial.created_at >= func.date('now', '-7 days'),
     ).scalar() or 0
 
