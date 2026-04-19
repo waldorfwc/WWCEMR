@@ -26,7 +26,7 @@ export default function Documents() {
   const indexed = indexStatus?.indexed_documents || 0
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-[calc(100vh-60px)] overflow-hidden">
       {/* Patient Sidebar */}
       <div className="w-60 border-r bg-white flex flex-col shrink-0">
         <div className="p-3 border-b">
