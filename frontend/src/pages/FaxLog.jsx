@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import api, { fmt } from '../utils/api'
 import FaxStatusChip from '../components/FaxStatusChip'
@@ -22,7 +22,7 @@ export default function FaxLog() {
     queryFn: () => api.get('/fax-log', {
       params: { status: status || undefined, chart: chart || undefined, page, page_size: 50 },
     }).then(r => r.data),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
   })
 
   const data = q.data
