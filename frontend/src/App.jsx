@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import Sidebar from './components/layout/Sidebar'
+import TopNav from './components/layout/TopNav'
 import Dashboard from './pages/Dashboard'
 import Claims from './pages/Claims'
 import ClaimDetail from './pages/ClaimDetail'
@@ -17,24 +17,26 @@ import { LoginPage, AuthCallback } from './pages/Login'
 
 function ProtectedApp({ user, onLogout }) {
   return (
-    <div className="flex min-h-screen">
-      <Sidebar user={user} onLogout={onLogout} />
-      <main className="flex-1 overflow-auto bg-gray-50">
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/ar" element={<ARDashboard />} />
-          <Route path="/documents" element={<Documents />} />
-          <Route path="/chart/:chartNumber" element={<PatientChart />} />
-          <Route path="/claims" element={<Claims />} />
-          <Route path="/claims/:id" element={<ClaimDetail />} />
-          <Route path="/patients" element={<Patients />} />
-          <Route path="/patients/:id" element={<PatientDetail />} />
-          <Route path="/denials" element={<Denials />} />
-          <Route path="/appeals" element={<Appeals />} />
-          <Route path="/import" element={<ImportFiles />} />
-          <Route path="/audit" element={<AuditLog />} />
-          <Route path="*" element={<Navigate to="/" />} />
-        </Routes>
+    <div className="min-h-screen flex flex-col bg-plum-50">
+      <TopNav user={user} onLogout={onLogout} />
+      <main className="flex-1 overflow-auto">
+        <div className="max-w-[1440px] mx-auto p-6">
+          <Routes>
+            <Route path="/"                    element={<Dashboard />} />
+            <Route path="/ar"                  element={<ARDashboard />} />
+            <Route path="/documents"           element={<Documents />} />
+            <Route path="/chart/:chartNumber"  element={<PatientChart />} />
+            <Route path="/claims"              element={<Claims />} />
+            <Route path="/claims/:id"          element={<ClaimDetail />} />
+            <Route path="/patients"            element={<Patients />} />
+            <Route path="/patients/:id"        element={<PatientDetail />} />
+            <Route path="/denials"             element={<Denials />} />
+            <Route path="/appeals"             element={<Appeals />} />
+            <Route path="/import"              element={<ImportFiles />} />
+            <Route path="/audit"               element={<AuditLog />} />
+            <Route path="*"                    element={<Navigate to="/" />} />
+          </Routes>
+        </div>
       </main>
     </div>
   )
