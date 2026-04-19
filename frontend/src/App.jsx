@@ -8,6 +8,7 @@ import Patients from './pages/Patients'
 import PatientDetail from './pages/PatientDetail'
 import Denials from './pages/Denials'
 import Appeals from './pages/Appeals'
+import FaxLogPage from './pages/FaxLog'
 import ImportFiles from './pages/ImportFiles'
 import AuditLog from './pages/AuditLog'
 import ARDashboard from './pages/ARDashboard'
@@ -33,6 +34,7 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/denials"             element={<Denials />} />
             <Route path="/appeals"             element={<Appeals />} />
             <Route path="/import"              element={<ImportFiles />} />
+            <Route path="/fax-log"             element={<FaxLogPage />} />
             <Route path="/audit"               element={<AuditLog />} />
             <Route path="*"                    element={<Navigate to="/" />} />
           </Routes>

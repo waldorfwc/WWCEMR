@@ -10,6 +10,7 @@ const nav = [
   { to: '/denials',   label: 'Denials' },
   { to: '/appeals',   label: 'Appeals' },
   { to: '/import',    label: 'Import' },
+  { to: '/fax-log',   label: 'Fax log' },
   { to: '/audit',     label: 'Audit' },
 ]
 
