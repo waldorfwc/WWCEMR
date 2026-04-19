@@ -50,6 +50,7 @@ app.include_router(fax.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(fax_batch.router, prefix="/api")
+app.include_router(fax_batch.log_router, prefix="/api")
 
 
 @app.get("/api/health")

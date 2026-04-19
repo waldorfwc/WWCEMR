@@ -18,6 +18,7 @@ from app.services.pdf_merge import merge_pdfs
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/fax", tags=["fax-batch"])
+log_router = APIRouter(prefix="/fax-log", tags=["fax-log"])
 
 
 class SendBatchPayload(BaseModel):
@@ -305,3 +306,64 @@ def fax_retry(fax_log_id: str, db: Session = Depends(get_db)):
                 new_log.retry_of = original.id
     db.commit()
     return batch
+
+
+@log_router.get("")
+def fax_log_list(
+    status: Optional[str] = None,
+    chart: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    db: Session = Depends(get_db),
+):
+    page = max(1, page)
+    page_size = max(1, min(page_size, 200))
+
+    q = db.query(FaxLog)
+    if status:
+        q = q.filter(FaxLog.status == status)
+    if chart:
+        q = q.filter(FaxLog.chart_number == chart)
+    if date_from:
+        q = q.filter(FaxLog.sent_at >= date_from)
+    if date_to:
+        q = q.filter(FaxLog.sent_at <= date_to)
+
+    total = q.count()
+    rows = (
+        q.order_by(FaxLog.sent_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+
+    charts = {r.chart_number for r in rows}
+    patients = {
+        p.chart_number: p.patient_name
+        for p in db.query(PatientDirectory)
+        .filter(PatientDirectory.chart_number.in_(charts))
+        .all()
+    } if charts else {}
+
+    def serialize(r: FaxLog) -> dict:
+        return {
+            "id": str(r.id),
+            "chart_number": r.chart_number,
+            "patient_name": patients.get(r.chart_number, r.chart_number),
+            "doc_count": len(r.doc_ids or []),
+            "grouping_mode": r.grouping_mode.value if hasattr(r.grouping_mode, "value") else r.grouping_mode,
+            "dest_fax": r.dest_fax,
+            "status": r.status.value if hasattr(r.status, "value") else r.status,
+            "sent_at": r.sent_at.isoformat() + "Z" if r.sent_at else None,
+            "delivered_at": r.delivered_at.isoformat() + "Z" if r.delivered_at else None,
+            "error": r.error,
+        }
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "rows": [serialize(r) for r in rows],
+    }
