@@ -1,0 +1,34 @@
+============================================================
+  Waldorf Womens Care — ERA 835 System
+  HOW TO START
+============================================================
+
+FIRST TIME ONLY — Run this once:
+─────────────────────────────────
+1. Open Terminal
+   (Press Cmd+Space, type "Terminal", press Enter)
+
+2. Type this and press Enter:
+   cd /Users/wwcclaudecode/Documents/wwc-era-project
+
+3. Type this and press Enter:
+   bash setup.sh
+
+   This installs Python, Node.js, and all packages.
+   It takes 5-10 minutes the first time.
+   You may be asked for your Mac password.
+
+─────────────────────────────────
+EVERY TIME YOU WANT TO USE THE SYSTEM:
+─────────────────────────────────
+1. Open Terminal
+
+2. Type this and press Enter:
+   cd /Users/wwcclaudecode/Documents/wwc-era-project && ./start.sh
+
+3. The browser will open automatically at:
+   http://localhost:3000
+
+4. To stop: press Ctrl+C in Terminal
+
+============================================================

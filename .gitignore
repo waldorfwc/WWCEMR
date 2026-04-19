@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Data & secrets
+*.db
+*.db.bak.*
+*.log
+uploads/
+exports/
+backend/venv/
+rc-credentials.json
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Superpowers workspace
+.superpowers/

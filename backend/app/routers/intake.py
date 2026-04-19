@@ -1,0 +1,346 @@
+"""
+Intake document management:
+- Build patient directory from Phreesia PDFs
+- Index intake archive files (organized by name+DOB)
+- Match intake documents to chart numbers
+- Browse, download, override matches
+"""
+
+import os
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from sqlalchemy import func, distinct
+
+from app.database import get_db, SessionLocal
+from app.models.patient_directory import PatientDirectory, IntakeDocument
+from app.services.patient_resolver import (
+    build_patient_directory,
+    index_intake_documents,
+    match_intake_to_charts,
+)
+from app.services.audit_service import log_action
+from app.config import settings
+
+router = APIRouter(prefix="/intake", tags=["intake"])
+
+
+# ── Patient Directory (chart_number -> name/dob) ─────────────────────────────
+
+@router.post("/build-directory")
+def build_directory(background_tasks: BackgroundTasks):
+    """Walk Phreesia Demographic PDFs and populate the patient directory."""
+    if not os.path.isdir(settings.documents_dir):
+        raise HTTPException(status_code=404, detail=f"Documents dir not found: {settings.documents_dir}")
+    background_tasks.add_task(_bg_build_directory)
+    return {"status": "building", "source": settings.documents_dir}
+
+
+def _bg_build_directory():
+    db = SessionLocal()
+    try:
+        result = build_patient_directory(db)
+        print(f"[intake] Directory build result: {result}")
+    finally:
+        db.close()
+
+
+@router.get("/directory/status")
+def directory_status(db: Session = Depends(get_db)):
+    total = db.query(func.count(PatientDirectory.chart_number)).scalar() or 0
+    with_dob = db.query(func.count(PatientDirectory.chart_number)).filter(
+        PatientDirectory.dob.isnot(None)
+    ).scalar() or 0
+    return {"total_charts": total, "with_dob": with_dob}
+
+
+@router.get("/directory")
+def list_directory(
+    search: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, le=500),
+    db: Session = Depends(get_db),
+):
+    q = db.query(PatientDirectory)
+    if search:
+        s = f"%{search}%"
+        q = q.filter(
+            (PatientDirectory.patient_name.ilike(s)) |
+            (PatientDirectory.chart_number.ilike(s))
+        )
+    total = q.count()
+    rows = q.order_by(PatientDirectory.last_name, PatientDirectory.first_name)\
+            .offset((page - 1) * per_page).limit(per_page).all()
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "patients": [
+            {
+                "chart_number": r.chart_number,
+                "patient_name": r.patient_name,
+                "first_name": r.first_name,
+                "last_name": r.last_name,
+                "dob": str(r.dob) if r.dob else None,
+                "gender": r.gender,
+            }
+            for r in rows
+        ],
+    }
+
+
+# ── Intake Archives ──────────────────────────────────────────────────────────
+
+@router.post("/index")
+def start_indexing(
+    background_tasks: BackgroundTasks,
+    intake_dir: str = "~/Downloads/wwc_intake_docs",
+):
+    """Walk an intake archive directory and index all files."""
+    abs_dir = os.path.expanduser(intake_dir)
+    if not os.path.isdir(abs_dir):
+        raise HTTPException(status_code=404, detail=f"Directory not found: {abs_dir}")
+    background_tasks.add_task(_bg_index_and_match, abs_dir)
+    return {"status": "indexing", "directory": abs_dir}
+
+
+def _bg_index_and_match(intake_dir: str):
+    db = SessionLocal()
+    try:
+        idx = index_intake_documents(db, intake_dir)
+        print(f"[intake] Index result: {idx}")
+        # Auto-match if directory is populated
+        if db.query(PatientDirectory).count() > 0:
+            match = match_intake_to_charts(db)
+            print(f"[intake] Match result: {match}")
+    finally:
+        db.close()
+
+
+@router.post("/match")
+def run_matching(db: Session = Depends(get_db)):
+    """Re-run matching against the current patient directory."""
+    result = match_intake_to_charts(db)
+    log_action(db, "INTAKE_MATCH", "intake", description=f"Matching run: {result}")
+    return result
+
+
+@router.get("/status")
+def intake_status(db: Session = Depends(get_db)):
+    """Summary of intake document index and match state."""
+    total = db.query(func.count(IntakeDocument.id)).scalar() or 0
+    if total == 0:
+        return {"total": 0, "match_summary": {}}
+
+    exact = db.query(func.count(IntakeDocument.id)).filter(IntakeDocument.match_confidence == "exact").scalar() or 0
+    fuzzy_high = db.query(func.count(IntakeDocument.id)).filter(IntakeDocument.match_confidence == "fuzzy_high").scalar() or 0
+    fuzzy_low = db.query(func.count(IntakeDocument.id)).filter(IntakeDocument.match_confidence == "fuzzy_low").scalar() or 0
+    dob_no_name = db.query(func.count(IntakeDocument.id)).filter(IntakeDocument.match_confidence == "dob_no_name").scalar() or 0
+    unmatched = db.query(func.count(IntakeDocument.id)).filter(IntakeDocument.match_confidence == "unmatched").scalar() or 0
+    pending = db.query(func.count(IntakeDocument.id)).filter(IntakeDocument.match_confidence == "pending").scalar() or 0
+
+    unique_patients = db.query(func.count(distinct(
+        func.concat(IntakeDocument.patient_name_raw, "-", IntakeDocument.dob)
+    ))).scalar() or 0
+
+    by_category = db.query(
+        IntakeDocument.doc_category,
+        func.count(IntakeDocument.id)
+    ).group_by(IntakeDocument.doc_category).all()
+
+    return {
+        "total": total,
+        "unique_patients": unique_patients,
+        "match_summary": {
+            "exact": exact,
+            "fuzzy_high": fuzzy_high,
+            "fuzzy_low": fuzzy_low,
+            "dob_no_name": dob_no_name,
+            "unmatched": unmatched,
+            "pending": pending,
+        },
+        "by_category": [{"category": c or "Other", "count": n} for c, n in by_category],
+    }
+
+
+@router.get("/documents")
+def list_intake_documents(
+    name: Optional[str] = None,
+    dob: Optional[str] = None,
+    category: Optional[str] = None,
+    match_confidence: Optional[str] = None,
+    chart_number: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, le=200),
+    db: Session = Depends(get_db),
+):
+    """List intake documents with filters."""
+    q = db.query(IntakeDocument)
+    if name:
+        q = q.filter(IntakeDocument.patient_name_raw.ilike(f"%{name}%"))
+    if dob:
+        from datetime import date as _date
+        try:
+            q = q.filter(IntakeDocument.dob == _date.fromisoformat(dob))
+        except ValueError:
+            pass
+    if category:
+        q = q.filter(IntakeDocument.doc_category == category)
+    if match_confidence:
+        q = q.filter(IntakeDocument.match_confidence == match_confidence)
+    if chart_number:
+        q = q.filter(IntakeDocument.matched_chart_number == chart_number)
+
+    total = q.count()
+    rows = q.order_by(IntakeDocument.patient_name_raw, IntakeDocument.dob)\
+            .offset((page - 1) * per_page).limit(per_page).all()
+
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "documents": [_intake_to_dict(d) for d in rows],
+    }
+
+
+@router.get("/patients")
+def list_intake_patients(
+    match_confidence: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """
+    List unique patients in the intake archive with their match status
+    and document counts.
+    """
+    q = db.query(
+        IntakeDocument.patient_name_raw,
+        IntakeDocument.dob,
+        IntakeDocument.matched_chart_number,
+        IntakeDocument.match_confidence,
+        IntakeDocument.match_score,
+        func.count(IntakeDocument.id).label("doc_count"),
+    )
+    if match_confidence:
+        q = q.filter(IntakeDocument.match_confidence == match_confidence)
+
+    rows = q.group_by(
+        IntakeDocument.patient_name_raw,
+        IntakeDocument.dob,
+        IntakeDocument.matched_chart_number,
+        IntakeDocument.match_confidence,
+        IntakeDocument.match_score,
+    ).order_by(IntakeDocument.patient_name_raw).all()
+
+    return {
+        "total": len(rows),
+        "patients": [
+            {
+                "name": r.patient_name_raw,
+                "dob": str(r.dob) if r.dob else None,
+                "chart_number": r.matched_chart_number,
+                "match_confidence": r.match_confidence,
+                "match_score": float(r.match_score or 0),
+                "doc_count": r.doc_count,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.patch("/documents/{doc_id}/override-match")
+def override_match(doc_id: str, chart_number: str, db: Session = Depends(get_db)):
+    """Manually assign a chart number to an intake document (or all docs for that patient)."""
+    doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    # Verify chart exists
+    chart = db.query(PatientDirectory).filter(PatientDirectory.chart_number == chart_number).first()
+    if not chart:
+        raise HTTPException(status_code=404, detail=f"Chart {chart_number} not found in directory")
+
+    # Apply to ALL documents for this patient (same name+dob)
+    affected = db.query(IntakeDocument).filter(
+        IntakeDocument.patient_name_raw == doc.patient_name_raw,
+        IntakeDocument.dob == doc.dob,
+    ).update({
+        IntakeDocument.matched_chart_number: chart_number,
+        IntakeDocument.match_confidence: "manual",
+        IntakeDocument.match_score: 1.0,
+    })
+    db.commit()
+
+    log_action(
+        db, "INTAKE_MANUAL_MATCH", "intake_document",
+        resource_id=doc_id,
+        description=f"Manual match: {doc.patient_name_raw} ({doc.dob}) -> chart {chart_number}, {affected} docs updated"
+    )
+    return {"status": "ok", "docs_updated": affected, "chart_number": chart_number}
+
+
+@router.get("/download/{doc_id}")
+def download_intake(doc_id: str, db: Session = Depends(get_db)):
+    doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not os.path.isfile(doc.file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    media_type = "application/pdf"
+    if doc.file_type in ("jpg", "jpeg"):
+        media_type = "image/jpeg"
+    elif doc.file_type == "png":
+        media_type = "image/png"
+    elif doc.file_type == "docx":
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    log_action(
+        db, "DOWNLOAD", "intake_document",
+        resource_id=doc_id,
+        description=f"Downloaded intake {doc.filename} for {doc.patient_name_raw}"
+    )
+    return FileResponse(
+        path=doc.file_path,
+        media_type=media_type,
+        filename=doc.filename,
+        headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
+    )
+
+
+@router.get("/view/{doc_id}")
+def view_intake(doc_id: str, db: Session = Depends(get_db)):
+    doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not os.path.isfile(doc.file_path):
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    media_type = "application/pdf"
+    if doc.file_type in ("jpg", "jpeg"):
+        media_type = "image/jpeg"
+    elif doc.file_type == "png":
+        media_type = "image/png"
+
+    return FileResponse(
+        path=doc.file_path,
+        media_type=media_type,
+        filename=doc.filename,
+        headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
+    )
+
+
+def _intake_to_dict(d: IntakeDocument) -> dict:
+    return {
+        "id": str(d.id),
+        "patient_name": d.patient_name_raw,
+        "dob": str(d.dob) if d.dob else None,
+        "doc_category": d.doc_category,
+        "doc_year": d.doc_year,
+        "filename": d.filename,
+        "file_type": d.file_type,
+        "file_size_kb": d.file_size_kb,
+        "matched_chart_number": d.matched_chart_number,
+        "match_confidence": d.match_confidence,
+        "match_score": float(d.match_score or 0),
+    }
