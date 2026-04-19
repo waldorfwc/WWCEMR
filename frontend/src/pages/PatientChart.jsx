@@ -8,6 +8,9 @@ import {
   Search, Filter, Phone, X, Check, Loader2,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import FaxBatchModal from '../components/FaxBatchModal'
+import FaxStatusChip from '../components/FaxStatusChip'
+import { useFaxByChart, faxByDocId } from '../hooks/useFaxByChart'
 
 function FaxModal({ doc, docType, onClose, patient }) {
   const [faxNumber, setFaxNumber] = useState('2402522141')
@@ -226,9 +229,10 @@ function IntakeSection({ docs, onFax }) {
   )
 }
 
-function DocumentsSection({ chartNumber, onFax }) {
+function DocumentsSection({ chartNumber, onBatchFax }) {
   const [docType, setDocType] = useState('')
   const [page, setPage] = useState(1)
+  const [selected, setSelected] = useState(new Set())
   const PER_PAGE = 30
 
   const { data: docs } = useQuery({
@@ -243,12 +247,48 @@ function DocumentsSection({ chartNumber, onFax }) {
     queryFn: () => api.get('/documents/types').then(r => r.data),
   })
 
+  const faxQuery = useFaxByChart(chartNumber)
+  const byDoc = faxByDocId(faxQuery.data)
+
   if (!docs?.documents?.length && !docType) return <EmptyState text="No PrimeSuite documents for this chart" />
+
+  const allDocsOnPage = docs?.documents || []
+
+  function toggleDoc(docId) {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(docId)) next.delete(docId)
+      else next.add(docId)
+      return next
+    })
+  }
+
+  function selectUnsent() {
+    const unsent = allDocsOnPage
+      .filter(d => !byDoc[d.id] || byDoc[d.id].status === 'failed')
+      .map(d => d.id)
+    setSelected(prev => new Set([...prev, ...unsent]))
+  }
+
+  function clearSelection() { setSelected(new Set()) }
+
+  function handleBatchClick() {
+    if (onBatchFax) onBatchFax(Array.from(selected), clearSelection)
+  }
+
+  async function handleRetry(row) {
+    try {
+      await api.post(`/fax/retry/${row.id}`)
+      faxQuery.refetch()
+    } catch (e) {
+      console.error('Retry failed', e)
+    }
+  }
 
   // Group by date
   const groups = []
   const groupMap = new Map()
-  for (const d of (docs?.documents || [])) {
+  for (const d of allDocsOnPage) {
     const key = d.doc_date || 'unknown'
     if (!groupMap.has(key)) {
       const g = { key, doc_date: d.doc_date, docs: [] }
@@ -262,7 +302,7 @@ function DocumentsSection({ chartNumber, onFax }) {
     <div className="mt-2">
       <div className="flex items-center gap-2 mb-3">
         <select
-          className="border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"
+          className="border rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-plum-700"
           value={docType}
           onChange={e => { setDocType(e.target.value); setPage(1) }}
         >
@@ -271,52 +311,72 @@ function DocumentsSection({ chartNumber, onFax }) {
             <option key={t.type} value={t.type}>{t.type} ({t.count})</option>
           ))}
         </select>
-        <span className="text-xs text-gray-400">{docs?.total || 0} documents</span>
+        <span className="text-xs text-muted">{docs?.total || 0} documents</span>
+        <div className="ml-auto flex items-center gap-3 text-xs">
+          <button onClick={selectUnsent} className="text-plum-700 underline">Select unsent</button>
+          {selected.size > 0 && (
+            <>
+              <button onClick={clearSelection} className="text-muted underline">
+                Clear ({selected.size})
+              </button>
+              <button onClick={handleBatchClick} className="btn-primary">
+                Fax {selected.size} {selected.size === 1 ? 'doc' : 'docs'} to EMA →
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2">
         {groups.map(g => (
           <div key={g.key} className="border rounded overflow-hidden">
-            <div className="bg-gray-50 px-3 py-1.5 text-xs flex items-center gap-2 text-gray-600">
+            <div className="bg-plum-50 px-3 py-1.5 text-xs flex items-center gap-2 text-muted">
               <span className="font-medium">
                 {g.doc_date
                   ? new Date(g.doc_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                   : 'Unknown Date'}
               </span>
-              <span className="text-gray-400">· {g.docs.length} doc{g.docs.length !== 1 ? 's' : ''}</span>
+              <span className="text-muted">· {g.docs.length} doc{g.docs.length !== 1 ? 's' : ''}</span>
             </div>
-            {g.docs.map(doc => (
-              <div key={doc.id} className="flex items-center px-3 py-1.5 text-xs border-t hover:bg-blue-50/30">
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium mr-3 ${docTypeColor(doc.doc_type)}`}>
-                  {doc.doc_type}
-                </span>
-                <span className="text-gray-400 font-mono text-[10px] mr-3">ID {doc.doc_id || '—'}</span>
-                <span className="text-gray-400 mr-auto">{doc.file_size_kb > 0 ? `${doc.file_size_kb} KB` : ''}</span>
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => onFax && onFax(doc)}
-                    className="p-1 hover:bg-orange-100 rounded text-orange-600"
-                    title="Fax"
-                  ><Phone size={13} /></button>
-                  <button
-                    onClick={() => window.open(`/api/documents/view/${doc.id}`, '_blank')}
-                    className="p-1 hover:bg-blue-100 rounded text-blue-600"
-                    title="View"
-                  ><Eye size={13} /></button>
-                  <button
-                    onClick={() => window.open(`/api/documents/download/${doc.id}`, '_blank')}
-                    className="p-1 hover:bg-green-100 rounded text-green-600"
-                    title="Download"
-                  ><Download size={13} /></button>
+            {g.docs.map(doc => {
+              const faxRow = byDoc[doc.id]
+              return (
+                <div key={doc.id} className="flex items-center px-3 py-1.5 text-xs border-t hover:bg-plum-50/40">
+                  <input
+                    type="checkbox"
+                    className="mr-3"
+                    checked={selected.has(doc.id)}
+                    onChange={() => toggleDoc(doc.id)}
+                  />
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium mr-3 ${docTypeColor(doc.doc_type)}`}>
+                    {doc.doc_type}
+                  </span>
+                  <span className="text-muted font-mono text-[10px] mr-3">ID {doc.doc_id || '—'}</span>
+                  <span className="text-muted mr-3">{doc.file_size_kb > 0 ? `${doc.file_size_kb} KB` : ''}</span>
+                  <span className="mr-auto">
+                    {faxRow && <FaxStatusChip row={faxRow} onRetry={handleRetry} />}
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => window.open(`/api/documents/view/${doc.id}`, '_blank')}
+                      className="p-1 hover:bg-plum-100 rounded text-plum-700"
+                      title="View"
+                    ><Eye size={13} /></button>
+                    <button
+                      onClick={() => window.open(`/api/documents/download/${doc.id}`, '_blank')}
+                      className="p-1 hover:bg-plum-100 rounded text-plum-700"
+                      title="Download"
+                    ><Download size={13} /></button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ))}
       </div>
 
       {docs && docs.total > PER_PAGE && (
-        <div className="flex items-center justify-center gap-3 mt-3 text-xs text-gray-500">
+        <div className="flex items-center justify-center gap-3 mt-3 text-xs text-muted">
           <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2 py-1 border rounded disabled:opacity-40">Prev</button>
           <span>Page {page} of {Math.ceil(docs.total / PER_PAGE)}</span>
           <button onClick={() => setPage(p => p + 1)} disabled={page >= Math.ceil(docs.total / PER_PAGE)} className="px-2 py-1 border rounded disabled:opacity-40">Next</button>
@@ -349,6 +409,8 @@ export default function PatientChart() {
   const { chartNumber } = useParams()
 
   const [faxDoc, setFaxDoc] = useState(null) // {doc, docType}
+  const [batchDocIds, setBatchDocIds] = useState(null)  // array when open, null when closed
+  const [batchClearFn, setBatchClearFn] = useState(null)  // () => void, called after send
 
   const { data: chart, isLoading, error } = useQuery({
     queryKey: ['chart', chartNumber],
@@ -496,7 +558,13 @@ export default function PatientChart() {
       </Accordion>
 
       <Accordion title="PrimeSuite Documents" icon={FileText} color="text-gray-600" badge={chart.document_count}>
-        <DocumentsSection chartNumber={chartNumber} onFax={doc => setFaxDoc({ doc, docType: 'document' })} />
+        <DocumentsSection
+          chartNumber={chartNumber}
+          onBatchFax={(docIds, clearFn) => {
+            setBatchDocIds(docIds)
+            setBatchClearFn(() => clearFn)
+          }}
+        />
       </Accordion>
 
       <Accordion title="Past Medical History" icon={Heart} color="text-red-500" badge={chart.medical_history?.length}>
@@ -603,6 +671,20 @@ export default function PatientChart() {
           docType={faxDoc.docType}
           patient={d}
           onClose={() => setFaxDoc(null)}
+        />
+      )}
+
+      {batchDocIds && (
+        <FaxBatchModal
+          chartNumber={chartNumber}
+          docIds={batchDocIds}
+          defaultDestFax="2402522141"
+          defaultCover={chart?.demographics ? `Patient: ${chart.demographics.patient_name || ''}\nDOB: ${chart.demographics.dob || ''}\nChart #${chartNumber}` : `Chart #${chartNumber}`}
+          onClose={() => {
+            setBatchDocIds(null)
+            if (batchClearFn) batchClearFn()
+            setBatchClearFn(null)
+          }}
         />
       )}
     </div>
