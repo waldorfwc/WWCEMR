@@ -10,6 +10,10 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
 from app.database import Base, get_db
 from app.main import app
+from app.routers.auth import get_current_user
+
+
+TEST_USER = {"email": "tester@waldorfwomenscare.com", "name": "Test User"}
 
 
 @pytest.fixture
@@ -34,7 +38,11 @@ def client(db):
             yield db
         finally:
             pass
+    def override_get_current_user():
+        return TEST_USER
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

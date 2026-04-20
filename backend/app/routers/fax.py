@@ -11,12 +11,17 @@ from app.models.document import PatientDocument
 from app.models.patient_directory import IntakeDocument
 from app.services.fax_service import send_fax, check_fax_status
 from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/fax", tags=["fax"])
 
 
 @router.post("/send")
-def fax_document(payload: dict, db: Session = Depends(get_db)):
+def fax_document(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """
     Legacy single-doc fax. Delegates to the new send-batch path so every
     send is tracked in fax_logs.
@@ -45,9 +50,11 @@ def fax_document(payload: dict, db: Session = Depends(get_db)):
         )
         if result.get("error"):
             log_action(db, "FAX_FAILED", "fax",
+                       user_name=current_user.get("email"),
                        description=f"Intake fax failed to {fax_number}: {result['error']}")
             raise HTTPException(status_code=500, detail=result["error"])
         log_action(db, "FAX_SENT", "fax",
+                   user_name=current_user.get("email"),
                    description=f"Faxed intake to {fax_number} for {intake_doc.patient_name_raw} — msg {result.get('message_id')}")
         return result
 
@@ -56,8 +63,8 @@ def fax_document(payload: dict, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    from app.routers.fax_batch import send_batch, SendBatchPayload
-    batch_result = send_batch(
+    from app.routers.fax_batch import _send_batch_core, SendBatchPayload
+    batch_result = _send_batch_core(
         SendBatchPayload(
             chart_number=doc.chart_number,
             doc_ids=[str(doc.id)],
@@ -66,6 +73,7 @@ def fax_document(payload: dict, db: Session = Depends(get_db)):
             cover_text=cover_text or None,
         ),
         db=db,
+        sent_by=current_user.get("email"),
     )
     fax = batch_result["faxes"][0]
     if fax["status"] == "failed":

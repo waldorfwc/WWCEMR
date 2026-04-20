@@ -16,6 +16,7 @@ from app.models.fax_log import FaxLog, FaxLogStatus, GroupingMode
 from app.services.fax_service import send_fax
 from app.services.pdf_merge import merge_pdfs
 from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
 
 router = APIRouter(prefix="/fax", tags=["fax-batch"])
 log_router = APIRouter(prefix="/fax-log", tags=["fax-log"])
@@ -43,6 +44,7 @@ def _send_one_and_log(
     cover_text: Optional[str],
     patient_name: str,
     grouping_mode: str,
+    sent_by: Optional[str] = None,
     not_found_error: Optional[str] = None,
 ) -> dict:
     """Create FaxLog row, call RingCentral (unless pre-failed), return payload row dict."""
@@ -51,6 +53,7 @@ def _send_one_and_log(
         doc_ids=doc_ids,
         grouping_mode=grouping_mode,
         dest_fax=dest_fax,
+        sent_by=sent_by,
     )
     db.add(log)
     db.flush()
@@ -91,7 +94,31 @@ def _send_one_and_log(
 
 
 @router.post("/send-batch")
-def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
+def send_batch(
+    payload: SendBatchPayload,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    return _send_batch_core(payload, db, sent_by=current_user.get("email"))
+
+
+def _send_batch_core(
+    payload: SendBatchPayload,
+    db: Session,
+    sent_by: Optional[str] = None,
+):
+    """Core implementation of fax/send-batch — no FastAPI dependencies.
+
+    Callable from any router. Writes one FaxLog row per fax attempt
+    (one for 'separate' and 'by_type', one for 'combined'). Each row
+    is committed individually inside `_send_one_and_log` so a mid-batch
+    failure leaves prior rows persisted. `sent_by` populates FaxLog.sent_by
+    on every new row.
+
+    Returns:
+        {"batch_id": None, "faxes": [{"fax_log_id", "doc_ids", "status",
+            "error", "ringcentral_message_id"}]}
+    """
     if not payload.doc_ids:
         raise HTTPException(status_code=400, detail="doc_ids must not be empty")
     if payload.grouping_mode not in {m.value for m in GroupingMode}:
@@ -101,6 +128,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
     mode = payload.grouping_mode
 
     log_action(db, "FAX_BATCH_SENT", "fax",
+               user_name=sent_by,
                description=f"Batch fax chart={payload.chart_number} docs={len(payload.doc_ids)} mode={mode} to {payload.dest_fax}")
 
     faxes = []
@@ -112,6 +140,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                     db, payload.chart_number, payload.dest_fax, [doc_id],
                     file_path=None, cover_text=payload.cover_text,
                     patient_name=patient_name, grouping_mode=mode,
+                    sent_by=sent_by,
                     not_found_error=f"Document {doc_id} not found",
                 ))
                 continue
@@ -119,6 +148,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                 db, payload.chart_number, payload.dest_fax, [doc_id],
                 file_path=doc.file_path, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
+                sent_by=sent_by,
             ))
     elif mode == "combined":
         # Validate every doc exists first.
@@ -137,6 +167,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                 db, payload.chart_number, payload.dest_fax, list(payload.doc_ids),
                 file_path=None, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
+                sent_by=sent_by,
                 not_found_error=f"Documents not found: {', '.join(missing)}",
             ))
             return {"batch_id": None, "faxes": faxes}
@@ -149,6 +180,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                 [str(d.id) for d in docs],
                 file_path=merged_path, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
+                sent_by=sent_by,
             ))
         except (FileNotFoundError, ValueError) as e:
             faxes.append(_send_one_and_log(
@@ -156,6 +188,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                 [str(d.id) for d in docs],
                 file_path=None, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
+                sent_by=sent_by,
                 not_found_error=f"PDF merge failed: {e}",
             ))
         finally:
@@ -177,6 +210,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                 db, payload.chart_number, payload.dest_fax, list(payload.doc_ids),
                 file_path=None, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
+                sent_by=sent_by,
                 not_found_error=f"Documents not found: {', '.join(missing)}",
             ))
             return {"batch_id": None, "faxes": faxes}
@@ -195,6 +229,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                         [str(group[0].id)],
                         file_path=group[0].file_path, cover_text=payload.cover_text,
                         patient_name=patient_name, grouping_mode=mode,
+                        sent_by=sent_by,
                     ))
                     continue
 
@@ -204,6 +239,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                     [str(d.id) for d in group],
                     file_path=merged_path, cover_text=payload.cover_text,
                     patient_name=patient_name, grouping_mode=mode,
+                    sent_by=sent_by,
                 ))
             except (FileNotFoundError, ValueError) as e:
                 faxes.append(_send_one_and_log(
@@ -211,6 +247,7 @@ def send_batch(payload: SendBatchPayload, db: Session = Depends(get_db)):
                     [str(d.id) for d in group],
                     file_path=None, cover_text=payload.cover_text,
                     patient_name=patient_name, grouping_mode=mode,
+                    sent_by=sent_by,
                     not_found_error=f"PDF merge failed for doc_type={doc_type}: {e}",
                 ))
             finally:
@@ -278,26 +315,29 @@ def fax_by_chart(chart_number: str, db: Session = Depends(get_db)):
 
 
 @router.post("/retry/{fax_log_id}")
-def fax_retry(fax_log_id: str, db: Session = Depends(get_db)):
+def fax_retry(
+    fax_log_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """Resend a fax with the same doc_ids / dest / grouping as the original.
     Creates a new FaxLog row that points back to the original via retry_of.
     """
     original = db.query(FaxLog).filter(FaxLog.id == fax_log_id).first()
     if not original:
         raise HTTPException(status_code=404, detail="Fax log not found")
-
     mode = original.grouping_mode.value if hasattr(original.grouping_mode, "value") else original.grouping_mode
-    batch = send_batch(
+    batch = _send_batch_core(
         SendBatchPayload(
             chart_number=original.chart_number,
             doc_ids=list(original.doc_ids or []),
             dest_fax=original.dest_fax,
             grouping_mode=mode,
-            cover_text=None,  # cover text isn't persisted; retry regenerates
+            cover_text=None,
         ),
         db=db,
+        sent_by=current_user.get("email"),
     )
-    # Link every new FaxLog in the batch to the original
     for fax in batch["faxes"]:
         new_id = fax.get("fax_log_id")
         if new_id:
