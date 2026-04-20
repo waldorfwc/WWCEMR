@@ -236,13 +236,16 @@ def list_patients(
     ).filter(PatientDocument.file_path != "").group_by(PatientDocument.chart_number)
 
     if search:
-        # Search by chart number or patient name from directory
+        from sqlalchemy import cast, String
+        # Search matches patient_name, chart_number, or DOB (substring).
+        # DOB stored as Date — cast to string for substring matching.
         matching_charts = db.query(PatientDirectory.chart_number).filter(
             PatientDirectory.patient_name.ilike(f"%{search}%")
+            | cast(PatientDirectory.dob, String).ilike(f"%{search}%")
         ).subquery()
         q = q.filter(
-            PatientDocument.chart_number.ilike(f"%{search}%") |
-            PatientDocument.chart_number.in_(matching_charts)
+            PatientDocument.chart_number.ilike(f"%{search}%")
+            | PatientDocument.chart_number.in_(matching_charts)
         )
 
     total = q.count()
