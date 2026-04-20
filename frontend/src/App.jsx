@@ -14,15 +14,20 @@ import ARDashboard from './pages/ARDashboard'
 import Documents from './pages/Documents'
 import PatientChart from './pages/PatientChart'
 import { LoginPage, AuthCallback } from './pages/Login'
+import { useCurrentUser } from './hooks/useCurrentUser'
 
 function ProtectedApp({ user, onLogout }) {
+  const { isClinical, isLoading } = useCurrentUser()
+
   return (
     <div className="min-h-screen flex flex-col bg-plum-50">
       <TopNav user={user} onLogout={onLogout} />
       <main className="flex-1 overflow-auto">
         <div className="max-w-[1440px] mx-auto p-6">
           <Routes>
-            <Route path="/"                    element={<Dashboard />} />
+            <Route path="/" element={
+              isLoading ? null : (isClinical ? <Navigate to="/documents" replace /> : <Dashboard />)
+            } />
             <Route path="/ar"                  element={<ARDashboard />} />
             <Route path="/documents"           element={<Documents />} />
             <Route path="/chart/:chartNumber"  element={<PatientChart />} />

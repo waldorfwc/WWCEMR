@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { LogOut } from 'lucide-react'
 import logoMark from '../../assets/wwc-logo.png'
+import { useCurrentUser } from '../../hooks/useCurrentUser'
 
 const nav = [
   { to: '/',          label: 'Dashboard' },
@@ -13,7 +14,14 @@ const nav = [
   { to: '/audit',     label: 'Audit' },
 ]
 
+const CLINICAL_NAV = [
+  { to: '/documents', label: 'Charts' },
+]
+
 export default function TopNav({ user, onLogout }) {
+  const { isClinical } = useCurrentUser()
+  const visibleNav = isClinical ? CLINICAL_NAV : nav
+
   return (
     <header className="bg-white border-b border-border-subtle h-[60px] px-6 flex items-center gap-6 sticky top-0 z-10">
       <div className="flex items-center gap-2.5 shrink-0">
@@ -29,7 +37,7 @@ export default function TopNav({ user, onLogout }) {
       </div>
 
       <nav className="flex gap-0.5 text-sm">
-        {nav.map(({ to, label }) => (
+        {visibleNav.map(({ to, label }) => (
           <NavLink
             key={to}
             to={to}
