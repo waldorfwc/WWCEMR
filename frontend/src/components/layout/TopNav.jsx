@@ -4,13 +4,12 @@ import logoMark from '../../assets/wwc-logo.png'
 
 const nav = [
   { to: '/',          label: 'Dashboard' },
-  { to: '/ar',        label: 'A/R' },
   { to: '/documents', label: 'Charts' },
+  { to: '/ar',        label: 'A/R' },
   { to: '/claims',    label: 'Claims' },
   { to: '/denials',   label: 'Denials' },
   { to: '/appeals',   label: 'Appeals' },
   { to: '/import',    label: 'Import' },
-  { to: '/fax-log',   label: 'Fax log' },
   { to: '/audit',     label: 'Audit' },
 ]
 
