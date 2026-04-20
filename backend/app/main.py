@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, service_lines
+from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, service_lines, claim_adjustments
 
 BILLING = [Depends(auth.require_group("admin", "billing"))]
 ADMIN_ONLY = [Depends(auth.require_group("admin"))]
@@ -45,6 +45,7 @@ app.add_middleware(
 app.include_router(imports.router, prefix="/api", dependencies=BILLING)
 app.include_router(claims.router, prefix="/api", dependencies=BILLING)
 app.include_router(service_lines.router, prefix="/api", dependencies=BILLING)
+app.include_router(claim_adjustments.router, prefix="/api", dependencies=BILLING)
 app.include_router(patients.router, prefix="/api")
 app.include_router(denials.router, prefix="/api", dependencies=BILLING)
 app.include_router(appeals.router, prefix="/api", dependencies=BILLING)
