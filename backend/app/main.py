@@ -1,10 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
 from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch
+
+BILLING = [Depends(auth.require_group("admin", "billing"))]
 
 
 @asynccontextmanager
@@ -39,21 +41,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(imports.router, prefix="/api")
-app.include_router(claims.router, prefix="/api")
+app.include_router(imports.router, prefix="/api", dependencies=BILLING)
+app.include_router(claims.router, prefix="/api", dependencies=BILLING)
 app.include_router(patients.router, prefix="/api")
-app.include_router(denials.router, prefix="/api")
-app.include_router(appeals.router, prefix="/api")
-app.include_router(eob.router, prefix="/api")
-app.include_router(audit.router, prefix="/api")
-app.include_router(waystar.router, prefix="/api")
-app.include_router(ar.router, prefix="/api")
+app.include_router(denials.router, prefix="/api", dependencies=BILLING)
+app.include_router(appeals.router, prefix="/api", dependencies=BILLING)
+app.include_router(eob.router, prefix="/api", dependencies=BILLING)
+app.include_router(audit.router, prefix="/api", dependencies=BILLING)
+app.include_router(waystar.router, prefix="/api", dependencies=BILLING)
+app.include_router(ar.router, prefix="/api", dependencies=BILLING)
 app.include_router(documents.router, prefix="/api")
 app.include_router(intake.router, prefix="/api")
 app.include_router(chart.router, prefix="/api")
 app.include_router(fax.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api", dependencies=BILLING)
 app.include_router(fax_batch.router, prefix="/api")
 app.include_router(fax_batch.log_router, prefix="/api")
 

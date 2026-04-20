@@ -46,3 +46,24 @@ def client(db):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+CLINICAL_USER = {"email": "clinician@waldorfwomenscare.com", "name": "Clinician", "group": "clinical"}
+
+
+@pytest.fixture
+def clinical_client(db):
+    """Same as `client` but the authenticated user has group=clinical."""
+    def override_get_db():
+        try:
+            yield db
+        finally:
+            pass
+    def override_get_current_user():
+        return CLINICAL_USER
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
