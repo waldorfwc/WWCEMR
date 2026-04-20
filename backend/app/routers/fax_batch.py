@@ -258,37 +258,56 @@ def _send_batch_core(
 
 
 @router.get("/recent")
-def fax_recent(limit: int = 5, db: Session = Depends(get_db)):
-    """Recent fax activity for the Dashboard card."""
-    rows = (
-        db.query(FaxLog)
-        .order_by(FaxLog.sent_at.desc())
-        .limit(max(1, min(limit, 100)))
-        .all()
-    )
+def fax_recent(
+    limit: int = 5,
+    window: Optional[int] = None,  # days; None = no window
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Recent fax activity for Dashboard card AND Charts-page fax-log pane."""
+    q = db.query(FaxLog)
+    if window:
+        from datetime import datetime, timedelta
+        q = q.filter(FaxLog.sent_at >= datetime.utcnow() - timedelta(days=window))
+    if status:
+        q = q.filter(FaxLog.status == status)
+
+    rows = q.order_by(FaxLog.sent_at.desc()).limit(max(1, min(limit, 200))).all()
     if not rows:
         return []
 
+    # Bulk patient lookup
     charts = {r.chart_number for r in rows}
-    patients = {
-        p.chart_number: p.patient_name
-        for p in db.query(PatientDirectory)
-        .filter(PatientDirectory.chart_number.in_(charts))
-        .all()
-    }
+    dir_rows = db.query(PatientDirectory).filter(PatientDirectory.chart_number.in_(charts)).all()
+    patient_map = {p.chart_number: p for p in dir_rows}
 
-    def row_to_dict(r: FaxLog) -> dict:
+    # Bulk doc_type lookup — gather every doc_id across all rows, one query
+    all_doc_ids = {d for r in rows for d in (r.doc_ids or [])}
+    from app.models.document import PatientDocument
+    doc_types_by_id: dict[str, str] = {}
+    if all_doc_ids:
+        doc_rows = db.query(PatientDocument.id, PatientDocument.doc_type).filter(
+            PatientDocument.id.in_(all_doc_ids)
+        ).all()
+        doc_types_by_id = {str(d.id): d.doc_type for d in doc_rows}
+
+    def serialize(r: FaxLog) -> dict:
+        p = patient_map.get(r.chart_number)
+        types = sorted({doc_types_by_id[d] for d in (r.doc_ids or []) if d in doc_types_by_id})
         return {
             "id": str(r.id),
             "chart_number": r.chart_number,
-            "patient_name": patients.get(r.chart_number, r.chart_number),
+            "patient_name": p.patient_name if p else r.chart_number,
+            "dob": str(p.dob) if p and p.dob else None,
             "status": r.status.value if hasattr(r.status, "value") else r.status,
             "sent_at": r.sent_at.isoformat() + "Z" if r.sent_at else None,
             "dest_fax": r.dest_fax,
             "doc_count": len(r.doc_ids or []),
+            "doc_types": types,
+            "sent_by": r.sent_by,
         }
 
-    return [row_to_dict(r) for r in rows]
+    return [serialize(r) for r in rows]
 
 
 @router.get("/by-chart/{chart_number}")
