@@ -20,5 +20,5 @@ def get_db():
 
 
 def init_db():
-    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config  # noqa
+    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user  # noqa
     Base.metadata.create_all(bind=engine)

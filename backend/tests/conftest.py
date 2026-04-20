@@ -13,7 +13,7 @@ from app.main import app
 from app.routers.auth import get_current_user
 
 
-TEST_USER = {"email": "tester@waldorfwomenscare.com", "name": "Test User"}
+TEST_USER = {"email": "tester@waldorfwomenscare.com", "name": "Test User", "group": "admin"}
 
 
 @pytest.fixture
