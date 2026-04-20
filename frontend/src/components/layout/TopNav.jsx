@@ -18,9 +18,13 @@ const CLINICAL_NAV = [
   { to: '/documents', label: 'Charts' },
 ]
 
+const ADMIN_NAV_ENTRY = { to: '/admin', label: 'Admin' }
+
 export default function TopNav({ user, onLogout }) {
-  const { isClinical } = useCurrentUser()
-  const visibleNav = isClinical ? CLINICAL_NAV : nav
+  const { isAdmin, isClinical } = useCurrentUser()
+  const visibleNav = isClinical
+    ? CLINICAL_NAV
+    : (isAdmin ? [...nav, ADMIN_NAV_ENTRY] : nav)
 
   return (
     <header className="bg-white border-b border-border-subtle h-[60px] px-6 flex items-center gap-6 sticky top-0 z-10">
