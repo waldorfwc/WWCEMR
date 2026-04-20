@@ -407,3 +407,27 @@ def fax_log_list(
         "page_size": page_size,
         "rows": [serialize(r) for r in rows],
     }
+
+
+@router.get("/chart-summary")
+def fax_chart_summary(db: Session = Depends(get_db)):
+    """Per-chart fax aggregates for the patient-list fax indicator.
+    Returns one row per chart_number that has any FaxLog activity."""
+    from sqlalchemy import func as sql_func
+    rows = (
+        db.query(
+            FaxLog.chart_number,
+            sql_func.count(FaxLog.id).label("fax_count"),
+            sql_func.max(FaxLog.sent_at).label("last_sent_at"),
+        )
+        .group_by(FaxLog.chart_number)
+        .all()
+    )
+    return [
+        {
+            "chart_number": r.chart_number,
+            "fax_count": int(r.fax_count),
+            "last_sent_at": r.last_sent_at.isoformat() + "Z" if r.last_sent_at else None,
+        }
+        for r in rows
+    ]
