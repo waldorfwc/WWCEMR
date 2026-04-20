@@ -40,3 +40,4 @@ def test_legacy_fax_send_creates_fax_log(client, db, tmp_path, monkeypatch):
     assert len(logs) == 1
     assert logs[0].chart_number == "66666"
     assert logs[0].status.value == "sent"
+    assert logs[0].sent_by == "tester@waldorfwomenscare.com"

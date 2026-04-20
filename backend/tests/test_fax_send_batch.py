@@ -53,6 +53,7 @@ def test_send_batch_separate_one_doc(client, db, tmp_path, monkeypatch):
     assert logs[0].chart_number == "12345"
     assert logs[0].status.value == "sent"
     assert logs[0].dest_fax == "2402522141"
+    assert logs[0].sent_by == "tester@waldorfwomenscare.com"
 
 
 def test_send_batch_separate_multiple_docs_creates_multiple_fax_logs(client, db, tmp_path, monkeypatch):
