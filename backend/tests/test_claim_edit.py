@@ -144,6 +144,25 @@ def test_patch_audit_row_has_changed_fields_only(client, db):
     assert set(e.new_values.keys()) == {"notes"}
     assert e.new_values["notes"] == "hello"
     assert "notes" in e.old_values
+    # HIPAA traceability: user_name and patient_id on audit rows
+    assert e.user_name == "tester@waldorfwomenscare.com"  # TEST_USER from conftest
+    # patient_id is None here because the seeded claim has no patient
+    assert e.patient_id is None
+
+
+def test_patch_audit_row_includes_patient_id_when_claim_has_patient(client, db):
+    from app.models.patient import Patient
+    p = Patient(patient_id="P-AUD", first_name="Au", last_name="Dit")
+    db.add(p); db.commit(); db.refresh(p)
+    c = _seed_claim(db, patient_id=p.id)
+    client.patch(f"/api/claims/{c.id}", json={"notes": "traceable"})
+    entry = db.query(AuditLog).filter(
+        AuditLog.resource_type == "claim",
+        AuditLog.action == "UPDATE",
+        AuditLog.resource_id == str(c.id),
+    ).first()
+    assert entry is not None
+    assert entry.patient_id == str(p.id)
 
 
 def test_patch_forbidden_for_clinical(clinical_client, db):

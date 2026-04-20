@@ -9,6 +9,7 @@ from decimal import Decimal, InvalidOperation
 from app.database import get_db
 from app.models.claim import Claim, ClaimStatus, InsuranceOrder, EraFile
 from app.models.patient import Patient
+from app.routers.auth import get_current_user
 from app.services.audit_service import log_action
 from app.services.claim_math import recompute_balance
 
@@ -137,7 +138,12 @@ def _coerce_claim_value(k: str, v):
 
 
 @router.patch("/{claim_id}")
-def update_claim(claim_id: str, data: dict, db: Session = Depends(get_db)):
+def update_claim(
+    claim_id: str,
+    data: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
@@ -168,6 +174,8 @@ def update_claim(claim_id: str, data: dict, db: Session = Depends(get_db)):
     db.commit()
     if old or new:
         log_action(db, "UPDATE", "claim", resource_id=claim_id,
+                   patient_id=str(claim.patient_id) if claim.patient_id else None,
+                   user_name=current_user.get("email"),
                    old_values=old, new_values=new)
     db.refresh(claim)
     return _claim_to_dict(claim, detailed=True)
