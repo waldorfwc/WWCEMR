@@ -3,10 +3,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, func
 from typing import Optional
 import uuid
+from datetime import date as date_cls
+from decimal import Decimal, InvalidOperation
 
 from app.database import get_db
-from app.models.claim import Claim, ClaimStatus, EraFile
+from app.models.claim import Claim, ClaimStatus, InsuranceOrder, EraFile
+from app.models.patient import Patient
 from app.services.audit_service import log_action
+from app.services.claim_math import recompute_balance
 
 router = APIRouter(prefix="/claims", tags=["claims"])
 
@@ -79,21 +83,106 @@ def get_claim(claim_id: str, db: Session = Depends(get_db)):
     return _claim_to_dict(claim, detailed=True)
 
 
+EDITABLE_CLAIM_FIELDS = {
+    # strings
+    "claim_number", "payer_claim_number", "payer_name", "payer_id",
+    "subscriber_id", "group_number", "check_number",
+    "rendering_provider_name", "rendering_provider_npi", "notes",
+    # enums
+    "status", "insurance_order",
+    # dates
+    "date_of_service_from", "date_of_service_to", "check_date",
+    # money
+    "billed_amount", "allowed_amount", "paid_amount",
+    "patient_responsibility", "contractual_adjustment", "other_adjustment",
+    # relation
+    "patient_id",
+}
+
+MONEY_FIELDS = {
+    "billed_amount", "allowed_amount", "paid_amount",
+    "patient_responsibility", "contractual_adjustment", "other_adjustment",
+}
+
+DATE_FIELDS = {"date_of_service_from", "date_of_service_to", "check_date"}
+
+
+def _coerce_claim_value(k: str, v):
+    """Coerce incoming JSON value to the type the ORM column expects."""
+    if v is None:
+        return None
+    if k == "status":
+        try:
+            return ClaimStatus(v)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"invalid status: {v}")
+    if k == "insurance_order":
+        try:
+            return InsuranceOrder(v)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"invalid insurance_order: {v}")
+    if k in MONEY_FIELDS:
+        try:
+            return Decimal(str(v))
+        except (InvalidOperation, TypeError, ValueError):
+            raise HTTPException(status_code=422, detail=f"invalid number for {k}: {v!r}")
+    if k in DATE_FIELDS:
+        if isinstance(v, str):
+            try:
+                return date_cls.fromisoformat(v)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"invalid date for {k}: {v!r}")
+        return v
+    return v
+
+
 @router.patch("/{claim_id}")
 def update_claim(claim_id: str, data: dict, db: Session = Depends(get_db)):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
 
-    allowed = ["status", "notes", "patient_id", "payer_name", "subscriber_id",
-               "group_number", "insurance_order", "balance"]
-    old = {k: getattr(claim, k) for k in allowed if hasattr(claim, k)}
-    for k, v in data.items():
-        if k in allowed and hasattr(claim, k):
+    # Validate patient_id exists (if provided and not null)
+    if "patient_id" in data and data["patient_id"]:
+        if not db.query(Patient).filter(Patient.id == data["patient_id"]).first():
+            raise HTTPException(status_code=422, detail="patient_id does not exist")
+
+    old = {}
+    new = {}
+    for k, raw in data.items():
+        if k not in EDITABLE_CLAIM_FIELDS:
+            continue  # silently drop balance, era_file_id, etc.
+        if not hasattr(claim, k):
+            continue
+        v = _coerce_claim_value(k, raw)
+        current = getattr(claim, k)
+        if current != v:
+            # Capture before/after — stringify enums/decimals/dates for JSON audit
+            old[k] = _audit_val(current)
+            new[k] = _audit_val(v)
             setattr(claim, k, v)
+
+    if any(k in new for k in MONEY_FIELDS):
+        recompute_balance(claim)
+
     db.commit()
-    log_action(db, "UPDATE", "claim", resource_id=claim_id, old_values=old, new_values=data)
-    return _claim_to_dict(claim)
+    if old or new:
+        log_action(db, "UPDATE", "claim", resource_id=claim_id,
+                   old_values=old, new_values=new)
+    db.refresh(claim)
+    return _claim_to_dict(claim, detailed=True)
+
+
+def _audit_val(v):
+    if v is None:
+        return None
+    if hasattr(v, "value"):  # enum
+        return v.value
+    if isinstance(v, Decimal):
+        return float(v)
+    if isinstance(v, date_cls):
+        return v.isoformat()
+    return v
 
 
 def _claim_to_dict(claim: Claim, detailed: bool = False) -> dict:
