@@ -119,7 +119,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-3">
         <div className="card">
           <h2 className="font-serif font-semibold text-ink text-[15px] m-0 mb-2">
-            Recent faxes to EMA
+            Recent faxes
           </h2>
           {faxes && faxes.length > 0 ? (
             <div>
