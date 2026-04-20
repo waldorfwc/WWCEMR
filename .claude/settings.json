@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source venv/bin/activate)",
+      "Bash(python -m pytest:*)",
+      "Bash(pytest:*)",
+      "Bash(npx vite build:*)",
+      "Bash(python scripts/seed_users.py)",
+      "Bash(python scripts/seed_practice_config.py)",
+      "Bash(pip list:*)",
+      "Bash(pip show:*)",
+      "Bash(/Users/wwcclaudecode/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh:*)"
+    ]
+  }
+}
