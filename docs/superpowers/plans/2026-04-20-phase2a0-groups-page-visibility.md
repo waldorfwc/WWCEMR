@@ -492,6 +492,10 @@ BILLING_ROUTES = [
     "/api/ar/summary",
     "/api/imports/recent",
     "/api/dashboard/summary",
+]
+
+
+CLINICAL_FAX_ROUTES = [
     "/api/fax/recent",
     "/api/fax-log",
 ]
@@ -506,7 +510,7 @@ def test_clinical_user_forbidden_on_billing_routes(clinical_client, path):
 CLINICAL_ROUTES = [
     "/api/auth/me",
     "/api/documents/index/status",
-]
+] + CLINICAL_FAX_ROUTES
 
 
 @pytest.mark.parametrize("path", CLINICAL_ROUTES)
@@ -534,7 +538,7 @@ BILLING = [Depends(auth.require_group("admin", "billing"))]
 
 Change these specific routers to include `dependencies=BILLING` (keep the existing `prefix="/api"`):
 
-Replace the existing lines for these 12 routers:
+Replace the existing lines for these 9 routers:
 ```python
 app.include_router(imports.router, prefix="/api")
 app.include_router(claims.router, prefix="/api")
@@ -544,10 +548,7 @@ app.include_router(eob.router, prefix="/api")
 app.include_router(audit.router, prefix="/api")
 app.include_router(waystar.router, prefix="/api")
 app.include_router(ar.router, prefix="/api")
-app.include_router(fax.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
-app.include_router(fax_batch.router, prefix="/api")
-app.include_router(fax_batch.log_router, prefix="/api")
 ```
 With:
 ```python
@@ -559,19 +560,19 @@ app.include_router(eob.router, prefix="/api", dependencies=BILLING)
 app.include_router(audit.router, prefix="/api", dependencies=BILLING)
 app.include_router(waystar.router, prefix="/api", dependencies=BILLING)
 app.include_router(ar.router, prefix="/api", dependencies=BILLING)
-app.include_router(fax.router, prefix="/api", dependencies=BILLING)
 app.include_router(dashboard.router, prefix="/api", dependencies=BILLING)
-app.include_router(fax_batch.router, prefix="/api", dependencies=BILLING)
-app.include_router(fax_batch.log_router, prefix="/api", dependencies=BILLING)
 ```
 
-LEAVE these untouched (clinical-accessible):
+LEAVE these untouched (clinical-accessible — fax is document-adjacent):
 ```python
 app.include_router(patients.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(intake.router, prefix="/api")
 app.include_router(chart.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(fax.router, prefix="/api")
+app.include_router(fax_batch.router, prefix="/api")
+app.include_router(fax_batch.log_router, prefix="/api")
 ```
 
 - [ ] **Step 5: Run tests**
@@ -579,7 +580,7 @@ app.include_router(auth.router, prefix="/api")
 ```bash
 cd /Users/wwcclaudecode/Documents/wwc-era-project/backend && source venv/bin/activate && python -m pytest tests/test_billing_router_guards.py tests/ -v 2>&1 | tail -20
 ```
-Expected: 14 guard tests PASS + all 44 prior tests PASS = 58 total.
+Expected: 9 billing-403 + 4 clinical-200 = 13 guard tests PASS + all 41 prior tests PASS = 54 total.
 
 - [ ] **Step 6: Commit**
 
@@ -818,7 +819,13 @@ git commit -m "feat(frontend): TopNav filters by group, clinical users land on /
 
 ---
 
-## Task 8: Hide fax-log pane from clinical users
+## Task 8: (removed — scope narrowed)
+
+The original T8 hid the fax-log pane and fax chips on `Documents.jsx` for clinical users. Scope was narrowed: clinical users CAN see/use everything document-related including fax log and fax chips. No code change required on `Documents.jsx`.
+
+**Skip this task entirely and move to T9.**
+
+## Task 8-ORIGINAL-DEPRECATED: Hide fax-log pane from clinical users
 
 **Files:**
 - Modify: `frontend/src/pages/Documents.jsx`
@@ -907,7 +914,13 @@ git commit -m "feat(frontend): hide fax-log pane + chips from clinical users on 
 
 ---
 
-## Task 9: Hide batch-fax affordances from clinical on PatientChart
+## Task 9: (removed — scope narrowed)
+
+The original T9 hid the batch-fax UI, status chips, and FaxBatchModal on `PatientChart.jsx` for clinical users. Scope was narrowed: clinical users CAN use the batch-fax flow, retry, and see chips. No code change required on `PatientChart.jsx`.
+
+**Skip this task entirely and move to T10.**
+
+## Task 9-ORIGINAL-DEPRECATED: Hide batch-fax affordances from clinical on PatientChart
 
 **Files:**
 - Modify: `frontend/src/pages/PatientChart.jsx`
@@ -1057,9 +1070,10 @@ sqlite3 /Users/wwcclaudecode/Documents/wwc-era-project/backend/era_data.db "UPDA
 Then hard-refresh the browser:
 - TopNav shows only "Charts".
 - Navigating to `/` redirects to `/documents`.
-- `/documents` shows the patient list full-width, no fax-log pane.
-- `/chart/<any-chart>` renders patient info + docs but no batch-fax action bar, no checkboxes, no status chips.
+- `/documents` renders the full two-pane Charts page (patient list + Recent faxes) — clinical has full document access including fax.
+- `/chart/<any-chart>` renders patient info + docs + the batch-fax action bar + checkboxes + status chips — clinical handles fax workflow too.
 - Directly hitting `http://localhost:8000/api/claims` in the browser returns 403.
+- Directly hitting `http://localhost:8000/api/fax/recent` returns 200 (fax is document-adjacent, clinical-allowed).
 
 Restore your group:
 ```bash
