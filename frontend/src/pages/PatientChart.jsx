@@ -501,11 +501,21 @@ export default function PatientChart() {
       )}
 
       {/* Accordion Sections */}
-      <Accordion title="ID & Insurance Cards" icon={CreditCard} color="text-blue-600" badge={chart.intake_documents?.length} defaultOpen={true}>
+      <Accordion title="ID & Insurance Cards" icon={CreditCard} color="text-blue-600" badge={chart.intake_documents?.length}>
         <IntakeSection docs={chart.intake_documents} onFax={doc => setFaxDoc({ doc, docType: 'intake' })} />
       </Accordion>
 
-      <Accordion title="Active Medications" icon={Pill} color="text-green-600" badge={activeMeds.length} defaultOpen={true}>
+      <Accordion title="PrimeSuite Documents" icon={FileText} color="text-gray-600" badge={chart.document_count}>
+        <DocumentsSection
+          chartNumber={chartNumber}
+          onBatchFax={(docIds, clearFn) => {
+            setBatchDocIds(docIds)
+            setBatchClearFn(() => clearFn)
+          }}
+        />
+      </Accordion>
+
+      <Accordion title="Active Medications" icon={Pill} color="text-green-600" badge={activeMeds.length}>
         <HistoryTable
           items={activeMeds}
           columns={[
@@ -531,40 +541,6 @@ export default function PatientChart() {
             />
           </details>
         )}
-      </Accordion>
-
-      <Accordion title="Insurance Coverage" icon={Shield} color="text-teal-600" badge={chart.insurance?.length} defaultOpen={true}>
-        {chart.insurance?.length > 0 ? (
-          <div className="space-y-2 mt-2">
-            {chart.insurance.map((ins, i) => (
-              <div key={i} className="bg-gray-50 rounded p-2.5 text-xs">
-                <div className="flex justify-between">
-                  <span className="font-semibold text-gray-800">{ins.plan || 'Unknown Plan'}</span>
-                  <span className="text-gray-400">Order: {ins.order}</span>
-                </div>
-                <div className="text-gray-600 mt-0.5">
-                  {ins.policy && <span>Policy: {ins.policy} </span>}
-                  {ins.group && <span>· Group: {ins.group}</span>}
-                </div>
-                {ins.subscriber && <div className="text-gray-400">Subscriber: {ins.subscriber} ({ins.relation})</div>}
-                <div className="text-gray-400 mt-0.5">
-                  {ins.effective && <span>Eff: {ins.effective} </span>}
-                  {ins.terminated && <span>· Term: {ins.terminated}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : <EmptyState text="No insurance records" />}
-      </Accordion>
-
-      <Accordion title="PrimeSuite Documents" icon={FileText} color="text-gray-600" badge={chart.document_count}>
-        <DocumentsSection
-          chartNumber={chartNumber}
-          onBatchFax={(docIds, clearFn) => {
-            setBatchDocIds(docIds)
-            setBatchClearFn(() => clearFn)
-          }}
-        />
       </Accordion>
 
       <Accordion title="Past Medical History" icon={Heart} color="text-red-500" badge={chart.medical_history?.length}>
