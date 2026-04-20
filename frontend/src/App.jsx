@@ -7,6 +7,7 @@ import ClaimDetail from './pages/ClaimDetail'
 import Patients from './pages/Patients'
 import PatientDetail from './pages/PatientDetail'
 import Denials from './pages/Denials'
+import Admin from './pages/Admin'
 import Appeals from './pages/Appeals'
 import ImportFiles from './pages/ImportFiles'
 import AuditLog from './pages/AuditLog'
@@ -17,7 +18,7 @@ import { LoginPage, AuthCallback } from './pages/Login'
 import { useCurrentUser } from './hooks/useCurrentUser'
 
 function ProtectedApp({ user, onLogout }) {
-  const { isClinical, isLoading } = useCurrentUser()
+  const { isAdmin, isClinical, isLoading } = useCurrentUser()
 
   return (
     <div className="min-h-screen flex flex-col bg-plum-50">
@@ -39,6 +40,9 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/appeals"             element={<Appeals />} />
             <Route path="/import"              element={<ImportFiles />} />
             <Route path="/audit"               element={<AuditLog />} />
+            <Route path="/admin" element={
+              isLoading ? null : (isAdmin ? <Admin /> : <Navigate to="/" replace />)
+            } />
             <Route path="*"                    element={<Navigate to="/" />} />
           </Routes>
         </div>
