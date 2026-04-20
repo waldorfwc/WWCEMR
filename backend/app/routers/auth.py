@@ -182,3 +182,12 @@ def auth_config():
         "client_id": settings.google_client_id,
         "allowed_domains": ALLOWED_DOMAINS,
     }
+
+
+def require_group(*allowed: str):
+    """FastAPI dependency factory: 403 if current user's group isn't in allowed."""
+    def _dep(current_user: dict = Depends(get_current_user)):
+        if current_user.get("group") not in allowed:
+            raise HTTPException(status_code=403, detail="forbidden")
+        return current_user
+    return _dep
