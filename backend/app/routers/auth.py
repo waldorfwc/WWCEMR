@@ -11,6 +11,10 @@ from jose import jwt, JWTError
 import httpx
 
 from app.config import settings
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models.user import User, UserGroup
+from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -37,7 +41,7 @@ def verify_token(token: str) -> Optional[dict]:
         return None
 
 
-def get_current_user(request: Request) -> dict:
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
     token = request.cookies.get("session_token")
     if not token:
         auth_header = request.headers.get("Authorization", "")
@@ -45,10 +49,35 @@ def get_current_user(request: Request) -> dict:
             token = auth_header[7:]
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
-    user = verify_token(token)
-    if not user:
+    payload = verify_token(token)
+    if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return user
+
+    email = (payload.get("email") or "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=401, detail="Token missing email")
+
+    user_row = db.query(User).filter(User.email == email).first()
+    if user_row is None:
+        user_row = User(
+            email=email,
+            group=UserGroup.CLINICAL,
+            display_name=payload.get("name"),
+        )
+        db.add(user_row)
+        db.commit()
+        db.refresh(user_row)
+        log_action(db, "USER_CREATED", "user",
+                   resource_id=email,
+                   user_name=email,
+                   description=f"Auto-created with default group clinical")
+
+    return {
+        "email": email,
+        "name": payload.get("name") or user_row.display_name,
+        "picture": payload.get("picture"),
+        "group": user_row.group.value if hasattr(user_row.group, "value") else user_row.group,
+    }
 
 
 @router.post("/google")
@@ -130,11 +159,12 @@ async def google_login(payload: dict):
 
 @router.get("/me")
 def get_me(user: dict = Depends(get_current_user)):
-    """Return current authenticated user."""
+    """Return current authenticated user (email, name, picture, group)."""
     return {
         "email": user.get("email"),
         "name": user.get("name"),
         "picture": user.get("picture"),
+        "group": user.get("group"),
     }
 
 
