@@ -97,3 +97,53 @@ def test_admin_users_patch_forbidden_for_billing(billing_client, db):
     r = billing_client.patch("/api/admin/users/b1@waldorfwomenscare.com",
                              json={"group": "admin"})
     assert r.status_code == 403
+
+
+def test_admin_users_post_creates(client, db):
+    r = client.post("/api/admin/users",
+                    json={"email": "new@waldorfwomenscare.com",
+                          "group": "billing",
+                          "display_name": "New Hire"})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["email"] == "new@waldorfwomenscare.com"
+    assert body["group"] == "billing"
+    assert body["display_name"] == "New Hire"
+
+    row = db.query(User).filter(User.email == "new@waldorfwomenscare.com").first()
+    assert row is not None
+    assert row.group == UserGroup.BILLING
+
+
+def test_admin_users_post_lowercases_and_strips_email(client, db):
+    r = client.post("/api/admin/users",
+                    json={"email": "  MixedCase@waldorfwomenscare.com  ",
+                          "group": "clinical"})
+    assert r.status_code == 201
+    assert r.json()["email"] == "mixedcase@waldorfwomenscare.com"
+    row = db.query(User).filter(User.email == "mixedcase@waldorfwomenscare.com").first()
+    assert row is not None
+
+
+def test_admin_users_post_duplicate_email(client, db):
+    db.add(User(email="dup@waldorfwomenscare.com", group=UserGroup.BILLING))
+    db.commit()
+    r = client.post("/api/admin/users",
+                    json={"email": "dup@waldorfwomenscare.com",
+                          "group": "billing"})
+    assert r.status_code == 409
+    assert "already exists" in r.json()["detail"].lower()
+
+
+def test_admin_users_post_invalid_group(client, db):
+    r = client.post("/api/admin/users",
+                    json={"email": "bad@waldorfwomenscare.com",
+                          "group": "superuser"})
+    assert r.status_code == 422
+
+
+def test_admin_users_post_forbidden_for_clinical(clinical_client, db):
+    r = clinical_client.post("/api/admin/users",
+                             json={"email": "x@waldorfwomenscare.com",
+                                   "group": "billing"})
+    assert r.status_code == 403

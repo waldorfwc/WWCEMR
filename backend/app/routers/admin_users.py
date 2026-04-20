@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User, UserGroup
 from app.services.audit_service import log_action
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, require_group
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
 
@@ -41,7 +41,8 @@ def _serialize(u: User) -> dict:
 
 
 @router.get("")
-def list_users(db: Session = Depends(get_db)):
+def list_users(db: Session = Depends(get_db),
+               current_user: dict = Depends(require_group("admin"))):
     rows = db.query(User).all()
     rows.sort(key=_sort_key)
     return [_serialize(u) for u in rows]
@@ -52,7 +53,7 @@ def update_user(
     email: str,
     payload: UpdateUserPayload,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_group("admin")),
 ):
     row = db.query(User).filter(User.email == email).first()
     if row is None:
@@ -82,4 +83,31 @@ def update_user(
                old_values=old, new_values=new,
                description=f"admin {current_user.get('email')} updated {email}")
 
+    return _serialize(row)
+
+
+@router.post("", status_code=201)
+def create_user(
+    payload: CreateUserPayload,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_group("admin")),
+):
+    email = str(payload.email).lower().strip()
+    existing = db.query(User).filter(User.email == email).first()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="user already exists")
+
+    row = User(
+        email=email,
+        group=payload.group,
+        display_name=payload.display_name,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    log_action(db, "USER_CREATED_BY_ADMIN", "user",
+               resource_id=email,
+               user_name=current_user.get("email"),
+               new_values={"group": payload.group.value, "display_name": payload.display_name},
+               description=f"admin {current_user.get('email')} pre-created {email} as {payload.group.value}")
     return _serialize(row)
