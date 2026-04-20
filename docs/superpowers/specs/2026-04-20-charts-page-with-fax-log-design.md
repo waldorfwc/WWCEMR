@@ -18,12 +18,12 @@ Visual reference: `.superpowers/brainstorm/85255-*/content/charts-page-v2.html`
    - **Left pane (280px):** patient list, unchanged in function but with:
      - DOB added to each row and made searchable (name OR chart # OR DOB).
      - A compact last-sent-date chip on each row: `✓ 4/20` (bright green if faxed today, muted plum otherwise, `—` if never).
-   - **Right pane (flex-1):** recent fax log table with columns: Sent, Patient, DOB, Chart, Docs, Doc types, Dest, Status, Sent by. Filters: status dropdown, window dropdown (Last 7 / 30 / 90 days). Pagination if > 50 rows.
+   - **Right pane (flex-1):** "Recent faxes" table (label deliberately generic — destinations can vary beyond EMA) with columns: Sent, Patient, DOB, Chart, Docs, Doc types, Dest, Status, Sent by. Filters: status dropdown, window dropdown (Last 7 / 30 / 90 days). Pagination if > 50 rows.
 3. **No change** to the per-patient chart detail page (`/chart/:chartNumber`) — the batch-fax flow built in Phase 1 remains as-is.
 
 ## Non-goals
 
-- Patient-level fax stats tile on the Dashboard (Phase 0's "Recent faxes to EMA" card already handles that).
+- Patient-level fax stats tile on the Dashboard (Phase 0's "Recent faxes" card — renamed from "Recent faxes to EMA" as part of this work — already handles that).
 - Filter UI for the left-pane patient list beyond search (no status-dropdown for patients).
 - Editing `sent_by` after-the-fact (only the current user at send time is captured).
 - Surface the standalone paginated fax-log page; it's replaced.
@@ -115,7 +115,7 @@ Thin wrapper around `useQuery(['fax-chart-summary'], …)` that returns `{ [char
   - Patient list shows DOB + date chips.
   - Search by DOB `1985-02-14` narrows the list.
   - Right pane shows recent faxes with all 9 columns, filters work.
-  - Dashboard's "Recent faxes to EMA" card still works (same endpoint, backward-compat default).
+  - Dashboard's "Recent faxes" card still works (same endpoint, backward-compat default).
 - Navigation: `Dashboard | Charts | A/R | Claims | …` — Fax log entry gone.
 
 ## Open questions
