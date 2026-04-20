@@ -45,3 +45,41 @@ def list_users(db: Session = Depends(get_db)):
     rows = db.query(User).all()
     rows.sort(key=_sort_key)
     return [_serialize(u) for u in rows]
+
+
+@router.patch("/{email}")
+def update_user(
+    email: str,
+    payload: UpdateUserPayload,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    row = db.query(User).filter(User.email == email).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    old = {"group": row.group.value if hasattr(row.group, "value") else row.group,
+           "display_name": row.display_name}
+
+    # Last-admin guard
+    if payload.group is not None and payload.group != UserGroup.ADMIN and row.group == UserGroup.ADMIN:
+        admin_count = db.query(User).filter(User.group == UserGroup.ADMIN).count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=409, detail="cannot remove the last admin")
+
+    if payload.group is not None:
+        row.group = payload.group
+    if payload.display_name is not None:
+        row.display_name = payload.display_name
+    db.commit()
+    db.refresh(row)
+
+    new = {"group": row.group.value if hasattr(row.group, "value") else row.group,
+           "display_name": row.display_name}
+    log_action(db, "USER_UPDATED", "user",
+               resource_id=email,
+               user_name=current_user.get("email"),
+               old_values=old, new_values=new,
+               description=f"admin {current_user.get('email')} updated {email}")
+
+    return _serialize(row)
