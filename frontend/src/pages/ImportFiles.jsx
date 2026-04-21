@@ -238,11 +238,12 @@ export default function ImportFiles() {
       <div className="card mb-6">
         <div className="flex items-center gap-2 mb-1">
           <Link2 size={16} className="text-primary-600" />
-          <h2 className="text-sm font-semibold text-gray-800">Link Claim IDs (PrimeSuite Claims Analysis)</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Claims Analysis Import</h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Upload the Claims Analysis <code>.xls</code> export to link each claim to its PrimeSuite Claim ID.
-          Enables ERA payment posting. Secondary/tertiary claim records are created when Claims Analysis shows them.
+          Upload the Claims Analysis <code>.xls</code> export to link PrimeSuite Claim IDs, set claim status,
+          follow-up dates, and filing info. Secondary/tertiary claim records are created when Claims Analysis
+          shows them. Re-upload any time — Claims Analysis always wins.
         </p>
 
         {!bootstrapState && (
