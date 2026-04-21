@@ -151,11 +151,7 @@ async def upload_eras(
     }
 
 
-from app.models.claim import EraFile as EraFileModel
-from app.models.denial import Denial
-from app.models.payment import Payment
-from app.services.audit_service import log_action
-from app.services.era_poster import post_claim
+from app.services.era_poster import process_era_file
 
 
 @router.post("/era-posting/{session_id}/commit")
@@ -171,75 +167,44 @@ def commit_eras(
     previews: List[EraFilePreview] = entry.payload["previews"]
     user_email = current_user.get("email")
 
-    claims_posted = 0
-    payments_created = 0
-    claims_already_posted = 0
-    claims_unmatched = 0
-    claims_reversal_flagged = 0
-    claims_cb_skipped = 0
-    claims_malformed = 0
-    denials_before = db.query(Denial).count()
+    totals = {
+        "claims_posted": 0, "claims_already_posted": 0, "claims_unmatched": 0,
+        "claims_reversal_flagged": 0, "claims_cb_skipped": 0, "claims_malformed": 0,
+        "payments_created": 0, "denials_created": 0,
+    }
     errors: list = []
 
     for p in previews:
-        era = p.era
         file_path = p.__dict__.get("_file_path", "")
-        era_file_row = EraFileModel(
-            filename=p.source_filename,
-            file_path=file_path,
-            payer_name=era.payer_name,
-            payer_id=era.payer_id,
-            check_number=era.check_number,
-            check_date=era.check_date,
-            check_amount=era.check_amount,
-            transaction_count=len(era.claims),
-            status="processed" if not era.parse_errors else "partial",
-            error_log="\n".join(era.parse_errors) if era.parse_errors else None,
-            imported_by=user_email or "era-poster",
-        )
-        db.add(era_file_row); db.commit(); db.refresh(era_file_row)
-
-        for m in p.matches:
-            if m.status == "matched":
-                try:
-                    post_claim(db, m, era, era_file_row, user_email=user_email)
-                    claims_posted += 1
-                    payments_created += 1
-                except Exception as exc:
-                    db.rollback()
-                    errors.append({"internal_claim_id": m.internal_claim_id,
-                                   "message": f"{type(exc).__name__}: {exc}"})
-            elif m.status == "already_posted":
-                claims_already_posted += 1
-            elif m.status == "unmatched":
-                claims_unmatched += 1
-            elif m.status == "reversal_flagged":
-                claims_reversal_flagged += 1
-            elif m.status == "cb_prefix_skipped":
-                claims_cb_skipped += 1
-            elif m.status == "malformed_clp01":
-                claims_malformed += 1
-
-        log_action(
-            db, "IMPORT", "era_file",
-            resource_id=str(era_file_row.id), user_name=user_email,
-            description=(f"{p.source_filename} — {claims_posted} posted, "
-                         f"{claims_unmatched} unmatched"),
-        )
-
-    denials_created = db.query(Denial).count() - denials_before
+        try:
+            with open(file_path, "r") as f:
+                content = f.read()
+        except OSError as exc:
+            errors.append({"filename": p.source_filename,
+                           "message": f"could not re-read file: {exc}"})
+            continue
+        result = process_era_file(db, content, p.source_filename, user_email)
+        totals["claims_posted"] += result.claims_posted
+        totals["claims_already_posted"] += result.claims_already_posted
+        totals["claims_unmatched"] += result.claims_unmatched
+        totals["claims_reversal_flagged"] += result.claims_reversal_flagged
+        totals["claims_cb_skipped"] += result.claims_cb_skipped
+        totals["claims_malformed"] += result.claims_malformed
+        totals["payments_created"] += result.payments_created
+        totals["denials_created"] += result.denials_created
+        errors.extend(result.errors)
 
     import_sessions.purge(session_id)
 
     return {
         "files_processed": len(previews),
-        "claims_posted": claims_posted,
-        "claims_already_posted": claims_already_posted,
-        "claims_unmatched": claims_unmatched,
-        "claims_reversal_flagged": claims_reversal_flagged,
-        "claims_cb_skipped": claims_cb_skipped,
-        "claims_malformed": claims_malformed,
-        "payments_created": payments_created,
-        "denials_created": denials_created,
+        "claims_posted": totals["claims_posted"],
+        "claims_already_posted": totals["claims_already_posted"],
+        "claims_unmatched": totals["claims_unmatched"],
+        "claims_reversal_flagged": totals["claims_reversal_flagged"],
+        "claims_cb_skipped": totals["claims_cb_skipped"],
+        "claims_malformed": totals["claims_malformed"],
+        "payments_created": totals["payments_created"],
+        "denials_created": totals["denials_created"],
         "errors": errors,
     }
