@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Upload, FileText, CheckCircle, AlertCircle, Clock, Database } from 'lucide-react'
+import { Upload, FileText, CheckCircle, AlertCircle, Clock, Database, Link2 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 
 export default function ImportFiles() {
@@ -19,6 +19,23 @@ export default function ImportFiles() {
   // { preview?, error: {...} }            → error card
   const [chargeState, setChargeState] = useState(null)
   const chargeInputRef = useRef()
+
+  const [bootstrapState, setBootstrapState] = useState(null)
+  const bootstrapInputRef = useRef()
+
+  const handleBootstrapFile = async (file) => {
+    setBootstrapState({ uploading: true, filename: file.name })
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      const res = await api.post('/imports/claim-id-bootstrap', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setBootstrapState({ preview: res.data })
+    } catch (e) {
+      setBootstrapState({ error: { message: e.response?.data?.detail || e.message } })
+    }
+  }
 
   const handleChargeFile = async (file) => {
     setChargeState({ uploading: true, filename: file.name })
@@ -188,6 +205,58 @@ export default function ImportFiles() {
           <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{typeof error === 'string' ? error : JSON.stringify(error, null, 2)}</pre>
         </div>
       )}
+
+      {/* Phase 2c banner */}
+      <div className="card border border-amber-300 bg-amber-50 mb-6">
+        <div className="flex items-center gap-2 text-amber-800 text-sm">
+          <AlertCircle size={16} />
+          <strong>Legacy ERA auto-posting is disabled.</strong>
+          <span>Use the ERA 835 Payment Posting card below.</span>
+        </div>
+      </div>
+
+      {/* Claim ID Bootstrap (Phase 2c Part 1) */}
+      <div className="card mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Link2 size={16} className="text-primary-600" />
+          <h2 className="text-sm font-semibold text-gray-800">Link Claim IDs (PrimeSuite Claims Analysis)</h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Upload the Claims Analysis <code>.xls</code> export to link each claim to its PrimeSuite Claim ID.
+          Enables ERA payment posting. Secondary/tertiary claim records are created when Claims Analysis shows them.
+        </p>
+
+        {!bootstrapState && (
+          <div
+            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+            onClick={() => bootstrapInputRef.current?.click()}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleBootstrapFile(f) }}
+          >
+            <input ref={bootstrapInputRef} type="file" accept=".xls,.xlsx" className="hidden"
+                   onChange={e => e.target.files[0] && handleBootstrapFile(e.target.files[0])} />
+            <p className="text-sm text-gray-700">📄 Drop <code>.xls</code> here or click to browse</p>
+          </div>
+        )}
+
+        {bootstrapState?.uploading && (
+          <div className="border-2 border-dashed rounded-lg p-6 text-center border-gray-300 text-gray-500">
+            <div className="animate-spin inline-block text-lg mr-2">⟳</div>
+            Parsing <code>{bootstrapState.filename}</code>…
+          </div>
+        )}
+
+        {bootstrapState?.error && (
+          <div className="card border border-red-200 bg-red-50">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-600" />
+              <span className="font-semibold text-red-700 text-sm">Upload failed</span>
+            </div>
+            <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{typeof bootstrapState.error.message === 'string' ? bootstrapState.error.message : JSON.stringify(bootstrapState.error.message)}</pre>
+            <button className="btn-secondary text-xs mt-2" onClick={() => setBootstrapState(null)}>Try another file</button>
+          </div>
+        )}
+      </div>
 
       {/* Charge Analysis Import (Phase 2b) */}
       <div className="card mb-6">
