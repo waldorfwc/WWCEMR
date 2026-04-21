@@ -18,12 +18,19 @@ def _build_df(rows):
         "Date of Service", "Filing Method", "Insurance Company",
         "Insurance Priority", "Line Balance", "Payor ID",
     ]
+    # Include any extra columns used in test rows (e.g. Follow-Up Date)
+    extra = []
+    for r in rows:
+        for k in r:
+            if k not in cols and k not in extra:
+                extra.append(k)
+    all_cols = cols + extra
     filled = []
     for r in rows:
-        d = {c: None for c in cols}
+        d = {c: None for c in all_cols}
         d.update(r)
         filled.append(d)
-    return pd.DataFrame(filled, columns=cols)
+    return pd.DataFrame(filled, columns=all_cols)
 
 
 BASE = {
@@ -97,3 +104,79 @@ def test_parse_unknown_priority_warns_and_defaults(tmp_path):
     assert result.groups[0].insurance_priority == "primary"
     warns = [i for i in result.issues if "unknown priority" in i.message.lower()]
     assert len(warns) == 1
+
+
+# ============================ Phase 2d tests ============================
+from app.models.claim import ClaimStatus
+from app.services.claims_analysis_matcher import map_claim_status
+
+
+def test_parse_reads_claim_status_and_state(tmp_path):
+    row = {**BASE, "Claim Status": "Paid In Full", "Claim State": "Closed"}
+    df = _build_df([row])
+    path = tmp_path / "p.xlsx"
+    df.to_excel(path, index=False)
+    g = parse(str(path)).groups[0]
+    assert g.claim_status_raw == "Paid In Full"
+    assert g.claim_state == "Closed"
+
+
+def test_parse_reads_follow_up_date(tmp_path):
+    row = {**BASE, "Follow-Up Date": "2/15/2026"}
+    df = _build_df([row])
+    path = tmp_path / "p.xlsx"
+    df.to_excel(path, index=False)
+    g = parse(str(path)).groups[0]
+    assert g.follow_up_date == date(2026, 2, 15)
+
+
+def test_parse_reads_follow_up_reason_preserves_string(tmp_path):
+    row = {**BASE, "Follow-Up Reason": "2-Claim Sent <15D"}
+    df = _build_df([row])
+    path = tmp_path / "p.xlsx"
+    df.to_excel(path, index=False)
+    g = parse(str(path)).groups[0]
+    assert g.follow_up_reason == "2-Claim Sent <15D"
+
+
+def test_parse_reads_last_submission_date(tmp_path):
+    row = {**BASE, "Last Submission Date": "1/16/2026"}
+    df = _build_df([row])
+    path = tmp_path / "p.xlsx"
+    df.to_excel(path, index=False)
+    g = parse(str(path)).groups[0]
+    assert g.last_submission_date == date(2026, 1, 16)
+
+
+def test_parse_real_fixture_status_distribution():
+    """Real fixture status distribution after mapping (unique Claim IDs, first-row-wins)."""
+    result = parse(str(FIXTURE))
+    mapped = [map_claim_status(g.claim_status_raw) for g in result.groups]
+    from collections import Counter
+    counts = Counter(mapped)
+    assert counts[ClaimStatus.PAID] == 320
+    assert counts[ClaimStatus.PARTIAL] == 14
+    assert counts[ClaimStatus.PENDING] == 603
+
+
+def test_status_mapping_known_values():
+    assert map_claim_status("Paid In Full") == ClaimStatus.PAID
+    assert map_claim_status("paid in full") == ClaimStatus.PAID   # case-insensitive
+    assert map_claim_status("  Paid Partial  ") == ClaimStatus.PARTIAL  # whitespace-tolerant
+    assert map_claim_status("New/No EOB") == ClaimStatus.PENDING
+
+
+def test_status_mapping_unknown_returns_none():
+    assert map_claim_status("Weird Value") is None
+    assert map_claim_status("") is None
+    assert map_claim_status(None) is None
+
+
+def test_parse_warns_on_unknown_status(tmp_path):
+    row = {**BASE, "Claim Status": "Weird Value"}
+    df = _build_df([row])
+    path = tmp_path / "p.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+    warn = [i for i in result.issues if i.severity == "warning" and "claim status" in i.message.lower()]
+    assert len(warn) == 1

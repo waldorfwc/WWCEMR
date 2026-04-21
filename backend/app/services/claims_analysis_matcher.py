@@ -18,7 +18,7 @@ import pandas as pd
 
 REQUIRED_COLUMNS = [
     "Patient ID", "Claim ID", "Date of Service", "Claim Amount",
-    "Insurance Priority",
+    "Insurance Priority", "Claim Status", "Claim State",
 ]
 
 VALID_PRIORITIES = {"primary", "secondary", "tertiary", "patient"}
@@ -33,6 +33,12 @@ class ClaimsAnalysisGroup:
     row_count: int
     insurance_priority: str             # "primary" | "secondary" | "tertiary" | "patient"
     internal_claim_id: str              # f"{claim_id}P{patient_external_id}"
+    # Phase 2d enrichment
+    claim_status_raw: Optional[str] = None
+    claim_state: Optional[str] = None
+    follow_up_date: Optional[date] = None
+    follow_up_reason: Optional[str] = None
+    last_submission_date: Optional[date] = None
 
 
 @dataclass
@@ -91,6 +97,22 @@ def _parse_date(v: Any) -> Optional[date]:
     return None
 
 
+from app.models.claim import ClaimStatus
+
+CLAIMS_STATUS_MAP = {
+    "paid in full": ClaimStatus.PAID,
+    "paid partial": ClaimStatus.PARTIAL,
+    "new/no eob": ClaimStatus.PENDING,
+}
+
+
+def map_claim_status(raw: Optional[str]) -> Optional["ClaimStatus"]:
+    """Return ClaimStatus enum for a Claims Analysis status string, or None if unknown."""
+    if not raw:
+        return None
+    return CLAIMS_STATUS_MAP.get(raw.strip().lower())
+
+
 def parse(path: str) -> ClaimsAnalysisImport:
     df = pd.read_excel(path, sheet_name=0)
     missing = [c for c in REQUIRED_COLUMNS if c not in df.columns]
@@ -137,6 +159,17 @@ def parse(path: str) -> ClaimsAnalysisImport:
 
         total = sum((_decimal(r.get("Claim Amount")) for r in rows), Decimal("0"))
         dos = _parse_date(first.get("Date of Service"))
+        claim_status_raw = _str_or_none(first.get("Claim Status"))
+        # Warn on unmappable statuses (non-null but not in our map)
+        if claim_status_raw and map_claim_status(claim_status_raw) is None:
+            issues.append(ParseIssue(
+                "warning", first["__index__"], cid,
+                f"unknown Claim Status {claim_status_raw!r}; leaving existing status unchanged",
+            ))
+        claim_state = _str_or_none(first.get("Claim State"))
+        follow_up_date = _parse_date(first.get("Follow-Up Date"))
+        follow_up_reason = _str_or_none(first.get("Follow-Up Reason"))
+        last_submission_date = _parse_date(first.get("Last Submission Date"))
         groups.append(ClaimsAnalysisGroup(
             patient_external_id=pid,
             claim_id=cid,
@@ -145,6 +178,11 @@ def parse(path: str) -> ClaimsAnalysisImport:
             row_count=len(rows),
             insurance_priority=priority,
             internal_claim_id=f"{cid}P{pid}",
+            claim_status_raw=claim_status_raw,
+            claim_state=claim_state,
+            follow_up_date=follow_up_date,
+            follow_up_reason=follow_up_reason,
+            last_submission_date=last_submission_date,
         ))
 
     return ClaimsAnalysisImport(
