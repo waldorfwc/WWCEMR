@@ -342,6 +342,29 @@ export default function ImportFiles() {
             <button className="btn-secondary text-xs mt-2" onClick={() => setEraState(null)}>Try again</button>
           </div>
         )}
+
+        {eraState?.preview && !eraState.success && (
+          <EraPreview
+            preview={eraState.preview}
+            committing={eraState.committing}
+            onCancel={() => setEraState(null)}
+            onCommit={async () => {
+              setEraState(s => ({ ...s, committing: true }))
+              try {
+                const res = await api.post(`/imports/era-posting/${eraState.preview.session_id}/commit`)
+                setEraState({ success: res.data })
+              } catch (e) {
+                setEraState(s => ({
+                  preview: s.preview,
+                  error: { message: e.response?.data?.detail || e.message },
+                }))
+              }
+            }}
+          />
+        )}
+        {eraState?.success && (
+          <EraSuccess result={eraState.success} onAgain={() => setEraState(null)} />
+        )}
       </div>
 
       {/* Charge Analysis Import (Phase 2b) */}
@@ -671,6 +694,113 @@ function BootstrapSuccess({ result, onAgain }) {
       <div className="flex gap-2">
         <a href="/claims" className="btn-primary text-xs">View claims →</a>
         <button className="btn-secondary text-xs" onClick={onAgain}>Upload another file</button>
+      </div>
+    </div>
+  )
+}
+
+function EraPreview({ preview, committing, onCancel, onCommit }) {
+  const [showIssues, setShowIssues] = useState(false)
+  const [remaining, setRemaining] = useState(() => secondsUntil(preview.expires_at))
+  useEffect(() => {
+    const id = setInterval(() => setRemaining(secondsUntil(preview.expires_at)), 1000)
+    return () => clearInterval(id)
+  }, [preview.expires_at])
+  const expired = remaining <= 0
+  const t = preview.totals
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold text-gray-800">
+          Preview · {t.n_files} ERA file{t.n_files > 1 ? 's' : ''}
+        </div>
+        <div className="text-xs text-gray-500 font-mono">
+          {expired ? 'Session expired' : `Expires in ${formatRemaining(remaining)}`}
+        </div>
+      </div>
+      <div className="text-xs text-gray-500 mb-3">
+        Combined check total: ${t.combined_check_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      </div>
+
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Totals</div>
+      <div className="text-sm space-y-0.5 mb-3">
+        <div><span className="text-green-600 mr-1">✓</span>{t.n_matched} will be posted</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{t.n_already_posted} already posted (skipped)</div>
+        <div><span className="text-amber-600 mr-1">⚠</span>{t.n_unmatched} unmatched (no linked Claim ID)</div>
+        <div><span className="text-amber-600 mr-1">⚠</span>{t.n_reversals} reversals flagged</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{t.n_cb_skipped} CB-prefix ModMed claims</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{t.n_malformed} malformed CLP01</div>
+      </div>
+
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Per file</div>
+      <div className="text-xs space-y-1 mb-3">
+        {preview.files.map((f, idx) => (
+          <div key={idx} className="border border-gray-100 rounded p-2">
+            <div className="font-mono truncate">{f.source_filename}</div>
+            <div className="text-gray-500">
+              Check #{f.check_number} · ${f.check_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} ·
+              {' '}{f.n_matched} matched / {f.n_unmatched} unmatched / {f.n_reversals} reversals
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {preview.issues && preview.issues.length > 0 && (
+        <div className="text-xs text-gray-600 mb-2">
+          <strong>{preview.issues.length} flagged</strong>
+          <button className="ml-2 text-primary-600 underline" onClick={() => setShowIssues(v => !v)}>
+            {showIssues ? 'Hide ▴' : 'Show ▾'}
+          </button>
+        </div>
+      )}
+      {showIssues && (
+        <div className="max-h-40 overflow-y-auto border border-gray-100 rounded p-2 bg-gray-50 text-xs mb-3">
+          {preview.issues.map((i, idx) => (
+            <div key={idx} className="py-0.5">
+              <span className="text-amber-700 font-semibold">{i.status.toUpperCase()}</span>
+              {' · '}<code>{i.internal_claim_id || '—'}</code>
+              {i.billed_amount > 0 && <> · billed ${i.billed_amount.toFixed(2)}</>}
+              {i.reason && <> · {i.reason}</>}
+              <span className="text-gray-400"> ({i.source_filename})</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 mt-2">
+        <button className="btn-secondary text-xs" disabled={committing} onClick={onCancel}>Cancel</button>
+        <button className="btn-primary text-xs" disabled={committing || expired || t.n_matched === 0} onClick={onCommit}>
+          {committing ? 'Committing…' : expired ? 'Session expired' : 'Post payments'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function EraSuccess({ result, onAgain }) {
+  return (
+    <div className="card border border-green-200 bg-green-50">
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle size={16} className="text-green-700" />
+        <span className="font-semibold text-green-800 text-sm">Payments posted</span>
+      </div>
+      <div className="grid grid-cols-2 gap-1 text-xs mb-3">
+        <div>Files processed: <span className="font-mono">{result.files_processed}</span></div>
+        <div>Claims posted: <span className="font-mono font-semibold">{result.claims_posted}</span></div>
+        <div>Payments created: <span className="font-mono">{result.payments_created}</span></div>
+        <div>Denials created: <span className="font-mono">{result.denials_created}</span></div>
+        <div>Unmatched: <span className="font-mono">{result.claims_unmatched}</span></div>
+        <div>Reversals flagged: <span className="font-mono">{result.claims_reversal_flagged}</span></div>
+      </div>
+      {result.errors && result.errors.length > 0 && (
+        <div className="text-xs text-red-700 border-t border-green-200 pt-2 mt-2">
+          {result.errors.length} errors: {result.errors.map(e => e.internal_claim_id).join(', ')}
+        </div>
+      )}
+      <div className="flex gap-2 mt-2">
+        <a href="/claims" className="btn-primary text-xs">View claims →</a>
+        <button className="btn-secondary text-xs" onClick={onAgain}>Upload more ERAs</button>
       </div>
     </div>
   )
