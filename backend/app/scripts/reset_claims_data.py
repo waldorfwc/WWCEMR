@@ -15,6 +15,14 @@ from typing import Dict, Optional
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+# Import all model modules so SQLAlchemy can resolve relationship() string
+# references (e.g. Claim.patient → Patient) at mapper-configure time.
+# Mirrors the import list in database.init_db().
+from app.models import (  # noqa: F401
+    patient, claim, payment, denial, appeal, audit, document,
+    patient_directory, clinical, payment_analysis, fax_log,
+    practice_config, user,
+)
 from app.models.claim import (
     Claim, ServiceLine, ClaimAdjustment, ServiceLineAdjustment, EraFile,
 )
