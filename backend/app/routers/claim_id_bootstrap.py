@@ -114,29 +114,59 @@ from app.services.audit_service import log_action
 from app.services.claim_math import recompute_balance
 
 
-def _patch_claim(db: Session, claim_id: str, internal_claim_id: str,
+def _patch_claim(db: Session, claim_id: str, group: "ClaimsAnalysisGroup",
                  user_email: str) -> Claim:
+    from app.services.claims_analysis_matcher import map_claim_status
+
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
-    old = {"patient_control_number": claim.patient_control_number}
-    claim.patient_control_number = internal_claim_id
+    mapped_status = map_claim_status(group.claim_status_raw)
+
+    old = {
+        "patient_control_number": claim.patient_control_number,
+        "status": claim.status.value if claim.status else None,
+        "follow_up_date": str(claim.follow_up_date) if claim.follow_up_date else None,
+        "follow_up_reason": claim.follow_up_reason,
+        "last_submission_date": str(claim.last_submission_date) if claim.last_submission_date else None,
+        "claim_state": claim.claim_state,
+    }
+
+    claim.patient_control_number = group.internal_claim_id
+    if mapped_status is not None:
+        claim.status = mapped_status
+    claim.follow_up_date = group.follow_up_date
+    claim.follow_up_reason = group.follow_up_reason
+    claim.last_submission_date = group.last_submission_date
+    claim.claim_state = group.claim_state
     db.commit()
+
+    new = {
+        "patient_control_number": group.internal_claim_id,
+        "status": claim.status.value if claim.status else None,
+        "follow_up_date": str(claim.follow_up_date) if claim.follow_up_date else None,
+        "follow_up_reason": claim.follow_up_reason,
+        "last_submission_date": str(claim.last_submission_date) if claim.last_submission_date else None,
+        "claim_state": claim.claim_state,
+    }
     log_action(
         db, "UPDATE", "claim",
         resource_id=str(claim.id),
         patient_id=str(claim.patient_id) if claim.patient_id else None,
         user_name=user_email,
-        old_values=old,
-        new_values={"patient_control_number": internal_claim_id},
-        description="claim-id-bootstrap: patched patient_control_number",
+        old_values=old, new_values=new,
+        description="claim-id-bootstrap: patched workflow fields",
     )
     return claim
 
 
 def _create_secondary(db: Session, primary_id: str, group, user_email: str) -> Claim:
+    from app.services.claims_analysis_matcher import map_claim_status
+
     primary = db.query(Claim).filter(Claim.id == primary_id).first()
     order_map = {"secondary": InsuranceOrder.SECONDARY,
                  "tertiary": InsuranceOrder.TERTIARY}
     new_order = order_map.get(group.insurance_priority, InsuranceOrder.SECONDARY)
+    mapped_status = map_claim_status(group.claim_status_raw)
+
     secondary = Claim(
         claim_number=primary.claim_number,
         patient_id=primary.patient_id,
@@ -149,12 +179,16 @@ def _create_secondary(db: Session, primary_id: str, group, user_email: str) -> C
         rendering_provider_npi=primary.rendering_provider_npi,
         billing_provider_npi=primary.billing_provider_npi,
         insurance_order=new_order,
-        status=ClaimStatus.PENDING,
+        status=mapped_status or ClaimStatus.PENDING,
         billed_amount=primary.billed_amount,
         patient_control_number=group.internal_claim_id,
+        # Phase 2d workflow fields
+        follow_up_date=group.follow_up_date,
+        follow_up_reason=group.follow_up_reason,
+        last_submission_date=group.last_submission_date,
+        claim_state=group.claim_state,
     )
     db.add(secondary); db.flush()
-    # Copy service lines — zero out paid/adjustment fields
     primary_lines = db.query(ServiceLine).filter(ServiceLine.claim_id == primary.id).all()
     for sl in primary_lines:
         db.add(ServiceLine(
@@ -176,9 +210,16 @@ def _create_secondary(db: Session, primary_id: str, group, user_email: str) -> C
         resource_id=str(secondary.id),
         patient_id=str(secondary.patient_id) if secondary.patient_id else None,
         user_name=user_email,
-        new_values={"claim_number": secondary.claim_number,
-                    "insurance_order": new_order.value,
-                    "patient_control_number": group.internal_claim_id},
+        new_values={
+            "claim_number": secondary.claim_number,
+            "insurance_order": new_order.value,
+            "patient_control_number": group.internal_claim_id,
+            "status": secondary.status.value if secondary.status else None,
+            "follow_up_date": str(secondary.follow_up_date) if secondary.follow_up_date else None,
+            "follow_up_reason": secondary.follow_up_reason,
+            "last_submission_date": str(secondary.last_submission_date) if secondary.last_submission_date else None,
+            "claim_state": secondary.claim_state,
+        },
         description=f"claim-id-bootstrap: created {new_order.value} claim from primary",
     )
     return secondary
@@ -208,7 +249,7 @@ def commit_claim_id_bootstrap(
     for r in results:
         try:
             if r.status == "will_patch":
-                _patch_claim(db, r.matched_claim_id, r.group.internal_claim_id, user_email)
+                _patch_claim(db, r.matched_claim_id, r.group, user_email)
                 claims_patched += 1
             elif r.status == "will_create_secondary":
                 _create_secondary(db, r.matched_claim_id, r.group, user_email)
