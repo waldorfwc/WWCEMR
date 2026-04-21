@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Upload, FileText, CheckCircle, AlertCircle, Clock, Database } from 'lucide-react'
 import api, { fmt } from '../utils/api'
@@ -239,6 +239,26 @@ export default function ImportFiles() {
             <button className="btn-secondary text-xs mt-2" onClick={() => setChargeState(null)}>Try another file</button>
           </div>
         )}
+
+        {chargeState?.preview && !chargeState.success && (
+          <ChargeAnalysisPreview
+            preview={chargeState.preview}
+            committing={chargeState.committing}
+            onCancel={() => setChargeState(null)}
+            onCommit={async () => {
+              setChargeState(s => ({ ...s, committing: true }))
+              try {
+                const res = await api.post(`/imports/charge-analysis/${chargeState.preview.session_id}/commit`)
+                setChargeState({ success: res.data })
+              } catch (e) {
+                setChargeState(s => ({
+                  preview: s.preview,
+                  error: { message: e.response?.data?.detail || e.message },
+                }))
+              }
+            }}
+          />
+        )}
       </div>
 
       {/* ERA File History */}
@@ -273,4 +293,89 @@ export default function ImportFiles() {
       </div>
     </div>
   )
+}
+
+function ChargeAnalysisPreview({ preview, committing, onCancel, onCommit }) {
+  const [showIssues, setShowIssues] = useState(false)
+  const [remaining, setRemaining] = useState(() => secondsUntil(preview.expires_at))
+
+  useEffect(() => {
+    const id = setInterval(() => setRemaining(secondsUntil(preview.expires_at)), 1000)
+    return () => clearInterval(id)
+  }, [preview.expires_at])
+
+  const expired = remaining <= 0
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold text-gray-800">Preview · {preview.source_filename}</div>
+        <div className="text-xs text-gray-500 font-mono">
+          {expired ? 'Session expired' : `Expires in ${formatRemaining(remaining)}`}
+        </div>
+      </div>
+      <div className="text-xs text-gray-500 mb-3">
+        {preview.parsed_claims} claims parsed · {preview.total_rows} rows
+      </div>
+
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Claims</div>
+      <div className="text-sm space-y-0.5 mb-3">
+        <div><span className="text-green-600 mr-1">✓</span>{preview.will_create} new claims will be created</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{preview.will_skip_existing} existing (by VisitID) skipped</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{preview.skipped_voids} voided rows skipped</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{preview.skipped_non_clinical} finance-charge rows skipped</div>
+      </div>
+
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Patients</div>
+      <div className="text-sm space-y-0.5 mb-3">
+        <div><span className="text-green-600 mr-1">✓</span>{preview.will_match_patients} matched to existing charts</div>
+        <div><span className="text-primary-600 mr-1">+</span>{preview.will_create_patients} new patients will be created</div>
+      </div>
+
+      <div className="text-xs text-gray-600 mb-2">
+        <strong>{preview.errors} errors · {preview.warnings} warnings</strong>
+        {(preview.errors + preview.warnings) > 0 && (
+          <button className="ml-2 text-primary-600 underline" onClick={() => setShowIssues(v => !v)}>
+            {showIssues ? 'Hide details ▴' : 'Show details ▾'}
+          </button>
+        )}
+      </div>
+
+      {showIssues && (
+        <div className="max-h-40 overflow-y-auto border border-gray-100 rounded p-2 bg-gray-50 text-xs mb-3">
+          {preview.issues.map((i, idx) => (
+            <div key={idx} className="py-0.5">
+              <span className={i.severity === 'error' ? 'text-red-600 font-semibold' : 'text-amber-600 font-semibold'}>
+                {i.severity.toUpperCase()}
+              </span>
+              {' · row '}{i.row_index}
+              {i.visit_id && <> · VisitID <code>{i.visit_id}</code></>}
+              {' · '}{i.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 mt-2">
+        <button className="btn-secondary text-xs" disabled={committing} onClick={onCancel}>Cancel</button>
+        <button
+          className="btn-primary text-xs"
+          disabled={committing || expired}
+          onClick={onCommit}
+        >
+          {committing ? 'Committing…' : expired ? 'Session expired' : 'Commit import'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function secondsUntil(isoString) {
+  const diffMs = new Date(isoString).getTime() - Date.now()
+  return Math.max(0, Math.floor(diffMs / 1000))
+}
+function formatRemaining(seconds) {
+  const m = Math.floor(seconds / 60)
+  const s = seconds % 60
+  return `${m}:${String(s).padStart(2, '0')}`
 }
