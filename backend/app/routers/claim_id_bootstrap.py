@@ -107,3 +107,141 @@ async def upload_claims_analysis(
         "issues": [_to_jsonable(i) for i in parsed.issues],
         "expires_at": expires_at.isoformat(),
     }
+
+
+from app.models.claim import Claim, ServiceLine, ClaimStatus, InsuranceOrder
+from app.services.audit_service import log_action
+from app.services.claim_math import recompute_balance
+
+
+def _patch_claim(db: Session, claim_id: str, internal_claim_id: str,
+                 user_email: str) -> Claim:
+    claim = db.query(Claim).filter(Claim.id == claim_id).first()
+    old = {"patient_control_number": claim.patient_control_number}
+    claim.patient_control_number = internal_claim_id
+    db.commit()
+    log_action(
+        db, "UPDATE", "claim",
+        resource_id=str(claim.id),
+        patient_id=str(claim.patient_id) if claim.patient_id else None,
+        user_name=user_email,
+        old_values=old,
+        new_values={"patient_control_number": internal_claim_id},
+        description="claim-id-bootstrap: patched patient_control_number",
+    )
+    return claim
+
+
+def _create_secondary(db: Session, primary_id: str, group, user_email: str) -> Claim:
+    primary = db.query(Claim).filter(Claim.id == primary_id).first()
+    order_map = {"secondary": InsuranceOrder.SECONDARY,
+                 "tertiary": InsuranceOrder.TERTIARY}
+    new_order = order_map.get(group.insurance_priority, InsuranceOrder.SECONDARY)
+    secondary = Claim(
+        claim_number=primary.claim_number,
+        patient_id=primary.patient_id,
+        date_of_service_from=primary.date_of_service_from,
+        date_of_service_to=primary.date_of_service_to,
+        payer_name=primary.payer_name,
+        payer_id=primary.payer_id,
+        subscriber_id=primary.subscriber_id,
+        rendering_provider_name=primary.rendering_provider_name,
+        rendering_provider_npi=primary.rendering_provider_npi,
+        billing_provider_npi=primary.billing_provider_npi,
+        insurance_order=new_order,
+        status=ClaimStatus.PENDING,
+        billed_amount=primary.billed_amount,
+        patient_control_number=group.internal_claim_id,
+    )
+    db.add(secondary); db.flush()
+    # Copy service lines — zero out paid/adjustment fields
+    primary_lines = db.query(ServiceLine).filter(ServiceLine.claim_id == primary.id).all()
+    for sl in primary_lines:
+        db.add(ServiceLine(
+            claim_id=secondary.id,
+            procedure_code=sl.procedure_code,
+            modifier_1=sl.modifier_1, modifier_2=sl.modifier_2,
+            modifier_3=sl.modifier_3, modifier_4=sl.modifier_4,
+            units=sl.units,
+            billed_amount=sl.billed_amount,
+            date_of_service_from=sl.date_of_service_from,
+            date_of_service_to=sl.date_of_service_to,
+            diagnosis_codes=list(sl.diagnosis_codes or []),
+        ))
+    recompute_balance(secondary)
+    db.commit()
+    db.refresh(secondary)
+    log_action(
+        db, "CREATE", "claim",
+        resource_id=str(secondary.id),
+        patient_id=str(secondary.patient_id) if secondary.patient_id else None,
+        user_name=user_email,
+        new_values={"claim_number": secondary.claim_number,
+                    "insurance_order": new_order.value,
+                    "patient_control_number": group.internal_claim_id},
+        description=f"claim-id-bootstrap: created {new_order.value} claim from primary",
+    )
+    return secondary
+
+
+@router.post("/claim-id-bootstrap/{session_id}/commit")
+def commit_claim_id_bootstrap(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    entry = import_sessions.get(session_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="session not found or expired")
+
+    results: list[MatchResult] = entry.payload["results"]
+    user_email = current_user.get("email")
+
+    claims_patched = 0
+    secondary_claims_created = 0
+    already_set = 0
+    unmatched = 0
+    ambiguous = 0
+    conflicts = 0
+    errors: list[dict] = []
+
+    for r in results:
+        try:
+            if r.status == "will_patch":
+                _patch_claim(db, r.matched_claim_id, r.group.internal_claim_id, user_email)
+                claims_patched += 1
+            elif r.status == "will_create_secondary":
+                _create_secondary(db, r.matched_claim_id, r.group, user_email)
+                secondary_claims_created += 1
+            elif r.status == "already_set":
+                already_set += 1
+            elif r.status in ("no_patient", "no_claim"):
+                unmatched += 1
+            elif r.status == "ambiguous":
+                ambiguous += 1
+            elif r.status == "conflict":
+                conflicts += 1
+        except Exception as exc:
+            db.rollback()
+            errors.append({"claim_id": r.group.claim_id,
+                           "message": f"{type(exc).__name__}: {exc}"})
+
+    log_action(
+        db, "IMPORT", "claim_id_bootstrap",
+        resource_id=session_id, user_name=user_email,
+        description=(f"{entry.filename} — {claims_patched} patched, "
+                     f"{secondary_claims_created} secondary created, "
+                     f"{already_set} already set, {unmatched} unmatched"),
+    )
+    import_sessions.purge(session_id)
+
+    return {
+        "source_filename": entry.filename,
+        "claims_patched": claims_patched,
+        "secondary_claims_created": secondary_claims_created,
+        "already_set": already_set,
+        "unmatched": unmatched,
+        "ambiguous": ambiguous,
+        "conflicts": conflicts,
+        "errors": errors,
+    }
