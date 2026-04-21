@@ -2,6 +2,8 @@
 Waystar API router — exposes Waystar integration endpoints to the frontend.
 """
 
+import os
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -144,23 +146,34 @@ def sync_eras_sftp(
         client = get_waystar_client()
         downloaded = client.download_eras_sftp(remote_dir=remote_dir)
 
-        # Now parse each downloaded file through the existing import pipeline
-        from app.parsers.file_importer import import_file
-        from app.services.era_import_service import import_era_file
+        # Parse + post each downloaded file through the Phase 2c ERA pipeline.
+        from app.services.era_poster import process_era_file
 
         results = []
         for fpath in downloaded:
             try:
-                result = import_file(fpath)
-                if result.success and result.era_data:
-                    era_file = import_era_file(db, result.era_data, fpath)
-                    results.append({"file": fpath, "claims": era_file.transaction_count, "status": "imported"})
-                else:
-                    results.append({"file": fpath, "status": "parse_failed", "errors": result.errors})
+                with open(fpath, "r") as f:
+                    content = f.read()
+                result = process_era_file(
+                    db, content,
+                    filename=os.path.basename(fpath),
+                    user_email="waystar-sftp-sync",
+                )
+                results.append({
+                    "file": os.path.basename(fpath),
+                    "claims_posted": result.claims_posted,
+                    "claims_unmatched": result.claims_unmatched,
+                    "status": "imported" if result.claims_posted else "no_matches",
+                })
             except Exception as e:
-                results.append({"file": fpath, "status": "error", "error": str(e)})
+                results.append({
+                    "file": os.path.basename(fpath),
+                    "status": "error",
+                    "error": str(e),
+                })
 
-        log_action(db, "WAYSTAR_SFTP_SYNC", "waystar", description=f"SFTP sync: {len(downloaded)} files downloaded")
+        log_action(db, "WAYSTAR_SFTP_SYNC", "waystar",
+                   description=f"SFTP sync: {len(downloaded)} files downloaded")
         return {"downloaded": len(downloaded), "results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
