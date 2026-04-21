@@ -154,3 +154,108 @@ def parse(path: str) -> ClaimsAnalysisImport:
         skipped_rows=skipped_rows,
         issues=issues,
     )
+
+
+from typing import Literal
+from sqlalchemy.orm import Session
+from app.models.claim import Claim, InsuranceOrder
+from app.models.patient import Patient
+
+
+MatchStatus = Literal[
+    "will_patch", "will_create_secondary", "already_set",
+    "no_patient", "no_claim", "ambiguous", "conflict",
+]
+
+
+@dataclass
+class MatchResult:
+    group: ClaimsAnalysisGroup
+    status: MatchStatus
+    matched_claim_id: Optional[str] = None   # our internal UUID as str
+    conflict_existing_value: Optional[str] = None
+
+
+_PRIORITY_TO_ORDER = {
+    "primary": InsuranceOrder.PRIMARY,
+    "secondary": InsuranceOrder.SECONDARY,
+    "tertiary": InsuranceOrder.TERTIARY,
+    "patient": InsuranceOrder.PATIENT,
+}
+
+
+def _candidate_claims(db: Session, patient_id: str, dos: Optional[date],
+                      billed: Decimal, order: InsuranceOrder) -> List[Claim]:
+    q = db.query(Claim).filter(
+        Claim.patient_id == patient_id,
+        Claim.insurance_order == order,
+        Claim.billed_amount == billed,
+    )
+    if dos is not None:
+        q = q.filter(Claim.date_of_service_from == dos)
+    return q.all()
+
+
+def match_groups(db: Session, groups: List[ClaimsAnalysisGroup]) -> List[MatchResult]:
+    results: List[MatchResult] = []
+    for g in groups:
+        patient = db.query(Patient).filter(Patient.patient_id == g.patient_external_id).first()
+        if patient is None:
+            results.append(MatchResult(group=g, status="no_patient"))
+            continue
+
+        order = _PRIORITY_TO_ORDER.get(g.insurance_priority, InsuranceOrder.PRIMARY)
+
+        if g.insurance_priority == "primary":
+            candidates = _candidate_claims(db, patient.id, g.dos, g.total_amount, order)
+            if not candidates:
+                results.append(MatchResult(group=g, status="no_claim"))
+                continue
+            if len(candidates) > 1:
+                results.append(MatchResult(group=g, status="ambiguous"))
+                continue
+            claim = candidates[0]
+            if claim.patient_control_number is None:
+                results.append(MatchResult(group=g, status="will_patch",
+                                           matched_claim_id=str(claim.id)))
+            elif claim.patient_control_number == g.internal_claim_id:
+                results.append(MatchResult(group=g, status="already_set",
+                                           matched_claim_id=str(claim.id)))
+            else:
+                results.append(MatchResult(group=g, status="conflict",
+                                           matched_claim_id=str(claim.id),
+                                           conflict_existing_value=claim.patient_control_number))
+            continue
+
+        # Secondary / tertiary / patient
+        existing = _candidate_claims(db, patient.id, g.dos, g.total_amount, order)
+        if existing:
+            # Existing higher-COB claim. Check PCN state.
+            if len(existing) > 1:
+                results.append(MatchResult(group=g, status="ambiguous"))
+                continue
+            claim = existing[0]
+            if claim.patient_control_number is None:
+                results.append(MatchResult(group=g, status="will_patch",
+                                           matched_claim_id=str(claim.id)))
+            elif claim.patient_control_number == g.internal_claim_id:
+                results.append(MatchResult(group=g, status="already_set",
+                                           matched_claim_id=str(claim.id)))
+            else:
+                results.append(MatchResult(group=g, status="conflict",
+                                           matched_claim_id=str(claim.id),
+                                           conflict_existing_value=claim.patient_control_number))
+            continue
+
+        # No existing higher-COB claim — we need a primary to copy from
+        primary = _candidate_claims(db, patient.id, g.dos, g.total_amount, InsuranceOrder.PRIMARY)
+        if not primary:
+            results.append(MatchResult(group=g, status="no_claim"))
+            continue
+        if len(primary) > 1:
+            results.append(MatchResult(group=g, status="ambiguous"))
+            continue
+        results.append(MatchResult(group=g, status="will_create_secondary",
+                                   matched_claim_id=str(primary[0].id)))
+
+    return results
