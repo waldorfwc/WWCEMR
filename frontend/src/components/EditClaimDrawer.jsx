@@ -19,6 +19,11 @@ const EDITABLE_CLAIM_FIELDS = [
   'status', 'notes',
   'billed_amount', 'allowed_amount', 'paid_amount',
   'patient_responsibility', 'contractual_adjustment', 'other_adjustment',
+  // Phase 2d
+  'follow_up_date',
+  'follow_up_reason',
+  'last_submission_date',
+  'claim_state',
 ]
 
 
@@ -124,6 +129,29 @@ export default function EditClaimDrawer({ claim, onClose }) {
                 value={fields.notes || ''}
                 onChange={(e) => set('notes', e.target.value)}
               />
+            </Field>
+          </Section>
+
+          <Section title="Workflow">
+            <Field label="Claim state">
+              <select
+                className="input w-full py-1 text-[12px]"
+                value={fields.claim_state || ''}
+                onChange={(e) => set('claim_state', e.target.value || null)}
+              >
+                <option value="">—</option>
+                <option value="Open">Open</option>
+                <option value="Closed">Closed</option>
+              </select>
+            </Field>
+            <Field label="Follow-up date">
+              <Date value={fields.follow_up_date} onChange={v => set('follow_up_date', v)} />
+            </Field>
+            <Field label="Follow-up reason">
+              <Text value={fields.follow_up_reason} onChange={v => set('follow_up_reason', v)} />
+            </Field>
+            <Field label="Last submission date">
+              <Date value={fields.last_submission_date} onChange={v => set('last_submission_date', v)} />
             </Field>
           </Section>
 
