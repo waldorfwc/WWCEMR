@@ -208,3 +208,116 @@ def test_parse_secondary_placeholder_treated_as_none(tmp_path):
     c = parse(str(path)).claims[0]
     assert c.secondary_payer_name is None
     assert c.secondary_subscriber_id is None
+
+
+def test_parse_voided_row_skipped(tmp_path):
+    row_good = {**BASE_ROW, "Visit: VisitID": 1}
+    row_void = {**BASE_ROW, "Visit: VisitID": 2, "Charge: Void Indicator": "YES"}
+    df = _build_df([row_good, row_void])
+    path = tmp_path / "voided.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+    assert result.skipped_voids == 1
+    assert len(result.claims) == 1
+    assert result.claims[0].visit_id == "1"
+
+
+def test_parse_multi_unit_service_line(tmp_path):
+    row = {**BASE_ROW, "Procedure: Code": "J2003",
+           "Charge: Net Units": 20, "Charge: Charge Amount": 1.50,
+           "Charge: Gross Charges": 30.00,
+           "Adjustment: Net Primary Ins. Adjusted": -29.80,
+           "Payment: Net Primary Ins. Applied": -0.20}
+    df = _build_df([row])
+    path = tmp_path / "multi_unit.xlsx"
+    df.to_excel(path, index=False)
+    sl = parse(str(path)).claims[0].service_lines[0]
+    assert sl.units == Decimal("20")
+    assert sl.billed_amount == Decimal("30.00")
+    assert sl.contractual_adjustment == Decimal("29.80")
+    assert sl.paid_amount == Decimal("0.20")
+
+
+def test_parse_payment_negative_sign_normalized(tmp_path):
+    row = {**BASE_ROW, "Payment: Net Primary Ins. Applied": -119.75,
+           "Adjustment: Net Primary Ins. Adjusted": -169.95,
+           "Adjustment: Net Non-Primary Ins. Adjusted": -10.00}
+    df = _build_df([row])
+    path = tmp_path / "signs.xlsx"
+    df.to_excel(path, index=False)
+    c = parse(str(path)).claims[0]
+    assert c.paid_amount == Decimal("119.75")
+    assert c.contractual_adjustment == Decimal("169.95")
+    assert c.other_adjustment == Decimal("10.00")
+
+
+def test_parse_modifier_splitting_two(tmp_path):
+    row = {**BASE_ROW, "Procedure: Modifiers": "25 59"}
+    df = _build_df([row])
+    path = tmp_path / "mods2.xlsx"
+    df.to_excel(path, index=False)
+    sl = parse(str(path)).claims[0].service_lines[0]
+    assert sl.modifier_1 == "25"
+    assert sl.modifier_2 == "59"
+    assert sl.modifier_3 is None
+    assert sl.modifier_4 is None
+
+
+def test_parse_modifier_overflow_warns(tmp_path):
+    row = {**BASE_ROW, "Procedure: Modifiers": "25 59 76 RT LT"}
+    df = _build_df([row])
+    path = tmp_path / "mods5.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+    sl = result.claims[0].service_lines[0]
+    assert (sl.modifier_1, sl.modifier_2, sl.modifier_3, sl.modifier_4) == ("25", "59", "76", "RT")
+    warn = [i for i in result.issues if "more than 4 modifiers" in i.message]
+    assert len(warn) == 1
+
+
+def test_parse_missing_visit_id_row_dropped(tmp_path):
+    row = {**BASE_ROW, "Visit: VisitID": None}
+    df = _build_df([row])
+    path = tmp_path / "no_visit.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+    assert result.claims == []
+    errs = [i for i in result.issues if i.severity == "error"]
+    assert len(errs) == 1
+    assert "Visit: VisitID" in errs[0].message
+
+
+def test_parse_non_numeric_charge_dropped(tmp_path):
+    row = {**BASE_ROW, "Charge: Gross Charges": "bogus"}
+    df = _build_df([row])
+    path = tmp_path / "bad_charge.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+    assert result.claims == []
+    errs = [i for i in result.issues if "non-numeric" in i.message]
+    assert len(errs) == 1
+
+
+def test_parse_negative_charge_warns_but_parses(tmp_path):
+    row = {**BASE_ROW, "Charge: Gross Charges": -100.00}
+    df = _build_df([row])
+    path = tmp_path / "negative.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+    assert len(result.claims) == 1
+    warn = [i for i in result.issues if "negative" in i.message]
+    assert len(warn) == 1
+
+
+def test_parse_demographics_packs_address(tmp_path):
+    df = _build_df([BASE_ROW])
+    path = tmp_path / "demo.xlsx"
+    df.to_excel(path, index=False)
+    d = parse(str(path)).claims[0].patient_demographics
+    assert d["first_name"] == "SILVINA"
+    assert d["last_name"] == "DELFIN-CRUZ"
+    assert d["date_of_birth"] == date(1979, 9, 12)
+    assert d["phone"] == "240-416-4826"
+    assert "12566 COUNCIL OAK DR" in d["address"]
+    assert "Waldorf, MD 20601" in d["address"]
+    assert d["_sex"] == "Female"  # captured; dropped on persist
