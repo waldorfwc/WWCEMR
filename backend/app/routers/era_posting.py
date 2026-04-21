@@ -149,3 +149,97 @@ async def upload_eras(
         "issues": issues,
         "expires_at": expires_at.isoformat(),
     }
+
+
+from app.models.claim import EraFile as EraFileModel
+from app.models.denial import Denial
+from app.models.payment import Payment
+from app.services.audit_service import log_action
+from app.services.era_poster import post_claim
+
+
+@router.post("/era-posting/{session_id}/commit")
+def commit_eras(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    entry = import_sessions.get(session_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="session not found or expired")
+
+    previews: List[EraFilePreview] = entry.payload["previews"]
+    user_email = current_user.get("email")
+
+    claims_posted = 0
+    payments_created = 0
+    claims_already_posted = 0
+    claims_unmatched = 0
+    claims_reversal_flagged = 0
+    claims_cb_skipped = 0
+    claims_malformed = 0
+    denials_before = db.query(Denial).count()
+    errors: list = []
+
+    for p in previews:
+        era = p.era
+        file_path = p.__dict__.get("_file_path", "")
+        era_file_row = EraFileModel(
+            filename=p.source_filename,
+            file_path=file_path,
+            payer_name=era.payer_name,
+            payer_id=era.payer_id,
+            check_number=era.check_number,
+            check_date=era.check_date,
+            check_amount=era.check_amount,
+            transaction_count=len(era.claims),
+            status="processed" if not era.parse_errors else "partial",
+            error_log="\n".join(era.parse_errors) if era.parse_errors else None,
+            imported_by=user_email or "era-poster",
+        )
+        db.add(era_file_row); db.commit(); db.refresh(era_file_row)
+
+        for m in p.matches:
+            if m.status == "matched":
+                try:
+                    post_claim(db, m, era, era_file_row, user_email=user_email)
+                    claims_posted += 1
+                    payments_created += 1
+                except Exception as exc:
+                    db.rollback()
+                    errors.append({"internal_claim_id": m.internal_claim_id,
+                                   "message": f"{type(exc).__name__}: {exc}"})
+            elif m.status == "already_posted":
+                claims_already_posted += 1
+            elif m.status == "unmatched":
+                claims_unmatched += 1
+            elif m.status == "reversal_flagged":
+                claims_reversal_flagged += 1
+            elif m.status == "cb_prefix_skipped":
+                claims_cb_skipped += 1
+            elif m.status == "malformed_clp01":
+                claims_malformed += 1
+
+        log_action(
+            db, "IMPORT", "era_file",
+            resource_id=str(era_file_row.id), user_name=user_email,
+            description=(f"{p.source_filename} — {claims_posted} posted, "
+                         f"{claims_unmatched} unmatched"),
+        )
+
+    denials_created = db.query(Denial).count() - denials_before
+
+    import_sessions.purge(session_id)
+
+    return {
+        "files_processed": len(previews),
+        "claims_posted": claims_posted,
+        "claims_already_posted": claims_already_posted,
+        "claims_unmatched": claims_unmatched,
+        "claims_reversal_flagged": claims_reversal_flagged,
+        "claims_cb_skipped": claims_cb_skipped,
+        "claims_malformed": claims_malformed,
+        "payments_created": payments_created,
+        "denials_created": denials_created,
+        "errors": errors,
+    }
