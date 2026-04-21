@@ -28,7 +28,7 @@ def test_commit_patches_matching_primary_claim(client, db):
     c = Claim(
         claim_number="V1", patient_id=p.id,
         date_of_service_from=date(2026, 1, 2),
-        billed_amount=Decimal("254.32"),
+        billed_amount=Decimal("544.02"),
         insurance_order=InsuranceOrder.PRIMARY,
         status=ClaimStatus.PENDING, balance=Decimal("0"),
     )
@@ -118,8 +118,20 @@ def test_commit_404_on_unknown_session(client, db):
     assert r.status_code == 404
 
 
-def test_commit_forbidden_for_clinical(clinical_client, db, client):
-    preview = _upload(client)
-    r = clinical_client.post(
-        f"/api/imports/claim-id-bootstrap/{preview['session_id']}/commit")
+def test_commit_forbidden_for_clinical(clinical_client, db):
+    # Inject a synthetic session directly so we don't need the admin upload
+    from datetime import datetime, timezone, timedelta
+    from app.services.claims_analysis_matcher import ClaimsAnalysisImport
+    now = datetime.now(timezone.utc)
+    import_sessions._sessions.clear()
+    import_sessions._sessions["syn"] = import_sessions.SessionEntry(
+        session_id="syn",
+        payload={"parsed": ClaimsAnalysisImport(groups=[], source_filename="x.xls",
+                                                total_rows=0, skipped_rows=0),
+                 "results": []},
+        filename="x.xls", file_path="/tmp/x.xls",
+        user_email="tester@waldorfwomenscare.com",
+        created_at=now, expires_at=now + timedelta(minutes=30),
+    )
+    r = clinical_client.post("/api/imports/claim-id-bootstrap/syn/commit")
     assert r.status_code == 403
