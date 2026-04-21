@@ -23,6 +23,25 @@ export default function ImportFiles() {
   const [bootstrapState, setBootstrapState] = useState(null)
   const bootstrapInputRef = useRef()
 
+  const [eraState, setEraState] = useState(null)
+  const eraInputRef = useRef()
+
+  const handleEraFiles = async (fileList) => {
+    const files = Array.from(fileList).filter(Boolean)
+    if (!files.length) return
+    setEraState({ uploading: true, filenames: files.map(f => f.name) })
+    const form = new FormData()
+    for (const f of files) form.append('file', f)
+    try {
+      const res = await api.post('/imports/era-posting', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setEraState({ preview: res.data })
+    } catch (e) {
+      setEraState({ error: { message: e.response?.data?.detail || e.message } })
+    }
+  }
+
   const handleBootstrapFile = async (file) => {
     setBootstrapState({ uploading: true, filename: file.name })
     const form = new FormData()
@@ -279,6 +298,49 @@ export default function ImportFiles() {
         {bootstrapState?.success && (
           <BootstrapSuccess result={bootstrapState.success}
                             onAgain={() => setBootstrapState(null)} />
+        )}
+      </div>
+
+      {/* ERA 835 Payment Posting (Phase 2c Part 2) */}
+      <div className="card mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <FileText size={16} className="text-primary-600" />
+          <h2 className="text-sm font-semibold text-gray-800">ERA 835 Payment Posting</h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Upload one or more ERA <code>.835</code> files to post payments to existing claims.
+          Strict match on linked Claim ID. Reversals and unmatched claims are flagged.
+        </p>
+
+        {!eraState && (
+          <div
+            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+            onClick={() => eraInputRef.current?.click()}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => { e.preventDefault(); handleEraFiles(e.dataTransfer.files) }}
+          >
+            <input ref={eraInputRef} type="file" accept=".835,.x12,.edi" multiple className="hidden"
+                   onChange={e => handleEraFiles(e.target.files)} />
+            <p className="text-sm text-gray-700">📋 Drop one or more <code>.835</code> files here or click to browse</p>
+          </div>
+        )}
+
+        {eraState?.uploading && (
+          <div className="border-2 border-dashed rounded-lg p-6 text-center border-gray-300 text-gray-500">
+            <div className="animate-spin inline-block text-lg mr-2">⟳</div>
+            Parsing {eraState.filenames.length} file{eraState.filenames.length > 1 ? 's' : ''}…
+          </div>
+        )}
+
+        {eraState?.error && (
+          <div className="card border border-red-200 bg-red-50">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-600" />
+              <span className="font-semibold text-red-700 text-sm">Upload failed</span>
+            </div>
+            <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{typeof eraState.error.message === 'string' ? eraState.error.message : JSON.stringify(eraState.error.message)}</pre>
+            <button className="btn-secondary text-xs mt-2" onClick={() => setEraState(null)}>Try again</button>
+          </div>
         )}
       </div>
 
