@@ -4,6 +4,17 @@ import { useNavigate } from 'react-router-dom'
 import { Search, Filter } from 'lucide-react'
 import api, { fmt, statusColors } from '../utils/api'
 
+function followUpClass(dateStr, state) {
+  if (!dateStr) return 'text-gray-400'
+  if (state === 'Closed') return 'text-gray-400'
+  const d = new Date(dateStr + 'T00:00:00')
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const diff = (d - today) / (1000 * 60 * 60 * 24)
+  if (diff < 0) return 'text-red-600 font-semibold'
+  if (diff <= 7) return 'text-amber-600'
+  return 'text-gray-600'
+}
+
 const STATUSES = ['', 'paid', 'denied', 'partial', 'pending', 'adjusted', 'written_off', 'appealed']
 
 export default function Claims() {
@@ -11,10 +22,18 @@ export default function Claims() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [workflowFilter, setWorkflowFilter] = useState('all')  // 'all' | 'open' | 'followup' | 'overdue'
 
   const { data, isLoading } = useQuery({
-    queryKey: ['claims', search, status, page],
-    queryFn: () => api.get('/claims', { params: { search, status, page, per_page: 50 } }).then(r => r.data),
+    queryKey: ['claims', search, status, workflowFilter, page],
+    queryFn: () => {
+      const params = { search, status, page, per_page: 50 }
+      if (workflowFilter === 'open') params.state = 'open'
+      if (workflowFilter === 'followup' || workflowFilter === 'overdue') {
+        params.has_followup = true
+      }
+      return api.get('/claims', { params }).then(r => r.data)
+    },
   })
 
   return (
@@ -46,6 +65,26 @@ export default function Claims() {
             ))}
           </select>
         </div>
+        <div className="flex gap-1 items-center">
+          {[
+            { key: 'all', label: 'All' },
+            { key: 'open', label: 'Open only' },
+            { key: 'followup', label: 'Needs follow-up' },
+            { key: 'overdue', label: 'Overdue' },
+          ].map(f => (
+            <button
+              key={f.key}
+              onClick={() => { setWorkflowFilter(f.key); setPage(1) }}
+              className={`px-2 py-1 text-xs rounded ${
+                workflowFilter === f.key
+                  ? 'bg-primary-500 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Table */}
@@ -62,15 +101,16 @@ export default function Claims() {
                 <th className="table-th text-right">Paid</th>
                 <th className="table-th text-right">Balance</th>
                 <th className="table-th">Status</th>
+                <th className="table-th">Follow-up</th>
                 <th className="table-th">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={9} className="table-td text-center text-gray-400 py-8">Loading…</td></tr>
+                <tr><td colSpan={10} className="table-td text-center text-gray-400 py-8">Loading…</td></tr>
               )}
               {!isLoading && data?.claims?.length === 0 && (
-                <tr><td colSpan={9} className="table-td text-center text-gray-400 py-8">No claims found</td></tr>
+                <tr><td colSpan={10} className="table-td text-center text-gray-400 py-8">No claims found</td></tr>
               )}
               {data?.claims?.map(claim => (
                 <tr key={claim.id} className="table-row cursor-pointer" onClick={() => navigate(`/claims/${claim.id}`)}>
@@ -87,6 +127,18 @@ export default function Claims() {
                     <span className={statusColors[claim.status] || 'badge-pending'}>
                       {claim.status?.replace(/_/g, ' ')}
                     </span>
+                  </td>
+                  <td className="table-td">
+                    {claim.follow_up_date ? (
+                      <div className={`text-xs ${followUpClass(claim.follow_up_date, claim.claim_state)}`}>
+                        {fmt.date(claim.follow_up_date)}
+                        {claim.follow_up_reason && (
+                          <div className="text-[10px] text-gray-400 truncate max-w-[140px]">
+                            {claim.follow_up_reason}
+                          </div>
+                        )}
+                      </div>
+                    ) : <span className="text-gray-400 text-xs">—</span>}
                   </td>
                   <td className="table-td">
                     <button
