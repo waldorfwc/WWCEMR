@@ -22,6 +22,8 @@ def list_claims(
     status: Optional[str] = None,
     payer: Optional[str] = None,
     search: Optional[str] = None,
+    state: Optional[str] = None,             # Phase 2d: "open" | "closed"
+    has_followup: Optional[bool] = None,     # Phase 2d: Open + follow_up_date <= today
     page: int = 1,
     per_page: int = 50,
 ):
@@ -36,6 +38,16 @@ def list_claims(
             Claim.payer_claim_number.ilike(f"%{search}%"),
             Claim.subscriber_id.ilike(f"%{search}%"),
         ))
+    if state == "open":
+        q = q.filter(Claim.claim_state == "Open")
+    elif state == "closed":
+        q = q.filter(Claim.claim_state == "Closed")
+    if has_followup:
+        q = q.filter(
+            Claim.follow_up_date.isnot(None),
+            Claim.follow_up_date <= date_cls.today(),
+            Claim.claim_state == "Open",
+        )
 
     total = q.count()
     claims = q.order_by(desc(Claim.date_of_service_from)).offset((page - 1) * per_page).limit(per_page).all()
