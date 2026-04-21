@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from sqlalchemy.orm import Session
 
@@ -135,16 +135,107 @@ def build_preview(db: Session, era: EraFile, source_filename: str) -> EraFilePre
 
 from datetime import date as date_cls
 from app.models.audit import AuditLog
-from app.models.claim import ServiceLine, ClaimAdjustment, ServiceLineAdjustment
+from app.models.claim import ClaimStatus, ServiceLine, ClaimAdjustment, ServiceLineAdjustment
 from app.models.denial import Denial
 from app.models.payment import PaymentType
 from app.services.audit_service import log_action
 from app.services.claim_math import recompute_balance
-from app.services.era_import_service import (
-    _determine_claim_status, _has_real_denials, _create_denials,
-    SKIP_DENIAL_CODES,
-)
 from app.utils.carc_codes import get_carc_info
+
+
+# CARC codes that are contractual write-offs — not true denials
+CONTRACTUAL_CODES = {"45", "44", "23", "24", "36"}
+# CO-45 user said to ignore — skip creating denial record for these
+SKIP_DENIAL_CODES = {"45"}
+
+
+def _determine_claim_status(era_claim: EraClaim) -> ClaimStatus:
+    code = era_claim.claim_status_code
+    if code == "1":
+        return ClaimStatus.PAID
+    if code == "2":
+        return ClaimStatus.ADJUSTED
+    if code in ("3", "4"):
+        return ClaimStatus.DENIED
+    if era_claim.paid_amount > Decimal("0") and era_claim.paid_amount < era_claim.billed_amount:
+        return ClaimStatus.PARTIAL
+    return ClaimStatus.PENDING
+
+
+def _has_real_denials(era_claim: EraClaim) -> bool:
+    """Check if there are non-contractual denial adjustments."""
+    from app.utils.carc_codes import get_carc_info, DenialCategory as CarcDenialCategory
+    for adj in era_claim.adjustments:
+        if adj.group_code == "CO" and adj.reason_code not in SKIP_DENIAL_CODES:
+            carc = get_carc_info(adj.reason_code)
+            if carc.category not in (CarcDenialCategory.CONTRACTUAL,):
+                return True
+        if adj.group_code in ("OA", "PI") and adj.reason_code not in SKIP_DENIAL_CODES:
+            return True
+    for svc in era_claim.service_lines:
+        for adj in svc.adjustments:
+            if adj.group_code == "CO" and adj.reason_code not in SKIP_DENIAL_CODES:
+                return True
+    return False
+
+
+def _create_denials(db: Session, claim: Claim, era_claim: EraClaim, era: EraFile):
+    """Create denial records for a denied/partially denied claim."""
+    from app.utils.carc_codes import get_carc_info, DenialCategory as CarcDenialCategory
+    from app.utils.maryland_rules import get_payer_rules
+    from app.services.denial_analyzer import analyze_denial
+    from app.models.denial import Denial, DenialStatus
+    from datetime import date
+
+    payer_rules = get_payer_rules(era.payer_name, era.payer_id)
+    denial_date = era.check_date or date.today()
+
+    processed_codes = set()
+
+    # Claim-level denials
+    for adj in era_claim.adjustments:
+        if adj.reason_code in SKIP_DENIAL_CODES:
+            continue
+        if adj.reason_code in processed_codes:
+            continue
+        if adj.group_code not in ("CO", "OA", "PI", "PR"):
+            continue
+
+        carc_info = get_carc_info(adj.reason_code)
+        if carc_info.category == CarcDenialCategory.CONTRACTUAL:
+            continue  # Pure contractual — not a denial
+
+        analysis = analyze_denial(
+            claim=claim,
+            carc_code=adj.reason_code,
+            rarc_code=era_claim.rarc_codes[0] if era_claim.rarc_codes else None,
+            group_code=adj.group_code,
+            denied_amount=adj.amount,
+            denial_date=denial_date,
+        )
+
+        from app.models.denial import DenialCategory as ModelDenialCategory
+        denial = Denial(
+            claim_id=claim.id,
+            carc_code=analysis["carc_code"],
+            rarc_code=analysis.get("rarc_code"),
+            group_code=analysis["group_code"],
+            carc_description=analysis["carc_description"],
+            rarc_description=analysis.get("rarc_description"),
+            category=analysis["category"],
+            denied_amount=analysis["denied_amount"],
+            denial_date=analysis["denial_date"],
+            status=DenialStatus.OPEN,
+            appeal_deadline=analysis["appeal_deadline"],
+            appeal_level=1,
+            appealable=analysis["appealable"],
+            write_off_recommended=analysis["write_off_recommended"],
+            write_off_reason=analysis.get("write_off_reason"),
+            recommended_action=analysis["recommended_action"],
+            notes=analysis["notes"],
+        )
+        db.add(denial)
+        processed_codes.add(adj.reason_code)
 
 
 def _update_claim_money(claim: Claim, era_claim: EraClaim) -> None:
@@ -293,3 +384,104 @@ def post_claim(db: Session, match: EraClaimMatch, era: EraFile,
         description=f"ERA {match.internal_claim_id} check {era.check_number}",
     )
     return {"warnings": warnings}
+
+
+@dataclass
+class ProcessResult:
+    era_file_id: Optional[str]
+    claims_posted: int
+    claims_already_posted: int
+    claims_unmatched: int
+    claims_reversal_flagged: int
+    claims_cb_skipped: int
+    claims_malformed: int
+    payments_created: int
+    denials_created: int
+    errors: List[Dict[str, Any]]
+    parse_errors: List[str]
+
+
+def process_era_file(
+    db: Session,
+    content: str,
+    filename: str,
+    user_email: Optional[str],
+) -> ProcessResult:
+    """Parse + match + post one ERA file end-to-end.
+
+    Callers: era_posting.commit (per EraFilePreview), waystar.sync_eras_sftp
+    (per downloaded file). Creates an EraFile DB row, posts each matched
+    claim in its own transaction, returns structured counts + errors.
+    """
+    from app.parsers.era_835 import Era835Parser
+    from app.models.claim import EraFile as EraFileModel
+    from app.models.denial import Denial
+
+    try:
+        era = Era835Parser().parse(content, filename=filename)
+    except Exception as exc:
+        return ProcessResult(
+            era_file_id=None, claims_posted=0, claims_already_posted=0,
+            claims_unmatched=0, claims_reversal_flagged=0, claims_cb_skipped=0,
+            claims_malformed=0, payments_created=0, denials_created=0,
+            errors=[{"filename": filename,
+                     "message": f"parse failed: {type(exc).__name__}: {exc}"}],
+            parse_errors=[],
+        )
+
+    preview = build_preview(db, era, source_filename=filename)
+
+    era_file_row = EraFileModel(
+        filename=filename, file_path="",
+        payer_name=era.payer_name, payer_id=era.payer_id,
+        check_number=era.check_number, check_date=era.check_date,
+        check_amount=era.check_amount,
+        transaction_count=len(era.claims),
+        status="processed" if not era.parse_errors else "partial",
+        error_log="\n".join(era.parse_errors) if era.parse_errors else None,
+        imported_by=user_email or "era-poster",
+    )
+    db.add(era_file_row); db.commit(); db.refresh(era_file_row)
+
+    denials_before = db.query(Denial).count()
+
+    claims_posted = payments_created = 0
+    claims_already_posted = claims_unmatched = 0
+    claims_reversal_flagged = claims_cb_skipped = claims_malformed = 0
+    errors: List[Dict[str, Any]] = []
+
+    for m in preview.matches:
+        if m.status == "matched":
+            try:
+                post_claim(db, m, era, era_file_row, user_email=user_email)
+                claims_posted += 1
+                payments_created += 1
+            except Exception as exc:
+                db.rollback()
+                errors.append({"internal_claim_id": m.internal_claim_id,
+                               "message": f"{type(exc).__name__}: {exc}"})
+        elif m.status == "already_posted":   claims_already_posted += 1
+        elif m.status == "unmatched":         claims_unmatched += 1
+        elif m.status == "reversal_flagged":  claims_reversal_flagged += 1
+        elif m.status == "cb_prefix_skipped": claims_cb_skipped += 1
+        elif m.status == "malformed_clp01":   claims_malformed += 1
+
+    denials_created = db.query(Denial).count() - denials_before
+
+    log_action(db, "IMPORT", "era_file",
+               resource_id=str(era_file_row.id), user_name=user_email,
+               description=f"{filename} — {claims_posted} posted, {claims_unmatched} unmatched")
+
+    return ProcessResult(
+        era_file_id=str(era_file_row.id),
+        claims_posted=claims_posted,
+        claims_already_posted=claims_already_posted,
+        claims_unmatched=claims_unmatched,
+        claims_reversal_flagged=claims_reversal_flagged,
+        claims_cb_skipped=claims_cb_skipped,
+        claims_malformed=claims_malformed,
+        payments_created=payments_created,
+        denials_created=denials_created,
+        errors=errors,
+        parse_errors=list(era.parse_errors or []),
+    )
