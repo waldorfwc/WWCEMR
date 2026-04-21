@@ -256,6 +256,30 @@ export default function ImportFiles() {
             <button className="btn-secondary text-xs mt-2" onClick={() => setBootstrapState(null)}>Try another file</button>
           </div>
         )}
+
+        {bootstrapState?.preview && !bootstrapState.success && (
+          <BootstrapPreview
+            preview={bootstrapState.preview}
+            committing={bootstrapState.committing}
+            onCancel={() => setBootstrapState(null)}
+            onCommit={async () => {
+              setBootstrapState(s => ({ ...s, committing: true }))
+              try {
+                const res = await api.post(`/imports/claim-id-bootstrap/${bootstrapState.preview.session_id}/commit`)
+                setBootstrapState({ success: res.data })
+              } catch (e) {
+                setBootstrapState(s => ({
+                  preview: s.preview,
+                  error: { message: e.response?.data?.detail || e.message },
+                }))
+              }
+            }}
+          />
+        )}
+        {bootstrapState?.success && (
+          <BootstrapSuccess result={bootstrapState.success}
+                            onAgain={() => setBootstrapState(null)} />
+        )}
       </div>
 
       {/* Charge Analysis Import (Phase 2b) */}
@@ -498,6 +522,93 @@ function ChargeAnalysisSuccess({ result, onAgain }) {
       <div className="flex justify-end gap-2">
         <a href="/claims" className="btn-primary text-xs">View claims →</a>
         <button className="btn-secondary text-xs" onClick={onAgain}>Import another file</button>
+      </div>
+    </div>
+  )
+}
+
+function BootstrapPreview({ preview, committing, onCancel, onCommit }) {
+  const [showIssues, setShowIssues] = useState(false)
+  const [remaining, setRemaining] = useState(() => secondsUntil(preview.expires_at))
+  useEffect(() => {
+    const id = setInterval(() => setRemaining(secondsUntil(preview.expires_at)), 1000)
+    return () => clearInterval(id)
+  }, [preview.expires_at])
+  const expired = remaining <= 0
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold text-gray-800">Preview · {preview.source_filename}</div>
+        <div className="text-xs text-gray-500 font-mono">
+          {expired ? 'Session expired' : `Expires in ${formatRemaining(remaining)}`}
+        </div>
+      </div>
+      <div className="text-xs text-gray-500 mb-3">
+        {preview.unique_claims} unique claims · {preview.total_rows} rows
+      </div>
+
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Claim IDs</div>
+      <div className="text-sm space-y-0.5 mb-3">
+        <div><span className="text-green-600 mr-1">✓</span>{preview.will_patch} will be linked</div>
+        <div><span className="text-primary-600 mr-1">+</span>{preview.will_create_secondary} secondary claims will be created</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{preview.already_set} already linked</div>
+        <div><span className="text-gray-400 mr-1">⊘</span>{preview.no_patient + preview.no_claim} not found in system</div>
+        <div><span className="text-amber-600 mr-1">⚠</span>{preview.ambiguous} ambiguous</div>
+        <div><span className="text-amber-600 mr-1">⚠</span>{preview.conflicts} conflicts</div>
+      </div>
+
+      {preview.issues && preview.issues.length > 0 && (
+        <div className="text-xs text-gray-600 mb-2">
+          <strong>{preview.issues.length} issues</strong>
+          <button className="ml-2 text-primary-600 underline" onClick={() => setShowIssues(v => !v)}>
+            {showIssues ? 'Hide ▴' : 'Show ▾'}
+          </button>
+        </div>
+      )}
+      {showIssues && (
+        <div className="max-h-40 overflow-y-auto border border-gray-100 rounded p-2 bg-gray-50 text-xs mb-3">
+          {preview.issues.map((i, idx) => (
+            <div key={idx} className="py-0.5">
+              <span className={i.severity === 'error' ? 'text-red-600 font-semibold' : 'text-amber-600 font-semibold'}>
+                {i.severity.toUpperCase()}
+              </span>
+              {i.claim_id && <> · Claim <code>{i.claim_id}</code></>}
+              {' · '}{i.message}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-end gap-2 mt-2">
+        <button className="btn-secondary text-xs" disabled={committing} onClick={onCancel}>Cancel</button>
+        <button className="btn-primary text-xs" disabled={committing || expired} onClick={onCommit}>
+          {committing ? 'Committing…' : expired ? 'Session expired' : 'Commit'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function BootstrapSuccess({ result, onAgain }) {
+  return (
+    <div className="card border border-green-200 bg-green-50">
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle size={16} className="text-green-700" />
+        <span className="font-semibold text-green-800 text-sm">Claim IDs linked</span>
+      </div>
+      <div className="text-xs text-green-900 mb-3">{result.source_filename}</div>
+      <div className="grid grid-cols-2 gap-1 text-xs mb-3">
+        <div>Claims patched: <span className="font-mono font-semibold">{result.claims_patched}</span></div>
+        <div>Secondary created: <span className="font-mono font-semibold">{result.secondary_claims_created}</span></div>
+        <div>Already set: <span className="font-mono">{result.already_set}</span></div>
+        <div>Unmatched: <span className="font-mono">{result.unmatched}</span></div>
+        <div>Ambiguous: <span className="font-mono">{result.ambiguous}</span></div>
+        <div>Conflicts: <span className="font-mono">{result.conflicts}</span></div>
+      </div>
+      <div className="flex gap-2">
+        <a href="/claims" className="btn-primary text-xs">View claims →</a>
+        <button className="btn-secondary text-xs" onClick={onAgain}>Upload another file</button>
       </div>
     </div>
   )
