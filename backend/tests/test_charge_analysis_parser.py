@@ -155,3 +155,56 @@ def test_parse_real_fixture_file():
     assert all(len(c.service_lines) >= 1 for c in result.claims)
     errors = [i for i in result.issues if i.severity == "error"]
     assert errors == [], f"unexpected errors: {errors[:5]}"
+
+
+def test_parse_multi_line_claim_groups_and_rolls_up(tmp_path):
+    row_a = {**BASE_ROW, "Visit: VisitID": 999, "Procedure: Code": "99213",
+             "Charge: Gross Charges": 100.00, "Adjustment: Net Primary Ins. Adjusted": -30.00,
+             "Payment: Net Primary Ins. Applied": -50.00, "Charge Balance: Patient": 20.00,
+             "Diagnosis: Primary ICD-10 Code": "R10.20"}
+    row_b = {**BASE_ROW, "Visit: VisitID": 999, "Procedure: Code": "76830",
+             "Charge: Gross Charges": 200.00, "Adjustment: Net Primary Ins. Adjusted": -60.00,
+             "Payment: Net Primary Ins. Applied": -140.00, "Charge Balance: Patient": 0,
+             "Diagnosis: Primary ICD-10 Code": "N92.0"}
+    df = _build_df([row_a, row_b])
+    path = tmp_path / "two.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+
+    assert len(result.claims) == 1
+    c = result.claims[0]
+    assert c.visit_id == "999"
+    assert len(c.service_lines) == 2
+    # Rollups are sums across lines
+    assert c.billed_amount == Decimal("300.00")
+    assert c.paid_amount == Decimal("190.00")          # 50 + 140
+    assert c.contractual_adjustment == Decimal("90.00")  # 30 + 60
+    assert c.patient_responsibility == Decimal("20.00")
+    # Order preserved
+    assert [sl.procedure_code for sl in c.service_lines] == ["99213", "76830"]
+    assert [sl.diagnosis_codes for sl in c.service_lines] == [["R10.20"], ["N92.0"]]
+
+
+def test_parse_payer_differs_across_lines_warns(tmp_path):
+    row_a = {**BASE_ROW, "Visit: VisitID": 101, "Procedure: Code": "99213",
+             "Insurance: Charge Primary Ins. Company": "Aetna"}
+    row_b = {**BASE_ROW, "Visit: VisitID": 101, "Procedure: Code": "76830",
+             "Insurance: Charge Primary Ins. Company": "BCBS"}
+    df = _build_df([row_a, row_b])
+    path = tmp_path / "diff.xlsx"
+    df.to_excel(path, index=False)
+    result = parse(str(path))
+
+    assert result.claims[0].payer_name == "Aetna"  # first wins
+    warnings = [i for i in result.issues if i.severity == "warning" and "payer name" in i.message]
+    assert len(warnings) == 1
+
+
+def test_parse_secondary_placeholder_treated_as_none(tmp_path):
+    row = {**BASE_ROW, "Insurance: Charge Secondary Ins. Company": "No Secondary Insurance Company"}
+    df = _build_df([row])
+    path = tmp_path / "no_sec.xlsx"
+    df.to_excel(path, index=False)
+    c = parse(str(path)).claims[0]
+    assert c.secondary_payer_name is None
+    assert c.secondary_subscriber_id is None
