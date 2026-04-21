@@ -1,4 +1,5 @@
 """Tests for the expanded PATCH /api/claims/{claim_id} endpoint."""
+from datetime import date
 from decimal import Decimal
 from app.models.claim import Claim, ClaimStatus, InsuranceOrder
 from app.models.patient import Patient
@@ -169,3 +170,36 @@ def test_patch_forbidden_for_clinical(clinical_client, db):
     c = _seed_claim(db)
     r = clinical_client.patch(f"/api/claims/{c.id}", json={"notes": "x"})
     assert r.status_code == 403
+
+
+# ============================ Phase 2d tests ============================
+def test_patch_updates_follow_up_date(client, db):
+    c = _seed_claim(db)
+    r = client.patch(f"/api/claims/{c.id}", json={"follow_up_date": "2026-03-15"})
+    assert r.status_code == 200, r.text
+    assert r.json()["follow_up_date"] == "2026-03-15"
+    db.refresh(c)
+    assert c.follow_up_date == date(2026, 3, 15)
+
+
+def test_patch_updates_follow_up_reason(client, db):
+    c = _seed_claim(db)
+    r = client.patch(f"/api/claims/{c.id}",
+                     json={"follow_up_reason": "2-Claim Sent <15D"})
+    assert r.status_code == 200
+    assert r.json()["follow_up_reason"] == "2-Claim Sent <15D"
+
+
+def test_patch_updates_claim_state(client, db):
+    c = _seed_claim(db)
+    r = client.patch(f"/api/claims/{c.id}", json={"claim_state": "Closed"})
+    assert r.status_code == 200
+    assert r.json()["claim_state"] == "Closed"
+
+
+def test_patch_updates_last_submission_date(client, db):
+    c = _seed_claim(db)
+    r = client.patch(f"/api/claims/{c.id}",
+                     json={"last_submission_date": "2026-01-10"})
+    assert r.status_code == 200
+    assert r.json()["last_submission_date"] == "2026-01-10"

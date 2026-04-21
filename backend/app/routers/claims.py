@@ -98,6 +98,8 @@ EDITABLE_CLAIM_FIELDS = {
     "patient_responsibility", "contractual_adjustment", "other_adjustment",
     # relation
     "patient_id",
+    # Phase 2d
+    "follow_up_date", "follow_up_reason", "last_submission_date", "claim_state",
 }
 
 MONEY_FIELDS = {
@@ -105,7 +107,10 @@ MONEY_FIELDS = {
     "patient_responsibility", "contractual_adjustment", "other_adjustment",
 }
 
-DATE_FIELDS = {"date_of_service_from", "date_of_service_to", "check_date"}
+DATE_FIELDS = {
+    "date_of_service_from", "date_of_service_to", "check_date",
+    "follow_up_date", "last_submission_date",
+}
 
 
 def _coerce_claim_value(k: str, v):
@@ -219,6 +224,11 @@ def _claim_to_dict(claim: Claim, detailed: bool = False) -> dict:
         "rendering_provider_name": claim.rendering_provider_name,
         "rendering_provider_npi": claim.rendering_provider_npi,
         "notes": claim.notes,
+        # Phase 2d
+        "follow_up_date": str(claim.follow_up_date) if claim.follow_up_date else None,
+        "follow_up_reason": claim.follow_up_reason,
+        "last_submission_date": str(claim.last_submission_date) if claim.last_submission_date else None,
+        "claim_state": claim.claim_state,
     }
     if detailed:
         d["service_lines"] = [
