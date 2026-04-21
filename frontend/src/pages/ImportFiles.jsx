@@ -259,6 +259,10 @@ export default function ImportFiles() {
             }}
           />
         )}
+
+        {chargeState?.success && (
+          <ChargeAnalysisSuccess result={chargeState.success} onAgain={() => setChargeState(null)} />
+        )}
       </div>
 
       {/* ERA File History */}
@@ -365,6 +369,66 @@ function ChargeAnalysisPreview({ preview, committing, onCancel, onCommit }) {
         >
           {committing ? 'Committing…' : expired ? 'Session expired' : 'Commit import'}
         </button>
+      </div>
+    </div>
+  )
+}
+
+function ChargeAnalysisSuccess({ result, onAgain }) {
+  const hasErrors = result.errors.length > 0
+
+  const stats = (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mb-3">
+      <div><dt className="text-gray-500 inline">Claims created:</dt>{' '}<dd className="inline font-semibold">{result.claims_created}</dd></div>
+      <div><dt className="text-gray-500 inline">Service lines:</dt>{' '}<dd className="inline font-semibold">{result.service_lines_created}</dd></div>
+      <div><dt className="text-gray-500 inline">Patients created:</dt>{' '}<dd className="inline font-semibold">{result.patients_created}</dd></div>
+      <div><dt className="text-gray-500 inline">Patients matched:</dt>{' '}<dd className="inline font-semibold">{result.patients_matched}</dd></div>
+      <div className="col-span-2"><dt className="text-gray-500 inline">Skipped (existing VisitID):</dt>{' '}<dd className="inline font-semibold">{result.claims_skipped_existing}</dd></div>
+    </dl>
+  )
+
+  if (hasErrors) {
+    return (
+      <div className="card border border-amber-200 bg-amber-50">
+        <div className="flex items-center gap-2 mb-2">
+          <AlertCircle size={18} className="text-amber-600" />
+          <span className="font-semibold text-amber-800 text-sm">
+            Import completed with {result.errors.length} error{result.errors.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        <div className="text-xs text-gray-600 mb-2">
+          Source: <code>{result.source_filename}</code>
+        </div>
+        {stats}
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Failed claims</div>
+        <div className="max-h-40 overflow-y-auto border border-amber-100 rounded p-2 bg-white text-xs mb-3">
+          {result.errors.map((err, idx) => (
+            <div key={idx} className="py-0.5">
+              {err.visit_id && <>VisitID <code>{err.visit_id}</code> · </>}
+              <span className="text-red-600">{err.message}</span>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button className="btn-secondary text-xs" onClick={onAgain}>Dismiss</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="card border border-green-200 bg-green-50">
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle size={18} className="text-green-600" />
+        <span className="font-semibold text-green-800 text-sm">Import complete</span>
+      </div>
+      <div className="text-xs text-gray-600 mb-2">
+        Source: <code>{result.source_filename}</code>
+      </div>
+      {stats}
+      <div className="flex justify-end gap-2">
+        <a href="/claims" className="btn-primary text-xs">View claims →</a>
+        <button className="btn-secondary text-xs" onClick={onAgain}>Import another file</button>
       </div>
     </div>
   )
