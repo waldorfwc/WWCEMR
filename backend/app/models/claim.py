@@ -67,6 +67,13 @@ class Claim(Base):
 
     raw_clp_segment = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+
+    # Phase 2d enrichment (from Claims Analysis)
+    follow_up_date = Column(Date, nullable=True)
+    follow_up_reason = Column(String(200), nullable=True)
+    last_submission_date = Column(Date, nullable=True)
+    claim_state = Column(String(20), nullable=True)   # "Open" | "Closed"
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
