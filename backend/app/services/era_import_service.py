@@ -41,36 +41,15 @@ def _map_insurance_order(claim_filing_indicator: str, payer_name: str) -> Insura
 
 
 def import_era_file(
-    db: Session,
-    era: EraFile,
-    file_path: str,
+    db,
+    era,
+    file_path,
     imported_by: str = "system",
-) -> EraFileModel:
-    """Persist an ERA file and all its claims to the database."""
-
-    # Create ERA file record
-    era_file = EraFileModel(
-        filename=era.filename,
-        file_path=file_path,
-        payer_name=era.payer_name,
-        payer_id=era.payer_id,
-        check_number=era.check_number,
-        check_date=era.check_date,
-        check_amount=era.check_amount,
-        transaction_count=len(era.claims),
-        status="processed" if not era.parse_errors else "partial",
-        error_log="\n".join(era.parse_errors) if era.parse_errors else None,
-        imported_by=imported_by,
+):
+    raise NotImplementedError(
+        "Legacy ERA auto-import was retired in Phase 2c. "
+        "Use POST /api/imports/era-posting for payment posting."
     )
-    db.add(era_file)
-    db.flush()
-
-    for era_claim in era.claims:
-        _import_claim(db, era_claim, era, era_file)
-
-    db.commit()
-    db.refresh(era_file)
-    return era_file
 
 
 def _import_claim(db: Session, era_claim: EraClaim, era: EraFile, era_file: EraFileModel):

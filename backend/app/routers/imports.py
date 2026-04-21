@@ -58,7 +58,13 @@ async def upload_file(
 
     # For ERA files, persist to DB automatically
     if result.format == "era835" and result.era_data:
-        era_file = import_era_file(db, result.era_data, save_path)
+        try:
+            era_file = import_era_file(db, result.era_data, save_path)
+        except NotImplementedError as e:
+            raise HTTPException(status_code=410, detail={
+                "message": str(e),
+                "migration_endpoint": "/api/imports/era-posting",
+            })
         response["era_file_id"] = str(era_file.id)
         response["claims_imported"] = era_file.transaction_count
         response["payer"] = era_file.payer_name
