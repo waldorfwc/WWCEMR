@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Upload, FileText, CheckCircle, AlertCircle, Clock } from 'lucide-react'
+import { Upload, FileText, CheckCircle, AlertCircle, Clock, Database } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 
 export default function ImportFiles() {
@@ -9,6 +9,30 @@ export default function ImportFiles() {
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
   const inputRef = useRef()
+
+  // Charge Analysis (Phase 2b) state machine:
+  // null                                  → drop zone
+  // { uploading: true, filename }         → uploading
+  // { preview: {...} }                    → preview card
+  // { preview, committing: true }         → preview + spinner
+  // { success: {...} }                    → success card
+  // { preview?, error: {...} }            → error card
+  const [chargeState, setChargeState] = useState(null)
+  const chargeInputRef = useRef()
+
+  const handleChargeFile = async (file) => {
+    setChargeState({ uploading: true, filename: file.name })
+    const form = new FormData()
+    form.append('file', file)
+    try {
+      const res = await api.post('/imports/charge-analysis', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setChargeState({ preview: res.data })
+    } catch (e) {
+      setChargeState({ error: { message: e.response?.data?.detail || e.message } })
+    }
+  }
 
   const { data: eraFiles, refetch } = useQuery({
     queryKey: ['era-files'],
@@ -164,6 +188,58 @@ export default function ImportFiles() {
           <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{typeof error === 'string' ? error : JSON.stringify(error, null, 2)}</pre>
         </div>
       )}
+
+      {/* Charge Analysis Import (Phase 2b) */}
+      <div className="card mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <Database size={16} className="text-primary-600" />
+          <h2 className="text-sm font-semibold text-gray-800">Charge Analysis Import (PrimeSuite)</h2>
+        </div>
+        <p className="text-xs text-gray-500 mb-4">
+          Upload the monthly or quarterly Charge Analysis <code>.xls</code> export.
+          Voided charges skipped. Existing claims (by VisitID) skipped.
+        </p>
+
+        {!chargeState && (
+          <div
+            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+            onClick={() => chargeInputRef.current?.click()}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => {
+              e.preventDefault()
+              const f = e.dataTransfer.files[0]
+              if (f) handleChargeFile(f)
+            }}
+          >
+            <input
+              ref={chargeInputRef}
+              type="file"
+              accept=".xls,.xlsx"
+              className="hidden"
+              onChange={e => e.target.files[0] && handleChargeFile(e.target.files[0])}
+            />
+            <p className="text-sm text-gray-700">📊 Drop <code>.xls</code> here or click to browse</p>
+          </div>
+        )}
+
+        {chargeState?.uploading && (
+          <div className="border-2 border-dashed rounded-lg p-6 text-center border-gray-300 text-gray-500">
+            <div className="animate-spin inline-block text-lg mr-2">⟳</div>
+            Parsing <code>{chargeState.filename}</code>…
+          </div>
+        )}
+
+        {chargeState?.error && (
+          <div className="card border border-red-200 bg-red-50">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} className="text-red-600" />
+              <span className="font-semibold text-red-700 text-sm">Upload failed</span>
+            </div>
+            <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{chargeState.error.message}</pre>
+            <button className="btn-secondary text-xs mt-2" onClick={() => setChargeState(null)}>Try another file</button>
+          </div>
+        )}
+      </div>
 
       {/* ERA File History */}
       <div className="card">
