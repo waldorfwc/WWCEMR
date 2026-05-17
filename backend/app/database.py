@@ -76,6 +76,21 @@ def _seed_consent_template_from_env():
         db.close()
 
 
+def _adapt_coltype_for_dialect(coltype: str, dialect: str) -> str:
+    """Translate the SQLite-flavored type strings used in the migration list
+    into the equivalent for the target dialect. SQLite accepts both forms
+    (type affinity), Postgres is strict."""
+    if dialect == "sqlite":
+        return coltype
+    if dialect.startswith("postgres"):
+        # DATETIME isn't a Postgres type — TIMESTAMP is.
+        coltype = coltype.replace("DATETIME", "TIMESTAMP")
+        # Postgres BOOLEAN doesn't auto-cast integer literals in defaults.
+        coltype = coltype.replace("BOOLEAN DEFAULT 0", "BOOLEAN DEFAULT FALSE")
+        coltype = coltype.replace("BOOLEAN DEFAULT 1", "BOOLEAN DEFAULT TRUE")
+    return coltype
+
+
 def _apply_lightweight_migrations():
     """Add columns to existing tables when the model gained new fields.
 
@@ -278,14 +293,16 @@ def _apply_lightweight_migrations():
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
+    dialect = engine.dialect.name  # "sqlite" | "postgresql" | ...
     for table, column, coltype in needed:
         if table not in existing_tables:
             continue  # create_all just made it with the column present
         cols = {c["name"] for c in insp.get_columns(table)}
         if column in cols:
             continue
+        sql_type = _adapt_coltype_for_dialect(coltype, dialect)
         with engine.begin() as conn:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"))
 
     # Composite indexes (CREATE INDEX IF NOT EXISTS — safe to re-run on every
     # boot). Add new entries here when a query starts showing up hot.

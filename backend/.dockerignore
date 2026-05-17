@@ -1,0 +1,38 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Local data — never bake into image
+*.db
+*.db-shm
+*.db-wal
+*.db.bak.*
+era_data.db
+uploads/
+exports/
+
+# Secrets / env
+.env
+.env.local
+rc-credentials.json
+*.pem
+*.key
+*.json.gcp-cred
+
+# Session exports / scratch
+claude-session-*.md
+scratch/
+
+# Dev
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+tests/
+*.log
+
+# Docs
+*.md

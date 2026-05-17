@@ -1,0 +1,44 @@
+# Files NOT uploaded to Cloud Build. The build context should contain
+# only what's needed to produce the image.
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Local data — must not leak into builds or images
+*.db
+*.db-shm
+*.db-wal
+*.db.bak.*
+era_data.db*
+uploads/
+exports/
+
+# Secrets / env
+.env
+.env.local
+rc-credentials.json
+*.pem
+*.key
+*.json.gcp-cred
+
+# Session exports / scratch
+claude-session-*.md
+scratch/
+
+# Dev / test
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+tests/
+
+# Docs
+*.md
+
+# Misc
+.DS_Store
+.git/
