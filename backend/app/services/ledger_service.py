@@ -5,7 +5,7 @@ including all dates of service, charges, insurance payments,
 adjustments, patient payments, and running balance.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 from sqlalchemy.orm import Session
@@ -17,28 +17,39 @@ from app.models.payment import Payment, PaymentType
 from app.models.denial import Denial, DenialStatus
 
 
-def get_patient_ledger(db: Session, patient_id: str) -> dict:
+# Default ledger window — patient ledgers older than this are excluded
+# unless the caller explicitly asks for the full history.
+DEFAULT_LEDGER_WINDOW_YEARS = 5
+
+
+def get_patient_ledger(
+    db: Session,
+    patient_id: str,
+    window_years: Optional[int] = DEFAULT_LEDGER_WINDOW_YEARS,
+) -> dict:
     """
     Build a complete financial ledger for a patient.
-    Returns structured dict suitable for display or PDF export.
+
+    window_years: filter claims/payments to the last N years (default 5).
+                  Pass 0 or None for full history.
     """
     patient = db.query(Patient).filter(Patient.id == patient_id).first()
     if not patient:
         return {}
 
-    claims = (
-        db.query(Claim)
-        .filter(Claim.patient_id == patient_id)
-        .order_by(asc(Claim.date_of_service_from))
-        .all()
-    )
+    cutoff: Optional[date] = None
+    if window_years and window_years > 0:
+        cutoff = date.today() - timedelta(days=365 * window_years)
 
-    payments = (
-        db.query(Payment)
-        .filter(Payment.patient_id == patient_id)
-        .order_by(asc(Payment.payment_date))
-        .all()
-    )
+    claims_q = db.query(Claim).filter(Claim.patient_id == patient_id)
+    if cutoff is not None:
+        claims_q = claims_q.filter(Claim.date_of_service_from >= cutoff)
+    claims = claims_q.order_by(asc(Claim.date_of_service_from)).all()
+
+    payments_q = db.query(Payment).filter(Payment.patient_id == patient_id)
+    if cutoff is not None:
+        payments_q = payments_q.filter(Payment.payment_date >= cutoff)
+    payments = payments_q.order_by(asc(Payment.payment_date)).all()
 
     # Build DOS-grouped ledger entries
     ledger_by_dos: dict[str, dict] = {}
@@ -85,6 +96,14 @@ def get_patient_ledger(db: Session, patient_id: str) -> dict:
         ]
         patient_paid_this_claim = sum(p.amount for p in claim_patient_payments)
 
+        # Allowed amount: explicit value if set (from ERA), else derived from
+        # billed - contractual_adjustment (the standard "what insurance allows"
+        # definition). For Charge-Analysis-sourced claims allowed_amount is
+        # never populated, so derivation is the fallback that always works.
+        explicit_allowed = float(claim.allowed_amount or 0)
+        derived_allowed = float((claim.billed_amount or Decimal(0)) - (claim.contractual_adjustment or Decimal(0)))
+        allowed_for_claim = explicit_allowed if explicit_allowed > 0 else derived_allowed
+
         claim_entry = {
             "claim_id": str(claim.id),
             "claim_number": claim.claim_number,
@@ -92,7 +111,7 @@ def get_patient_ledger(db: Session, patient_id: str) -> dict:
             "insurance_order": claim.insurance_order.value if claim.insurance_order else "primary",
             "status": claim.status.value if claim.status else "pending",
             "billed_amount": float(claim.billed_amount or 0),
-            "allowed_amount": float(claim.allowed_amount or 0),
+            "allowed_amount": allowed_for_claim,
             "paid_amount": float(claim.paid_amount or 0),
             "contractual_adjustment": float(claim.contractual_adjustment or 0),
             "other_adjustment": float(claim.other_adjustment or 0),
@@ -118,7 +137,7 @@ def get_patient_ledger(db: Session, patient_id: str) -> dict:
 
         ledger_by_dos[dos]["claims"].append(claim_entry)
         ledger_by_dos[dos]["total_billed"] += claim.billed_amount or 0
-        ledger_by_dos[dos]["total_allowed"] += claim.allowed_amount or 0
+        ledger_by_dos[dos]["total_allowed"] += Decimal(str(allowed_for_claim))
         ledger_by_dos[dos]["total_insurance_paid"] += claim.paid_amount or 0
         ledger_by_dos[dos]["total_contractual"] += claim.contractual_adjustment or 0
         ledger_by_dos[dos]["total_other_adj"] += claim.other_adjustment or 0
@@ -158,6 +177,12 @@ def get_patient_ledger(db: Session, patient_id: str) -> dict:
     total_billed = sum(float(c.billed_amount or 0) for c in claims)
     total_insurance_paid = sum(float(c.paid_amount or 0) for c in claims)
     total_contractual = sum(float(c.contractual_adjustment or 0) for c in claims)
+    # Allowed = explicit value when set, else billed - contractual
+    total_allowed = sum(
+        float(c.allowed_amount or 0) if (c.allowed_amount or 0) > 0
+        else float((c.billed_amount or 0) - (c.contractual_adjustment or 0))
+        for c in claims
+    )
     total_patient_resp = sum(float(c.patient_responsibility or 0) for c in claims)
     total_patient_paid = sum(
         float(p.amount or 0) for p in payments
@@ -191,12 +216,21 @@ def get_patient_ledger(db: Session, patient_id: str) -> dict:
             "patient_id": patient.patient_id,
             "full_name": patient.full_name,
             "date_of_birth": str(patient.date_of_birth) if patient.date_of_birth else None,
+            "address": patient.address,
+            "phone": patient.phone,
+            "email": patient.email,
             "primary_insurance": patient.primary_insurance_name,
             "secondary_insurance": patient.secondary_insurance_name,
             "tertiary_insurance": patient.tertiary_insurance_name,
+            # Placeholder for the four credit fields that come from Charge
+            # Analysis ingest. Populated as zero until that's wired up.
+            "credits": {
+                "insurance": 0, "patient": 0, "pre_pay": 0, "undetermined": 0,
+            },
         },
         "summary": {
             "total_billed": total_billed,
+            "total_allowed": total_allowed,
             "total_insurance_paid": total_insurance_paid,
             "total_contractual_adjustment": total_contractual,
             "total_patient_responsibility": total_patient_resp,

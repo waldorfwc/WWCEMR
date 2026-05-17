@@ -15,13 +15,15 @@ from app.models.clinical import (
 )
 from app.models.document import PatientDocument
 from app.models.patient_directory import IntakeDocument
-from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
+from app.services.audit_service import log_action, log_view
 
 router = APIRouter(prefix="/chart", tags=["chart"])
 
 
 @router.get("/{chart_number}")
-def get_chart(chart_number: str, db: Session = Depends(get_db)):
+def get_chart(chart_number: str, db: Session = Depends(get_db),
+              current_user: dict = Depends(get_current_user)):
     """Full patient chart for a given chart number."""
     # Demographics
     patient = db.query(PatientDirectory).filter(
@@ -30,8 +32,9 @@ def get_chart(chart_number: str, db: Session = Depends(get_db)):
     if not patient:
         raise HTTPException(status_code=404, detail=f"Patient {chart_number} not found")
 
-    log_action(db, "VIEW", "patient_chart", resource_id=chart_number,
-               description=f"Viewed chart for {patient.patient_name}")
+    log_view(db, "patient_chart", resource_id=chart_number,
+             current_user=current_user, patient_id=chart_number,
+             description=f"Viewed chart for {patient.patient_name}")
 
     # Medical History
     pmh = db.query(MedicalHistory).filter(

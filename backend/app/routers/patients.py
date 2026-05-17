@@ -7,7 +7,8 @@ from datetime import date
 
 from app.database import get_db
 from app.models.patient import Patient
-from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
+from app.services.audit_service import log_action, log_view
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -65,11 +66,14 @@ def create_patient(data: PatientCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}")
-def get_patient(patient_id: str, db: Session = Depends(get_db)):
+def get_patient(patient_id: str, db: Session = Depends(get_db),
+                current_user: dict = Depends(get_current_user)):
     p = db.query(Patient).filter(Patient.id == patient_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Patient not found")
-    log_action(db, "VIEW", "patient", resource_id=patient_id, patient_id=patient_id)
+    log_view(db, "patient", resource_id=patient_id, patient_id=patient_id,
+             current_user=current_user,
+             description=f"Viewed patient {p.last_name}, {p.first_name}")
     return _to_dict(p)
 
 
@@ -91,14 +95,64 @@ def update_patient(patient_id: str, data: dict, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/ledger")
-def get_ledger(patient_id: str, db: Session = Depends(get_db)):
+def get_ledger(
+    patient_id: str,
+    window_years: int = 5,
+    db: Session = Depends(get_db),
+):
+    """Return the patient ledger.
+    `window_years` defaults to 5; pass 0 for full history."""
     from app.services.ledger_service import get_patient_ledger
-    ledger = get_patient_ledger(db, patient_id)
+    ledger = get_patient_ledger(db, patient_id, window_years=window_years or None)
     if not ledger:
         raise HTTPException(status_code=404, detail="Patient not found")
     log_action(db, "VIEW", "ledger", resource_id=patient_id, patient_id=patient_id,
                description="Patient ledger viewed")
     return ledger
+
+
+@router.get("/{patient_id}/ledger/pdf")
+def get_ledger_pdf(
+    patient_id: str,
+    window_years: int = 5,
+    visit_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Generate a PDF: full ledger by default, single-visit statement if
+    `visit_id` is provided."""
+    from app.services.ledger_service import get_patient_ledger
+    from app.services.patient_ledger_pdf import (
+        generate_full_ledger_pdf, generate_visit_statement_pdf,
+    )
+    from fastapi.responses import Response
+
+    ledger = get_patient_ledger(db, patient_id, window_years=window_years or None)
+    if not ledger:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    if visit_id:
+        pdf_bytes = generate_visit_statement_pdf(ledger, visit_id)
+        kind = "statement"
+        log_desc = f"Visit statement PDF generated for visit {visit_id}"
+        filename_suffix = f"-visit-{visit_id}"
+    else:
+        pdf_bytes = generate_full_ledger_pdf(ledger)
+        kind = "ledger"
+        log_desc = f"Full ledger PDF generated ({window_years}y window)"
+        filename_suffix = ""
+
+    log_action(
+        db, "EXPORT", kind, resource_id=patient_id, patient_id=patient_id,
+        description=log_desc,
+    )
+
+    chart = (ledger.get("patient") or {}).get("patient_id") or "unknown"
+    fname = f"WWC-{kind}-chart{chart}{filename_suffix}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 def _to_dict(p: Patient) -> dict:

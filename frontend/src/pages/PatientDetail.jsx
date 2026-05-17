@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, AlertTriangle, FileDown } from 'lucide-react'
 import api, { fmt, statusColors } from '../utils/api'
 
 export default function PatientDetail() {
@@ -29,6 +29,14 @@ export default function PatientDetail() {
           <h1 className="text-xl font-bold text-gray-900">{ledger.patient?.full_name}</h1>
           <p className="text-gray-500 text-sm">MRN: {ledger.patient?.patient_id} · DOB: {fmt.date(ledger.patient?.date_of_birth)}</p>
         </div>
+        <div className="ml-auto flex gap-2">
+          <button
+            className="btn-primary text-xs flex items-center gap-1"
+            onClick={() => window.open(`/api/patients/${id}/ledger/pdf`, '_blank')}
+          >
+            <FileDown size={14} /> Download full ledger PDF
+          </button>
+        </div>
       </div>
 
       {/* Insurance */}
@@ -49,9 +57,10 @@ export default function PatientDetail() {
       </div>
 
       {/* Financial Summary */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-4 gap-4 mb-6">
         {[
           ['Total Billed', fmt.currency(summary.total_billed), 'text-gray-700'],
+          ['Allowed', fmt.currency(summary.total_allowed), 'text-blue-700'],
           ['Insurance Paid', fmt.currency(summary.total_insurance_paid), 'text-green-700'],
           ['Contractual Adj', fmt.currency(summary.total_contractual_adjustment), 'text-gray-500'],
           ['Patient Responsibility', fmt.currency(summary.total_patient_responsibility), 'text-orange-600'],
@@ -113,14 +122,21 @@ export default function PatientDetail() {
                   <span className="text-xs text-gray-400 uppercase">{claim.insurance_order}</span>
                   <button
                     className="ml-auto text-xs text-primary-500 hover:underline"
+                    onClick={() => window.open(`/api/patients/${id}/ledger/pdf?visit_id=${encodeURIComponent(claim.claim_number)}`, '_blank')}
+                  >
+                    Statement
+                  </button>
+                  <button
+                    className="text-xs text-primary-500 hover:underline"
                     onClick={() => window.open(`/api/eob/${claim.claim_id}/pdf`, '_blank')}
                   >
                     EOB
                   </button>
                 </div>
-                <div className="grid grid-cols-5 gap-2 text-xs text-center">
+                <div className="grid grid-cols-6 gap-2 text-xs text-center">
                   {[
                     ['Billed', fmt.currency(claim.billed_amount), ''],
+                    ['Allowed', fmt.currency(claim.allowed_amount), 'text-blue-700'],
                     ['Insurance Paid', fmt.currency(claim.paid_amount), 'text-green-700'],
                     ['Contractual', fmt.currency(claim.contractual_adjustment), 'text-gray-400'],
                     ['Pt. Resp.', fmt.currency(claim.patient_responsibility), 'text-orange-600'],

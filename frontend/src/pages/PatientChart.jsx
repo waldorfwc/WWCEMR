@@ -10,6 +10,7 @@ import {
 import api, { fmt } from '../utils/api'
 import FaxBatchModal from '../components/FaxBatchModal'
 import FaxStatusChip from '../components/FaxStatusChip'
+import ChartPatientList from '../components/ChartPatientList'
 import { useFaxByChart, faxByDocId } from '../hooks/useFaxByChart'
 
 function FaxModal({ doc, docType, onClose, patient }) {
@@ -417,17 +418,25 @@ export default function PatientChart() {
     queryFn: () => api.get(`/chart/${chartNumber}`).then(r => r.data),
   })
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading chart…</div>
-  if (error) return <div className="p-6 text-red-600">Error loading chart: {error.message}</div>
-
-  const d = chart.demographics
-  const activeMeds = chart.medications?.filter(m => m.active) || []
-  const inactiveMeds = chart.medications?.filter(m => !m.active) || []
-  const activeAllergies = chart.allergies?.filter(a => a.active) || []
-  const latestVital = chart.vitals?.[0]
+  const d = chart?.demographics
+  const activeMeds = chart?.medications?.filter(m => m.active) || []
+  const inactiveMeds = chart?.medications?.filter(m => !m.active) || []
+  const activeAllergies = chart?.allergies?.filter(a => a.active) || []
+  const latestVital = chart?.vitals?.[0]
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
+    <div className="p-6">
+      <div className="grid gap-3" style={{ gridTemplateColumns: '280px 1fr', minHeight: 'calc(100vh - 120px)' }}>
+        {/* Persistent patient list */}
+        <div className="sticky top-4" style={{ alignSelf: 'start', maxHeight: 'calc(100vh - 80px)' }}>
+          <ChartPatientList activeChartNumber={chartNumber} />
+        </div>
+
+        {/* Chart detail */}
+        <div>
+        {isLoading && <div className="text-gray-400">Loading chart…</div>}
+        {error && <div className="text-red-600">Error loading chart: {error.message}</div>}
+        {!isLoading && !error && chart && (<>
       {/* Header */}
       <div className="mb-4">
         <Link to="/documents" className="text-xs text-primary-600 hover:underline flex items-center gap-1 mb-2">
@@ -663,6 +672,9 @@ export default function PatientChart() {
           }}
         />
       )}
+        </>)}
+        </div>
+      </div>
     </div>
   )
 }
