@@ -13,6 +13,8 @@ dist/
 
 # Data & secrets
 *.db
+*.db-shm
+*.db-wal
 *.db.bak.*
 *.log
 uploads/
@@ -21,6 +23,10 @@ backend/venv/
 rc-credentials.json
 .env
 .env.local
+
+# Session exports / local scratch
+backend/claude-session-*.md
+scratch/
 
 # OS
 .DS_Store
