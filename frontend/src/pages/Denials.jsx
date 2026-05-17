@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, Clock, CheckCircle, XCircle, Zap } from 'lucide-react'
+import { AlertTriangle, Clock, CheckCircle, XCircle, Zap, Sparkles } from 'lucide-react'
 import api, { fmt, statusColors } from '../utils/api'
+import DenialCodeAutocomplete from '../components/DenialCodeAutocomplete'
+import DenialCodeDrawer, { GroupBadge, CodeChip } from '../components/DenialCodeDrawer'
 
 const CATEGORIES = [
   '', 'timely_filing', 'authorization', 'medical_necessity', 'eligibility',
@@ -27,6 +29,25 @@ export default function Denials() {
   const [urgentOnly, setUrgentOnly] = useState(false)
   const [writeOffOnly, setWriteOffOnly] = useState(false)
   const [generating, setGenerating] = useState(null)
+  const [drawer, setDrawer] = useState({ open: false, request: null })
+
+  function openSingle(code_type, code) {
+    setDrawer({ open: true, request: { mode: 'single', code_type, code } })
+  }
+  function openCombo(d) {
+    setDrawer({
+      open: true,
+      request: {
+        mode: 'combo',
+        group_code: d.group_code || 'CO',
+        carc: d.carc_code,
+        rarcs: d.rarc_code ? [d.rarc_code] : [],
+      },
+    })
+  }
+  function openGroup(group_code) {
+    setDrawer({ open: true, request: { mode: 'group', group_code } })
+  }
 
   const { data, isLoading } = useQuery({
     queryKey: ['denials', category, status, urgentOnly, writeOffOnly],
@@ -61,7 +82,7 @@ export default function Denials() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Denial Management</h1>
           <p className="text-gray-500 text-sm mt-1">
@@ -69,6 +90,9 @@ export default function Denials() {
             <span className="text-red-600 font-medium ml-1">{summary?.urgent || 0} urgent · {summary?.overdue || 0} overdue</span>
           </p>
         </div>
+        <DenialCodeAutocomplete
+          onPick={req => setDrawer({ open: true, request: req })}
+        />
       </div>
 
       {/* Summary cards */}
@@ -114,7 +138,7 @@ export default function Denials() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
-              <th className="table-th">CARC / Reason</th>
+              <th className="table-th">Codes</th>
               <th className="table-th">Category</th>
               <th className="table-th">Claim / DOS</th>
               <th className="table-th">Payer</th>
@@ -132,9 +156,26 @@ export default function Denials() {
             {data?.denials?.map(d => (
               <tr key={d.id} className="table-row">
                 <td className="table-td">
-                  <div className="font-mono font-bold text-red-600 text-xs">CARC {d.carc_code}</div>
-                  <div className="text-xs text-gray-500 max-w-[200px] leading-tight">{d.carc_description?.substring(0, 60)}</div>
-                  {d.rarc_code && <div className="text-xs text-gray-400">RARC {d.rarc_code}</div>}
+                  <div className="flex items-center gap-1 flex-wrap">
+                    {d.group_code && <GroupBadge code={d.group_code} onClick={() => openGroup(d.group_code)} />}
+                    {d.carc_code && (
+                      <CodeChip type="CARC" code={d.carc_code} onClick={() => openSingle('CARC', d.carc_code)} />
+                    )}
+                    {d.rarc_code && (
+                      <CodeChip type="RARC" code={d.rarc_code} onClick={() => openSingle('RARC', d.rarc_code)} />
+                    )}
+                  </div>
+                  <button
+                    onClick={() => openCombo(d)}
+                    className="mt-1 text-[10px] text-primary-600 hover:underline flex items-center gap-1"
+                  >
+                    <Sparkles size={10} /> Explain this denial
+                  </button>
+                  {d.carc_description && (
+                    <div className="text-[10px] text-gray-400 mt-0.5 max-w-[200px] leading-tight truncate" title={d.carc_description}>
+                      {d.carc_description}
+                    </div>
+                  )}
                 </td>
                 <td className="table-td text-xs">
                   <span className="badge bg-gray-100 text-gray-600">{d.category?.replace(/_/g, ' ')}</span>
@@ -194,6 +235,12 @@ export default function Denials() {
         <span>CO = Contractual · PR = Patient Resp · OA = Other · PI = Payer Initiated</span>
         <span>Maryland: MD Insurance Article §15-1005 | MIA: 800-492-6116</span>
       </div>
+
+      <DenialCodeDrawer
+        open={drawer.open}
+        onClose={() => setDrawer(d => ({ ...d, open: false }))}
+        initialRequest={drawer.request}
+      />
     </div>
   )
 }
