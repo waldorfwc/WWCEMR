@@ -1,0 +1,283 @@
+"""Generate filled boarding slips for hospital surgeries.
+
+  MedStar — fills the existing fillable PDF's form fields directly.
+  CRMC    — overlays text onto the scanned template at fixed coordinates.
+
+Output is saved as a SurgeryFile row (kind='boarding_slip') and the path
+returned for the caller to download or fax.
+"""
+from __future__ import annotations
+
+import io
+import logging
+import os
+from datetime import date, datetime
+from typing import Optional
+
+from pypdf import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from sqlalchemy.orm import Session
+
+from app.models.surgery import Surgery, SurgeryFile
+
+log = logging.getLogger(__name__)
+
+UPLOADS_DIR = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/surgery_boarding_slips"
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+MEDSTAR_TEMPLATE = "/Users/wwcclaudecode/Downloads/MedStar Posting Form Fillable.pdf"
+CRMC_TEMPLATE    = "/Users/wwcclaudecode/Downloads/Mapping for CRMC Boarding Slip Prefill.pdf"
+
+
+# ─── Helpers ──────────────────────────────────────────────────────
+
+def _age(dob: Optional[date]) -> Optional[int]:
+    if not dob:
+        return None
+    today = date.today()
+    return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+
+
+def _name_last_first(s: Surgery) -> tuple[str, str]:
+    if s.last_name and s.first_name:
+        return s.last_name, s.first_name
+    parts = (s.patient_name or "").split(",", 1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return s.patient_name or "", ""
+
+
+def _primary_proc(s: Surgery) -> tuple[str, str]:
+    """(cpt, description) for the first procedure."""
+    procs = s.procedures or []
+    if not procs:
+        return "", ""
+    p = procs[0]
+    return p.get("cpt") or "", p.get("description") or ""
+
+
+def _hours_minutes(total_min: Optional[int]) -> tuple[str, str]:
+    if not total_min:
+        return "", ""
+    h = total_min // 60
+    m = total_min % 60
+    return str(h), str(m)
+
+
+# ─── MedStar (fillable PDF form) ──────────────────────────────────
+
+def generate_medstar(s: Surgery) -> str:
+    """Fill the MedStar Posting Form. Returns path to the new PDF."""
+    if not os.path.exists(MEDSTAR_TEMPLATE):
+        raise RuntimeError(f"MedStar template missing: {MEDSTAR_TEMPLATE}")
+
+    last, first = _name_last_first(s)
+    cpt, descr = _primary_proc(s)
+    procs = s.procedures or []
+    secondary_cpt = procs[1]["cpt"] if len(procs) > 1 and procs[1].get("cpt") else ""
+    diags = s.diagnoses or []
+    icd = diags[0]["icd"] if diags and diags[0].get("icd") else ""
+    impression = diags[0]["description"] if diags and diags[0].get("description") else ""
+    h, m = _hours_minutes(s.estimated_minutes)
+
+    fields = {
+        "Surgery Date Requested":     str(s.scheduled_date) if s.scheduled_date else "",
+        "Start Time":                 (str(s.scheduled_start_time)[:5] if s.scheduled_start_time else ""),
+        "Secondary Surgeon":          s.surgeon_secondary or "",
+        "Est Time Needed":            "",
+        "Hrs":                        h,
+        # "Min Primary CPT Code" is one quirky field on the source PDF — we
+        # use it for the CPT (the Hrs/Min split is captured separately).
+        "Min Primary CPT Code":       cpt,
+        "Secondary CPT":              secondary_cpt,
+        "AUTO_PatientNameLast":       last,
+        "AUTO_PatientNameFirst":      first,
+        "AUTO_PatientDateOfBirth":    str(s.dob) if s.dob else "",
+        "AUTO_PatientAge":            str(_age(s.dob)) if s.dob else "",
+        "AUTO_CurrentDate":           str(date.today()),
+        "AUTO_PatientPhone":          s.cell_phone or s.phone or "",
+        "AUTO_PatientAddress":        s.address_street or "",
+        "AUTO_PatientCity":           s.address_city or "",
+        "AUTO_PatientState":          s.address_state or "",
+        "AUTO_PatientZip":            s.address_zip or "",
+        "AUTO_PhysicianName":         s.surgeon_primary or "",
+        "AUTO_InsuranceName":         s.primary_insurance or "",
+        "AUTO_SecondaryInsuranceName": s.secondary_insurance or "",
+        "AUTO_VisitICD10":            icd,
+        "AUTO_VisitImpressions":      impression,
+        "AUTO_VisitPlans":            descr,
+        "Other Special Equipment":    (s.special_equipment_notes or "")[:200],
+        "Vendor Company":             s.device_kind or "",
+        "Reps Name":                  s.rep_name or "",
+        "Additional Notes":           (s.notes or "")[:200],
+    }
+
+    reader = PdfReader(MEDSTAR_TEMPLATE)
+    writer = PdfWriter(clone_from=reader)
+    # Fill on every page that has fields
+    for page in writer.pages:
+        try:
+            writer.update_page_form_field_values(page, fields)
+        except Exception:
+            # Pages without form widgets raise — skip
+            pass
+
+    out_path = os.path.join(
+        UPLOADS_DIR,
+        f"medstar_{s.chart_number}_{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf",
+    )
+    with open(out_path, "wb") as f:
+        writer.write(f)
+    return out_path
+
+
+# ─── CRMC (overlay onto scanned template) ─────────────────────────
+
+# Coordinate map for CRMC posting form. The scanned PDF is letter size.
+# Coords are (x, y) from bottom-left in points; tweak after a test print.
+CRMC_COORDS = {
+    "requested_date":    (180, 645),     # Requested Date: __/__/__
+    "requested_time":    (380, 645),
+    "outpatient":        (495, 622),     # checkbox X
+    "inpatient":         (430, 622),
+    "procedure":         (140, 595),     # primary procedure description + CPT
+    "diagnosis":         (140, 558),
+    "anesthesia":        (440, 558),
+    "icd":               (115, 535),
+    "cpt":               (370, 535),
+    "frozen_section":    (90, 510),
+    "biopsy_yes":        (320, 510),
+    "biopsy_no":         (350, 510),
+    "special_request":   (140, 488),
+    # Patient block
+    "last_name":         (140, 425),
+    "first_name":        (380, 425),
+    "dob":               (140, 400),
+    "ssn":               (380, 400),
+    "address":           (140, 376),
+    "city":              (380, 376),
+    "zip":               (510, 376),
+    "home_phone":        (140, 352),
+    "cell_phone":        (380, 352),
+    "work_phone":        (140, 328),
+    "other_phone":       (380, 328),
+    # Insurance
+    "pcp":               (140, 295),
+    "office_number":     (380, 295),
+    "primary_ins":       (140, 270),
+    "policy_holder_p":   (380, 270),
+    "ins_id_p":          (140, 246),
+    "group_p":           (380, 246),
+    "secondary_ins":     (140, 222),
+    "policy_holder_s":   (380, 222),
+    "ins_id_s":          (140, 198),
+    "group_s":           (380, 198),
+    "auth_number":       (260, 174),
+}
+
+
+def generate_crmc(s: Surgery) -> str:
+    """Overlay surgery info onto the CRMC scanned template."""
+    if not os.path.exists(CRMC_TEMPLATE):
+        raise RuntimeError(f"CRMC template missing: {CRMC_TEMPLATE}")
+
+    last, first = _name_last_first(s)
+    cpt, descr = _primary_proc(s)
+    diag_text = ""
+    icd = ""
+    if s.diagnoses:
+        d = s.diagnoses[0]
+        diag_text = d.get("description") or ""
+        icd = d.get("icd") or ""
+
+    auth_text = s.auth_number or ("Not Required" if s.auth_status == "not_required" else "")
+
+    # Build the overlay PDF
+    overlay = io.BytesIO()
+    c = canvas.Canvas(overlay, pagesize=letter)
+    c.setFont("Helvetica", 9)
+
+    def write(key, val):
+        x, y = CRMC_COORDS.get(key, (None, None))
+        if x is None or not val:
+            return
+        c.drawString(x, y, str(val)[:60])
+
+    write("requested_date",  str(s.scheduled_date) if s.scheduled_date else "")
+    write("requested_time",  str(s.scheduled_start_time)[:5] if s.scheduled_start_time else "")
+    write("outpatient",      "X")    # default to outpatient
+    write("procedure",       descr[:60])
+    write("diagnosis",       diag_text[:60])
+    write("anesthesia",      s.anesthesia or "")
+    write("icd",             icd)
+    write("cpt",             cpt)
+    write("special_request", (s.special_equipment_notes or "")[:60])
+
+    write("last_name",       last)
+    write("first_name",      first)
+    write("dob",             str(s.dob) if s.dob else "")
+    write("address",         s.address_street or "")
+    write("city",            s.address_city or "")
+    write("zip",             s.address_zip or "")
+    write("home_phone",      s.phone or "")
+    write("cell_phone",      s.cell_phone or "")
+
+    write("primary_ins",     s.primary_insurance or "")
+    write("policy_holder_p", s.patient_name or "")
+    write("ins_id_p",        s.primary_member_id or "")
+    write("group_p",         s.primary_group or "")
+    write("secondary_ins",   s.secondary_insurance or "No Secondary")
+    write("ins_id_s",        s.secondary_member_id or "")
+    write("auth_number",     auth_text)
+
+    c.showPage()
+    c.save()
+    overlay.seek(0)
+
+    # Merge overlay onto the scanned template's first page
+    template = PdfReader(CRMC_TEMPLATE)
+    overlay_pdf = PdfReader(overlay)
+    writer = PdfWriter()
+    page = template.pages[0]
+    page.merge_page(overlay_pdf.pages[0])
+    writer.add_page(page)
+    # Append remaining pages (if any) untouched
+    for p in template.pages[1:]:
+        writer.add_page(p)
+
+    out_path = os.path.join(
+        UPLOADS_DIR,
+        f"crmc_{s.chart_number}_{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf",
+    )
+    with open(out_path, "wb") as f:
+        writer.write(f)
+    return out_path
+
+
+# ─── Public API ──────────────────────────────────────────────────
+
+def generate_for_surgery(db: Session, s: Surgery, *, by_email: str) -> SurgeryFile:
+    """Pick the right generator based on facility and persist the result
+    as a SurgeryFile row."""
+    if s.selected_facility == "medstar":
+        path = generate_medstar(s)
+    elif s.selected_facility == "crmc":
+        path = generate_crmc(s)
+    else:
+        raise ValueError(f"No boarding slip needed for facility={s.selected_facility}")
+
+    fname = os.path.basename(path)
+    f = SurgeryFile(
+        surgery_id=s.id,
+        kind="boarding_slip",
+        filename=fname,
+        path=path,
+        mime_type="application/pdf",
+        size_bytes=os.path.getsize(path),
+        notes=f"Generated for {s.selected_facility}",
+        uploaded_by=by_email,
+    )
+    db.add(f)
+    db.commit(); db.refresh(f)
+    return f

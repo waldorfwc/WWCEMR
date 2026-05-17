@@ -1,0 +1,3314 @@
+import { useState, useMemo } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link, useParams } from 'react-router-dom'
+import {
+  ArrowLeft, AlertTriangle, CheckCircle2, Circle, Clock, Hospital, FileText,
+  Check, SkipForward, RotateCcw, X, Flag, Pause, Save, Edit3,
+  MessageSquare, Download, Upload, Copy, ListPlus, Send, RefreshCw,
+  ChevronDown, ChevronUp, Package,
+} from 'lucide-react'
+import api, { fmt } from '../utils/api'
+import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MatchesDrawer } from './SurgeryWaitlist'
+
+
+const FACILITY_LABEL = {
+  medstar: 'MedStar Southern Maryland',
+  crmc:    'University of MD Charles Regional',
+  office:  'White Plains Office',
+}
+
+const STATUS_TONE = {
+  incomplete:    'bg-amber-100 text-amber-800',
+  new:           'bg-gray-100 text-gray-700',
+  in_progress:   'bg-amber-50 text-amber-800',
+  confirmed:     'bg-blue-50 text-blue-800',
+  completed:     'bg-green-50 text-green-800',
+  hold:          'bg-violet-50 text-violet-800',
+  cancelled:     'bg-red-50 text-red-700',
+  unresponsive:  'bg-gray-100 text-gray-500',
+}
+
+const MILESTONE_ICON = {
+  done:           <CheckCircle2 size={16} className="text-green-600" />,
+  in_progress:    <Clock size={16} className="text-amber-600" />,
+  pending:        <Circle size={16} className="text-gray-300" />,
+  locked:         <Circle size={16} className="text-gray-200" />,
+  skipped:        <Circle size={16} className="text-gray-400" />,
+  not_applicable: <Circle size={16} className="text-gray-300" />,
+}
+
+
+export default function SurgeryDetail() {
+  const { id } = useParams()
+  const qc = useQueryClient()
+  const [showCancel, setShowCancel] = useState(false)
+  const [freedBlockDayId, setFreedBlockDayId] = useState(null)
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['surgery', id],
+    queryFn: () => api.get(`/surgery/${id}`).then(r => r.data),
+  })
+
+  const patch = useMutation({
+    mutationFn: (body) => api.patch(`/surgery/${id}`, body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+    },
+  })
+
+  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (error) return <div className="p-6 text-red-600">{error?.response?.data?.detail || error.message}</div>
+  if (!data) return null
+
+  const s = data
+  const procs = s.procedures || []
+  const dxs = s.diagnoses || []
+  const milestones = s.milestones || []
+  const isCancelable = !['cancelled', 'completed'].includes(s.status)
+
+  return (
+    <div>
+      <Link to="/surgery" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
+        <ArrowLeft size={12} /> Surgery dashboard
+      </Link>
+
+      {/* Patient header */}
+      <div className="card mb-4">
+        <div className="flex items-baseline justify-between gap-3 mb-2">
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-xl font-bold text-gray-900">{s.patient_name}</h1>
+              {s.is_urgent && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">🚨 URGENT</span>}
+              <span className={`text-[11px] px-2 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{s.status}</span>
+              {s.sub_flag && <span className="text-[10px] text-gray-500">· {s.sub_flag.replace(/_/g, ' ')}</span>}
+              {s.behind_schedule && (
+                <span className={`text-[11px] font-semibold ${s.hours_overdue > 48 ? 'text-red-700' : 'text-amber-700'}`}>
+                  {s.hours_overdue > 48 ? `${Math.floor(s.hours_overdue / 24)}d behind` : `${s.hours_overdue}h behind`}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              Chart #{s.chart_number}
+              {s.dob && <> · DOB {fmt.date(s.dob)}{s.age != null && ` (age ${s.age})`}</>}
+              {s.phone && <> · {s.phone}</>}
+            </div>
+            <PickDateLink surgeryId={s.id} />
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => patch.mutate({ is_urgent: !s.is_urgent })}
+              className={`text-xs px-2 py-1 rounded border flex items-center gap-1 ${
+                s.is_urgent ? 'bg-red-50 border-red-200 text-red-700'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-red-300'
+              }`}
+              disabled={patch.isPending}
+            >
+              <Flag size={11} /> {s.is_urgent ? 'Clear urgent' : 'Mark urgent'}
+            </button>
+            {s.status === 'incomplete' && (
+              <button type="button"
+                      onClick={() => patch.mutate({ status: 'new' })}
+                      className="btn-primary text-xs flex items-center gap-1"
+                      disabled={patch.isPending}>
+                <Check size={11} /> Mark as new (spawn milestones)
+              </button>
+            )}
+            {!s.scheduled_date && isCancelable && (
+              <WaitlistToggle surgeryId={s.id} />
+            )}
+            {isCancelable && (
+              <button type="button"
+                      onClick={() => setShowCancel(true)}
+                      className="text-xs px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 flex items-center gap-1">
+                <X size={11} /> Cancel / hold
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mt-3">
+          <Field label="Procedure">
+            <ProcedureListEditor s={s} onPatch={patch.mutate} />
+          </Field>
+          <Field label="Diagnosis">
+            <DiagnosisListEditor s={s} onPatch={patch.mutate} />
+          </Field>
+          <Field label="Surgeon">
+            <SurgeonCell s={s} onPatch={patch.mutate} />
+          </Field>
+          <Field label="Facility">
+            <FacilityCell s={s} onPatch={patch.mutate} />
+          </Field>
+
+          <Field label="Surgery date">
+            <SurgeryDateCell s={s} />
+          </Field>
+          <Field label="Pre-op date">
+            <PreopDateCell s={s} onPatch={patch.mutate} />
+          </Field>
+          <Field label="Estimated time">
+            <EstimatedTimeCell s={s} onPatch={patch.mutate} />
+          </Field>
+          <Field label="Insurance">
+            <InsuranceCell s={s} onPatch={patch.mutate} />
+          </Field>
+
+          <Field label="Address">
+            <AddressCell s={s} onPatch={patch.mutate} />
+          </Field>
+          <Field label="Auth">
+            <AuthSummaryCell s={s} />
+          </Field>
+          <Field label="Clearance">
+            <ClearanceCell s={s} onPatch={patch.mutate} />
+          </Field>
+          <Field label="Pt responsibility">
+            <PtResponsibilityCell s={s} />
+          </Field>
+
+          <Field label="Order PDF">
+            <OrderPdfCell surgery={s} />
+          </Field>
+          <Field label="Chart # / Phone / Email">
+            <ContactCell s={s} onPatch={patch.mutate} />
+          </Field>
+        </div>
+      </div>
+
+      {/* Milestone cards (each milestone is its own card with embedded tools) */}
+      <div className="space-y-3">
+        {milestones.map(m => <MilestoneCard key={m.id} m={m} surgery={s} />)}
+        {milestones.length === 0 && (
+          <div className="card text-xs text-gray-500 italic bg-amber-50 border border-amber-200">
+            No milestones yet — surgery is in <code>{s.status}</code> status. Click <strong>Mark as new</strong> above to generate milestones.
+          </div>
+        )}
+      </div>
+
+      <LarcDevicePickerCard surgery={s} />
+
+      <NotesPanel surgery={s} />
+
+      {showCancel && (
+        <CancelDrawer
+          surgery={s}
+          onClose={() => setShowCancel(false)}
+          onFreedBlockDay={(id) => { setShowCancel(false); setFreedBlockDayId(id) }}
+        />
+      )}
+
+      {freedBlockDayId && (
+        <MatchesDrawer
+          blockDayId={freedBlockDayId}
+          onClose={() => setFreedBlockDayId(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+
+// ─── Klara message drafts ─────────────────────────────────────────
+
+function KlaraPanel({ surgery }) {
+  const qc = useQueryClient()
+  const [kind, setKind] = useState('initial_scheduling')
+  const [draft, setDraft] = useState(null)
+  const [copied, setCopied] = useState(false)
+
+  const fetchDraft = useMutation({
+    mutationFn: () => api.get(`/surgery/${surgery.id}/klara-draft/${kind}`).then(r => r.data),
+    onSuccess: (d) => { setDraft(d); setCopied(false) },
+  })
+
+  const logSent = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/klara-sent`, {
+      kind: kind === 'initial_scheduling' ? 'klara_initial' :
+            kind === 'date_reminder'      ? 'klara_reminder' :
+                                              'klara_post_op',
+      body_preview: draft?.body?.slice(0, 200),
+    }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+  })
+
+  function copyToClipboard() {
+    if (!draft) return
+    navigator.clipboard.writeText(draft.body)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="card !p-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <MessageSquare size={14} className="text-plum-700" />
+        <h3 className="text-sm font-semibold text-gray-800">Klara message drafter</h3>
+      </div>
+      <p className="text-[11px] text-gray-500 mb-2">
+        Generate a templated message, copy to clipboard, paste into Klara. Logs the send so milestones advance.
+      </p>
+      <div className="flex flex-wrap gap-2 mb-2">
+        <select className="input text-xs" value={kind}
+                onChange={e => { setKind(e.target.value); setDraft(null) }}>
+          <option value="initial_scheduling">Initial scheduling outreach</option>
+          <option value="date_reminder">Date reminder (unbooked)</option>
+          <option value="post_op_check_in">Post-op check-in</option>
+        </select>
+        <button className="btn-primary text-xs flex items-center gap-1"
+                onClick={() => fetchDraft.mutate()}
+                disabled={fetchDraft.isPending}>
+          {fetchDraft.isPending ? 'Drafting…' : 'Generate'}
+        </button>
+      </div>
+
+      {draft && (
+        <div className="border border-gray-200 rounded p-2 bg-gray-50 space-y-2">
+          <div className="text-[11px] font-semibold text-gray-700">{draft.subject}</div>
+          <pre className="text-[11px] text-gray-800 whitespace-pre-wrap font-sans">{draft.body}</pre>
+          <div className="flex gap-1.5">
+            <button className="btn-secondary text-[11px] flex items-center gap-1"
+                    onClick={copyToClipboard}>
+              <Copy size={11} /> {copied ? 'Copied!' : 'Copy to clipboard'}
+            </button>
+            <button className="btn-primary text-[11px] flex items-center gap-1"
+                    onClick={() => logSent.mutate()}
+                    disabled={logSent.isPending}>
+              <Check size={11} /> {logSent.isPending ? 'Logging…' : 'I sent it in Klara'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+// ─── Boarding slip ────────────────────────────────────────────────
+
+function BoardingSlipPanel({ surgery }) {
+  const qc = useQueryClient()
+  const [error, setError] = useState(null)
+  const [generated, setGenerated] = useState(null)
+
+  const generate = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/boarding-slip`).then(r => r.data),
+    onSuccess: (d) => { setGenerated(d); setError(null); qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] }) },
+    onError: (e) => setError(e?.response?.data?.detail || e.message),
+  })
+
+  const facility = surgery.selected_facility
+  const facilityLabel = FACILITY_LABEL[facility]
+  const ready = facility === 'medstar' || facility === 'crmc'
+
+  return (
+    <div className="card !p-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <FileText size={14} className="text-plum-700" />
+        <h3 className="text-sm font-semibold text-gray-800">Boarding slip</h3>
+      </div>
+      {!ready && (
+        <div className="text-[11px] text-gray-500 italic">
+          Boarding slip is for hospital surgeries only. Office procedures don't need one.
+          {!facility && <> Pick a facility first.</>}
+        </div>
+      )}
+      {ready && (
+        <>
+          <p className="text-[11px] text-gray-500 mb-2">
+            Generate a {facility === 'medstar' ? 'MedStar Posting Form' : 'CRMC Posting Request'}{' '}
+            prefilled with this patient's details.
+          </p>
+          <button className="btn-primary text-xs flex items-center gap-1"
+                  onClick={() => generate.mutate()}
+                  disabled={generate.isPending}>
+            <FileText size={11} /> {generate.isPending ? 'Generating…' : `Generate ${facilityLabel} slip`}
+          </button>
+          {error && <div className="text-xs text-red-600 mt-2">{error}</div>}
+          {generated && (
+            <div className="mt-2 text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between">
+              <span>✓ Generated <code>{generated.filename}</code></span>
+              <a href={`/api${generated.download_url.replace(/^\/api/, '')}`}
+                 download
+                 className="text-plum-700 hover:underline flex items-center gap-1">
+                <Download size={11} /> Download
+              </a>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+
+// ─── Files (prior auth, op notes, path report, etc.) ────────────
+
+function NotesPanel({ surgery }) {
+  const qc = useQueryClient()
+  const currentUser = useCurrentUser()
+  const [draft, setDraft] = useState('')
+
+  const { data: notes = [], isLoading } = useQuery({
+    queryKey: ['surgery-notes', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/notes`).then(r => r.data),
+  })
+
+  const add = useMutation({
+    mutationFn: (content) => api.post(`/surgery/${surgery.id}/notes`,
+                                       { content }).then(r => r.data),
+    onSuccess: () => {
+      setDraft('')
+      qc.invalidateQueries({ queryKey: ['surgery-notes', surgery.id] })
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Failed to post note'),
+  })
+
+  const remove = useMutation({
+    mutationFn: (id) => api.delete(`/surgery/${surgery.id}/notes/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-notes', surgery.id] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
+  })
+
+  function submit() {
+    const text = draft.trim()
+    if (text) add.mutate(text)
+  }
+
+  function formatStamp(iso) {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return d.toLocaleString('en-US', {
+      month: 'short', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    })
+  }
+
+  const meEmail = (currentUser?.email || '').toLowerCase()
+
+  return (
+    <div className="card mt-3">
+      <h2 className="text-sm font-semibold text-gray-800 mb-2">Notes</h2>
+
+      {/* Legacy notes (pre-log field) preserved here so nothing is hidden */}
+      {surgery.notes && (
+        <div className="mb-2 text-[11px] text-gray-700 italic border-l-2 border-gray-200 pl-2 whitespace-pre-wrap">
+          <div className="text-[9px] uppercase tracking-wide text-gray-400 not-italic mb-0.5">
+            Legacy note
+          </div>
+          {surgery.notes}
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2 mb-3">
+        <textarea
+          className="input text-[12px] w-full"
+          rows={2}
+          placeholder="Add a note (timestamped + signed automatically)…"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit()
+          }}
+        />
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-muted">⌘/Ctrl+Enter to post</span>
+          <button className="btn-primary text-xs"
+                  onClick={submit}
+                  disabled={!draft.trim() || add.isPending}>
+            {add.isPending ? 'Posting…' : 'Post note'}
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-[11px] text-gray-400 italic">Loading…</div>
+      ) : notes.length === 0 ? (
+        <div className="text-[11px] text-gray-400 italic">No notes yet.</div>
+      ) : (
+        <ul className="space-y-2">
+          {notes.map(n => {
+            const isAuthor = (n.created_by || '').toLowerCase() === meEmail
+            return (
+              <li key={n.id} className="border-l-2 border-plum-200 pl-2 py-0.5">
+                <div className="text-[10px] text-gray-500 flex items-center gap-2">
+                  <span className="font-medium text-gray-700">
+                    {n.created_by?.split('@')[0] || '—'}
+                  </span>
+                  <span>·</span>
+                  <span>{formatStamp(n.created_at)}</span>
+                  {isAuthor && (
+                    <button type="button"
+                            onClick={() => {
+                              if (confirm('Delete this note?')) remove.mutate(n.id)
+                            }}
+                            className="ml-auto text-[10px] text-red-600 hover:underline">
+                      delete
+                    </button>
+                  )}
+                </div>
+                <div className="text-[12px] text-gray-800 whitespace-pre-wrap mt-0.5">
+                  {n.content}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+
+function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['surgery-files', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/files`).then(r => r.data),
+  })
+  const allFiles = data?.files || []
+  const files = kindFilter ? allFiles.filter(f => f.kind === kindFilter) : allFiles
+
+  const [kind, setKind] = useState(kindFilter || 'prior_auth')
+  const [notes, setNotes] = useState('')
+  const [file, setFile] = useState(null)
+  const [error, setError] = useState(null)
+
+  const upload = useMutation({
+    mutationFn: () => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return api.post(`/surgery/${surgery.id}/files?kind=${kind}${notes ? `&notes=${encodeURIComponent(notes)}` : ''}`,
+                       fd, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+    },
+    onSuccess: () => {
+      setFile(null); setNotes(''); setError(null)
+      qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+    },
+    onError: (e) => setError(e?.response?.data?.detail || e.message),
+  })
+
+  return (
+    <div className={kindFilter ? '' : 'card !p-3 mt-3'}>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Upload size={14} className="text-plum-700" />
+        <h3 className="text-sm font-semibold text-gray-800">{label}</h3>
+        <span className="text-[11px] text-gray-500">({files.length})</span>
+      </div>
+
+      {/* Upload form */}
+      <div className="border border-gray-200 rounded p-2 mb-2 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+        {!kindFilter && (
+          <div>
+            <div className="text-[10px] uppercase text-gray-500">Kind</div>
+            <select className="input text-xs" value={kind} onChange={e => setKind(e.target.value)}>
+              <option value="prior_auth">Prior auth response</option>
+              <option value="op_notes">Operative notes</option>
+              <option value="path_report">Pathology report</option>
+              <option value="clearance">Clearance</option>
+              <option value="consent">Consent</option>
+              <option value="fmla">FMLA paperwork</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        )}
+        <div>
+          <div className="text-[10px] uppercase text-gray-500">File</div>
+          <input type="file" className="text-xs"
+                 onChange={e => { setFile(e.target.files?.[0] || null); setError(null) }} />
+        </div>
+        <div>
+          <div className="text-[10px] uppercase text-gray-500">Notes (optional)</div>
+          <input className="input text-xs" value={notes} onChange={e => setNotes(e.target.value)} />
+        </div>
+        <button className="btn-primary text-xs flex items-center gap-1"
+                onClick={() => upload.mutate()}
+                disabled={!file || upload.isPending}>
+          <Upload size={11} /> {upload.isPending ? 'Uploading…' : 'Upload'}
+        </button>
+      </div>
+      {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
+
+      {files.length === 0 ? (
+        <div className="text-[11px] text-gray-400 italic">No files uploaded yet.</div>
+      ) : (
+        <ul className="text-xs divide-y divide-gray-100">
+          {files.map(f => (
+            <li key={f.id} className="py-1.5 flex items-baseline gap-3">
+              {!kindFilter && (
+                <span className="text-[10px] uppercase text-gray-500 w-20 shrink-0">
+                  {f.kind.replace(/_/g, ' ')}
+                </span>
+              )}
+              <a href={`/api${f.download_url.replace(/^\/api/, '')}`}
+                 download
+                 className="text-plum-700 hover:underline flex-1 truncate">
+                {f.filename}
+              </a>
+              <span className="text-[10px] text-gray-500 shrink-0">
+                {fmt.date(f.uploaded_at?.slice(0, 10))} · {f.uploaded_by?.split('@')[0] || '—'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+
+function Field({ label, children }) {
+  return (
+    <div>
+      <div className="text-[9px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
+      <div className="text-gray-800">{children}</div>
+    </div>
+  )
+}
+
+
+const FACILITY_SHORT = {
+  medstar: 'MedStar',
+  crmc:    'Charles Regional',
+  office:  'Office',
+}
+
+
+function PickDateLink({ surgeryId }) {
+  const url = `${window.location.origin}/p/surgery/${surgeryId}`
+  const [copied, setCopied] = useState(false)
+  function copy() {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+  return (
+    <div className="mt-1 flex items-center gap-1.5 text-[11px]">
+      <span className="text-gray-500">Patient pick-a-date link:</span>
+      <a href={url}
+         target="_blank"
+         rel="noopener noreferrer"
+         className="text-plum-700 hover:underline truncate max-w-[280px] font-mono">
+        {url}
+      </a>
+      <button type="button"
+              onClick={copy}
+              title="Copy to clipboard"
+              className="text-plum-700 hover:bg-plum-50 rounded p-0.5">
+        <Copy size={11} />
+      </button>
+      {copied && <span className="text-[10px] text-green-700">copied!</span>}
+    </div>
+  )
+}
+
+
+/* ───── Picklists hook ───── */
+
+function usePicklists() {
+  const { data } = useQuery({
+    queryKey: ['surgery-picklists'],
+    queryFn: () => api.get('/surgery/picklists').then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
+  return data || { surgeons: [], insurance_companies: [], procedures: [], diagnoses: [] }
+}
+
+
+/* ───── Editable cells for the patient header ───── */
+
+function SurgeonCell({ s, onPatch }) {
+  const picks = usePicklists()
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(s.surgeon_primary || '')
+  if (!editing) {
+    return (
+      <div className="flex items-baseline gap-2">
+        <span>{s.surgeon_primary || <span className="text-gray-400">—</span>}</span>
+        <button className="text-[10px] text-plum-700 hover:underline" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1">
+      <select className="input text-[12px] w-full" value={value} onChange={e => setValue(e.target.value)}>
+        <option value="">—</option>
+        {picks.surgeons.map(name => <option key={name} value={name}>{name}</option>)}
+        {value && !picks.surgeons.includes(value) && <option value={value}>{value}</option>}
+      </select>
+      <input className="input text-[12px] w-full" placeholder="Other (free-text)"
+             value={picks.surgeons.includes(value) ? '' : value}
+             onChange={e => setValue(e.target.value)} />
+      <div className="flex gap-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => { onPatch({ surgeon_primary: value || null }); setEditing(false) }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function InsuranceCell({ s, onPatch }) {
+  const picks = usePicklists()
+  const [editing, setEditing] = useState(false)
+  const [company, setCompany] = useState(s.primary_insurance || '')
+  const [memberId, setMemberId] = useState(s.primary_member_id || '')
+  const inList = picks.insurance_companies.includes(company)
+  const picklistEmpty = (picks.insurance_companies || []).length === 0
+
+  if (!editing) {
+    return (
+      <div>
+        <div className="flex items-baseline gap-2">
+          <span>{s.primary_insurance || <span className="text-gray-400">—</span>}</span>
+          <button className="text-[10px] text-plum-700 hover:underline" onClick={() => setEditing(true)}>edit</button>
+        </div>
+        {s.primary_member_id && <div className="text-[10px] text-gray-500">{s.primary_member_id}</div>}
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1">
+      {picklistEmpty ? (
+        <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-1">
+          Picklist endpoint not reachable — restart the backend, or type the payer name below.
+        </div>
+      ) : (
+        <select className="input text-[12px] w-full"
+                value={inList ? company : (company ? 'Other' : '')}
+                onChange={e => setCompany(e.target.value === 'Other' ? '' : e.target.value)}>
+          <option value="">— pick payer —</option>
+          {picks.insurance_companies.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      )}
+      {(!inList || picklistEmpty) && (
+        <input className="input text-[12px] w-full"
+               placeholder={picklistEmpty ? 'Payer name' : 'Type other payer name'}
+               autoFocus
+               value={company}
+               onChange={e => setCompany(e.target.value)} />
+      )}
+      <input className="input text-[12px] w-full font-mono" placeholder="Member ID"
+             value={memberId} onChange={e => setMemberId(e.target.value)} />
+      <div className="flex gap-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => { onPatch({ primary_insurance: company || null, primary_member_id: memberId || null }); setEditing(false) }}>
+          Save
+        </button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function ProcedureListEditor({ s, onPatch }) {
+  const picks = usePicklists()
+  const [editing, setEditing] = useState(false)
+  const [items, setItems] = useState(s.procedures || [])
+  const [picked, setPicked] = useState('')
+
+  if (!editing) {
+    return (
+      <div className="flex items-start gap-2">
+        <div className="flex-1">
+          {s.is_robotic && <span className="text-blue-700">🤖 </span>}
+          {(s.procedures || []).length > 0
+            ? (s.procedures || []).map((p, i) => (
+                <div key={i}>
+                  {p.description}
+                  {p.cpt && <span className="text-gray-500 ml-1">[{p.cpt}]</span>}
+                </div>
+              ))
+            : <span className="text-gray-400">—</span>}
+        </div>
+        <button className="text-[10px] text-plum-700 hover:underline shrink-0" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    )
+  }
+
+  function addFromPicklist() {
+    if (!picked) return
+    const proc = picks.procedures.find(p => p.cpt === picked)
+    if (proc && !items.some(i => i.cpt === proc.cpt)) {
+      setItems([...items, proc])
+    }
+    setPicked('')
+  }
+  function addCustom() {
+    setItems([...items, { cpt: '', description: 'Custom procedure — edit me' }])
+  }
+
+  return (
+    <div className="space-y-1">
+      <ul className="space-y-1">
+        {items.map((p, i) => (
+          <li key={i} className="flex items-center gap-1">
+            <input className="input text-[10px] w-16 font-mono" value={p.cpt || ''}
+                   onChange={e => {
+                     const next = [...items]; next[i] = { ...p, cpt: e.target.value }; setItems(next)
+                   }} placeholder="CPT" />
+            <input className="input text-[11px] flex-1" value={p.description || ''}
+                   onChange={e => {
+                     const next = [...items]; next[i] = { ...p, description: e.target.value }; setItems(next)
+                   }} />
+            <button className="text-red-600 hover:bg-red-50 rounded p-0.5"
+                    onClick={() => setItems(items.filter((_, ix) => ix !== i))} title="Remove">
+              <X size={10} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center gap-1">
+        <select className="input text-[10px] flex-1" value={picked} onChange={e => setPicked(e.target.value)}>
+          <option value="">+ Add from list…</option>
+          {picks.procedures.map(p => (
+            <option key={p.cpt} value={p.cpt}>{p.cpt} — {p.description}</option>
+          ))}
+        </select>
+        <button className="text-[10px] btn-secondary px-1.5 py-0.5" onClick={addFromPicklist} disabled={!picked}>Add</button>
+      </div>
+      <button className="text-[10px] text-plum-700 hover:underline" onClick={addCustom}>+ Custom</button>
+      <div className="flex gap-1 pt-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => { onPatch({ procedures: items }); setEditing(false) }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function DiagnosisListEditor({ s, onPatch }) {
+  const picks = usePicklists()
+  const [editing, setEditing] = useState(false)
+  const [items, setItems] = useState(s.diagnoses || [])
+  const [picked, setPicked] = useState('')
+
+  if (!editing) {
+    return (
+      <div className="flex items-start gap-2">
+        <div className="flex-1">
+          {(s.diagnoses || []).length > 0
+            ? (s.diagnoses || []).map((d, i) => (
+                <div key={i}>
+                  {d.description}
+                  {d.icd && <span className="text-gray-500 ml-1">{d.icd}</span>}
+                </div>
+              ))
+            : <span className="text-gray-400">—</span>}
+        </div>
+        <button className="text-[10px] text-plum-700 hover:underline shrink-0" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    )
+  }
+
+  function addFromPicklist() {
+    if (!picked) return
+    const d = picks.diagnoses.find(x => x.icd === picked)
+    if (d && !items.some(i => i.icd === d.icd)) {
+      setItems([...items, d])
+    }
+    setPicked('')
+  }
+  function addCustom() {
+    setItems([...items, { icd: '', description: 'Custom dx — edit me' }])
+  }
+
+  return (
+    <div className="space-y-1">
+      <ul className="space-y-1">
+        {items.map((d, i) => (
+          <li key={i} className="flex items-center gap-1">
+            <input className="input text-[10px] w-20 font-mono" value={d.icd || ''}
+                   onChange={e => {
+                     const next = [...items]; next[i] = { ...d, icd: e.target.value }; setItems(next)
+                   }} placeholder="ICD" />
+            <input className="input text-[11px] flex-1" value={d.description || ''}
+                   onChange={e => {
+                     const next = [...items]; next[i] = { ...d, description: e.target.value }; setItems(next)
+                   }} />
+            <button className="text-red-600 hover:bg-red-50 rounded p-0.5"
+                    onClick={() => setItems(items.filter((_, ix) => ix !== i))} title="Remove">
+              <X size={10} />
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-center gap-1">
+        <select className="input text-[10px] flex-1" value={picked} onChange={e => setPicked(e.target.value)}>
+          <option value="">+ Add from list…</option>
+          {picks.diagnoses.map(d => (
+            <option key={d.icd} value={d.icd}>{d.icd} — {d.description}</option>
+          ))}
+        </select>
+        <button className="text-[10px] btn-secondary px-1.5 py-0.5" onClick={addFromPicklist} disabled={!picked}>Add</button>
+      </div>
+      <button className="text-[10px] text-plum-700 hover:underline" onClick={addCustom}>+ Custom</button>
+      <div className="flex gap-1 pt-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => { onPatch({ diagnoses: items }); setEditing(false) }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function PreopDateCell({ s, onPatch }) {
+  const [editing, setEditing] = useState(false)
+  const [date, setDate] = useState(s.preop_date || '')
+  if (!editing) {
+    return (
+      <div className="flex items-baseline gap-2">
+        <span>
+          {s.preop_date
+            ? <span className="inline-flex items-center gap-1">
+                {fmt.date(s.preop_date)}
+                {s.preop_needs_repeat && (
+                  <span className="text-[9px] font-semibold uppercase bg-red-100 text-red-700 px-1 py-0.5 rounded">
+                    needs repeat (&gt;180d)
+                  </span>
+                )}
+              </span>
+            : <span className="text-gray-400">—</span>}
+        </span>
+        <button className="text-[10px] text-plum-700 hover:underline" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1">
+      <input type="date" className="input text-[12px] w-full" value={date} onChange={e => setDate(e.target.value)} />
+      <div className="flex gap-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => { onPatch({ preop_date: date || null }); setEditing(false) }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+const CLASS_DEFAULT_MINUTES = {
+  robotic_180: 180,
+  robotic_240: 240,
+  major:       180,
+  minor:       90,
+  office:      60,
+}
+
+const PROC_CLASS_OPTIONS = [
+  { v: '',            l: '—' },
+  { v: 'robotic_180', l: 'Robotic 180min' },
+  { v: 'robotic_240', l: 'Robotic 240min' },
+  { v: 'major',       l: 'Major (CRMC) — 180min' },
+  { v: 'minor',       l: 'Minor — 90min' },
+  { v: 'office',      l: 'Office — 60min' },
+]
+
+
+function EstimatedTimeCell({ s, onPatch }) {
+  const [editing, setEditing] = useState(false)
+  const [mins, setMins] = useState(s.estimated_minutes || '')
+  const [cls, setCls] = useState(s.procedure_classification || '')
+
+  function changeClass(newCls) {
+    setCls(newCls)
+    const def = CLASS_DEFAULT_MINUTES[newCls]
+    // Auto-fill default mins if blank OR matched the prior class default
+    const priorDef = CLASS_DEFAULT_MINUTES[cls]
+    if (def && (!mins || Number(mins) === priorDef)) {
+      setMins(String(def))
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-baseline gap-2">
+        <span>
+          {s.estimated_minutes
+            ? <>{s.estimated_minutes} min{s.procedure_classification && ` · ${s.procedure_classification.replace('_', ' ')}`}</>
+            : <span className="text-gray-400">—</span>}
+        </span>
+        <button className="text-[10px] text-plum-700 hover:underline" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-1">
+        <input type="number" className="input text-[12px] w-20" value={mins}
+               onChange={e => setMins(e.target.value)} placeholder="min" />
+        <select className="input text-[12px] flex-1" value={cls}
+                onChange={e => changeClass(e.target.value)}>
+          {PROC_CLASS_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}
+        </select>
+      </div>
+      <div className="flex gap-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => {
+                  onPatch({
+                    estimated_minutes: mins === '' ? null : Number(mins),
+                    procedure_classification: cls || null,
+                  })
+                  setEditing(false)
+                }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function ClearanceCell({ s, onPatch }) {
+  const [editing, setEditing] = useState(false)
+  const [required, setRequired] = useState(!!s.clearance_required)
+  const [status, setStatus] = useState(s.clearance_status || 'not_required')
+  if (!editing) {
+    return (
+      <div className="flex items-baseline gap-2">
+        <span>
+          {s.clearance_required
+            ? <span className="text-amber-700 capitalize">{(s.clearance_status || 'required').replace(/_/g, ' ')}</span>
+            : <span className="text-gray-500">not required</span>}
+        </span>
+        <button className="text-[10px] text-plum-700 hover:underline" onClick={() => setEditing(true)}>edit</button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1">
+      <label className="flex items-center gap-1 text-[11px]">
+        <input type="checkbox" checked={required} onChange={e => setRequired(e.target.checked)} />
+        Clearance required
+      </label>
+      {required && (
+        <select className="input text-[12px] w-full" value={status} onChange={e => setStatus(e.target.value)}>
+          <option value="required">required</option>
+          <option value="request_sent">request sent</option>
+          <option value="received">received</option>
+          <option value="sent_to_hospital">sent to hospital</option>
+          <option value="completed">completed</option>
+        </select>
+      )}
+      <div className="flex gap-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => {
+                  onPatch({
+                    clearance_required: required,
+                    clearance_status: required ? status : 'not_required',
+                  })
+                  setEditing(false)
+                }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function AuthSummaryCell({ s }) {
+  // Auth is edited inside the Prior Auth milestone card. Surface a summary here.
+  return (
+    <div>
+      <span className="capitalize">{s.auth_status?.replace(/_/g, ' ') || '—'}</span>
+      {s.auth_number && <div className="text-[10px] text-gray-500 font-mono">{s.auth_number}</div>}
+      <div className="text-[9px] text-gray-400 italic">edit on Prior Auth card below</div>
+    </div>
+  )
+}
+
+
+function PtResponsibilityCell({ s }) {
+  return (
+    <div>
+      {s.patient_responsibility != null
+        ? <span className="font-mono">${s.patient_responsibility}</span>
+        : <span className="text-gray-400">TBD</span>}
+      {s.amount_paid && Number(s.amount_paid) > 0 && (
+        <div className="text-[10px] text-green-700">paid ${s.amount_paid}</div>
+      )}
+      <div className="text-[9px] text-gray-400 italic">edit on Benefits card below</div>
+    </div>
+  )
+}
+
+
+function ContactCell({ s, onPatch }) {
+  const [editing, setEditing] = useState(false)
+  const [chart, setChart] = useState(s.chart_number || '')
+  const [phone, setPhone] = useState(s.phone || '')
+  const [email, setEmail] = useState(s.email || '')
+  if (!editing) {
+    return (
+      <div>
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono">{s.chart_number || <span className="text-gray-400">—</span>}</span>
+          <button className="text-[10px] text-plum-700 hover:underline" onClick={() => setEditing(true)}>edit</button>
+        </div>
+        {s.phone && <div className="text-[10px] font-mono text-gray-600">{s.phone}</div>}
+        {s.email && <div className="text-[10px] text-gray-600 truncate">{s.email}</div>}
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1">
+      <input className="input text-[11px] w-full font-mono" placeholder="Chart #"
+             value={chart} onChange={e => setChart(e.target.value)} />
+      <input className="input text-[11px] w-full font-mono" placeholder="Phone"
+             value={phone} onChange={e => setPhone(e.target.value)} />
+      <input className="input text-[11px] w-full" placeholder="Email"
+             value={email} onChange={e => setEmail(e.target.value)} />
+      <div className="flex gap-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => {
+                  onPatch({ chart_number: chart || null, phone: phone || null, email: email || null })
+                  setEditing(false)
+                }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function OrderPdfCell({ surgery }) {
+  const qc = useQueryClient()
+  const [file, setFile] = useState(null)
+  const [error, setError] = useState(null)
+
+  const { data } = useQuery({
+    queryKey: ['surgery-files', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/files`).then(r => r.data),
+  })
+  const orderFiles = (data?.files || []).filter(f => f.kind === 'order')
+
+  const upload = useMutation({
+    mutationFn: () => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return api.post(`/surgery/${surgery.id}/files?kind=order`, fd,
+                       { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+    },
+    onSuccess: () => {
+      setFile(null); setError(null)
+      qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+    },
+    onError: (e) => setError(e?.response?.data?.detail || 'Upload failed'),
+  })
+
+  return (
+    <div className="space-y-1">
+      {orderFiles.length > 0 ? (
+        <div className="space-y-0.5">
+          {orderFiles.map(f => (
+            <a key={f.id}
+               href={`/api${f.download_url.replace(/^\/api/, '')}`}
+               download
+               className="text-plum-700 hover:underline text-[11px] flex items-center gap-1 truncate">
+              📎 {f.filename}
+            </a>
+          ))}
+        </div>
+      ) : (
+        <span className="text-gray-400 text-[11px]">no order on file</span>
+      )}
+      <label className="text-[10px] text-plum-700 hover:underline cursor-pointer inline-flex items-center gap-1 mt-1">
+        <Upload size={10} />
+        {file ? file.name.slice(0, 18) + '…' : 'add / replace'}
+        <input type="file" accept="application/pdf" className="hidden"
+               onChange={e => { setFile(e.target.files?.[0] || null); setError(null) }} />
+      </label>
+      {file && (
+        <button type="button"
+                className="ml-1 text-[10px] btn-primary px-2 py-0.5"
+                onClick={() => upload.mutate()}
+                disabled={upload.isPending}>
+          {upload.isPending ? 'Uploading…' : 'Upload'}
+        </button>
+      )}
+      {error && <div className="text-[10px] text-red-700">{error}</div>}
+    </div>
+  )
+}
+
+
+function AddressCell({ s, onPatch }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState({
+    address_street: s.address_street || '',
+    address_city: s.address_city || '',
+    address_state: s.address_state || '',
+    address_zip: s.address_zip || '',
+  })
+  const hasAddress = s.address_street || s.address_city || s.address_zip
+  const formatted = [
+    s.address_street,
+    [s.address_city, s.address_state, s.address_zip].filter(Boolean).join(', ').replace(', , ', ', '),
+  ].filter(Boolean).join(' · ')
+  if (!editing) {
+    return (
+      <div className="flex items-baseline gap-2">
+        <span>{hasAddress ? formatted : <span className="text-amber-700 italic">missing — needed for boarding slip</span>}</span>
+        <button className="text-[10px] text-plum-700 hover:underline"
+                onClick={() => setEditing(true)}>edit</button>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-1 mt-1">
+      <input className="input text-[12px] w-full" placeholder="Street"
+             value={draft.address_street}
+             onChange={e => setDraft({ ...draft, address_street: e.target.value })} />
+      <div className="grid grid-cols-3 gap-1">
+        <input className="input text-[12px]" placeholder="City"
+               value={draft.address_city}
+               onChange={e => setDraft({ ...draft, address_city: e.target.value })} />
+        <input className="input text-[12px]" placeholder="ST" maxLength={2}
+               value={draft.address_state}
+               onChange={e => setDraft({ ...draft, address_state: e.target.value.toUpperCase() })} />
+        <input className="input text-[12px]" placeholder="ZIP"
+               value={draft.address_zip}
+               onChange={e => setDraft({ ...draft, address_zip: e.target.value })} />
+      </div>
+      <div className="flex gap-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => { onPatch(draft); setEditing(false) }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline"
+                onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function SurgeryDateCell({ s }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const hasDate = !!s.scheduled_date
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {hasDate ? (
+        <span className="font-medium">
+          {fmt.date(s.scheduled_date)}
+          {s.scheduled_start_time && ` · ${s.scheduled_start_time.slice(0, 5)}`}
+        </span>
+      ) : (
+        <span className="text-gray-400">not yet picked</span>
+      )}
+      <button type="button"
+              onClick={() => setPickerOpen(true)}
+              className="text-[10px] text-plum-700 hover:underline flex items-center gap-0.5">
+        {hasDate ? <><RotateCcw size={10}/> reschedule</> : <><Edit3 size={10}/> pick</>}
+      </button>
+      {(s.reschedule_count || 0) > 0 && (
+        <span className="text-[10px] text-amber-700"
+              title={`Last by ${s.last_rescheduled_by || 'unknown'}`}>
+          rescheduled {s.reschedule_count}×
+        </span>
+      )}
+      {pickerOpen && (
+        <SchedulerDatePicker surgery={s} onClose={() => setPickerOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+
+function SchedulerDatePicker({ surgery, onClose }) {
+  const qc = useQueryClient()
+  const [selected, setSelected] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['surgery-available-slots', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/available-slots`).then(r => r.data),
+    staleTime: 30_000,
+  })
+
+  async function pick() {
+    if (!selected) return
+    setSubmitting(true); setError(null)
+    try {
+      await api.post(`/surgery/${surgery.id}/pick-date`,
+                     { block_day_id: selected.block_day_id })
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['surgery-available-slots', surgery.id] })
+      onClose()
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Could not book that date.')
+      setSubmitting(false)
+    }
+  }
+
+  const days = data?.days || []
+  const byFacility = {}
+  for (const d of days) {
+    if (!byFacility[d.facility]) byFacility[d.facility] = []
+    byFacility[d.facility].push(d)
+  }
+  const currentBlockDayId = data?.current_block_day_id
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-xl bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
+          <div>
+            <h2 className="font-serif font-semibold text-ink text-[16px]">
+              {surgery.scheduled_date ? 'Reschedule' : 'Pick a date'} — {surgery.patient_name}
+            </h2>
+            <div className="text-muted text-[11px] mt-0.5">
+              {(surgery.procedures || []).map(p => p.description || p).join(', ')}
+              {surgery.scheduled_date && (
+                <> · currently <strong>{fmt.date(surgery.scheduled_date)}</strong></>
+              )}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+        </div>
+
+        <div className="p-5">
+          {isLoading && <div className="text-gray-500 text-sm">Loading available dates…</div>}
+          {!isLoading && days.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded text-sm">
+              No openings in the next 6 months for this surgery's procedure / facility combination.
+            </div>
+          )}
+          {!isLoading && Object.entries(byFacility).map(([fac, list]) => (
+            <div key={fac} className="mb-4">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
+                {FACILITY_SHORT[fac] || fac}
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {list.map(d => {
+                  const isCurrent = d.block_day_id === currentBlockDayId
+                  const isSelected = selected?.block_day_id === d.block_day_id
+                  return (
+                    <button key={d.block_day_id}
+                            type="button"
+                            onClick={() => !isCurrent && setSelected(d)}
+                            disabled={isCurrent}
+                            className={`text-left px-2 py-1.5 rounded border text-[12px]
+                              ${isSelected ? 'border-plum-600 bg-plum-50' :
+                                isCurrent  ? 'border-gray-200 bg-gray-100 opacity-60 cursor-not-allowed' :
+                                'border-border-subtle hover:border-plum-300'}`}>
+                      <div className="font-medium">
+                        {d.weekday}, {fmt.date(d.block_date)}
+                      </div>
+                      <div className="text-[10px] text-gray-600">
+                        {d.proposed_start_time} · {d.duration_minutes}min
+                        {d.cases_already_booked > 0 && ` · ${d.cases_already_booked} booked`}
+                        {isCurrent && ' · current'}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-800 text-sm p-2 rounded mt-3">
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 bg-white border-t border-border-subtle px-5 py-3 flex justify-end gap-2">
+          <button type="button"
+                  onClick={onClose}
+                  className="text-sm text-muted hover:underline">
+            Cancel
+          </button>
+          <button type="button"
+                  onClick={pick}
+                  disabled={!selected || submitting}
+                  className="btn-primary text-sm">
+            {submitting ? 'Booking…' :
+              selected
+                ? `${surgery.scheduled_date ? 'Reschedule' : 'Book'} to ${fmt.date(selected.block_date)}`
+                : 'Pick a date above'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+const FACILITY_OPTIONS = [
+  { v: 'medstar', l: 'MedStar' },
+  { v: 'crmc',    l: 'CRMC' },
+  { v: 'office',  l: 'Office' },
+]
+
+
+function FacilityCell({ s, onPatch }) {
+  const [editing, setEditing] = useState(false)
+  const [selected, setSelected] = useState(s.selected_facility || '')
+  const [eligible, setEligible] = useState(new Set(s.eligible_facilities || []))
+
+  if (!editing) {
+    return (
+      <div>
+        <div className="flex items-baseline gap-2">
+          {s.selected_facility ? (
+            <span>{FACILITY_LABEL[s.selected_facility]}</span>
+          ) : (s.eligible_facilities || []).length > 1 ? (
+            <span className="text-amber-700">
+              {s.eligible_facilities.map(f => FACILITY_LABEL[f] || f).join(' OR ')}
+            </span>
+          ) : (s.eligible_facilities || []).length === 1 ? (
+            <span>{FACILITY_LABEL[s.eligible_facilities[0]] || s.eligible_facilities[0]}</span>
+          ) : (
+            <span className="text-gray-400">—</span>
+          )}
+          <button className="text-[10px] text-plum-700 hover:underline"
+                  onClick={() => setEditing(true)}>edit</button>
+        </div>
+        {!s.selected_facility && (s.eligible_facilities || []).length > 1 && (
+          <div className="text-[10px] text-amber-600 italic">patient to choose</div>
+        )}
+      </div>
+    )
+  }
+
+  function toggleEligible(v) {
+    const next = new Set(eligible)
+    if (next.has(v)) next.delete(v); else next.add(v)
+    setEligible(next)
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500">Selected facility</div>
+      <select className="input text-[12px] w-full" value={selected}
+              onChange={e => setSelected(e.target.value)}>
+        <option value="">(not yet selected)</option>
+        {FACILITY_OPTIONS.map(f => <option key={f.v} value={f.v}>{f.l}</option>)}
+      </select>
+      <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-1">Eligible facilities</div>
+      <div className="flex flex-wrap gap-1">
+        {FACILITY_OPTIONS.map(f => {
+          const on = eligible.has(f.v)
+          return (
+            <button key={f.v} type="button"
+                    onClick={() => toggleEligible(f.v)}
+                    className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                      on ? 'bg-plum-100 border-plum-300 text-plum-800'
+                         : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}>
+              {f.l}
+            </button>
+          )
+        })}
+      </div>
+      <div className="flex gap-1 pt-1">
+        <button className="btn-primary text-[10px]"
+                onClick={() => {
+                  const elig = [...eligible]
+                  // Selected must be in eligibles if set
+                  if (selected && !elig.includes(selected)) elig.push(selected)
+                  onPatch({
+                    selected_facility: selected || null,
+                    eligible_facilities: elig,
+                  })
+                  setEditing(false)
+                }}>Save</button>
+        <button className="text-[10px] text-muted hover:underline"
+                onClick={() => setEditing(false)}>Cancel</button>
+      </div>
+    </div>
+  )
+}
+
+
+function MilestoneRow({ m, surgery }) {
+  const qc = useQueryClient()
+  const [showNotes, setShowNotes] = useState(false)
+  const [notes, setNotes] = useState(m.notes || '')
+
+  const action = useMutation({
+    mutationFn: ({ act, body }) =>
+      api.post(`/surgery/${surgery.id}/milestones/${m.kind}/${act}`, body || {}).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      setShowNotes(false)
+    },
+  })
+
+  const isDone = m.status === 'done'
+  const isInProgress = m.status === 'in_progress'
+  const isOpen = !['done', 'skipped', 'not_applicable'].includes(m.status)
+
+  return (
+    <li className={`p-2 rounded border ${
+      isDone ? 'bg-green-50/40 border-green-100'
+      : isInProgress ? 'bg-amber-50/30 border-amber-100'
+      : m.status === 'not_applicable' ? 'bg-gray-50 border-gray-100 opacity-60'
+      : 'bg-white border-gray-100'
+    }`}>
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0 w-6 text-right text-xs text-gray-400">{m.position}.</div>
+        <div className="mt-0.5 shrink-0">{MILESTONE_ICON[m.status] || MILESTONE_ICON.pending}</div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className={`text-sm font-medium ${m.status === 'not_applicable' ? 'line-through' : ''}`}>
+              {m.title}
+            </span>
+            <span className="text-[10px] text-gray-500 capitalize">{m.status.replace(/_/g, ' ')}</span>
+            {m.expected_duration_days && (
+              <span className="text-[10px] text-gray-400">expected within {m.expected_duration_days}d</span>
+            )}
+          </div>
+          {m.completed_at && (
+            <div className="text-[10px] text-gray-500 mt-0.5">
+              {isDone ? '✓ Completed' : 'Updated'} {fmt.date(m.completed_at?.slice(0, 10))}
+              {m.completed_by && ` by ${m.completed_by.replace('system:', '')}`}
+            </div>
+          )}
+          {m.notes && !showNotes && (
+            <div className="text-[11px] text-gray-700 bg-amber-50/50 px-2 py-1 rounded mt-1">{m.notes}</div>
+          )}
+
+          {showNotes && (
+            <div className="mt-2 space-y-1">
+              <textarea
+                className="input text-xs w-full"
+                rows={2}
+                placeholder="Notes for this milestone (optional)"
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+              />
+              <div className="flex gap-1">
+                <button className="btn-primary text-[11px]"
+                        onClick={() => action.mutate({ act: 'done', body: { notes } })}
+                        disabled={action.isPending}>
+                  Save & mark done
+                </button>
+                <button className="btn-secondary text-[11px]"
+                        onClick={() => setShowNotes(false)}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {!showNotes && (
+          <div className="shrink-0 flex items-center gap-1">
+            {isOpen && !isInProgress && (
+              <button title="Mark in progress"
+                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-amber-300 text-gray-600"
+                      onClick={() => action.mutate({ act: 'start' })}
+                      disabled={action.isPending}>
+                <Clock size={11} />
+              </button>
+            )}
+            {isOpen && (
+              <>
+                <button title="Mark done"
+                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-green-300 hover:bg-green-50 text-green-700 flex items-center gap-1"
+                        onClick={() => action.mutate({ act: 'done' })}
+                        disabled={action.isPending}>
+                  <Check size={11} /> Done
+                </button>
+                <button title="Add notes & mark done"
+                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600"
+                        onClick={() => setShowNotes(true)}>
+                  <Edit3 size={11} />
+                </button>
+                <button title="Skip (with reason in notes)"
+                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
+                        onClick={() => action.mutate({ act: 'skip' })}
+                        disabled={action.isPending}>
+                  <SkipForward size={11} />
+                </button>
+                <button title="Mark not applicable for this patient"
+                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
+                        onClick={() => action.mutate({ act: 'not_applicable' })}
+                        disabled={action.isPending}>
+                  N/A
+                </button>
+              </>
+            )}
+            {!isOpen && (
+              <button title="Reopen"
+                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500 flex items-center gap-1"
+                      onClick={() => action.mutate({ act: 'reopen' })}
+                      disabled={action.isPending}>
+                <RotateCcw size={11} /> Reopen
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
+  )
+}
+
+
+/* MilestoneCard wraps the per-milestone status row in its own card and
+   renders the milestone-specific tool inline (calculator, drafter,
+   uploader, etc.). Returns null content for milestones that need no tool. */
+function MilestoneCard({ m, surgery }) {
+  const body = milestoneInlineContent(m, surgery)
+  // Completed (done / skipped / not_applicable) milestones collapse by default;
+  // open milestones stay expanded. User can override with the chevron.
+  const isResolved = ['done', 'skipped', 'not_applicable'].includes(m.status)
+  const [open, setOpen] = useState(!isResolved)
+  return (
+    <div className="card !p-3">
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          {/* Header (status icon, title, action buttons) — reuses MilestoneRow */}
+          <ol className="space-y-2"><MilestoneRow m={m} surgery={surgery} /></ol>
+        </div>
+        {body && (
+          <button type="button"
+                  onClick={() => setOpen(v => !v)}
+                  className="shrink-0 text-gray-400 hover:text-plum-700 p-1 -mt-1"
+                  title={open ? 'Collapse' : 'Expand'}>
+            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+        )}
+      </div>
+      {body && open && (
+        <div className="mt-3 border-t border-gray-100 pt-3">{body}</div>
+      )}
+    </div>
+  )
+}
+
+function milestoneInlineContent(m, surgery) {
+  switch (m.kind) {
+    case 'benefits_determined':         return <BenefitsPanel surgery={surgery} />
+    case 'prior_auth':                  return <PriorAuthCardBody surgery={surgery} />
+    case 'klara_scheduling':            return <KlaraPanel surgery={surgery} />
+    case 'patient_picks_date':          return <PatientPicksDateBody surgery={surgery} />
+    case 'post_op_appts_scheduled':     return <PostOpApptsCardBody surgery={surgery} />
+    case 'assistant_surgeon':           return <AssistantSurgeonCardBody surgery={surgery} />
+    case 'consent':                     return <ConsentPanel surgery={surgery} />
+    case 'surgery_confirmed_hospital':  return <SurgeryConfirmedBody surgery={surgery} />
+    case 'labs_to_hospital':            return <LabsCardBody surgery={surgery} />
+    case 'op_notes':                    return <FilesPanel surgery={surgery} kindFilter="op_notes"
+                                                            label="Operative report" />
+    case 'path_report':                 return <FilesPanel surgery={surgery} kindFilter="path_report"
+                                                            label="Pathology report" />
+    case 'post_op_call':                return <PostOpCallCardBody surgery={surgery} milestone={m} />
+    case 'surgery_billed':              return <SurgeryBilledCardBody surgery={surgery} />
+    default:                            return null
+  }
+}
+
+
+// ─── Per-milestone inline card bodies ─────────────────────────────
+
+
+function PatientPicksDateBody({ surgery }) {
+  const qc = useQueryClient()
+  const modmedDone = !!surgery.scheduled_in_modmed_at
+  const medsDone = !!surgery.office_meds_pickup_confirmed_at
+  const isOffice = surgery.selected_facility === 'office'
+
+  const toggleModmed = useMutation({
+    mutationFn: (confirmed) => api.post(`/surgery/${surgery.id}/modmed-scheduled`,
+                                          { confirmed }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+  })
+  const toggleMeds = useMutation({
+    mutationFn: (confirmed) => api.post(`/surgery/${surgery.id}/office-meds-pickup`,
+                                          { confirmed }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+  })
+
+  if (!surgery.scheduled_date) {
+    return (
+      <div className="text-[12px] text-amber-700">
+        Date not yet picked. Patient can pick via Klara link, or use the
+        "pick" link next to Surgery date above.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2 text-[12px] text-gray-700">
+      <div>
+        <strong>Picked:</strong> {fmt.date(surgery.scheduled_date)}
+        {surgery.scheduled_start_time && ` · ${surgery.scheduled_start_time.slice(0,5)}`}
+        {surgery.selected_facility && ` · ${FACILITY_SHORT[surgery.selected_facility] || surgery.selected_facility}`}
+      </div>
+      {surgery.reschedule_count > 0 && (
+        <div className="text-amber-700 text-[11px]">
+          Rescheduled {surgery.reschedule_count}× (last by {surgery.last_rescheduled_by || '—'})
+        </div>
+      )}
+
+      <label className="flex items-start gap-2 text-[12px] cursor-pointer">
+        <input type="checkbox"
+               className="mt-0.5"
+               checked={modmedDone}
+               onChange={(e) => toggleModmed.mutate(e.target.checked)} />
+        <div>
+          <div className="font-medium text-gray-800">Added appointment to ModMed schedule</div>
+          {modmedDone && (
+            <div className="text-[11px] text-green-700">
+              ✓ {fmt.date(surgery.scheduled_in_modmed_at?.slice(0,10))}
+              {surgery.scheduled_in_modmed_by && ` by ${surgery.scheduled_in_modmed_by.split('@')[0]}`}
+            </div>
+          )}
+        </div>
+      </label>
+
+      {isOffice && (
+        <label className="flex items-start gap-2 text-[12px] cursor-pointer bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+          <input type="checkbox"
+                 className="mt-0.5"
+                 checked={medsDone}
+                 onChange={(e) => toggleMeds.mutate(e.target.checked)} />
+          <div>
+            <div className="font-medium text-amber-900">
+              Remind patient to pick up their procedure meds
+            </div>
+            <div className="text-[10px] text-amber-800">
+              Office-procedure patients must have their meds in-hand before the visit.
+            </div>
+            {medsDone && (
+              <div className="text-[11px] text-green-700 mt-0.5">
+                ✓ Confirmed {fmt.date(surgery.office_meds_pickup_confirmed_at?.slice(0,10))}
+                {surgery.office_meds_pickup_confirmed_by && ` by ${surgery.office_meds_pickup_confirmed_by.split('@')[0]}`}
+              </div>
+            )}
+          </div>
+        </label>
+      )}
+
+      <div className="text-[11px] text-gray-500">
+        Use the "reschedule" link next to Surgery date above to change the date.
+      </div>
+    </div>
+  )
+}
+
+
+function SurgeryConfirmedBody({ surgery }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState({
+    scheduled_date: surgery.scheduled_date || '',
+    scheduled_start_time: surgery.scheduled_start_time?.slice(0, 5) || '',
+    selected_facility: surgery.selected_facility || '',
+  })
+
+  const patch = useMutation({
+    mutationFn: () => api.patch(`/surgery/${surgery.id}`, draft).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      setEditing(false)
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[12px] text-gray-700">
+        Once a date is set and the boarding slip is sent, confirm with the
+        hospital and check this off. Use the manual override below only if
+        you need to change date/time/place outside the date-picker flow.
+      </div>
+
+      <BoardingSlipPanel surgery={surgery} />
+
+      <div className="border border-gray-200 rounded p-2">
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">
+            Manual override (date / time / facility)
+          </div>
+          {!editing && (
+            <button className="text-[11px] text-plum-700 hover:underline"
+                    onClick={() => setEditing(true)}>
+              <Edit3 size={10} className="inline" /> Edit
+            </button>
+          )}
+        </div>
+        {!editing ? (
+          <div className="text-[12px] text-gray-700">
+            {surgery.scheduled_date || '—'} · {surgery.scheduled_start_time?.slice(0,5) || '—'} ·
+            {' '}{FACILITY_SHORT[surgery.selected_facility] || surgery.selected_facility || '—'}
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2 text-[11px]">
+            <div>
+              <div className="text-[9px] uppercase text-gray-500">Date</div>
+              <input type="date" className="input text-[12px] w-full"
+                     value={draft.scheduled_date}
+                     onChange={e => setDraft({ ...draft, scheduled_date: e.target.value })} />
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-gray-500">Start time</div>
+              <input type="time" className="input text-[12px] w-full"
+                     value={draft.scheduled_start_time}
+                     onChange={e => setDraft({ ...draft, scheduled_start_time: e.target.value })} />
+            </div>
+            <div>
+              <div className="text-[9px] uppercase text-gray-500">Facility</div>
+              <select className="input text-[12px] w-full"
+                      value={draft.selected_facility}
+                      onChange={e => setDraft({ ...draft, selected_facility: e.target.value })}>
+                <option value="">—</option>
+                <option value="medstar">MedStar</option>
+                <option value="crmc">CRMC</option>
+                <option value="office">Office</option>
+              </select>
+            </div>
+            <div className="col-span-3 flex gap-1 mt-1">
+              <button className="btn-primary text-[11px]"
+                      onClick={() => patch.mutate()}
+                      disabled={patch.isPending}>
+                {patch.isPending ? 'Saving…' : 'Save override'}
+              </button>
+              <button className="text-[11px] text-muted hover:underline"
+                      onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <span className="text-[10px] text-amber-700 ml-2 self-center">
+                ⚠ Manual override doesn't release/claim block-schedule slots.
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function PostOpApptsCardBody({ surgery }) {
+  const qc = useQueryClient()
+  const visits = surgery.post_op_schedule_required || []
+  const [first, setFirst] = useState(surgery.post_op_appt_date || '')
+  const [second, setSecond] = useState(surgery.post_op_appt_2nd_date || '')
+
+  // Suggested dates = surgery date + days_post_op
+  const suggested = useMemo(() => {
+    if (!surgery.scheduled_date) return {}
+    const base = new Date(surgery.scheduled_date + 'T00:00:00')
+    const out = {}
+    visits.forEach((v, i) => {
+      const d = new Date(base)
+      d.setDate(d.getDate() + v.days_post_op)
+      const iso = d.toISOString().slice(0, 10)
+      out[i] = iso
+    })
+    return out
+  }, [surgery.scheduled_date, visits])
+
+  const save = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/post-op-appts`,
+                                { first_date: first || null,
+                                  second_date: second || null })
+                          .then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  if (!surgery.scheduled_date) {
+    return (
+      <div className="text-[12px] text-amber-700">
+        Pick a surgery date first — post-op appointments are calculated from it.
+      </div>
+    )
+  }
+
+  if (visits.length === 0) {
+    return (
+      <div className="space-y-2 text-[12px] text-gray-700">
+        <div className="text-amber-700">
+          No specific post-op schedule rule matched this surgery's procedures.
+          Enter the follow-up date manually:
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">
+            Follow-up appointment
+          </div>
+          <input type="date" className="input text-[12px]"
+                 value={first}
+                 onChange={e => setFirst(e.target.value)} />
+        </div>
+        <button className="btn-primary text-[11px]"
+                onClick={() => save.mutate()}
+                disabled={save.isPending}>
+          {save.isPending ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+    )
+  }
+
+  const allFilled = visits.length === 1
+    ? !!first
+    : !!first && !!second
+
+  function applySuggested() {
+    if (visits[0]) setFirst(suggested[0] || '')
+    if (visits[1]) setSecond(suggested[1] || '')
+  }
+
+  return (
+    <div className="space-y-2 text-[12px] text-gray-700">
+      <div className="text-[11px] text-gray-600">
+        Schedule the patient's post-op appointment{visits.length > 1 ? 's' : ''} per practice
+        rules. Both dates must be entered to mark this milestone done.
+      </div>
+
+      <div className="space-y-1.5">
+        {visits.map((v, i) => {
+          const value = i === 0 ? first : second
+          const setValue = i === 0 ? setFirst : setSecond
+          return (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-700 w-32 shrink-0">{v.label}:</span>
+              <input type="date" className="input text-[12px]"
+                     value={value}
+                     onChange={e => setValue(e.target.value)} />
+              {suggested[i] && (
+                <button type="button"
+                        className="text-[10px] text-plum-700 hover:underline"
+                        onClick={() => setValue(suggested[i])}
+                        title={`Suggested: surgery date + ${v.days_post_op} days`}>
+                  use {fmt.date(suggested[i])}
+                </button>
+              )}
+              {value && i === 0 && surgery.post_op_appt_date === value && (
+                <span className="text-[10px] text-green-700">saved</span>
+              )}
+              {value && i === 1 && surgery.post_op_appt_2nd_date === value && (
+                <span className="text-[10px] text-green-700">saved</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="flex gap-2 pt-1">
+        <button className="btn-primary text-[11px]"
+                onClick={() => save.mutate()}
+                disabled={save.isPending}>
+          {save.isPending
+            ? 'Saving…'
+            : allFilled ? 'Save & mark done' : 'Save'}
+        </button>
+        {visits.length > 0 && Object.keys(suggested).length > 0 && (
+          <button type="button"
+                  className="btn-secondary text-[11px]"
+                  onClick={applySuggested}>
+            Use suggested dates
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function AssistantSurgeonCardBody({ surgery }) {
+  const qc = useQueryClient()
+  const required = !!surgery.assistant_surgeon_required
+  const [name, setName] = useState(surgery.assistant_surgeon_name || 'Dr. Gillespie')
+  const [phone, setPhone] = useState(surgery.assistant_surgeon_office_phone || '')
+  const [fax, setFax] = useState(surgery.assistant_surgeon_office_fax || '')
+  const [apptDate, setApptDate] = useState(surgery.assistant_surgeon_appt_date || '')
+
+  function refresh() {
+    qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+    qc.invalidateQueries({ queryKey: ['surgery-list'] })
+    qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+  }
+
+  const patch = useMutation({
+    mutationFn: (body) => api.patch(`/surgery/${surgery.id}`, body).then(r => r.data),
+    onSuccess: refresh,
+  })
+  const notify = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/assistant-surgeon/notify-office`)
+                          .then(r => r.data),
+    onSuccess: refresh,
+    onError: (e) => alert(e?.response?.data?.detail || 'Notify failed'),
+  })
+  const confirmAppt = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/assistant-surgeon/confirm-appt`,
+                                { appt_date: apptDate || null }).then(r => r.data),
+    onSuccess: refresh,
+    onError: (e) => alert(e?.response?.data?.detail || 'Confirm failed'),
+  })
+  const reset = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/assistant-surgeon/reset`)
+                          .then(r => r.data),
+    onSuccess: refresh,
+  })
+
+  if (!required) {
+    return (
+      <div className="space-y-2 text-[12px]">
+        <p className="text-gray-700">
+          Most surgeries don't need an assistant surgeon. Toggle this on
+          when the primary surgeon has requested one (usually Dr. Gillespie).
+        </p>
+        <button className="btn-primary text-[11px]"
+                onClick={() => patch.mutate({ assistant_surgeon_required: true })}
+                disabled={patch.isPending}>
+          {patch.isPending ? 'Enabling…' : 'Enable assistant surgeon for this case'}
+        </button>
+      </div>
+    )
+  }
+
+  const officeNotified = !!surgery.assistant_surgeon_office_notified_at
+  const apptConfirmed = !!surgery.assistant_surgeon_appt_confirmed_at
+
+  return (
+    <div className="space-y-3 text-[12px]">
+      {/* Assistant surgeon contact */}
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Assistant surgeon</div>
+          <input className="input text-[12px] w-full" value={name}
+                 onChange={e => setName(e.target.value)} />
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Office phone</div>
+          <input className="input text-[12px] w-full font-mono" value={phone}
+                 onChange={e => setPhone(e.target.value)} placeholder="240-xxx-xxxx" />
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Office fax</div>
+          <input className="input text-[12px] w-full font-mono" value={fax}
+                 onChange={e => setFax(e.target.value)} placeholder="240-xxx-xxxx" />
+        </div>
+      </div>
+      <button className="btn-secondary text-[11px]"
+              onClick={() => patch.mutate({
+                assistant_surgeon_name: name,
+                assistant_surgeon_office_phone: phone,
+                assistant_surgeon_office_fax: fax,
+              })}
+              disabled={patch.isPending}>
+        {patch.isPending ? 'Saving…' : 'Save contact info'}
+      </button>
+
+      {/* Two-step coordination checklist */}
+      <div className="border border-gray-200 rounded p-2 space-y-2">
+        <div className="flex items-start gap-2">
+          <div className={`shrink-0 mt-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+            officeNotified ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+          }`}>{officeNotified ? '✓' : '1'}</div>
+          <div className="flex-1">
+            <div className="font-medium text-gray-800">
+              Notify {name || 'assistant surgeon'}'s office
+            </div>
+            {officeNotified ? (
+              <div className="text-[11px] text-green-700">
+                Notified {fmt.date(surgery.assistant_surgeon_office_notified_at?.slice(0,10))}
+                {surgery.assistant_surgeon_office_notified_by &&
+                  ` by ${surgery.assistant_surgeon_office_notified_by.split('@')[0]}`}
+              </div>
+            ) : (
+              <div className="text-[11px] text-gray-500">
+                Call / fax the office so they have the case on their schedule.
+              </div>
+            )}
+          </div>
+          {!officeNotified && (
+            <button className="btn-primary text-[11px]"
+                    onClick={() => notify.mutate()}
+                    disabled={notify.isPending}>
+              {notify.isPending ? '…' : 'Mark notified'}
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-start gap-2">
+          <div className={`shrink-0 mt-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
+            apptConfirmed ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
+          }`}>{apptConfirmed ? '✓' : '2'}</div>
+          <div className="flex-1">
+            <div className="font-medium text-gray-800">
+              Patient appointment with assistant surgeon
+            </div>
+            {apptConfirmed ? (
+              <div className="text-[11px] text-green-700">
+                {surgery.assistant_surgeon_appt_date && (
+                  <>Appt: {fmt.date(surgery.assistant_surgeon_appt_date)} · </>
+                )}
+                Confirmed {fmt.date(surgery.assistant_surgeon_appt_confirmed_at?.slice(0,10))}
+                {surgery.assistant_surgeon_appt_confirmed_by &&
+                  ` by ${surgery.assistant_surgeon_appt_confirmed_by.split('@')[0]}`}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mt-1">
+                <input type="date" className="input text-[11px]"
+                       value={apptDate}
+                       onChange={e => setApptDate(e.target.value)} />
+                <span className="text-[10px] text-gray-500">(optional)</span>
+              </div>
+            )}
+          </div>
+          {!apptConfirmed && (
+            <button className="btn-primary text-[11px]"
+                    onClick={() => confirmAppt.mutate()}
+                    disabled={confirmAppt.isPending}>
+              {confirmAppt.isPending ? '…' : 'Confirm scheduled'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        {(officeNotified || apptConfirmed) && (
+          <button className="text-[11px] text-muted hover:underline"
+                  onClick={() => { if (confirm('Clear both confirmations?')) reset.mutate() }}>
+            Reset confirmations
+          </button>
+        )}
+        <button className="text-[11px] text-muted hover:underline ml-auto"
+                onClick={() => patch.mutate({ assistant_surgeon_required: false })}>
+          Disable for this case
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+function PriorAuthCardBody({ surgery }) {
+  const qc = useQueryClient()
+  const [authNum, setAuthNum] = useState(surgery.auth_number || '')
+  const [authStatus, setAuthStatus] = useState(surgery.auth_status || 'not_required')
+
+  const patch = useMutation({
+    mutationFn: () => api.patch(`/surgery/${surgery.id}`,
+                                { auth_number: authNum, auth_status: authStatus }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+  })
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2 text-[11px]">
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Auth status</div>
+          <select className="input text-[12px] w-full"
+                  value={authStatus}
+                  onChange={e => setAuthStatus(e.target.value)}>
+            <option value="not_required">not required</option>
+            <option value="required">required</option>
+            <option value="sent_request">sent — request</option>
+            <option value="sent_records">sent — records</option>
+            <option value="peer_review">peer review</option>
+            <option value="approved">approved</option>
+            <option value="denied">denied</option>
+            <option value="tbd">TBD</option>
+            <option value="completed">completed</option>
+          </select>
+        </div>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Auth / reference #</div>
+          <input className="input text-[12px] w-full font-mono"
+                 value={authNum}
+                 onChange={e => setAuthNum(e.target.value)}
+                 placeholder="e.g. AUTH-2026-1234" />
+        </div>
+      </div>
+      <button className="btn-primary text-[11px]"
+              onClick={() => patch.mutate()}
+              disabled={patch.isPending}>
+        {patch.isPending ? 'Saving…' : 'Save auth info'}
+      </button>
+
+      <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior auth response" />
+    </div>
+  )
+}
+
+
+function LabsCardBody({ surgery }) {
+  const FACILITY_FAX = {
+    medstar: 'TODO — set MedStar pre-op labs fax in practice config',
+    crmc:    'TODO — set CRMC pre-op labs fax in practice config',
+    office:  '— (labs sent in-office; ModMed labels)',
+  }
+  const facility = surgery.selected_facility
+  const fax = FACILITY_FAX[facility] || 'Pick a facility first.'
+  return (
+    <div className="space-y-2 text-[12px]">
+      <div className="bg-plum-50/40 border border-plum-100 rounded p-2">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+          Send labs to
+        </div>
+        <div className="font-medium">
+          {facility ? (FACILITY_SHORT[facility] || facility) : '—'}
+        </div>
+        <div className="font-mono text-[11px] text-gray-700 mt-1">{fax}</div>
+      </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+          ModMed pull-and-fax workflow
+        </div>
+        <ol className="list-decimal pl-5 text-[11px] text-gray-700 space-y-0.5">
+          <li>Open the patient chart in ModMed → <strong>Labs</strong> tab.</li>
+          <li>Select all pre-op labs (CBC, CMP, T&S, β-hCG, EKG, CXR as needed).</li>
+          <li>Click <strong>Print → Fax</strong> and enter the hospital fax above.</li>
+          <li>Mark this milestone done with the fax confirmation number in notes.</li>
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+
+// ─── Post-op call script ──────────────────────────────────────────
+
+const POST_OP_QUESTIONS = [
+  { key: 'pain',         label: 'Pain — controlled with prescribed meds?' },
+  { key: 'bleeding',     label: 'Any heavy bleeding or large clots?' },
+  { key: 'fever',        label: 'Fever ≥ 100.4 °F, chills, or shaking?' },
+  { key: 'incision',     label: 'Incision sites — redness, drainage, warmth, opening?' },
+  { key: 'voiding',      label: 'Urinating normally? Any burning?' },
+  { key: 'bowel',        label: 'Bowel movement / passing gas?' },
+  { key: 'nausea',       label: 'Nausea or vomiting?' },
+  { key: 'leg',          label: 'Leg pain/swelling/calf tenderness (DVT)?' },
+  { key: 'breathing',    label: 'Shortness of breath or chest pain?' },
+  { key: 'meds',         label: 'All prescribed meds being taken? Any side effects?' },
+  { key: 'activity',     label: 'Following activity / lifting restrictions?' },
+  { key: 'followup',     label: 'Follow-up appointment scheduled?' },
+  { key: 'questions',    label: 'Any questions or concerns?' },
+]
+
+
+function PostOpCallCardBody({ surgery, milestone }) {
+  const qc = useQueryClient()
+  const initial = (() => {
+    try { return JSON.parse(milestone?.notes || '{}') } catch { return {} }
+  })()
+  const [answers, setAnswers] = useState(() => {
+    const out = {}
+    for (const q of POST_OP_QUESTIONS) {
+      out[q.key] = initial[q.key] || { value: '', note: '' }
+    }
+    out.__free_text = initial.__free_text || ''
+    return out
+  })
+
+  function setAnswer(key, patch) {
+    setAnswers(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
+  }
+
+  const save = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone.kind}/done`,
+                                { notes: JSON.stringify(answers) }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+    },
+  })
+  const saveDraft = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone.kind}/start`,
+                                { notes: JSON.stringify(answers) }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+    },
+  })
+
+  const isDone = milestone.status === 'done'
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] text-gray-600">
+        Ask each question and record the answer. Save → marks the milestone done with
+        all answers captured.
+      </div>
+      <div className="space-y-1.5">
+        {POST_OP_QUESTIONS.map(q => {
+          const a = answers[q.key] || { value: '', note: '' }
+          return (
+            <div key={q.key}
+                 className="flex items-start gap-2 text-[12px] py-1 border-b border-gray-50 last:border-0">
+              <div className="flex-1">
+                <div className="text-gray-800">{q.label}</div>
+                {a.value === 'concern' && (
+                  <input className="input text-[11px] w-full mt-1"
+                         placeholder="Details (required when concern)"
+                         value={a.note}
+                         onChange={e => setAnswer(q.key, { note: e.target.value })} />
+                )}
+              </div>
+              <div className="flex gap-1 shrink-0">
+                {['ok', 'concern', 'na'].map(v => (
+                  <button key={v}
+                          type="button"
+                          onClick={() => setAnswer(q.key, { value: v })}
+                          className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                            a.value === v
+                              ? (v === 'ok'      ? 'bg-green-100 border-green-300 text-green-800'
+                                : v === 'concern' ? 'bg-red-100 border-red-300 text-red-800'
+                                : 'bg-gray-100 border-gray-300 text-gray-700')
+                              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                          }`}>
+                    {v === 'ok' ? '✓ OK' : v === 'concern' ? '⚠ Concern' : 'N/A'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Additional notes</div>
+        <textarea className="input text-[12px] w-full"
+                  rows={2}
+                  value={answers.__free_text}
+                  onChange={e => setAnswers(prev => ({ ...prev, __free_text: e.target.value }))} />
+      </div>
+      <div className="flex gap-2">
+        {!isDone && (
+          <>
+            <button className="btn-secondary text-[11px]"
+                    onClick={() => saveDraft.mutate()}
+                    disabled={saveDraft.isPending}>
+              {saveDraft.isPending ? 'Saving…' : 'Save draft'}
+            </button>
+            <button className="btn-primary text-[11px]"
+                    onClick={() => save.mutate()}
+                    disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Save & mark done'}
+            </button>
+          </>
+        )}
+        {isDone && (
+          <span className="text-[11px] text-green-700 italic">
+            ✓ Post-op call recorded — milestone done
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function SurgeryBilledCardBody({ surgery }) {
+  const qc = useQueryClient()
+  const [claimNum, setClaimNum] = useState(surgery.modmed_claim_number || '')
+  const [suggesting, setSuggesting] = useState(false)
+  const [error, setError] = useState(null)
+
+  const patchClaim = useMutation({
+    mutationFn: () => api.patch(`/surgery/${surgery.id}`,
+                                { modmed_claim_number: claimNum }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+  })
+
+  const suggest = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/suggest-billing-codes`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
+    },
+    onError: (e) => setError(e?.response?.data?.detail || 'Suggestion failed.'),
+  })
+
+  const icd10 = surgery.billed_icd10_codes || []
+  const cpts = surgery.billed_cpt_codes || []
+
+  return (
+    <div className="space-y-2 text-[12px]">
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-gray-500">ModMed claim #</div>
+        <div className="flex gap-1">
+          <input className="input text-[12px] flex-1 font-mono"
+                 value={claimNum}
+                 onChange={e => setClaimNum(e.target.value)}
+                 placeholder="ModMed claim / encounter number" />
+          <button className="btn-secondary text-[11px]"
+                  onClick={() => patchClaim.mutate()}
+                  disabled={patchClaim.isPending}>
+            {patchClaim.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+
+      <div className="border border-gray-200 rounded p-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">
+            AI billing codes (from op + path reports)
+          </div>
+          <button className="btn-primary text-[11px] flex items-center gap-1"
+                  onClick={() => { setError(null); suggest.mutate() }}
+                  disabled={suggest.isPending}>
+            {suggest.isPending ? 'Reading reports…' : 'Suggest codes'}
+          </button>
+        </div>
+        {error && <div className="text-[11px] text-red-700">{error}</div>}
+
+        {icd10.length === 0 && cpts.length === 0 && !suggest.isPending && (
+          <div className="text-[11px] text-gray-500 italic">
+            No codes yet. Click "Suggest codes" once the op note + path report are uploaded.
+          </div>
+        )}
+
+        {(icd10.length > 0 || cpts.length > 0) && (
+          <div className="grid grid-cols-2 gap-3 mt-1">
+            <div>
+              <div className="text-[10px] uppercase text-gray-500 mb-1">ICD-10</div>
+              <ul className="text-[11px] space-y-0.5">
+                {icd10.map((c, i) => (
+                  <li key={i} className="flex gap-2">
+                    <code className="text-plum-700 font-medium">{c.code}</code>
+                    <span className="text-gray-600 truncate">{c.description}</span>
+                  </li>
+                ))}
+                {icd10.length === 0 && <li className="text-gray-400 italic">none</li>}
+              </ul>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase text-gray-500 mb-1">CPT (+ mod / POS)</div>
+              <ul className="text-[11px] space-y-0.5">
+                {cpts.map((c, i) => (
+                  <li key={i} className="flex gap-2">
+                    <code className="text-plum-700 font-medium">{c.code}</code>
+                    {c.modifier && (
+                      <span className={`text-[10px] px-1 rounded ${
+                        c.modifier === '22' ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-gray-100 text-gray-700'}`}>
+                        -{c.modifier}
+                      </span>
+                    )}
+                    <span className="text-gray-500">POS {c.pos || '—'}</span>
+                    <span className="text-gray-600 truncate flex-1">{c.description}</span>
+                  </li>
+                ))}
+                {cpts.length === 0 && <li className="text-gray-400 italic">none</li>}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {cpts.some(c => c.modifier === '22') && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-900 text-[11px] p-2 rounded mt-2">
+            <div className="mb-1.5">
+              <strong>⚠ Modifier 22 detected.</strong> A justification letter has
+              been auto-generated for the insurance company.
+            </div>
+            <FilesPanel surgery={surgery} kindFilter="modifier_22_letter"
+                         label="Modifier-22 justification letter" />
+          </div>
+        )}
+
+        {surgery.billed_at && (
+          <div className="text-[10px] text-gray-500 mt-2">
+            Codes saved {fmt.date(surgery.billed_at.slice(0,10))}
+            {surgery.billed_by && ` by ${surgery.billed_by.split('@')[0]}`}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function CancelDrawer({ surgery, onClose, onFreedBlockDay }) {
+  const qc = useQueryClient()
+  const [reason, setReason] = useState('patient')
+  const [notes, setNotes] = useState('')
+  const [feeOverride, setFeeOverride] = useState(null)   // null = use system default
+
+  // Compute fee preview
+  const today = new Date()
+  const surgDate = surgery.scheduled_date ? new Date(surgery.scheduled_date) : null
+  const daysToSurgery = surgDate ? Math.ceil((surgDate - today) / 86400000) : null
+  const within2Weeks = daysToSurgery != null && daysToSurgery >= 0 && daysToSurgery <= 14
+  const systemSaysFee = reason === 'patient' && within2Weeks
+  const feeApplies = feeOverride != null ? feeOverride : systemSaysFee
+
+  const cancel = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/cancel`, {
+      reason, notes: notes || null,
+      fee_required: feeOverride !== null ? feeOverride : undefined,
+    }).then(r => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['surgery-block-days'] })
+      // If we freed up a hospital block day, hand control to the matches
+      // drawer so the scheduler can immediately reach out to waitlisters.
+      if (data?.freed_block_day_id && onFreedBlockDay) {
+        onFreedBlockDay(data.freed_block_day_id)
+      } else {
+        onClose()
+      }
+    },
+  })
+
+  const reasons = [
+    { v: 'patient',      l: 'Patient cancelled',        feeNote: 'Fee applies if within 2 weeks of surgery' },
+    { v: 'anesthesia',   l: 'Cancelled by anesthesia',  feeNote: 'No fee' },
+    { v: 'hospital',     l: 'Cancelled by hospital',    feeNote: 'No fee' },
+    { v: 'medical',      l: 'Medical (clearance failed)', feeNote: 'No fee' },
+    { v: 'hold',         l: 'Move to Hold queue',       feeNote: 'No fee · status → hold (resumable)' },
+    { v: 'unresponsive', l: 'Mark unresponsive',         feeNote: 'No fee · auto-flagged after 180d' },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-lg bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-4 flex items-center justify-between z-10">
+          <div>
+            <h2 className="font-serif font-semibold text-ink text-[16px]">Cancel / hold surgery</h2>
+            <div className="text-[11px] text-muted">
+              {surgery.patient_name}
+              {procDescription(surgery) && <> · {procDescription(surgery)}</>}
+              {surgery.scheduled_date && <> · {fmt.date(surgery.scheduled_date)}</>}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Reason</div>
+            <div className="space-y-1">
+              {reasons.map(r => (
+                <label key={r.v} className="flex items-baseline gap-2 text-sm cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
+                  <input type="radio" name="reason" value={r.v}
+                         checked={reason === r.v}
+                         onChange={() => setReason(r.v)} />
+                  <span className="flex-1">
+                    <div>{r.l}</div>
+                    <div className="text-[10px] text-gray-500">{r.feeNote}</div>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Notes</div>
+            <textarea className="input text-sm w-full" rows={3}
+                      placeholder="What happened? (optional)"
+                      value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
+
+          {/* Auto-actions preview */}
+          <div className="card !p-3 bg-amber-50/40 border-amber-200">
+            <div className="text-[11px] uppercase tracking-wide text-amber-900 font-semibold mb-1">
+              Auto-actions on confirm
+            </div>
+            <ul className="text-xs text-gray-700 space-y-1">
+              {surgery.scheduled_date && (
+                <li>
+                  ✓ Surgery date {fmt.date(surgery.scheduled_date)}
+                  ({daysToSurgery >= 0 ? `in ${daysToSurgery}d` : `${-daysToSurgery}d ago`})
+                  → status flips to <strong>{reason === 'hold' ? 'hold' : reason === 'unresponsive' ? 'unresponsive' : 'cancelled'}</strong>
+                </li>
+              )}
+              {systemSaysFee && (
+                <li className="text-red-700">
+                  ⚠ Within 2 weeks of surgery — <strong>$351 cancellation fee</strong> required (collect via ModMed Pay).
+                  <label className="flex items-center gap-1 text-[10px] mt-1">
+                    <input type="checkbox"
+                           checked={feeOverride === false}
+                           onChange={e => setFeeOverride(e.target.checked ? false : null)} />
+                    Override: don't charge fee
+                  </label>
+                </li>
+              )}
+              {!systemSaysFee && reason === 'patient' && (
+                <li>No cancellation fee (more than 2 weeks out{!surgery.scheduled_date && ' / no date'}).</li>
+              )}
+              {Number(surgery.amount_paid || 0) > 0 && (
+                <li className="text-blue-700">
+                  ↩ Refund needed (${surgery.amount_paid} paid) — process if no open claims
+                </li>
+              )}
+              <li className="text-gray-500 italic">
+                ▾ Phase 2 will also: remove from ModMed schedule, cancel post-op appts,
+                trigger waitlist Klara blast (manual for now).
+              </li>
+            </ul>
+          </div>
+
+          {cancel.isError && (
+            <div className="text-xs text-red-700">
+              {cancel.error?.response?.data?.detail || cancel.error.message}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button className="btn-secondary text-sm" onClick={onClose}>Cancel</button>
+            <button className={`text-sm px-3 py-1.5 rounded text-white ${
+                      reason === 'hold' ? 'bg-violet-700 hover:bg-violet-800'
+                                        : 'bg-red-700 hover:bg-red-800'
+                    } disabled:opacity-60`}
+                    onClick={() => cancel.mutate()}
+                    disabled={cancel.isPending}>
+              {cancel.isPending ? 'Working…'
+                : reason === 'hold' ? 'Move to hold'
+                : reason === 'unresponsive' ? 'Mark unresponsive'
+                : 'Confirm cancel'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function procDescription(s) {
+  const p = (s.procedures || [])[0]
+  if (!p) return null
+  return p.description?.slice(0, 50) + (p.description?.length > 50 ? '…' : '')
+}
+
+
+function WaitlistToggle({ surgeryId }) {
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [days, setDays] = useState(7)
+
+  // Quick query of the global waitlist to know if this surgery is on it
+  const { data } = useQuery({
+    queryKey: ['surgery-waitlist'],
+    queryFn: () => api.get('/surgery/admin/waitlist').then(r => r.data),
+  })
+  const onList = (data?.waitlist || []).find(w => w.surgery_id === surgeryId)
+
+  const join = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgeryId}/waitlist`,
+      { advance_notice_days: days }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-waitlist'] })
+      setEditing(false)
+    },
+  })
+
+  const remove = useMutation({
+    mutationFn: () => api.delete(`/surgery/${surgeryId}/waitlist`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-waitlist'] }),
+  })
+
+  if (onList && !editing) {
+    return (
+      <div className="text-xs flex items-center gap-1 px-2 py-1 rounded border border-violet-300 bg-violet-50 text-violet-800">
+        <ListPlus size={11} /> Waitlisted ({onList.advance_notice_days}d notice)
+        <button className="ml-1 text-violet-700 hover:underline"
+                onClick={() => { setDays(onList.advance_notice_days); setEditing(true) }}>
+          edit
+        </button>
+        <button className="ml-1 text-red-700 hover:underline"
+                onClick={() => { if (confirm('Remove from waitlist?')) remove.mutate() }}>
+          remove
+        </button>
+      </div>
+    )
+  }
+
+  if (editing || !onList) {
+    return (
+      <div className="flex items-center gap-1 text-xs">
+        <span className="text-gray-600">Notice (days):</span>
+        <input type="number" min={0} max={90} value={days}
+                className="input text-xs w-14"
+                onChange={e => setDays(parseInt(e.target.value || '7', 10))} />
+        <button className="text-xs px-2 py-1 rounded border border-violet-300 bg-white text-violet-700 hover:bg-violet-50 flex items-center gap-1"
+                onClick={() => join.mutate()}
+                disabled={join.isPending}>
+          <ListPlus size={11} /> {onList ? 'Update' : 'Add to waitlist'}
+        </button>
+        {editing && (
+          <button className="text-xs text-gray-500 hover:underline"
+                  onClick={() => setEditing(false)}>cancel</button>
+        )}
+      </div>
+    )
+  }
+}
+
+
+function envelopeStatusTone(status) {
+  if (status === 'signed')   return 'bg-green-50 border-green-200 text-green-800'
+  if (status === 'declined') return 'bg-red-50 border-red-200 text-red-800'
+  if (status === 'voided')   return 'bg-gray-100 border-gray-300 text-gray-600'
+  if (status === 'failed')   return 'bg-red-50 border-red-200 text-red-800'
+  return 'bg-amber-50 border-amber-200 text-amber-800'
+}
+
+
+function ConsentPanel({ surgery }) {
+  const qc = useQueryClient()
+  const status = surgery.consent_status || 'not_required'
+  const envelopes = surgery.consent_envelopes || []
+  const isSigned = status === 'signed' || envelopes.length > 0 && envelopes.every(e => e.status === 'signed')
+  const isSent = envelopes.length > 0 && !isSigned
+
+  const matches = useQuery({
+    queryKey: ['consent-template-matches', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/consent/template-matches`).then(r => r.data),
+    staleTime: 30_000,
+  })
+
+  const docusignSend = useMutation({
+    mutationFn: (ignoreWarnings) =>
+      api.post(`/surgery/${surgery.id}/consent/docusign-send`,
+              { ignore_warnings: !!ignoreWarnings }).then(r => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      if (data?.skipped?.length) {
+        alert(`Sent ${data.sent.length}; skipped ${data.skipped.length} (already in flight).`)
+      }
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'DocuSign send failed'),
+  })
+  const docusignSync = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/docusign-sync`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'DocuSign sync failed'),
+  })
+  const sentManual = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/sent`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+    },
+  })
+  const signedManual = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/signed`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+    },
+  })
+
+  const tone = isSigned ? 'bg-green-50 border-green-200' :
+               isSent   ? 'bg-amber-50 border-amber-200' :
+                          'bg-gray-50 border-gray-200'
+
+  const matchData = matches.data
+  const blockingWarnings = matchData?.matches?.filter(m => m.warning) || []
+  const unmatched = matchData?.unmatched_procedures || []
+  const canSend = matchData && matchData.matches.length > 0 && unmatched.length === 0
+
+  function handleSend() {
+    if (blockingWarnings.length > 0) {
+      const ok = confirm(
+        'Warnings:\n\n' + blockingWarnings.map(m => '• ' + m.warning).join('\n')
+        + '\n\nSend anyway?'
+      )
+      if (!ok) return
+      docusignSend.mutate(true)
+    } else {
+      docusignSend.mutate(false)
+    }
+  }
+
+  return (
+    <div className={`card !p-3 mt-3 border ${tone}`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <FileText size={14} className="text-plum-700" />
+        <h3 className="text-sm font-semibold text-gray-800">Consent</h3>
+        <span className="text-[10px] text-gray-500 capitalize">· {status.replace(/_/g, ' ')}</span>
+        {envelopes.length > 0 && (
+          <span className="text-[10px] text-gray-500">
+            · {envelopes.filter(e => e.status === 'signed').length}/{envelopes.length} signed
+          </span>
+        )}
+      </div>
+
+      {/* Per-envelope rows when any have been sent */}
+      {envelopes.length > 0 && (
+        <div className="space-y-1 mb-3">
+          {envelopes.map(e => (
+            <div key={e.id}
+                 className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] border ${envelopeStatusTone(e.status)}`}>
+              <span className="font-medium flex-1">
+                {e.template_name || 'Unknown template'}
+                {e.is_supplemental && (
+                  <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>
+                )}
+              </span>
+              <span className="text-[10px] uppercase tracking-wide font-medium">{e.status}</span>
+              {e.signed_at && (
+                <span className="text-[10px]">signed {fmt.date(e.signed_at.slice(0, 10))}</span>
+              )}
+              {e.envelope_id && (
+                <span className="text-[10px] font-mono text-gray-500">{e.envelope_id.slice(0, 8)}…</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Matched-template preview (shown before any envelope is sent) */}
+      {envelopes.length === 0 && matchData && (
+        <div className="text-[11px] text-gray-700 mb-3">
+          {matchData.matches.length === 0 ? (
+            <div className="text-amber-700">
+              <AlertTriangle size={11} className="inline mr-1" />
+              No consent templates match this surgery. Register one in&nbsp;
+              <Link to="/admin/consent-templates" className="text-plum-700 underline">
+                Settings → Consent Templates
+              </Link>.
+            </div>
+          ) : (
+            <>
+              <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                Will send {matchData.matches.length} envelope{matchData.matches.length === 1 ? '' : 's'}:
+              </div>
+              <div className="space-y-0.5">
+                {matchData.matches.map(m => (
+                  <div key={m.template_id} className="flex items-center gap-2">
+                    <Check size={11} className="text-green-600" />
+                    <span className="font-medium">{m.template_name}</span>
+                    {m.is_supplemental && <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>}
+                    {m.warning && (
+                      <span className="text-[10px] text-red-700">⚠️ {m.warning}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {unmatched.length > 0 && (
+                <div className="text-amber-700 mt-1">
+                  <AlertTriangle size={11} className="inline mr-1" />
+                  No template registered for: {unmatched.join(', ')}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {!isSigned && envelopes.length === 0 && (
+          <>
+            <button className="btn-primary text-xs flex items-center gap-1"
+                    onClick={handleSend}
+                    disabled={!canSend || docusignSend.isPending}
+                    title={!canSend ? 'Resolve unmatched procedures first' : ''}>
+              <Send size={11} /> {docusignSend.isPending ? 'Sending…' : 'Send via DocuSign'}
+            </button>
+            <button className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => sentManual.mutate()}
+                    disabled={sentManual.isPending}
+                    title="Use this if you sent on paper / fax instead of DocuSign">
+              <FileText size={11} /> {sentManual.isPending ? 'Saving…' : 'Mark sent (paper)'}
+            </button>
+          </>
+        )}
+        {!isSigned && envelopes.length > 0 && (
+          <button className="btn-secondary text-xs flex items-center gap-1"
+                  onClick={() => docusignSync.mutate()}
+                  disabled={docusignSync.isPending}
+                  title="Pull latest status from DocuSign">
+            <RefreshCw size={11} className={docusignSync.isPending ? 'animate-spin' : ''} />
+            {docusignSync.isPending ? 'Checking…' : 'Refresh from DocuSign'}
+          </button>
+        )}
+        {!isSigned && (
+          <button className="btn-secondary text-xs flex items-center gap-1"
+                  onClick={() => signedManual.mutate()}
+                  disabled={signedManual.isPending}
+                  title="Manual override — patient signed in person">
+            <Check size={11} /> {signedManual.isPending ? 'Saving…' : 'Mark signed (manual)'}
+          </button>
+        )}
+        {isSigned && (
+          <span className="text-[11px] text-green-700 italic">
+            ✓ Consent complete — milestone advanced
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function BenefitsPanel({ surgery }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({
+    deductible:        surgery.deductible || '',
+    deductible_met:    surgery.deductible_met || '',
+    copay:             surgery.copay || '',
+    coinsurance_pct:   surgery.coinsurance_pct || '',
+    oop_max:           surgery.oop_max || '',
+    oop_met:           surgery.oop_met || '',
+    allowed_amount:    surgery.allowed_amount || '',
+  })
+  const [savedFlash, setSavedFlash] = useState(false)
+  const [lastPdfUrl, setLastPdfUrl] = useState(null)
+
+  function num(k) {
+    const v = form[k]
+    if (v === '' || v === null || v === undefined) return 0
+    const n = parseFloat(v)
+    return Number.isFinite(n) ? n : 0
+  }
+
+  // Live calculation — same logic as the backend (kept in sync intentionally
+  // so the staff sees identical numbers without needing a round-trip).
+  const calc = useMemo(() => {
+    const allowed = num('allowed_amount')
+    const deductible = num('deductible')
+    const ded_met = num('deductible_met')
+    const copay = num('copay')
+    const coins_pct = num('coinsurance_pct')
+    const oop_max = num('oop_max')
+    const oop_met = num('oop_met')
+
+    const ded_remaining = Math.max(0, deductible - ded_met)
+    const oop_remaining = oop_max > 0 ? Math.max(0, oop_max - oop_met) : Infinity
+
+    const ded_portion = Math.min(allowed, ded_remaining)
+    const after_ded = allowed - ded_portion
+    const coins_portion = round2(after_ded * (coins_pct / 100))
+    const raw = ded_portion + coins_portion + copay
+    const final = round2(Math.min(raw, oop_remaining))
+
+    return {
+      ded_remaining: round2(ded_remaining),
+      ded_portion: round2(ded_portion),
+      after_ded: round2(after_ded),
+      coins_portion,
+      copay,
+      raw: round2(raw),
+      final,
+      capped: raw > oop_remaining,
+      oop_remaining: oop_remaining === Infinity ? null : round2(oop_remaining),
+    }
+  }, [form])
+
+  const save = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/benefits`, {
+      deductible: numOrNull(form.deductible),
+      deductible_met: numOrNull(form.deductible_met),
+      copay: numOrNull(form.copay),
+      coinsurance_pct: numOrNull(form.coinsurance_pct),
+      oop_max: numOrNull(form.oop_max),
+      oop_met: numOrNull(form.oop_met),
+      allowed_amount: numOrNull(form.allowed_amount),
+      save: true,
+    }).then(r => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
+      if (data?.pdf_download_url) {
+        setLastPdfUrl(data.pdf_download_url)
+      }
+      setSavedFlash(true)
+      setTimeout(() => setSavedFlash(false), 6000)
+    },
+  })
+
+  function update(k, v) {
+    setForm(prev => ({ ...prev, [k]: v }))
+  }
+
+  return (
+    <div className="card !p-3 mt-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-plum-700 text-base">$</span>
+        <h3 className="text-sm font-semibold text-gray-800">Benefits calculator</h3>
+        <span className="text-[11px] text-gray-500">Patient responsibility for this surgery</span>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
+        <DollarInput label="Allowed amount"
+                      value={form.allowed_amount}
+                      onChange={v => update('allowed_amount', v)}
+                      hint="What insurance considers reasonable for this procedure" />
+        <DollarInput label="Deductible (annual)"
+                      value={form.deductible}
+                      onChange={v => update('deductible', v)} />
+        <DollarInput label="Deductible met"
+                      value={form.deductible_met}
+                      onChange={v => update('deductible_met', v)}
+                      hint="What patient has paid toward deductible YTD" />
+        <PercentInput label="Coinsurance %"
+                       value={form.coinsurance_pct}
+                       onChange={v => update('coinsurance_pct', v)} />
+        <DollarInput label="Copay"
+                      value={form.copay}
+                      onChange={v => update('copay', v)}
+                      hint="Fixed copay, if any" />
+        <DollarInput label="OOP max (annual)"
+                      value={form.oop_max}
+                      onChange={v => update('oop_max', v)}
+                      hint="Annual out-of-pocket max" />
+        <DollarInput label="OOP met"
+                      value={form.oop_met}
+                      onChange={v => update('oop_met', v)} />
+      </div>
+
+      {/* Live breakdown */}
+      <div className="bg-plum-50/40 border border-plum-100 rounded p-3 text-xs mb-3">
+        <div className="text-[10px] uppercase tracking-wide text-plum-700 font-semibold mb-1">
+          Live preview
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <Stat label="Deductible portion"   val={`$${calc.ded_portion.toFixed(2)}`} />
+          <Stat label="Coinsurance portion"  val={`$${calc.coins_portion.toFixed(2)}`}
+                  sub={calc.after_ded > 0 ? `${form.coinsurance_pct || 0}% of $${calc.after_ded.toFixed(2)}` : null} />
+          <Stat label="Copay"                val={`$${(calc.copay || 0).toFixed(2)}`} />
+          <Stat label="Patient owes"         val={`$${calc.final.toFixed(2)}`}
+                  big tone={calc.capped ? 'amber' : 'green'}
+                  sub={calc.capped ? '⚠ Capped by OOP max' : null} />
+        </div>
+        {calc.oop_remaining !== null && (
+          <div className="text-[10px] text-gray-500 mt-2">
+            OOP remaining for the year: ${calc.oop_remaining.toFixed(2)}
+            {calc.ded_remaining > 0 && ` · Deductible remaining: $${calc.ded_remaining.toFixed(2)}`}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap justify-between items-center gap-2">
+        <div className="text-[11px] text-gray-600">
+          {savedFlash
+            ? <span className="text-green-700">✓ Saved · milestone advanced · PDF estimate ready</span>
+            : (surgery.benefits_verified_at
+                ? <>Last saved: <strong>{fmt.date(surgery.benefits_verified_at)}</strong></>
+                : <>Not saved yet</>)}
+        </div>
+        <div className="flex items-center gap-2">
+          {lastPdfUrl && (
+            <a href={lastPdfUrl} download
+                className="text-xs text-plum-700 hover:underline flex items-center gap-1">
+              <Download size={11} /> Download estimate PDF
+            </a>
+          )}
+          <button className="btn-primary text-xs flex items-center gap-1"
+                  onClick={() => save.mutate()}
+                  disabled={save.isPending}>
+            <Save size={11} /> {save.isPending ? 'Saving…' : 'Save + generate PDF'}
+          </button>
+        </div>
+      </div>
+      {savedFlash && lastPdfUrl && (
+        <div className="mt-2 text-[11px] text-gray-600 bg-green-50 border border-green-200 rounded p-2">
+          A patient-facing estimate PDF was generated. <a href={lastPdfUrl} download className="text-plum-700 hover:underline font-semibold">Download it here</a> — you can email or print it for the patient.
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function DollarInput({ label, value, onChange, hint }) {
+  return (
+    <div>
+      <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">
+        {label}
+      </label>
+      <div className="relative">
+        <span className="absolute left-2 top-1.5 text-gray-400">$</span>
+        <input type="number" min="0" step="0.01"
+                className="input text-xs font-mono pl-5 w-full"
+                value={value}
+                onChange={e => onChange(e.target.value)} />
+      </div>
+      {hint && <div className="text-[9px] text-gray-400 mt-0.5">{hint}</div>}
+    </div>
+  )
+}
+
+
+function PercentInput({ label, value, onChange }) {
+  return (
+    <div>
+      <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">
+        {label}
+      </label>
+      <div className="relative">
+        <input type="number" min="0" max="100" step="1"
+                className="input text-xs font-mono pr-5 w-full"
+                value={value}
+                onChange={e => onChange(e.target.value)} />
+        <span className="absolute right-2 top-1.5 text-gray-400">%</span>
+      </div>
+    </div>
+  )
+}
+
+
+function Stat({ label, val, sub, big, tone }) {
+  const tones = {
+    green: 'text-green-700',
+    amber: 'text-amber-700',
+  }
+  return (
+    <div>
+      <div className="text-[9px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className={`${big ? 'text-lg' : 'text-sm'} font-bold ${tones[tone] || 'text-gray-800'}`}>{val}</div>
+      {sub && <div className="text-[9px] text-gray-500">{sub}</div>}
+    </div>
+  )
+}
+
+
+function round2(n) {
+  return Math.round(n * 100) / 100
+}
+
+
+function numOrNull(v) {
+  if (v === '' || v === null || v === undefined) return null
+  const n = parseFloat(v)
+  return Number.isFinite(n) ? n : null
+}
+
+
+// ─── LARC office-procedure device picker ──────────────────────────────
+//
+// Surfaces a card on the surgery page when the procedure list looks like
+// it needs an office-procedure device (NovaSure / Bensta). Hidden when no
+// match unless an assignment already exists. Once a device is picked, the
+// card shows the device + a deep link into the LARC assignment.
+
+const OP_PROCEDURE_HINTS = [
+  { needle: 'ablation',   device: 'NovaSure' },
+  { needle: 'novasure',   device: 'NovaSure' },
+  { needle: 'endometrial', device: 'NovaSure' },
+  { needle: 'polyp',      device: 'Bensta'   },
+  { needle: 'polypectomy', device: 'Bensta'  },
+  { needle: 'bensta',     device: 'Bensta'   },
+  { needle: 'd&c',        device: 'Bensta'   },
+  { needle: 'hysteroscopy', device: 'Bensta' },
+]
+
+function inferOpDeviceHint(surgery) {
+  const procText = (surgery.procedures || [])
+    .map(p => `${p.cpt || ''} ${p.description || ''}`)
+    .join(' ')
+    .toLowerCase()
+  const dxText = (surgery.diagnoses || [])
+    .map(d => `${d.icd10 || ''} ${d.description || ''}`)
+    .join(' ')
+    .toLowerCase()
+  const all = `${procText} ${dxText}`
+  for (const h of OP_PROCEDURE_HINTS) {
+    if (all.includes(h.needle)) return h.device
+  }
+  return null
+}
+
+
+function LarcDevicePickerCard({ surgery }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const inferred = inferOpDeviceHint(surgery)
+
+  const { data: existing } = useQuery({
+    queryKey: ['larc-assignments-by-surgery', surgery.id],
+    queryFn: () => api.get('/larc/assignments', {
+      params: { linked_surgery_id: surgery.id, include_completed: true },
+    }).then(r => r.data),
+    staleTime: 30_000,
+  })
+  const assignments = existing?.assignments || []
+
+  // Only render the card when there's already an assignment OR the procedure
+  // text suggests an office-procedure device is needed. Otherwise it would
+  // be noise on every surgery page.
+  if (assignments.length === 0 && !inferred) return null
+
+  return (
+    <div className="card mt-3">
+      <div className="flex items-center gap-2 mb-2">
+        <Package size={14} className="text-teal-700" />
+        <h2 className="text-sm font-semibold text-gray-800">Office-procedure device</h2>
+        <span className="text-[10px] uppercase tracking-wide bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
+          LARC inventory
+        </span>
+      </div>
+
+      {assignments.length === 0 ? (
+        <div className="text-[12px] space-y-2">
+          <div className="text-gray-600">
+            This surgery looks like it needs a{' '}
+            <strong className="text-teal-700">{inferred}</strong> device.
+            Pick one from inventory before the procedure.
+          </div>
+          <button type="button" className="btn-secondary text-[11px] inline-flex items-center gap-1"
+                  onClick={() => setPickerOpen(true)}>
+            <Package size={11} /> Pick {inferred} device
+          </button>
+        </div>
+      ) : (
+        <ul className="space-y-2 text-[12px]">
+          {assignments.map(a => (
+            <li key={a.id} className="flex items-baseline justify-between border-l-2 border-teal-300 pl-2 py-1">
+              <div>
+                <Link to={`/larc/assignments/${a.id}`} className="text-plum-700 hover:underline font-medium">
+                  {a.device_type_name} #{a.device_our_id || '—'}
+                </Link>
+                <div className="text-[10px] text-gray-500">
+                  Status: {a.status.replace(/_/g, ' ')}
+                  {a.claim_number && ` · claim #${a.claim_number}`}
+                </div>
+              </div>
+              <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded ${
+                a.status === 'billed' ? 'bg-green-100 text-green-700' :
+                a.status === 'inserted' ? 'bg-blue-100 text-blue-700' :
+                'bg-amber-100 text-amber-700'
+              }`}>
+                {a.status.replace(/_/g, ' ')}
+              </span>
+            </li>
+          ))}
+          {assignments.every(a => ['billed', 'cancelled'].includes(a.status)) && inferred && (
+            <li>
+              <button type="button" className="btn-secondary text-[11px] inline-flex items-center gap-1"
+                      onClick={() => setPickerOpen(true)}>
+                <Package size={11} /> Pick another {inferred} device
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
+
+      {pickerOpen && (
+        <LarcDevicePickerDrawer surgery={surgery} preferred={inferred}
+                                 onClose={() => setPickerOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+
+function LarcDevicePickerDrawer({ surgery, preferred, onClose }) {
+  const qc = useQueryClient()
+  const [deviceId, setDeviceId] = useState('')
+
+  const { data: devices, isLoading } = useQuery({
+    queryKey: ['larc-unallocated-op'],
+    queryFn: () => api.get('/larc/devices/unallocated', {
+      params: { category: 'office_procedure' },
+    }).then(r => r.data),
+  })
+
+  // Prefer devices of the matching type, sort to top
+  const sorted = useMemo(() => {
+    const list = devices || []
+    if (!preferred) return list
+    return [...list].sort((a, b) => {
+      const am = a.device_type_name === preferred ? 0 : 1
+      const bm = b.device_type_name === preferred ? 0 : 1
+      return am - bm
+    })
+  }, [devices, preferred])
+
+  const create = useMutation({
+    mutationFn: () => api.post('/larc/assignments/office-procedure', {
+      device_id: deviceId,
+      chart_number: surgery.chart_number || '',
+      patient_name: surgery.patient_name || '',
+      patient_dob: surgery.dob || null,
+      primary_insurance: surgery.primary_insurance || null,
+      linked_surgery_id: surgery.id,
+      appt_date: surgery.scheduled_date || null,
+    }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['larc-assignments-by-surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['larc-unallocated-op'] })
+      qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
+      onClose()
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Could not pick device'),
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
+          <h2 className="font-serif font-semibold text-ink text-[16px]">
+            Pick office-procedure device
+          </h2>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+        </div>
+        <div className="p-5 space-y-3 text-sm">
+          <div className="text-[11px] text-gray-600">
+            For <strong>{surgery.patient_name}</strong> (chart #{surgery.chart_number}).
+            Linking this device to surgery <span className="font-mono">{surgery.id.slice(0, 8)}</span>.
+          </div>
+
+          {isLoading && <div className="text-gray-400 italic">Loading unallocated devices…</div>}
+
+          {!isLoading && sorted.length === 0 && (
+            <div className="text-[12px] bg-amber-50 border border-amber-200 px-2 py-2 rounded">
+              No unallocated office-procedure devices on hand. Add some on the{' '}
+              <Link to="/larc/devices" className="underline">devices page</Link>.
+            </div>
+          )}
+
+          {!isLoading && sorted.length > 0 && (
+            <ul className="space-y-1.5">
+              {sorted.map(d => (
+                <li key={d.id}>
+                  <label className={`flex items-center gap-2 text-[12px] border rounded px-2 py-1.5 cursor-pointer hover:bg-teal-50 ${
+                    deviceId === d.id ? 'bg-teal-50 border-teal-400' : 'border-gray-200'
+                  }`}>
+                    <input type="radio" name="device" value={d.id}
+                           checked={deviceId === d.id}
+                           onChange={() => setDeviceId(d.id)} />
+                    <span className="font-mono font-semibold">{d.our_id}</span>
+                    <span className="text-gray-600">{d.device_type_name}</span>
+                    <span className="ml-auto text-[10px] text-gray-500">
+                      {d.location_label}
+                      {d.expiration_date && ` · exp ${d.expiration_date}`}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="sticky bottom-0 bg-white border-t border-border-subtle px-5 py-3 flex justify-end gap-2">
+          <button className="text-sm text-muted hover:underline" onClick={onClose}>Cancel</button>
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  onClick={() => create.mutate()}
+                  disabled={!deviceId || create.isPending}>
+            <Save size={12} /> {create.isPending ? 'Picking…' : 'Pick device'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
