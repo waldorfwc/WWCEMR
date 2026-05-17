@@ -3,11 +3,17 @@ import api from '../utils/api'
 
 /**
  * Returns the currently authenticated user plus convenience flags.
- * {email, name, picture, group, isAdmin, isBilling, isClinical, canSeeBilling}
  *
- * While loading, every flag is false and `group` is undefined — callers should
- * gate clinical-hiding UI on `canSeeBilling` (false during load is the safer
- * default for clinical-like screens).
+ * Flags are computed server-side from the user's group memberships and
+ * effective permissions (Phase 5 RBAC). Names kept the same for caller
+ * stability:
+ *   - isAdmin    → has user:manage permission (in Admin group, typically)
+ *   - isBilling  → has claim:read permission (any billing-flavored group)
+ *   - isClinical → has chart:read or chart:edit permission
+ *
+ * `effectivePermissions` is the full permission set as a string array —
+ * use directly for fine-grained UI gating (e.g. show a button only if
+ * user has `payment:post`).
  */
 export function useCurrentUser() {
   const q = useQuery({
@@ -17,16 +23,18 @@ export function useCurrentUser() {
     retry: false,
   })
   const data = q.data || {}
-  const group = data.group
+  const perms = data.effective_permissions || []
+  const has = (p) => perms.includes(p)
   return {
     email: data.email,
     name: data.name,
     picture: data.picture,
-    group,
-    isAdmin: group === 'admin',
-    isBilling: group === 'billing',
-    isClinical: group === 'clinical',
-    canSeeBilling: group === 'admin' || group === 'billing',
+    effectivePermissions: perms,
+    has,
+    isAdmin:    !!data.is_admin,
+    isBilling:  !!data.is_billing,
+    isClinical: !!data.is_clinical,
+    canSeeBilling: !!data.is_admin || !!data.is_billing,
     isLoading: q.isLoading,
   }
 }

@@ -72,6 +72,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
                    user_name=email,
                    description=f"Auto-created with default group clinical")
 
+    # Active-user gate (Phase 7) — refuse access for suspended accounts
+    if not user_row.is_active:
+        raise HTTPException(status_code=403,
+                            detail="Account is suspended. Contact your administrator.")
+
     return {
         "email": email,
         "name": payload.get("name") or user_row.display_name,
@@ -134,6 +139,21 @@ async def google_login(payload: dict):
             detail=f"Access denied. Only {', '.join(ALLOWED_DOMAINS)} emails are allowed."
         )
 
+    # Active-user gate — block suspended accounts at login (Phase 7).
+    # We only block if the user already exists; first-time logins still
+    # auto-create via get_current_user with is_active=True default.
+    from app.database import SessionLocal
+    _db = SessionLocal()
+    try:
+        existing = _db.query(User).filter(User.email == email).first()
+        if existing is not None and not existing.is_active:
+            raise HTTPException(
+                status_code=403,
+                detail="Your account is suspended. Contact your administrator.",
+            )
+    finally:
+        _db.close()
+
     # Create session token
     session_token = create_access_token({
         "email": email,
@@ -158,12 +178,38 @@ async def google_login(payload: dict):
 
 
 @router.get("/me")
-def get_me(user: dict = Depends(get_current_user)):
-    """Return current authenticated user (email, name, picture, group)."""
+def get_me(user: dict = Depends(get_current_user),
+           db: Session = Depends(get_db)):
+    """Return current authenticated user with derived RBAC flags.
+
+    `is_admin / is_billing / is_clinical` are computed from effective
+    permissions, NOT the legacy `group` enum. Legacy `group` is still
+    returned for any UI not yet migrated.
+    """
+    from app.services.permissions import effective_permissions
+    email = (user.get("email") or "").lower().strip()
+    user_row = db.query(User).filter(User.email == email).first()
+    perms = effective_permissions(user_row) if user_row else set()
+    is_admin = "user:manage" in perms
+    has_billing = "claim:read" in perms
+    has_chart = "chart:read" in perms or "chart:edit" in perms
     return {
         "email": user.get("email"),
         "name": user.get("name"),
         "picture": user.get("picture"),
+        # Derived from group memberships / permissions (Phase 5).
+        # Semantic match for the legacy enum:
+        #   is_admin    = full admin (gates /admin)
+        #   is_billing  = anyone with claim:read (sees Active AR, billing nav)
+        #   is_clinical = EXCLUSIVELY clinical — chart access only, no
+        #                 billing/admin visibility. Used to redirect to the
+        #                 simplified clinical view; must not be true for
+        #                 admins/billing users who happen to also have charts.
+        "is_admin":    is_admin,
+        "is_billing":  has_billing,
+        "is_clinical": has_chart and not has_billing and not is_admin,
+        "effective_permissions": sorted(perms),
+        # Legacy — kept for backwards compat until all callers migrated.
         "group": user.get("group"),
     }
 
@@ -184,10 +230,74 @@ def auth_config():
     }
 
 
-def require_group(*allowed: str):
-    """FastAPI dependency factory: 403 if current user's group isn't in allowed."""
-    def _dep(current_user: dict = Depends(get_current_user)):
-        if current_user.get("group") not in allowed:
-            raise HTTPException(status_code=403, detail="forbidden")
-        return current_user
+@router.get("/me/profile")
+def my_profile(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Authenticated user's profile + group memberships + effective permissions.
+
+    Visible to any logged-in user — this is the "what can I do?" page.
+    """
+    from app.services.permissions import effective_permissions, PERMISSIONS
+    email = (current_user.get("email") or "").lower().strip()
+    user_row = db.query(User).filter(User.email == email).first()
+    if user_row is None:
+        raise HTTPException(status_code=404, detail="user not in directory")
+
+    perms = sorted(effective_permissions(user_row))
+    groups = [
+        {"id": g.id, "name": g.name, "description": g.description}
+        for g in user_row.groups
+    ]
+    extras = list(user_row.permissions_extra or [])
+    revoked = list(user_row.permissions_revoked or [])
+    return {
+        "email": user_row.email,
+        "display_name": user_row.display_name,
+        "legacy_group": user_row.group.value if hasattr(user_row.group, "value") else user_row.group,
+        "groups": groups,
+        "permissions_extra": extras,
+        "permissions_revoked": revoked,
+        "effective_permissions": perms,
+        # Catalog descriptions so the UI can render a friendly list
+        "permission_descriptions": {p: PERMISSIONS[p] for p in perms if p in PERMISSIONS},
+    }
+
+
+def require_permission(*needed: str):
+    """FastAPI dependency factory: 403 unless the current user has *all*
+    of the listed permissions in their effective set.
+
+    Single-permission usage:
+        Depends(require_permission("payment:post"))
+
+    Multi-permission usage (rare — passes only if user has every one):
+        Depends(require_permission("claim:edit", "claim:writeoff"))
+
+    Use OR semantics by composing two routes or by adding a new bundle
+    permission rather than mixing this dependency with custom logic.
+    """
+    if not needed:
+        raise ValueError("require_permission needs at least one permission string")
+
+    def _dep(
+        current_user: dict = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ):
+        from app.services.permissions import effective_permissions
+        email = (current_user.get("email") or "").lower().strip()
+        user_row = db.query(User).filter(User.email == email).first()
+        perms = effective_permissions(user_row)
+        missing = [p for p in needed if p not in perms]
+        if missing:
+            raise HTTPException(
+                status_code=403,
+                detail=f"forbidden — missing permission(s): {', '.join(missing)}",
+            )
+        # Stash the resolved perms onto the returned dict so handlers can
+        # introspect without re-querying.
+        out = dict(current_user)
+        out["effective_permissions"] = sorted(perms)
+        return out
     return _dep
