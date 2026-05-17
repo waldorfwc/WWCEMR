@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.parsers.era_835 import Era835Parser
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, require_permission
+from app.services.idempotency import idempotency_for
 from app.services import import_sessions
 from app.services.era_poster import EraFilePreview, build_preview
 
@@ -159,7 +160,15 @@ def commit_eras(
     session_id: str,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
+    _perm: dict = Depends(require_permission("payment:post")),
+    idem=Depends(idempotency_for("POST /era-posting/{session_id}/commit")),
 ):
+    # If the client sent an Idempotency-Key header and we've already
+    # processed this commit, return the cached response and skip
+    # re-processing — double-clicks no longer double-post.
+    if idem.cached is not None:
+        return idem.cached
+
     entry = import_sessions.get(session_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="session not found or expired")
@@ -196,7 +205,7 @@ def commit_eras(
 
     import_sessions.purge(session_id)
 
-    return {
+    response = {
         "files_processed": len(previews),
         "claims_posted": totals["claims_posted"],
         "claims_already_posted": totals["claims_already_posted"],
@@ -208,3 +217,8 @@ def commit_eras(
         "denials_created": totals["denials_created"],
         "errors": errors,
     }
+    # Cache the response so a retry with the same Idempotency-Key returns
+    # this body instead of re-running the post loop.
+    idem.store(response)
+    db.commit()   # persist the idempotency row alongside the era results
+    return response

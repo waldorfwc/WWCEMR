@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, or_, func
 from typing import Optional
 import uuid
-from datetime import date as date_cls
+from datetime import date as date_cls, timedelta
 from decimal import Decimal, InvalidOperation
 
 from app.database import get_db
@@ -24,19 +24,25 @@ def list_claims(
     search: Optional[str] = None,
     state: Optional[str] = None,             # Phase 2d: "open" | "closed"
     has_followup: Optional[bool] = None,     # Phase 2d: Open + follow_up_date <= today
+    age_bucket: Optional[str] = None,        # "0-30" | "31-60" | "61-90" | "90+"
+    order_by: Optional[str] = None,          # "fu_asc" | "dos_desc" (default) | "balance_desc"
     page: int = 1,
     per_page: int = 50,
 ):
-    q = db.query(Claim)
+    q = db.query(Claim).options(joinedload(Claim.patient))
     if status:
         q = q.filter(Claim.status == status)
     if payer:
         q = q.filter(Claim.payer_name.ilike(f"%{payer}%"))
     if search:
-        q = q.filter(or_(
-            Claim.claim_number.ilike(f"%{search}%"),
-            Claim.payer_claim_number.ilike(f"%{search}%"),
-            Claim.subscriber_id.ilike(f"%{search}%"),
+        s = f"%{search}%"
+        q = q.outerjoin(Claim.patient).filter(or_(
+            Claim.claim_number.ilike(s),
+            Claim.payer_claim_number.ilike(s),
+            Claim.subscriber_id.ilike(s),
+            Patient.patient_id.ilike(s),
+            Patient.first_name.ilike(s),
+            Patient.last_name.ilike(s),
         ))
     if state == "open":
         q = q.filter(Claim.claim_state == "Open")
@@ -48,15 +54,86 @@ def list_claims(
             Claim.follow_up_date <= date_cls.today(),
             Claim.claim_state == "Open",
         )
+    today = date_cls.today()
+    if age_bucket:
+        bounds = {
+            "0-30":   (today - timedelta(days=30),  None),
+            "31-60":  (today - timedelta(days=60),  today - timedelta(days=31)),
+            "61-90":  (today - timedelta(days=90),  today - timedelta(days=61)),
+            "90+":    (None,                        today - timedelta(days=91)),
+        }.get(age_bucket)
+        if bounds:
+            lo, hi = bounds
+            if lo is not None:
+                q = q.filter(Claim.date_of_service_from >= lo)
+            if hi is not None:
+                q = q.filter(Claim.date_of_service_from <= hi)
+
+    if order_by == "fu_asc":
+        # Overdue/oldest follow-up first, then DOS desc
+        q = q.order_by(Claim.follow_up_date.asc().nullslast(), desc(Claim.date_of_service_from))
+    elif order_by == "balance_desc":
+        q = q.order_by(desc(Claim.balance), desc(Claim.date_of_service_from))
+    else:
+        q = q.order_by(desc(Claim.date_of_service_from))
 
     total = q.count()
-    claims = q.order_by(desc(Claim.date_of_service_from)).offset((page - 1) * per_page).limit(per_page).all()
+    claims = q.offset((page - 1) * per_page).limit(per_page).all()
 
     return {
         "total": total,
         "page": page,
         "per_page": per_page,
         "claims": [_claim_to_dict(c) for c in claims],
+    }
+
+
+@router.get("/work-queue/summary")
+def work_queue_summary(db: Session = Depends(get_db)):
+    """Counts/balances for the open AR work queue, plus age bucket breakdown."""
+    today = date_cls.today()
+    base = db.query(Claim).filter(Claim.claim_state == "Open", Claim.balance > 0)
+
+    open_total = base.count()
+    open_balance = float(base.with_entities(func.sum(Claim.balance)).scalar() or 0)
+    overdue = base.filter(Claim.follow_up_date.isnot(None),
+                          Claim.follow_up_date < today).count()
+    due_today = base.filter(Claim.follow_up_date == today).count()
+    no_fu = base.filter(Claim.follow_up_date.is_(None)).count()
+
+    buckets = []
+    for label, lo_days, hi_days in [
+        ("0-30", 0, 30), ("31-60", 31, 60), ("61-90", 61, 90), ("90+", 91, None)
+    ]:
+        sub = base
+        if hi_days is not None:
+            sub = sub.filter(Claim.date_of_service_from >= today - timedelta(days=hi_days))
+        if lo_days > 0:
+            sub = sub.filter(Claim.date_of_service_from <= today - timedelta(days=lo_days))
+        bal = sub.with_entities(func.sum(Claim.balance)).scalar() or 0
+        buckets.append({"bucket": label, "count": sub.count(), "balance": float(bal)})
+
+    # Top payers by open balance
+    payer_rows = (
+        base.with_entities(Claim.payer_name, func.count(Claim.id), func.sum(Claim.balance))
+        .group_by(Claim.payer_name)
+        .order_by(desc(func.sum(Claim.balance)))
+        .limit(15)
+        .all()
+    )
+    top_payers = [
+        {"payer": r[0] or "—", "count": r[1], "balance": float(r[2] or 0)}
+        for r in payer_rows
+    ]
+
+    return {
+        "open_total": open_total,
+        "open_balance": open_balance,
+        "overdue": overdue,
+        "due_today": due_today,
+        "no_fu": no_fu,
+        "age_buckets": buckets,
+        "top_payers": top_payers,
     }
 
 
@@ -211,11 +288,24 @@ def _audit_val(v):
 
 
 def _claim_to_dict(claim: Claim, detailed: bool = False) -> dict:
+    p = claim.patient
+    # Derive allowed_amount when not explicitly set (CA-sourced claims never
+    # have it). Standard definition: allowed = billed - contractual_writeoff.
+    explicit_allowed = float(claim.allowed_amount or 0)
+    derived_allowed = float((claim.billed_amount or 0) - (claim.contractual_adjustment or 0))
+    allowed_for_claim = explicit_allowed if explicit_allowed > 0 else derived_allowed
     d = {
         "id": str(claim.id),
         "claim_number": claim.claim_number,
         "payer_claim_number": claim.payer_claim_number,
         "patient_id": str(claim.patient_id) if claim.patient_id else None,
+        "patient": {
+            "id": str(p.id),
+            "chart_number": p.patient_id,
+            "first_name": p.first_name,
+            "last_name": p.last_name,
+            "date_of_birth": str(p.date_of_birth) if p.date_of_birth else None,
+        } if p else None,
         "payer_name": claim.payer_name,
         "payer_id": claim.payer_id,
         "subscriber_id": claim.subscriber_id,
@@ -225,7 +315,7 @@ def _claim_to_dict(claim: Claim, detailed: bool = False) -> dict:
         "insurance_order": claim.insurance_order.value if claim.insurance_order else "primary",
         "status": claim.status.value if claim.status else "pending",
         "billed_amount": float(claim.billed_amount or 0),
-        "allowed_amount": float(claim.allowed_amount or 0),
+        "allowed_amount": allowed_for_claim,
         "paid_amount": float(claim.paid_amount or 0),
         "patient_responsibility": float(claim.patient_responsibility or 0),
         "contractual_adjustment": float(claim.contractual_adjustment or 0),

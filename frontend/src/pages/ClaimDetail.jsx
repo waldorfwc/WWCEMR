@@ -39,7 +39,7 @@ export default function ClaimDetail() {
 
   return (
     <div className="p-6 max-w-5xl">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-4">
         <a href="/claims" className="text-gray-400 hover:text-gray-600"><ArrowLeft size={20} /></a>
         <div>
           <h1 className="text-xl font-bold text-gray-900">Claim {claim.claim_number}</h1>
@@ -58,6 +58,30 @@ export default function ClaimDetail() {
           </button>
         </div>
       </div>
+
+      {claim.patient && (
+        <div className="card mb-6 flex items-center gap-6 py-3">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-400">Patient</div>
+            <a
+              href={`/patients/${claim.patient.id}`}
+              className="font-semibold text-gray-900 hover:text-primary-500"
+            >
+              {claim.patient.last_name || ''}
+              {claim.patient.last_name && claim.patient.first_name ? ', ' : ''}
+              {claim.patient.first_name || ''}
+            </a>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-400">Chart #</div>
+            <div className="font-mono text-sm text-gray-800">#{claim.patient.chart_number || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-400">DOB</div>
+            <div className="text-sm text-gray-800">{claim.patient.date_of_birth ? fmt.date(claim.patient.date_of_birth) : '—'}</div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 mb-6">
         {/* Claim Info */}
