@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -17,8 +17,12 @@ from app.models.claim import Claim
 from app.models.patient import Patient
 from app.services.audit_service import log_action
 from app.services import import_sessions
+from app.services.charge_analysis_fixer import fix_file as fix_charge_analysis
 from app.services.charge_analysis_importer import (
     ChargeAnalysisImport, ParsedClaim, parse,
+)
+from app.services.import_drift import (
+    KEYS_AND_VALUES, check_drift, compute_fingerprints, write_audit_log,
 )
 from app.routers.auth import get_current_user
 
@@ -76,6 +80,11 @@ def _compute_flags(
 @router.post("/charge-analysis")
 async def upload_charge_analysis(
     file: UploadFile = File(...),
+    autofix_shifts: bool = Query(
+        True,
+        description="Auto-realign PrimeSuite column shifts before parsing. "
+                    "Transparent pass-through when the file has no shifts.",
+    ),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -91,14 +100,74 @@ async def upload_charge_analysis(
     with open(save_path, "wb") as fh:
         fh.write(content)
 
+    # Optional pre-processor: realign PrimeSuite-style column shifts.
+    autofix_report = None
+    parse_path = save_path
+    if autofix_shifts:
+        fixed_path = os.path.join(subdir, f"{session_id}.fixed.xlsx")
+        try:
+            report = fix_charge_analysis(save_path, fixed_path)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"autofix-shifts failed: {exc}",
+            )
+        if report.shifts_detected:
+            parse_path = fixed_path
+            autofix_report = {
+                "applied": True,
+                "unresolved_rows": report.unresolved_rows,
+                "unresolved_samples": report.unresolved_samples,
+            }
+        else:
+            # No shifts in the file — parse the original, discard the copy
+            try:
+                os.remove(fixed_path)
+            except OSError:
+                pass
+            autofix_report = {"applied": False, "reason": "no shifts detected"}
+
     # Parse (pure function)
     try:
-        parsed = parse(save_path)
+        parsed = parse(parse_path)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=422,
                             detail=f"could not read Excel file: {exc}")
+
+    # Drift check vs. prior import for the same DOS range
+    import pandas as _pd
+    try:
+        df_for_drift = _pd.read_excel(parse_path, sheet_name=0)
+    except Exception:
+        df_for_drift = None
+    drift_dict = None
+    period_start = period_end = None
+    fingerprints: list = []
+    drift = None
+    if df_for_drift is not None:
+        if "Date: Service date of the Charge" in df_for_drift.columns:
+            ds = _pd.to_datetime(df_for_drift["Date: Service date of the Charge"], errors="coerce").dropna()
+            if len(ds) > 0:
+                period_start = ds.min().date()
+                period_end = ds.max().date()
+        keyspec = KEYS_AND_VALUES["charge_analysis"]
+        fingerprints = compute_fingerprints(
+            df_for_drift, keyspec["key_columns"], keyspec["value_columns"],
+        )
+        drift = check_drift(db, "charge_analysis", period_start, period_end, fingerprints)
+        drift_dict = {
+            "has_prior_import": drift.has_prior_import,
+            "prior_imported_at": drift.prior_imported_at,
+            "prior_filename": drift.prior_filename,
+            "rows_added": drift.rows_added,
+            "rows_removed": drift.rows_removed,
+            "rows_changed": drift.rows_changed,
+            "interpretation": drift.interpretation,
+            "sample_added": drift.sample_added,
+            "sample_removed": drift.sample_removed,
+        }
 
     # Use the original uploaded filename (not the UUID-based on-disk name)
     # so the preview reflects what the user selected.
@@ -126,6 +195,12 @@ async def upload_charge_analysis(
         created_at=now,
         expires_at=expires_at,
         claim_flags=flags,
+        aux={
+            "drift_period_start": period_start,
+            "drift_period_end": period_end,
+            "drift_fingerprints": fingerprints,
+            "drift_report": drift,
+        },
     ))
 
     return {
@@ -151,6 +226,8 @@ async def upload_charge_analysis(
             }
             for i in parsed.issues
         ],
+        "autofix": autofix_report,
+        "drift": drift_dict,
         "expires_at": expires_at.isoformat(),
     }
 
@@ -314,6 +391,27 @@ def commit_charge_analysis(
             f"{patients_created} patients created"
         ),
     )
+
+    # Persist the import-audit fingerprints so future re-imports can drift-check.
+    fingerprints = entry.aux.get("drift_fingerprints") or []
+    if fingerprints:
+        try:
+            write_audit_log(
+                db,
+                report_type="charge_analysis",
+                period_start=entry.aux.get("drift_period_start"),
+                period_end=entry.aux.get("drift_period_end"),
+                source_filename=entry.filename,
+                file_path=entry.file_path,
+                fingerprints=fingerprints,
+                drift_report=entry.aux.get("drift_report"),
+                row_count=parsed.total_rows,
+                imported_by=user_email,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()  # auditing should never block an otherwise-successful commit
+
     import_sessions.purge(session_id)
 
     return {

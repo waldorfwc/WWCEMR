@@ -108,24 +108,40 @@ class ChargeAnalysisImport:
     total_rows: int
 
 
+# Sanity ceiling for any monetary cell. WWC's largest historical charge/payment
+# tops out under $2K; values above this are column-shift artifacts (10-digit
+# NPIs / claim-control numbers leaking into a money column).
+_MONEY_SANITY_CEILING = Decimal("50000")
+
+
 def _abs_decimal(v: Any) -> Decimal:
-    """Coerce to Decimal and take absolute value. None/NaN → 0."""
+    """Coerce to Decimal and take absolute value. None/NaN → 0.
+    Implausibly large values (>$50K) are clamped to 0 — they are always
+    column-shift artifacts in this report family."""
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return Decimal("0")
     try:
-        return abs(Decimal(str(v)))
+        d = abs(Decimal(str(v)))
     except (InvalidOperation, TypeError, ValueError):
         return Decimal("0")
+    if d > _MONEY_SANITY_CEILING:
+        return Decimal("0")
+    return d
 
 
 def _decimal(v: Any) -> Decimal:
-    """Coerce to Decimal, preserving sign. None/NaN → 0."""
+    """Coerce to Decimal, preserving sign. None/NaN → 0.
+    Implausibly large values (|v|>$50K) are clamped to 0 — column-shift
+    artifacts."""
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return Decimal("0")
     try:
-        return Decimal(str(v))
+        d = Decimal(str(v))
     except (InvalidOperation, TypeError, ValueError):
         return Decimal("0")
+    if abs(d) > _MONEY_SANITY_CEILING:
+        return Decimal("0")
+    return d
 
 
 def _str_or_none(v: Any) -> Optional[str]:

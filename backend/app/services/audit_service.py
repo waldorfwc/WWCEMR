@@ -40,3 +40,31 @@ def log_action(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+def log_view(
+    db: Session,
+    resource_type: str,
+    resource_id: str,
+    current_user: Optional[Dict] = None,
+    patient_id: Optional[str] = None,
+    description: Optional[str] = None,
+) -> AuditLog:
+    """Record a read-event in the audit log (HIPAA "who saw what" trail).
+
+    Differs from log_action only in its calling shape — pulls user identity
+    out of the get_current_user dict for you and uses action='VIEW'.
+    """
+    cu = current_user or {}
+    email = (cu.get("email") or "").lower().strip() or None
+    name = cu.get("name") or email
+    return log_action(
+        db,
+        action="VIEW",
+        resource_type=resource_type,
+        resource_id=resource_id,
+        patient_id=patient_id,
+        user_id=email,
+        user_name=name,
+        description=description,
+    )

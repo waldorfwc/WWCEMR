@@ -72,13 +72,22 @@ def _str_or_none(v: Any) -> Optional[str]:
     return s or None
 
 
+# Sanity ceiling — values above this are column-shift artifacts (NPIs / claim
+# control numbers leaking into a money column). WWC's largest plausible single
+# claim is well under $50K.
+_MONEY_SANITY_CEILING = Decimal("50000")
+
+
 def _decimal(v: Any) -> Decimal:
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return Decimal("0")
     try:
-        return Decimal(str(v))
+        d = Decimal(str(v))
     except (InvalidOperation, TypeError, ValueError):
         return Decimal("0")
+    if abs(d) > _MONEY_SANITY_CEILING:
+        return Decimal("0")
+    return d
 
 
 def _parse_date(v: Any) -> Optional[date]:

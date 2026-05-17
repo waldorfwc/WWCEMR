@@ -27,6 +27,9 @@ class SessionEntry:
     # Pre-computed per-claim flags for fast commit:
     # list of {visit_id, exists_in_db, patient_resolved_id, will_create_patient}
     claim_flags: List[Dict[str, Any]] = field(default_factory=list)
+    # Free-form scratch storage (e.g. drift fingerprints, period dates) that
+    # the upload endpoint stashes for the commit endpoint to consume.
+    aux: Dict[str, Any] = field(default_factory=dict)
 
 
 _sessions: Dict[str, SessionEntry] = {}
@@ -48,6 +51,19 @@ def get(session_id: str) -> Optional[SessionEntry]:
 
 def purge(session_id: str) -> None:
     _sessions.pop(session_id, None)
+
+
+def set_aux(session_id: str, key: str, value: Any) -> None:
+    entry = _sessions.get(session_id)
+    if entry is not None:
+        entry.aux[key] = value
+
+
+def get_aux(session_id: str, key: str, default: Any = None) -> Any:
+    entry = _sessions.get(session_id)
+    if entry is None:
+        return default
+    return entry.aux.get(key, default)
 
 
 def expire_old() -> int:

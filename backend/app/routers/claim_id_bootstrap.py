@@ -13,15 +13,19 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
 from app.routers.auth import get_current_user
 from app.services import import_sessions
+from app.services.claims_analysis_fixer import fix_file as fix_claims_analysis
 from app.services.claims_analysis_matcher import (
     ClaimsAnalysisImport, MatchResult, match_groups, parse,
+)
+from app.services.import_drift import (
+    KEYS_AND_VALUES, check_drift, compute_fingerprints, write_audit_log,
 )
 
 
@@ -59,6 +63,12 @@ def _summarize(results: list) -> dict:
 @router.post("/claim-id-bootstrap")
 async def upload_claims_analysis(
     file: UploadFile = File(...),
+    autofix_shifts: bool = Query(
+        True,
+        description="Drop PrimeSuite phantom-empty columns and realign "
+                    "row-level shifts before parsing. Transparent "
+                    "pass-through when the file is already clean.",
+    ),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -73,8 +83,35 @@ async def upload_claims_analysis(
     with open(save_path, "wb") as fh:
         fh.write(content)
 
+    # Optional pre-processor: drop phantom columns + realign shifts.
+    autofix_report = None
+    parse_path = save_path
+    if autofix_shifts:
+        fixed_path = os.path.join(subdir, f"{session_id}.fixed.xlsx")
+        try:
+            report = fix_claims_analysis(save_path, fixed_path)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"autofix-shifts failed: {exc}",
+            )
+        if report.shifts_detected:
+            parse_path = fixed_path
+            autofix_report = {
+                "applied": True,
+                "phantom_columns_dropped": report.phantom_columns_dropped,
+                "unresolved_rows": report.unresolved_rows,
+                "unresolved_samples": report.unresolved_samples,
+            }
+        else:
+            try:
+                os.remove(fixed_path)
+            except OSError:
+                pass
+            autofix_report = {"applied": False, "reason": "no shifts detected"}
+
     try:
-        parsed: ClaimsAnalysisImport = parse(save_path)
+        parsed: ClaimsAnalysisImport = parse(parse_path)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except Exception as exc:
@@ -83,6 +120,39 @@ async def upload_claims_analysis(
     parsed.source_filename = file.filename or parsed.source_filename
     results = match_groups(db, parsed.groups)
     summary = _summarize(results)
+
+    # Drift check vs prior import for the same DOS range
+    import pandas as _pd
+    drift_dict = None
+    period_start = period_end = None
+    fingerprints: list = []
+    drift = None
+    try:
+        df_for_drift = _pd.read_excel(parse_path, sheet_name=0)
+    except Exception:
+        df_for_drift = None
+    if df_for_drift is not None:
+        if "Date of Service" in df_for_drift.columns:
+            ds = _pd.to_datetime(df_for_drift["Date of Service"], errors="coerce").dropna()
+            if len(ds) > 0:
+                period_start = ds.min().date()
+                period_end = ds.max().date()
+        keyspec = KEYS_AND_VALUES["claims_analysis"]
+        fingerprints = compute_fingerprints(
+            df_for_drift, keyspec["key_columns"], keyspec["value_columns"],
+        )
+        drift = check_drift(db, "claims_analysis", period_start, period_end, fingerprints)
+        drift_dict = {
+            "has_prior_import": drift.has_prior_import,
+            "prior_imported_at": drift.prior_imported_at,
+            "prior_filename": drift.prior_filename,
+            "rows_added": drift.rows_added,
+            "rows_removed": drift.rows_removed,
+            "rows_changed": drift.rows_changed,
+            "interpretation": drift.interpretation,
+            "sample_added": drift.sample_added,
+            "sample_removed": drift.sample_removed,
+        }
 
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(minutes=SESSION_TTL_MIN)
@@ -94,6 +164,12 @@ async def upload_claims_analysis(
         user_email=current_user.get("email"),
         created_at=now,
         expires_at=expires_at,
+        aux={
+            "drift_period_start": period_start,
+            "drift_period_end": period_end,
+            "drift_fingerprints": fingerprints,
+            "drift_report": drift,
+        },
     ))
 
     return {
@@ -105,6 +181,8 @@ async def upload_claims_analysis(
         **summary,
         "sample_matches": [_to_jsonable(r) for r in results[:20]],
         "issues": [_to_jsonable(i) for i in parsed.issues],
+        "autofix": autofix_report,
+        "drift": drift_dict,
         "expires_at": expires_at.isoformat(),
     }
 
@@ -274,6 +352,28 @@ def commit_claim_id_bootstrap(
                      f"{secondary_claims_created} secondary created, "
                      f"{already_set} already set, {unmatched} unmatched"),
     )
+
+    # Persist drift fingerprints for the next pull to compare against.
+    fingerprints = entry.aux.get("drift_fingerprints") or []
+    if fingerprints:
+        try:
+            parsed = entry.payload.get("parsed") if isinstance(entry.payload, dict) else None
+            write_audit_log(
+                db,
+                report_type="claims_analysis",
+                period_start=entry.aux.get("drift_period_start"),
+                period_end=entry.aux.get("drift_period_end"),
+                source_filename=entry.filename,
+                file_path=entry.file_path,
+                fingerprints=fingerprints,
+                drift_report=entry.aux.get("drift_report"),
+                row_count=parsed.total_rows if parsed else 0,
+                imported_by=user_email,
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
     import_sessions.purge(session_id)
 
     return {
