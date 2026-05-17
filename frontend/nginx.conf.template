@@ -1,0 +1,47 @@
+server {
+    listen       ${PORT};
+    server_name  _;
+
+    # SPA static assets
+    root         /usr/share/nginx/html;
+    index        index.html;
+
+    # gzip + sensible caching defaults
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript
+               application/x-javascript text/xml application/xml
+               application/xml+rss text/javascript image/svg+xml;
+    gzip_min_length 1024;
+
+    # Long-cache hashed Vite asset bundles
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    # API proxy → backend Cloud Run. Preserves the /api/ prefix so backend
+    # routes resolve unchanged. BACKEND_URL is injected at container start
+    # via envsubst from the nginx-alpine entrypoint.
+    location /api/ {
+        resolver 8.8.8.8 valid=30s ipv6=off;
+        proxy_pass         ${BACKEND_URL};
+        proxy_http_version 1.1;
+        proxy_set_header   Host                $proxy_host;
+        proxy_set_header   X-Real-IP           $remote_addr;
+        proxy_set_header   X-Forwarded-For     $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto   https;
+        proxy_set_header   X-Forwarded-Host    $host;
+        proxy_set_header   Authorization       $http_authorization;
+        proxy_pass_request_headers on;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+        client_max_body_size 100m;
+    }
+
+    # SPA fallback — any unknown path serves index.html so the React router
+    # can handle deep links.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
