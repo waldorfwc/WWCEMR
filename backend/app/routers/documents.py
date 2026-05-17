@@ -10,6 +10,7 @@ from datetime import date, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse
+from app.services.storage import serve_blob, using_gcs
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 
@@ -324,6 +325,21 @@ def download_document(doc_id: str, db: Session = Depends(get_db)):
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    # GCS mode: skip local resolve, go straight to bucket
+    if using_gcs():
+        log_action(
+            db, "DOWNLOAD", "patient_document",
+            resource_id=doc_id,
+            description=f"Downloaded {doc.doc_type} for chart {doc.chart_number}",
+        )
+        return serve_blob(
+            local_path=None,
+            gcs_object=f"extracted/Document/{doc.chart_number}/{doc.filename}",
+            media_type="application/pdf",
+            filename=doc.filename,
+            disposition="attachment",
+        )
+
     path = _resolve_file(doc, db)
     if not path:
         raise HTTPException(
@@ -350,6 +366,20 @@ def view_document(doc_id: str, db: Session = Depends(get_db)):
     doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    if using_gcs():
+        log_action(
+            db, "VIEW", "patient_document",
+            resource_id=doc_id,
+            description=f"Viewed {doc.doc_type} for chart {doc.chart_number}",
+        )
+        return serve_blob(
+            local_path=None,
+            gcs_object=f"extracted/Document/{doc.chart_number}/{doc.filename}",
+            media_type="application/pdf",
+            filename=doc.filename,
+            disposition="inline",
+        )
 
     path = _resolve_file(doc, db)
     if not path:
