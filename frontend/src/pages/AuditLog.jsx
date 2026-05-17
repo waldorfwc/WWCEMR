@@ -75,7 +75,7 @@ export default function AuditLog() {
                 <td className="table-td font-mono text-gray-400 text-xs max-w-[100px] truncate">{log.resource_id?.substring(0, 8) || '—'}</td>
                 <td className="table-td font-mono text-gray-400 text-xs">{log.patient_id?.substring(0, 8) || '—'}</td>
                 <td className="table-td">{log.user_name || log.user_id || 'system'}</td>
-                <td className="table-td text-gray-500 max-w-[200px] truncate">{log.description || '—'}</td>
+                <td className="table-td text-gray-500 whitespace-normal break-words max-w-md">{log.description || '—'}</td>
                 <td className="table-td">
                   <span className={log.status === 'success' ? 'text-green-600' : 'text-red-600'}>
                     {log.status}
