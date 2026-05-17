@@ -1,0 +1,128 @@
+"""Saved filter presets for the Active AR queue.
+
+Each biller keeps their own named presets ("BCBS 60-90d unassigned",
+"My past-TF claims", etc.). A preset is a JSON blob of filter params;
+the frontend pushes them into the list-query state when loaded.
+
+One preset per user can be marked default — that one gets auto-loaded
+when the user lands on the Active AR queue.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.active_ar import ActiveARFilterPreset
+from app.routers.auth import require_permission
+
+router = APIRouter(prefix="/active-ar-filters", tags=["active-ar-filters"])
+
+
+class FilterPresetIn(BaseModel):
+    name: str
+    filters_json: dict
+    is_default: bool = False
+
+
+def _to_dict(p: ActiveARFilterPreset) -> dict:
+    return {
+        "id":           str(p.id),
+        "name":         p.name,
+        "filters_json": p.filters_json or {},
+        "is_default":   bool(p.is_default),
+        "created_at":   p.created_at.isoformat() if p.created_at else None,
+        "updated_at":   p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+def _clear_other_defaults(db: Session, owner_email: str, keep_id) -> None:
+    (db.query(ActiveARFilterPreset)
+       .filter(ActiveARFilterPreset.owner_email == owner_email,
+               ActiveARFilterPreset.id != keep_id,
+               ActiveARFilterPreset.is_default.is_(True))
+       .update({"is_default": False}, synchronize_session=False))
+
+
+@router.get("")
+def list_presets(db: Session = Depends(get_db),
+                   current_user: dict = Depends(require_permission("claim:read"))):
+    email = current_user.get("email") or ""
+    rows = (db.query(ActiveARFilterPreset)
+              .filter(ActiveARFilterPreset.owner_email == email)
+              .order_by(ActiveARFilterPreset.name).all())
+    return [_to_dict(p) for p in rows]
+
+
+@router.post("")
+def create_preset(payload: FilterPresetIn,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("claim:read"))):
+    email = current_user.get("email") or ""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name is required")
+    existing = (db.query(ActiveARFilterPreset)
+                  .filter(ActiveARFilterPreset.owner_email == email,
+                          ActiveARFilterPreset.name == name)
+                  .first())
+    if existing:
+        existing.filters_json = payload.filters_json or {}
+        existing.is_default   = bool(payload.is_default)
+        existing.updated_at   = datetime.utcnow()
+        if existing.is_default:
+            _clear_other_defaults(db, email, existing.id)
+        db.commit(); db.refresh(existing)
+        return _to_dict(existing)
+
+    row = ActiveARFilterPreset(
+        owner_email=email,
+        name=name,
+        filters_json=payload.filters_json or {},
+        is_default=bool(payload.is_default),
+    )
+    db.add(row); db.flush()
+    if row.is_default:
+        _clear_other_defaults(db, email, row.id)
+    db.commit(); db.refresh(row)
+    return _to_dict(row)
+
+
+@router.put("/{preset_id}")
+def update_preset(preset_id: str, payload: FilterPresetIn,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("claim:read"))):
+    email = current_user.get("email") or ""
+    row = (db.query(ActiveARFilterPreset)
+             .filter(ActiveARFilterPreset.id == preset_id,
+                     ActiveARFilterPreset.owner_email == email)
+             .first())
+    if not row:
+        raise HTTPException(status_code=404, detail="preset not found")
+    row.name         = payload.name.strip() or row.name
+    row.filters_json = payload.filters_json or {}
+    row.is_default   = bool(payload.is_default)
+    row.updated_at   = datetime.utcnow()
+    if row.is_default:
+        _clear_other_defaults(db, email, row.id)
+    db.commit(); db.refresh(row)
+    return _to_dict(row)
+
+
+@router.delete("/{preset_id}")
+def delete_preset(preset_id: str,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("claim:read"))):
+    email = current_user.get("email") or ""
+    row = (db.query(ActiveARFilterPreset)
+             .filter(ActiveARFilterPreset.id == preset_id,
+                     ActiveARFilterPreset.owner_email == email)
+             .first())
+    if not row:
+        raise HTTPException(status_code=404, detail="preset not found")
+    db.delete(row); db.commit()
+    return {"ok": True}
