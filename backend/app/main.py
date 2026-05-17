@@ -1,13 +1,27 @@
+# Load .env into os.environ before any module reads it. Pydantic Settings
+# parses .env into its own object but doesn't push values back to the env;
+# integrations like ringcentral_client read os.environ directly.
+from dotenv import load_dotenv as _load_dotenv
+_load_dotenv()
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting
+from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, patient_surgery, docusign as docusign_router, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks
+from app.routers import google_sync as google_sync_router
 
-BILLING = [Depends(auth.require_group("admin", "billing"))]
-ADMIN_ONLY = [Depends(auth.require_group("admin"))]
+# RBAC guards. Every router below gates on a specific permission, computed
+# from the user's group memberships + per-user extras/revokes (see
+# app/services/permissions.py). Specific routers gate on tighter permissions
+# (audit:read, bankrecon:read, report:financial, user:manage).
+BILLING_READ        = [Depends(auth.require_permission("claim:read"))]
+USER_MANAGE         = [Depends(auth.require_permission("user:manage"))]
+AUDIT_READ          = [Depends(auth.require_permission("audit:read"))]
+BANKRECON_READ      = [Depends(auth.require_permission("bankrecon:read"))]
+REPORT_FINANCIAL    = [Depends(auth.require_permission("report:financial"))]
 
 
 @asynccontextmanager
@@ -15,6 +29,15 @@ async def lifespan(app: FastAPI):
     init_db()
     from app.services.fax_poller import start_scheduler
     sched = start_scheduler()
+    # One-time route permission audit — surfaces any endpoint missing a
+    # require_permission guard. Logged at WARNING so it's visible without
+    # being fatal during development.
+    try:
+        from app.services.route_perm_catalog import audit_routes
+        audit_routes(app)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("route_perm_catalog failed")
     try:
         yield
     finally:
@@ -42,30 +65,85 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(imports.router, prefix="/api", dependencies=BILLING)
-app.include_router(claims.router, prefix="/api", dependencies=BILLING)
-app.include_router(service_lines.router, prefix="/api", dependencies=BILLING)
-app.include_router(claim_adjustments.router, prefix="/api", dependencies=BILLING)
-app.include_router(service_line_adjustments.router, prefix="/api", dependencies=BILLING)
-app.include_router(charge_imports.router, prefix="/api", dependencies=BILLING)
-app.include_router(claim_id_bootstrap.router, prefix="/api", dependencies=BILLING)
-app.include_router(era_posting.router, prefix="/api", dependencies=BILLING)
+
+# Optimistic-locking exception → HTTP 409.
+# Raised by SQLAlchemy when version_id_col detects a stale write (another
+# session committed an update between our SELECT and UPDATE). Surfaces as
+# a friendly 409 so the client can refetch + retry instead of crashing.
+from sqlalchemy.orm.exc import StaleDataError
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(StaleDataError)
+async def _stale_data_handler(request: Request, exc: StaleDataError):
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": "This record was modified by another user since you "
+                      "opened it. Refresh and try again.",
+            "error": "stale_data",
+        },
+    )
+
+app.include_router(imports.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(claims.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(service_lines.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(claim_adjustments.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(service_line_adjustments.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(charge_imports.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(claim_id_bootstrap.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(era_posting.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(patients.router, prefix="/api")
-app.include_router(denials.router, prefix="/api", dependencies=BILLING)
-app.include_router(appeals.router, prefix="/api", dependencies=BILLING)
-app.include_router(eob.router, prefix="/api", dependencies=BILLING)
-app.include_router(audit.router, prefix="/api", dependencies=BILLING)
-app.include_router(waystar.router, prefix="/api", dependencies=BILLING)
-app.include_router(ar.router, prefix="/api", dependencies=BILLING)
+app.include_router(denials.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(appeals.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(eob.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(audit.router, prefix="/api", dependencies=AUDIT_READ)
+app.include_router(waystar.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(ar.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(documents.router, prefix="/api")
 app.include_router(intake.router, prefix="/api")
 app.include_router(chart.router, prefix="/api")
 app.include_router(fax.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api", dependencies=BILLING)
+app.include_router(dashboard.router, prefix="/api", dependencies=REPORT_FINANCIAL)
 app.include_router(fax_batch.router, prefix="/api")
 app.include_router(fax_batch.log_router, prefix="/api")
-app.include_router(admin_users.router, prefix="/api", dependencies=ADMIN_ONLY)
+app.include_router(admin_users.router, prefix="/api", dependencies=USER_MANAGE)
+app.include_router(admin_groups.router, prefix="/api", dependencies=USER_MANAGE)
+app.include_router(adjustment_codes.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(transaction_detail_imports.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(active_ar.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(active_ar_filter_presets.router, prefix="/api", dependencies=BILLING_READ)
+app.include_router(bank_recon.router, prefix="/api", dependencies=BANKRECON_READ)
+# Checklist is open to all authenticated users (each user works their own list)
+app.include_router(checklist.router, prefix="/api")
+# Recalls require recall:work / recall:manage — gates inside each handler
+app.include_router(recalls.router, prefix="/api")
+app.include_router(recall_filter_presets.router, prefix="/api")
+# Training is open to authenticated users — handlers gate the manager-only ops
+app.include_router(training.router, prefix="/api")
+# Surgery scheduling — handlers gate by surgery:* permissions
+app.include_router(surgery.router, prefix="/api")
+# Patient-facing date picker — public, soft-auth via DOB + last 4 of phone
+app.include_router(patient_surgery.router, prefix="/api")
+# DocuSign Connect webhook — no auth (DocuSign POSTs from outside; verified via HMAC)
+app.include_router(docusign_router.router, prefix="/api")
+# Consent template admin — gated by surgery:manage
+app.include_router(consent_templates.router, prefix="/api")
+# User-scoped saved filter presets for the surgery dashboard
+app.include_router(surgery_filter_presets.router, prefix="/api")
+# LARC device inventory + tracking
+app.include_router(larc.router, prefix="/api")
+# Pellet inventory + receiving + DEA-compliant audit
+app.include_router(pellet.router, prefix="/api")
+# Billing — Insurance Documents (Paper EOBs, patient payments, letters)
+app.include_router(billing_documents.router, prefix="/api")
+# Billing — Missing Charges (ModMed report ingest + workflow)
+app.include_router(missing_charges.router, prefix="/api")
+app.include_router(personal_tasks.router,  prefix="/api")
+# Google Workspace sync — admin-only
+app.include_router(google_sync_router.router, prefix="/api", dependencies=USER_MANAGE)
 
 
 @app.get("/api/health")

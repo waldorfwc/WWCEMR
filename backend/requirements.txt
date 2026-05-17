@@ -23,3 +23,7 @@ pypdf
 apscheduler
 respx
 email-validator
+google-api-python-client
+google-auth
+pyjwt
+qrcode
