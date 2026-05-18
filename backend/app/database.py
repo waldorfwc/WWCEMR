@@ -42,10 +42,25 @@ def init_db():
     _seed_default_groups()
     _migrate_template_targeting()
     _seed_consent_template_from_env()
+    _migrate_billing_doc_status_open_to_new()
     from app.services.larc_seed import seed_larc_device_types
     seed_larc_device_types()
     from app.services.pellet_seed import seed_pellet_dose_types
     seed_pellet_dose_types()
+
+
+def _migrate_billing_doc_status_open_to_new():
+    """One-time: an earlier upload endpoint set BillingDocument.status='open'
+    on new uploads, but valid statuses are only ('new','in_progress','worked').
+    Those rows were hidden from the default Insurance Docs view (filtered by
+    [new, in_progress]). This UPDATE is idempotent once all rows are migrated."""
+    insp = inspect(engine)
+    if "billing_documents" not in insp.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE billing_documents SET status = 'new' WHERE status = 'open'"
+        ))
 
 
 def _seed_consent_template_from_env():

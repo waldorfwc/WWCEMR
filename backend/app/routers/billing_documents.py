@@ -151,7 +151,11 @@ async def upload_document(
         page_count=pages,
         mime_type=file.content_type or "application/pdf",
         classification=classification,
-        status="open",
+        # STATUSES = ('new','in_progress','worked'). Earlier versions of
+        # this endpoint set 'open' which is unrecognized — those rows
+        # were hidden from the default Insurance Docs view (filter
+        # defaults to [new, in_progress]) and rendered with no tone.
+        status="new",
         uploaded_by=current_user.get("email") or "system",
         assigned_to=assignees,
     )
