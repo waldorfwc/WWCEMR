@@ -10,6 +10,23 @@ import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse
+from app.services.storage import serve_blob, using_gcs
+
+# Map a local intake archive path to its GCS object key. Mirrors the
+# `gcloud storage rsync /Volumes/OWC External/IntakeArchive gs://wwc-app-docs/intake`
+# layout.
+_INTAKE_LOCAL_ROOT = "/Volumes/OWC External/IntakeArchive/"
+
+def _intake_gcs_object(file_path: str) -> str:
+    if not file_path:
+        return ""
+    if file_path.startswith(_INTAKE_LOCAL_ROOT):
+        return f"intake/{file_path[len(_INTAKE_LOCAL_ROOT):]}"
+    # Fallback: take whatever's after 'IntakeArchive/' if present
+    idx = file_path.find("IntakeArchive/")
+    if idx >= 0:
+        return f"intake/{file_path[idx + len('IntakeArchive/'):]}"
+    return ""
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 
@@ -279,32 +296,33 @@ def override_match(doc_id: str, chart_number: str, db: Session = Depends(get_db)
     return {"status": "ok", "docs_updated": affected, "chart_number": chart_number}
 
 
+def _intake_media_type(doc) -> str:
+    if doc.file_type in ("jpg", "jpeg"):
+        return "image/jpeg"
+    if doc.file_type == "png":
+        return "image/png"
+    if doc.file_type == "docx":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return "application/pdf"
+
+
 @router.get("/download/{doc_id}")
 def download_intake(doc_id: str, db: Session = Depends(get_db)):
     doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    if not os.path.isfile(doc.file_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
-
-    media_type = "application/pdf"
-    if doc.file_type in ("jpg", "jpeg"):
-        media_type = "image/jpeg"
-    elif doc.file_type == "png":
-        media_type = "image/png"
-    elif doc.file_type == "docx":
-        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
     log_action(
         db, "DOWNLOAD", "intake_document",
         resource_id=doc_id,
         description=f"Downloaded intake {doc.filename} for {doc.patient_name_raw}"
     )
-    return FileResponse(
-        path=doc.file_path,
-        media_type=media_type,
+    return serve_blob(
+        local_path=doc.file_path if not using_gcs() else None,
+        gcs_object=_intake_gcs_object(doc.file_path) if using_gcs() else None,
+        media_type=_intake_media_type(doc),
         filename=doc.filename,
-        headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
+        disposition="attachment",
     )
 
 
@@ -313,20 +331,13 @@ def view_intake(doc_id: str, db: Session = Depends(get_db)):
     doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
-    if not os.path.isfile(doc.file_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
 
-    media_type = "application/pdf"
-    if doc.file_type in ("jpg", "jpeg"):
-        media_type = "image/jpeg"
-    elif doc.file_type == "png":
-        media_type = "image/png"
-
-    return FileResponse(
-        path=doc.file_path,
-        media_type=media_type,
+    return serve_blob(
+        local_path=doc.file_path if not using_gcs() else None,
+        gcs_object=_intake_gcs_object(doc.file_path) if using_gcs() else None,
+        media_type=_intake_media_type(doc),
         filename=doc.filename,
-        headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
+        disposition="inline",
     )
 
 
