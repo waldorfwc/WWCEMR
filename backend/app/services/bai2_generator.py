@@ -244,6 +244,24 @@ def parse_csv(file_path: str, filters: FilterOptions) -> ParseResult:
 # ─────────────────────────────────────────────────────────────────────
 # BAI2 file generation
 
+def _sanitize_bai_field(s) -> str:
+    """Make a string safe to embed in a BAI2 record value.
+
+    BAI2 record framing: fields are comma-separated, records end with '/',
+    one record per LINE. So we strip newlines, tabs, carriage returns
+    (which would orphan the rest of the description as a phantom record
+    in downstream parsers like ModMed's payment-import) and replace
+    commas / slashes with safe substitutes. Also collapses runs of
+    whitespace so descriptions stay compact.
+    """
+    if s is None:
+        return ''
+    s = str(s)
+    s = s.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ')
+    s = s.replace(',', ' ').replace('/', '-')
+    return ' '.join(s.split())
+
+
 def render_bai2(transactions: List[ParsedTransaction], bank_name: str,
                 account_full: Optional[str], account_last_4: str) -> str:
     """Generate the BAI v2 file as a string. Groups transactions by date —
@@ -274,8 +292,11 @@ def render_bai2(transactions: List[ParsedTransaction], bank_name: str,
         out.append(f'03,{account_id},USD,015,{group_total}/')
         records_in_group = 2  # 02 + 03
         for t in txns:
-            text = t.formatted_text.replace(',', ' ').replace('/', '-')
-            out.append(f'16,{t.bai_type_code},{_cents(t.amount)},Z,,,{text}/')
+            text = _sanitize_bai_field(t.formatted_text)
+            # Default to '475' (Misc Credit) if the type code is missing.
+            # Better a generic-but-valid code than literal 'None' in the file.
+            type_code = (str(t.bai_type_code).strip() if t.bai_type_code else '') or '475'
+            out.append(f'16,{type_code},{_cents(t.amount)},Z,,,{text}/')
             records_in_group += 1
         out.append(f'49,{group_total},{records_in_group - 1}/')   # records since 02 exclusive
         records_in_group += 1
