@@ -11,6 +11,7 @@ Every read or mutation writes one row to billing_document_access.
 """
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from typing import Optional
 
@@ -111,12 +112,17 @@ async def upload_document(
     classification: str = Form("other"),
     auto_classify: bool = Form(True),
     assigned_to: str = Form(""),     # comma-separated email list
+    force: bool = Form(False),       # bypass duplicate check
     db: Session = Depends(get_db),
     current_user: dict = Depends(require_permission("claim:read")),
 ):
     """Upload a scanned document. Anyone with claim:read can upload.
     If `auto_classify=true` (default) AND the uploader leaves classification
-    at the default 'other', we ask Claude to suggest a better label."""
+    at the default 'other', we ask Claude to suggest a better label.
+
+    Duplicate detection: we SHA-256 the uploaded bytes and refuse if a
+    document with the same hash already exists, returning 409 with the
+    existing doc's metadata. Pass force=true to upload anyway."""
     if not _classification_valid(classification):
         raise HTTPException(status_code=422,
                             detail=f"unknown classification: {classification}")
@@ -126,6 +132,31 @@ async def upload_document(
         raise HTTPException(status_code=422, detail="empty file")
     if len(contents) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="file >50MB; split it up")
+
+    # Hash first so we can short-circuit dup uploads before writing to disk.
+    content_hash = hashlib.sha256(contents).hexdigest()
+    if not force:
+        existing = (db.query(BillingDocument)
+                      .filter(BillingDocument.content_hash == content_hash)
+                      .order_by(BillingDocument.uploaded_at.desc())
+                      .first())
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "duplicate",
+                    "message": "A document with identical contents already exists.",
+                    "existing": {
+                        "id": str(existing.id),
+                        "original_filename": existing.original_filename,
+                        "uploaded_by": existing.uploaded_by,
+                        "uploaded_at": existing.uploaded_at.isoformat()
+                                         if existing.uploaded_at else None,
+                        "classification": existing.classification,
+                        "status": existing.status,
+                    },
+                },
+            )
 
     try:
         storage_name, size = storage.save(contents, file.filename or "upload.pdf")
@@ -150,6 +181,7 @@ async def upload_document(
         file_size_bytes=size,
         page_count=pages,
         mime_type=file.content_type or "application/pdf",
+        content_hash=content_hash,
         classification=classification,
         # STATUSES = ('new','in_progress','worked'). Earlier versions of
         # this endpoint set 'open' which is unrecognized — those rows

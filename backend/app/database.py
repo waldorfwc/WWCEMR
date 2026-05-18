@@ -305,6 +305,8 @@ def _apply_lightweight_migrations():
         ("larc_assignments", "oop_max",              "NUMERIC(10,2)"),
         ("larc_assignments", "oop_met",              "NUMERIC(10,2)"),
         ("larc_assignments", "benefits_verified_at", "DATE"),
+        # Billing-doc dedup: SHA-256 of uploaded bytes
+        ("billing_documents", "content_hash", "VARCHAR(64)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
@@ -329,6 +331,9 @@ def _apply_lightweight_migrations():
         # Lot-history retrieval for inventory & write-off reports
         ("ix_pellet_audit_lot_at",
          "pellet_audit_events", "lot_id, at"),
+        # Billing-doc dup detection on upload
+        ("ix_billing_doc_content_hash",
+         "billing_documents", "content_hash"),
     ]
     with engine.begin() as conn:
         for idx_name, table, cols_clause in indexes:

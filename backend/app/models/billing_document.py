@@ -48,6 +48,8 @@ class BillingDocument(Base):
     file_size_bytes   = Column(Integer, nullable=True)
     page_count        = Column(Integer, nullable=True)
     mime_type         = Column(String(80), default="application/pdf")
+    # SHA-256 of the uploaded bytes. Used to detect duplicate uploads.
+    content_hash      = Column(String(64), nullable=True, index=True)
 
     # Workflow
     classification    = Column(String(40), default="other", nullable=False)

@@ -44,6 +44,35 @@ export default function InsuranceDocuments() {
   const [uploading, setUploading] = useState(false)
   const [openDocId, setOpenDocId] = useState(null)
 
+  // Inline rename in the list (avoid having to open the drawer).
+  const qcList = useQueryClient()
+  const [renamingId, setRenamingId] = useState(null)
+  const [renameValue, setRenameValue] = useState('')
+  const renameMut = useMutation({
+    mutationFn: ({ id, name }) =>
+      api.patch(`/billing/documents/${id}`, { original_filename: name }).then(r => r.data),
+    onSuccess: () => {
+      qcList.invalidateQueries({ queryKey: ['billing-docs'] })
+      setRenamingId(null)
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Rename failed'),
+  })
+  const startRename = (d, e) => {
+    e.stopPropagation()
+    setRenameValue(d.original_filename)
+    setRenamingId(d.id)
+  }
+  const saveRename = (e) => {
+    if (e) e.stopPropagation()
+    const name = renameValue.trim()
+    if (!name || !renamingId) { setRenamingId(null); return }
+    renameMut.mutate({ id: renamingId, name })
+  }
+  const cancelRename = (e) => {
+    if (e) e.stopPropagation()
+    setRenamingId(null)
+  }
+
   const { data: picks } = useQuery({
     queryKey: ['billing-doc-picklists'],
     queryFn: () => api.get('/billing/documents/picklists').then(r => r.data),
@@ -204,13 +233,42 @@ export default function InsuranceDocuments() {
               </td></tr>
             )}
             {docs.map(d => (
-              <tr key={d.id} className="hover:bg-plum-50/40 cursor-pointer"
-                  onClick={() => setOpenDocId(d.id)}>
+              <tr key={d.id} className="group hover:bg-plum-50/40 cursor-pointer"
+                  onClick={() => renamingId !== d.id && setOpenDocId(d.id)}>
                 <td className="table-td">
-                  <div className="flex items-center gap-1">
-                    <FileText size={12} className="text-gray-400 shrink-0" />
-                    <span className="truncate max-w-[280px]">{d.original_filename}</span>
-                  </div>
+                  {renamingId === d.id ? (
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <FileText size={12} className="text-gray-400 shrink-0" />
+                      <input
+                        autoFocus
+                        className="input text-[12px] py-0.5 flex-1 min-w-0"
+                        value={renameValue}
+                        onChange={e => setRenameValue(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter')  saveRename(e)
+                          if (e.key === 'Escape') cancelRename(e)
+                        }}
+                      />
+                      <button onClick={saveRename}
+                              disabled={renameMut.isPending}
+                              className="text-plum-700 hover:bg-plum-100 p-0.5 rounded shrink-0"
+                              title="Save (Enter)"><Save size={12} /></button>
+                      <button onClick={cancelRename}
+                              className="text-gray-500 hover:bg-gray-100 p-0.5 rounded shrink-0"
+                              title="Cancel (Esc)"><X size={12} /></button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <FileText size={12} className="text-gray-400 shrink-0" />
+                      <span className="truncate max-w-[280px]">{d.original_filename}</span>
+                      <button
+                        onClick={e => startRename(d, e)}
+                        title="Rename"
+                        className="opacity-0 group-hover:opacity-100 text-plum-700 hover:bg-plum-100 p-0.5 rounded shrink-0 transition-opacity">
+                        <Edit3 size={11} />
+                      </button>
+                    </div>
+                  )}
                 </td>
                 <td className="table-td">
                   <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${CLASSIFICATION_TONES[d.classification] || ''}`}>
@@ -266,18 +324,24 @@ function UploadDrawer({ picks, onClose }) {
     staleTime: 60_000,
   })
 
+  // Holds the 'existing' info returned with a 409 dup response so the
+  // user can decide whether to upload anyway.
+  const [dupExisting, setDupExisting] = useState(null)
+
   const upload = useMutation({
-    mutationFn: async () => {
+    mutationFn: async ({ force = false } = {}) => {
       const fd = new FormData()
       fd.append('file', file)
       fd.append('classification', classification)
       fd.append('auto_classify', autoClassify ? 'true' : 'false')
       fd.append('assigned_to', assignedTo.join(','))
+      if (force) fd.append('force', 'true')
       return api.post('/billing/documents', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       }).then(r => r.data)
     },
     onSuccess: (data) => {
+      setDupExisting(null)
       qc.invalidateQueries({ queryKey: ['billing-docs'] })
       // Show AI classification result briefly before closing if it kicked in
       if (data?.ai_classified) {
@@ -287,7 +351,15 @@ function UploadDrawer({ picks, onClose }) {
         onClose()
       }
     },
-    onError: (e) => alert(e?.response?.data?.detail || 'Upload failed'),
+    onError: (e) => {
+      const detail = e?.response?.data?.detail
+      // Backend returns 409 with detail={error,message,existing:{...}} for dups
+      if (e?.response?.status === 409 && detail?.error === 'duplicate') {
+        setDupExisting(detail.existing)
+        return
+      }
+      alert(typeof detail === 'string' ? detail : 'Upload failed')
+    },
   })
 
   return (
@@ -352,13 +424,37 @@ function UploadDrawer({ picks, onClose }) {
             </div>
           </div>
         </div>
+        {dupExisting && (
+          <div className="mx-5 mb-3 text-[12px] bg-amber-50 border border-amber-300 rounded p-3 text-amber-900">
+            <div className="font-semibold mb-1">⚠ Possible duplicate</div>
+            <div className="leading-snug">
+              A document with identical contents already exists:
+              <div className="mt-1 bg-white rounded border border-amber-200 px-2 py-1 text-[11px] text-ink">
+                <div className="font-medium truncate">{dupExisting.original_filename}</div>
+                <div className="text-gray-500">
+                  Uploaded {fmt.date((dupExisting.uploaded_at || '').slice(0, 10))} by{' '}
+                  {dupExisting.uploaded_by?.split('@')[0]} ·{' '}
+                  <span className="uppercase">{dupExisting.status}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="sticky bottom-0 bg-white border-t border-border-subtle px-5 py-3 flex justify-end gap-2">
           <button className="text-sm text-muted hover:underline" onClick={onClose}>Cancel</button>
-          <button className="btn-primary text-sm flex items-center gap-1"
-                  onClick={() => upload.mutate()}
-                  disabled={!file || upload.isPending}>
-            <Upload size={12} /> {upload.isPending ? 'Uploading…' : 'Upload'}
-          </button>
+          {dupExisting ? (
+            <button className="btn-primary text-sm flex items-center gap-1 bg-amber-600 hover:bg-amber-700"
+                    onClick={() => upload.mutate({ force: true })}
+                    disabled={upload.isPending}>
+              <Upload size={12} /> {upload.isPending ? 'Uploading…' : 'Upload anyway'}
+            </button>
+          ) : (
+            <button className="btn-primary text-sm flex items-center gap-1"
+                    onClick={() => upload.mutate()}
+                    disabled={!file || upload.isPending}>
+              <Upload size={12} /> {upload.isPending ? 'Uploading…' : 'Upload'}
+            </button>
+          )}
         </div>
       </div>
     </div>
