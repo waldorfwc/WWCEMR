@@ -14,6 +14,8 @@ Usage:
 Or as a one-shot Cloud Run Job — but easiest is to run locally against
 whichever DB the live deployment uses, via the Cloud SQL Auth Proxy.
 """
+from __future__ import annotations
+
 import hashlib
 import sys
 from pathlib import Path
