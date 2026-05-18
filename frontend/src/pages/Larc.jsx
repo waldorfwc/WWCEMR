@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Activity, AlertTriangle, BookOpen, Box, Calendar, Check, ChevronRight, Clock,
-  Plus, Search, Users, Building2, Truck, Package, FileText, X,
+  Activity, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Box,
+  Calendar, Check, ChevronRight, Clock, Plus, Search, Users, Building2,
+  Truck, Package, FileText, X,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 
@@ -56,6 +57,58 @@ export default function Larc() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-dashboard'] }),
     onError: (e) => alert(e?.response?.data?.detail || 'Acknowledge failed'),
   })
+
+  // Per-column sort + filter on the assignment list (client-side).
+  // sortBy=null means default order (whatever the API returns).
+  const [sortBy, setSortBy] = useState(null)
+  const [sortDir, setSortDir] = useState('asc')
+  const [colFilters, setColFilters] = useState({
+    patient: '', device: '', flow: '', status: '', created: '',
+  })
+
+  const toggleSort = (key) => {
+    if (sortBy !== key) { setSortBy(key); setSortDir('asc'); return }
+    if (sortDir === 'asc') { setSortDir('desc'); return }
+    setSortBy(null); setSortDir('asc')  // 3rd click clears
+  }
+
+  const SortArrow = ({ k }) => {
+    if (sortBy !== k) return <ArrowUpDown size={11} className="inline opacity-40 ml-1" />
+    return sortDir === 'asc'
+      ? <ArrowUp size={11} className="inline ml-1 text-plum-700" />
+      : <ArrowDown size={11} className="inline ml-1 text-plum-700" />
+  }
+
+  const ACCESSORS = {
+    patient: (a) => `${a.patient_name || ''} ${a.chart_number || ''}`,
+    device:  (a) => `${a.device_our_id || ''} ${a.device_type_name || ''}`,
+    flow:    (a) => a.source_flow || '',
+    status:  (a) => a.status || '',
+    created: (a) => a.created_at || '',
+  }
+
+  const visibleAssignments = useMemo(() => {
+    const rows = list?.assignments || []
+    // filter
+    const filters = Object.entries(colFilters)
+      .filter(([_, v]) => v && v.trim())
+      .map(([k, v]) => [k, v.trim().toLowerCase()])
+    let out = rows.filter(a =>
+      filters.every(([k, needle]) => ACCESSORS[k](a).toLowerCase().includes(needle))
+    )
+    // sort
+    if (sortBy) {
+      const acc = ACCESSORS[sortBy]
+      out = [...out].sort((x, y) => {
+        const xv = acc(x).toLowerCase(); const yv = acc(y).toLowerCase()
+        if (xv < yv) return sortDir === 'asc' ? -1 : 1
+        if (xv > yv) return sortDir === 'asc' ?  1 : -1
+        return 0
+      })
+    }
+    return out
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, sortBy, sortDir, colFilters])
 
   return (
     <div>
@@ -305,15 +358,46 @@ export default function Larc() {
         <table className="w-full text-sm">
           <thead className="bg-plum-50">
             <tr>
-              <th className="table-th">Patient</th>
-              <th className="table-th">Device</th>
-              <th className="table-th">Flow</th>
-              <th className="table-th">Status</th>
-              <th className="table-th">Created</th>
+              {[
+                { k: 'patient', l: 'Patient' },
+                { k: 'device',  l: 'Device'  },
+                { k: 'flow',    l: 'Flow'    },
+                { k: 'status',  l: 'Status'  },
+                { k: 'created', l: 'Created' },
+              ].map(col => (
+                <th key={col.k}
+                    onClick={() => toggleSort(col.k)}
+                    className="table-th cursor-pointer select-none hover:bg-plum-100">
+                  {col.l}<SortArrow k={col.k} />
+                </th>
+              ))}
+            </tr>
+            <tr className="bg-white border-t border-gray-100">
+              {['patient', 'device', 'flow', 'status', 'created'].map(k => (
+                <th key={k} className="px-2 py-1 align-top">
+                  <div className="relative">
+                    <input
+                      className="input text-[11px] py-1 w-full"
+                      placeholder="filter…"
+                      value={colFilters[k]}
+                      onChange={e => setColFilters(f => ({ ...f, [k]: e.target.value }))}
+                    />
+                    {colFilters[k] && (
+                      <button
+                        type="button"
+                        onClick={() => setColFilters(f => ({ ...f, [k]: '' }))}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700"
+                        title="Clear filter">
+                        <X size={11} />
+                      </button>
+                    )}
+                  </div>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {(list?.assignments || []).map(a => (
+            {visibleAssignments.map(a => (
               <tr key={a.id}
                   className="hover:bg-plum-50 cursor-pointer"
                   onClick={() => navigate(`/larc/assignments/${a.id}`)}>
@@ -336,9 +420,11 @@ export default function Larc() {
                 </td>
               </tr>
             ))}
-            {(list?.assignments || []).length === 0 && (
+            {visibleAssignments.length === 0 && (
               <tr><td colSpan={5} className="table-td text-center text-gray-400 italic py-6">
-                No assignments yet.
+                {(list?.assignments || []).length === 0
+                  ? 'No assignments yet.'
+                  : 'No rows match the current filters.'}
               </td></tr>
             )}
           </tbody>
