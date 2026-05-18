@@ -1508,6 +1508,36 @@ def decide_checkout(checkout_id: str, payload: CheckoutApprovalIn,
     }
 
 
+@router.post("/checkouts/{checkout_id}/acknowledge")
+def acknowledge_checkout(checkout_id: str,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(require_permission("larc:work"))):
+    """Staff confirms they saw a device checkout happen. Clears it from
+    the dashboard's "Unacknowledged checkouts" list."""
+    c = (db.query(LarcCheckout)
+           .options(joinedload(LarcCheckout.assignment).joinedload(LarcAssignment.device))
+           .filter(LarcCheckout.id == checkout_id).first())
+    if not c:
+        raise HTTPException(status_code=404, detail="checkout not found")
+    if c.acknowledged_at:
+        return {"checkout_id": str(c.id),
+                "acknowledged_at": c.acknowledged_at.isoformat(),
+                "acknowledged_by": c.acknowledged_by}
+
+    by = current_user.get("email") or "system"
+    c.acknowledged_at = datetime.utcnow()
+    c.acknowledged_by = by
+
+    a = c.assignment
+    log_audit(db, actor=by, action="checkout_acknowledged",
+              device=a.device if a else None, assignment=a, checkout=c,
+              summary=f"Acknowledged checkout for {a.patient_name if a else '?'}")
+    db.commit(); db.refresh(c)
+    return {"checkout_id": str(c.id),
+            "acknowledged_at": c.acknowledged_at.isoformat(),
+            "acknowledged_by": c.acknowledged_by}
+
+
 @router.get("/checkouts/pending")
 def list_pending_checkouts(db: Session = Depends(get_db),
                             current_user: dict = Depends(require_permission("larc:approve"))):

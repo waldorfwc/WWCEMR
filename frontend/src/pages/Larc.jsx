@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Activity, AlertTriangle, BookOpen, Box, Calendar, ChevronRight, Clock,
+  Activity, AlertTriangle, BookOpen, Box, Calendar, Check, ChevronRight, Clock,
   Plus, Search, Users, Building2, Truck, Package, FileText, X,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
@@ -47,6 +47,14 @@ export default function Larc() {
     queryFn: () => api.get('/larc/assignments', {
       params: { bucket: filterBucket || undefined, search: search || undefined },
     }).then(r => r.data),
+  })
+
+  const qc = useQueryClient()
+  const ackCheckout = useMutation({
+    mutationFn: (checkoutId) =>
+      api.post(`/larc/checkouts/${checkoutId}/acknowledge`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-dashboard'] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Acknowledge failed'),
   })
 
   return (
@@ -232,9 +240,23 @@ export default function Larc() {
           ) : (
             <ul className="text-xs space-y-1">
               {dash.unacknowledged_checkouts.map(c => (
-                <li key={c.checkout_id} className="flex items-baseline justify-between px-1 py-0.5 rounded bg-red-50">
-                  <span><strong>{c.patient_name}</strong> <span className="text-gray-500">— pulled by {c.requested_by?.split('@')[0]}</span></span>
-                  <span className="text-red-700 shrink-0">{c.hours_outstanding}h</span>
+                <li key={c.checkout_id} className="flex items-center justify-between gap-2 px-1 py-0.5 rounded bg-red-50">
+                  <span className="min-w-0 truncate">
+                    <strong>{c.patient_name}</strong>{' '}
+                    <span className="text-gray-500">— pulled by {c.requested_by?.split('@')[0]}</span>
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span className="text-red-700">{c.hours_outstanding}h</span>
+                    <button
+                      type="button"
+                      onClick={() => ackCheckout.mutate(c.checkout_id)}
+                      disabled={ackCheckout.isPending}
+                      title="Acknowledge — I've seen this checkout"
+                      className="text-[11px] px-2 py-0.5 rounded border border-red-300 bg-white text-red-800 hover:bg-red-100 disabled:opacity-50 inline-flex items-center gap-1"
+                    >
+                      <Check size={11} /> Ack
+                    </button>
+                  </span>
                 </li>
               ))}
             </ul>
