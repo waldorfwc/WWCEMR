@@ -183,7 +183,7 @@ def build_user_content(
     payer_label = payer or "(no payer specified)"
     denial_lines = []
     for d in active_denials:
-        scope = d["payer_name"] or "ALL PAYERS"
+        scope = d.get("payer_name") or "ALL PAYERS"
         denial_lines.append(
             f"  - {d['code_type'].upper()} {d['code']} (denied by {scope})"
             + (f": {d['reason']}" if d.get("reason") else "")

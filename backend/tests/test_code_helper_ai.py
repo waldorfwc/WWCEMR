@@ -87,7 +87,7 @@ def test_ai_coding_result_full():
 # ---------------------------------------------------------------------------
 # Task 3: prompt assembly + extraction
 # ---------------------------------------------------------------------------
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from app.services.code_helper_ai import (
     build_user_content, extract_tool_input, generate_codes,
 )
@@ -147,3 +147,11 @@ def test_extract_tool_input_happy_path():
     assert result.patient_name == "Jane Smith"
     assert result.cpt_codes[0].code == "99214"
     assert usage["input_tokens"] == 1200
+
+
+def test_extract_tool_input_raises_when_no_tool_use_block():
+    fake_response = MagicMock()
+    fake_response.content = []
+    fake_response.usage = MagicMock(input_tokens=10, output_tokens=0)
+    with pytest.raises(RuntimeError, match="submit_coding"):
+        extract_tool_input(fake_response)
