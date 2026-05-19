@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, patient_surgery, docusign as docusign_router, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks
+from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, patient_surgery, docusign as docusign_router, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper
 from app.routers import google_sync as google_sync_router
 
 # RBAC guards. Every router below gates on a specific permission, computed
@@ -142,6 +142,8 @@ app.include_router(billing_documents.router, prefix="/api")
 # Billing — Missing Charges (ModMed report ingest + workflow)
 app.include_router(missing_charges.router, prefix="/api")
 app.include_router(personal_tasks.router,  prefix="/api")
+# Code Helper — AI-assisted CPT + ICD-10 coding; handlers gate by get_current_user
+app.include_router(code_helper.router, prefix="/api")
 # Google Workspace sync — admin-only
 app.include_router(google_sync_router.router, prefix="/api", dependencies=USER_MANAGE)
 
