@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.code_helper import CodeHelperDenial, CodeHelperRequest  # noqa: F401
-from app.routers.auth import get_current_user
+from app.routers.auth import require_permission
 
 
 router = APIRouter(prefix="/billing/code-helper", tags=["code-helper"])
@@ -60,7 +60,7 @@ def list_denials(
     db: Session = Depends(get_db),
     payer:  Optional[str]  = None,
     active: Optional[bool] = True,
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_permission("claim:read")),
 ):
     q = db.query(CodeHelperDenial)
     if active is True:
@@ -79,7 +79,7 @@ def list_denials(
 def create_denial(
     payload: DenialIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_permission("claim:edit")),
 ):
     if payload.code_type not in ("cpt", "icd10"):
         raise HTTPException(422, "code_type must be 'cpt' or 'icd10'")
@@ -99,7 +99,7 @@ def patch_denial(
     denial_id: str,
     payload: DenialPatch,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_permission("claim:edit")),
 ):
     d = db.query(CodeHelperDenial).filter(CodeHelperDenial.id == denial_id).first()
     if not d:
@@ -118,7 +118,7 @@ def patch_denial(
 def delete_denial(
     denial_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_permission("user:manage")),
 ):
     d = db.query(CodeHelperDenial).filter(CodeHelperDenial.id == denial_id).first()
     if not d:

@@ -10,10 +10,35 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
 from app.database import Base, get_db
 from app.main import app
+from app.models.user import User, UserGroup
 from app.routers.auth import get_current_user
 
 
 TEST_USER = {"email": "tester@waldorfwomenscare.com", "name": "Test User", "group": "admin"}
+
+# All permissions needed by any endpoint exercised in the test suite.
+# Using permissions_extra so no Group rows are needed.
+_TEST_USER_PERMS = [
+    "claim:read", "claim:edit", "claim:writeoff",
+    "payment:post", "payment:void",
+    "user:manage",
+    "audit:read",
+    "bankrecon:read", "bankrecon:generate",
+    "report:financial",
+]
+
+
+def _seed_test_user(db):
+    """Insert (or upsert) the TEST_USER row so require_permission lookups pass."""
+    existing = db.query(User).filter(User.email == TEST_USER["email"]).first()
+    if existing is None:
+        db.add(User(
+            email=TEST_USER["email"],
+            display_name=TEST_USER["name"],
+            group=UserGroup.ADMIN,
+            permissions_extra=_TEST_USER_PERMS,
+        ))
+        db.commit()
 
 
 @pytest.fixture
@@ -33,6 +58,8 @@ def db():
 
 @pytest.fixture
 def client(db):
+    _seed_test_user(db)
+
     def override_get_db():
         try:
             yield db
