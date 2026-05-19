@@ -1,3 +1,23 @@
+# Default nginx mime.types lacks .mjs (ES module). Browsers enforce strict
+# MIME for module scripts, so a .mjs served as octet-stream fails to load —
+# pdf.js's worker is shipped as .mjs and breaks the PDF viewer.
+types {
+    application/javascript  js mjs;
+    text/css                css;
+    text/html               html;
+    image/svg+xml           svg svgz;
+    image/png               png;
+    image/jpeg              jpg jpeg;
+    image/webp              webp;
+    image/x-icon            ico;
+    font/woff               woff;
+    font/woff2              woff2;
+    application/json        json;
+    application/pdf         pdf;
+    application/wasm        wasm;
+    text/plain              txt;
+}
+
 server {
     listen       ${PORT};
     server_name  _;
