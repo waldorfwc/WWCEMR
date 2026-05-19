@@ -8,6 +8,7 @@ import os
 from datetime import date
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+from anthropic import Anthropic
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -233,7 +234,6 @@ def generate_codes(
     model: str = "claude-opus-4-7",
 ) -> Tuple[AICodingResult, Dict[str, int], str]:
     """Make the Anthropic call. Returns (result, usage, model_used)."""
-    from anthropic import Anthropic  # lazy import per existing pattern
     from app.config import settings
 
     api_key = (getattr(settings, "anthropic_api_key", None)

@@ -124,3 +124,110 @@ def delete_denial(
     if not d:
         raise HTTPException(404, "not found")
     db.delete(d); db.commit()
+
+
+# ─── Requests ─────────────────────────────────────────────────────────────────
+
+from fastapi import File, Form, UploadFile  # noqa: E402 (after router definition)
+
+from app.services.code_helper_ai import generate_codes  # noqa: E402
+from app.services.code_helper_match import match_patient, MatchKind  # noqa: E402
+from app.services.audit_service import log_action  # noqa: E402
+
+
+def _serialize_request(r: CodeHelperRequest) -> dict:
+    return {
+        "id":           str(r.id),
+        "requested_at": r.requested_at.isoformat() if r.requested_at else None,
+        "requested_by": r.requested_by,
+        "note_text":    r.note_text,
+        "source_pdf_storage_filename": r.source_pdf_storage_filename,
+        "payer_name":   r.payer_name,
+        "patient_name": r.patient_name,
+        "patient_dob":  r.patient_dob.isoformat() if r.patient_dob else None,
+        "patient_id":   r.patient_id,
+        "cpt_codes":    r.cpt_codes,
+        "icd10_codes":  r.icd10_codes,
+        "ai_model":     r.ai_model,
+        "ai_input_tokens":  r.ai_input_tokens,
+        "ai_output_tokens": r.ai_output_tokens,
+        "error":        r.error,
+    }
+
+
+@router.post("/requests", status_code=201)
+def create_request(
+    note_text:  Optional[str]        = Form(None),
+    note_pdf:   Optional[UploadFile] = File(None),
+    payer_name: Optional[str]        = Form(None),
+    db: Session = Depends(get_db),
+    user: dict = Depends(require_permission("claim:edit")),
+):
+    if not note_text and not note_pdf:
+        raise HTTPException(422, "Provide note_text or note_pdf")
+
+    # PDF support deferred to Task 7.
+    note_pdf_b64 = None
+    if note_pdf is not None:
+        raise HTTPException(422, "PDF upload not yet supported in this build")
+
+    # Pull active, payer-relevant denials.
+    q = db.query(CodeHelperDenial).filter(CodeHelperDenial.is_active.is_(True))
+    if payer_name:
+        q = q.filter(or_(CodeHelperDenial.payer_name == payer_name,
+                          CodeHelperDenial.payer_name.is_(None)))
+    else:
+        q = q.filter(CodeHelperDenial.payer_name.is_(None))
+    active_denials = [
+        {"code": d.code, "code_type": d.code_type,
+         "payer_name": d.payer_name, "reason": d.reason}
+        for d in q.all()
+    ]
+
+    try:
+        ai_result, usage, model = generate_codes(
+            note_text=note_text, note_pdf_b64=note_pdf_b64,
+            payer=payer_name, active_denials=active_denials,
+        )
+    except RuntimeError as e:
+        # AI call failed — save the row with the error and 502 out.
+        row = CodeHelperRequest(
+            requested_by=user.get("email") or "system",
+            note_text=note_text, payer_name=payer_name,
+            cpt_codes=[], icd10_codes=[],
+            ai_model="claude-opus-4-7",
+            error=str(e),
+        )
+        db.add(row); db.commit(); db.refresh(row)
+        raise HTTPException(502, f"AI call failed: {e}")
+
+    match = match_patient(db, name=ai_result.patient_name,
+                           dob=ai_result.patient_dob)
+
+    row = CodeHelperRequest(
+        requested_by=user.get("email") or "system",
+        note_text=note_text, payer_name=payer_name,
+        patient_name=ai_result.patient_name,
+        patient_dob=ai_result.patient_dob,
+        patient_id=(match.patient_id if match.kind == MatchKind.ONE else None),
+        cpt_codes=[c.model_dump(mode="json") for c in ai_result.cpt_codes],
+        icd10_codes=[i.model_dump(mode="json") for i in ai_result.icd10_codes],
+        ai_model=model,
+        ai_input_tokens=usage.get("input_tokens"),
+        ai_output_tokens=usage.get("output_tokens"),
+    )
+    db.add(row); db.commit(); db.refresh(row)
+
+    log_action(
+        db,
+        "code_helper_generated",
+        "code_helper_request",
+        resource_id=str(row.id),
+        patient_id=row.patient_id,
+        user_name=user.get("email"),
+        description=(f"Generated codes for {row.patient_name or '?'} "
+                      f"(payer={row.payer_name or '—'}, "
+                      f"cpts={len(row.cpt_codes)})"),
+    )
+
+    return _serialize_request(row)

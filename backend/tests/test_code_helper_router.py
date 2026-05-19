@@ -50,3 +50,70 @@ def test_list_denials_filter_by_payer(client):
     codes = sorted(d["code"] for d in res.json()["denials"])
     # Cigna-tagged + universal
     assert codes == ["B1", "B3"]
+
+
+# ─── POST /requests (text input) ─────────────────────────────────────────────
+
+from unittest.mock import patch, MagicMock
+
+
+def _fake_ai_response(*, input_tokens=1200, output_tokens=400):
+    resp = MagicMock()
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.name = "submit_coding"
+    tool_block.input = {
+        "patient_name": "Smith, Jane",
+        "patient_dob":  "1985-03-12",
+        "cpt_codes": [{
+            "code": "99214", "modifiers": ["25"], "position": 1,
+            "justification_type": "e_m_mdm",
+            "justification": {"problems_addressed": "Mod",
+                               "data_reviewed": "Ltd", "risk": "Mod"},
+        }],
+        "icd10_codes": [{"code": "I10", "position": 1,
+                          "description": "Essential hypertension"}],
+    }
+    resp.content = [tool_block]
+    resp.usage = MagicMock(input_tokens=input_tokens, output_tokens=output_tokens)
+    return resp
+
+
+def test_create_request_text_input(client):
+    with patch("app.services.code_helper_ai.Anthropic") as M:
+        M.return_value.messages.create.return_value = _fake_ai_response()
+        res = client.post("/api/billing/code-helper/requests",
+                           data={"note_text": "65yo F w/ HTN.",
+                                  "payer_name": "Cigna"})
+    assert res.status_code == 201, res.text
+    body = res.json()
+    assert body["payer_name"]   == "Cigna"
+    assert body["patient_name"] == "Smith, Jane"
+    assert body["cpt_codes"][0]["code"] == "99214"
+    assert body["icd10_codes"][0]["code"] == "I10"
+    assert body["ai_model"] == "claude-opus-4-7"
+    assert body["ai_input_tokens"]  == 1200
+
+
+def test_create_request_includes_denials_in_prompt(client):
+    client.post("/api/billing/code-helper/denials", json={
+        "code": "97110", "code_type": "cpt", "payer_name": "Cigna",
+    })
+    captured = {}
+    def fake_create(**kw):
+        captured["messages"] = kw["messages"]
+        return _fake_ai_response()
+    with patch("app.services.code_helper_ai.Anthropic") as M:
+        M.return_value.messages.create.side_effect = fake_create
+        res = client.post("/api/billing/code-helper/requests",
+                           data={"note_text": "PT note", "payer_name": "Cigna"})
+    assert res.status_code == 201
+    user_blocks = captured["messages"][0]["content"]
+    text = " ".join(b.get("text", "") for b in user_blocks if b["type"] == "text")
+    assert "97110" in text
+    assert "Cigna" in text
+
+
+def test_create_request_missing_note_returns_422(client):
+    res = client.post("/api/billing/code-helper/requests", data={})
+    assert res.status_code == 422
