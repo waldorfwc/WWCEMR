@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -236,3 +236,73 @@ def create_request(
     )
 
     return _serialize_request(row)
+
+
+from datetime import date as _date  # noqa: E402
+
+
+class RequestPatch(BaseModel):
+    patient_name: Optional[str]   = None
+    patient_dob:  Optional[_date] = None
+    patient_id:   Optional[str]   = None
+
+
+@router.get("/requests")
+def list_requests(
+    db: Session = Depends(get_db),
+    page:     int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+    patient_id: Optional[str] = None,
+    payer:      Optional[str] = None,
+    _user = Depends(require_permission("claim:read")),
+):
+    q = db.query(CodeHelperRequest)
+    if patient_id:
+        q = q.filter(CodeHelperRequest.patient_id == patient_id)
+    if payer:
+        q = q.filter(CodeHelperRequest.payer_name == payer)
+    total = q.count()
+    rows = (q.order_by(CodeHelperRequest.requested_at.desc())
+             .offset((page - 1) * per_page).limit(per_page).all())
+    return {"total": total, "page": page, "per_page": per_page,
+            "requests": [_serialize_request(r) for r in rows]}
+
+
+@router.get("/requests/{request_id}")
+def get_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    _user = Depends(require_permission("claim:read")),
+):
+    r = db.query(CodeHelperRequest).filter(CodeHelperRequest.id == request_id).first()
+    if not r:
+        raise HTTPException(404, "not found")
+    return _serialize_request(r)
+
+
+@router.patch("/requests/{request_id}")
+def patch_request(
+    request_id: str, payload: RequestPatch,
+    db: Session = Depends(get_db),
+    _user = Depends(require_permission("claim:edit")),
+):
+    r = db.query(CodeHelperRequest).filter(CodeHelperRequest.id == request_id).first()
+    if not r:
+        raise HTTPException(404, "not found")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(r, k, v)
+    db.commit(); db.refresh(r)
+    return _serialize_request(r)
+
+
+@router.delete("/requests/{request_id}", status_code=204)
+def delete_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    _user = Depends(require_permission("user:manage")),
+):
+    r = db.query(CodeHelperRequest).filter(CodeHelperRequest.id == request_id).first()
+    if not r:
+        raise HTTPException(404, "not found")
+    db.delete(r); db.commit()

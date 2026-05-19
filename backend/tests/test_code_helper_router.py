@@ -158,3 +158,54 @@ def test_create_request_pdf_too_large_returns_422(client):
     )
     assert res.status_code == 422
     assert "too large" in res.text.lower() or "10" in res.text
+
+
+def _make_request_row(client):
+    with patch("app.services.code_helper_ai.Anthropic") as M:
+        M.return_value.messages.create.return_value = _fake_ai_response()
+        return client.post("/api/billing/code-helper/requests",
+                            data={"note_text": "x"}).json()
+
+
+def test_list_requests_paginates(client):
+    for _ in range(3):
+        _make_request_row(client)
+    res = client.get("/api/billing/code-helper/requests?page=1&per_page=2")
+    body = res.json()
+    assert body["total"] == 3
+    assert len(body["requests"]) == 2
+
+
+def test_get_one_request(client):
+    row = _make_request_row(client)
+    res = client.get(f"/api/billing/code-helper/requests/{row['id']}")
+    assert res.status_code == 200
+    assert res.json()["id"] == row["id"]
+
+
+def test_patch_request_updates_patient(client):
+    row = _make_request_row(client)
+    res = client.patch(f"/api/billing/code-helper/requests/{row['id']}",
+                        json={"patient_name": "Override Name",
+                               "patient_dob":  "1970-01-01"})
+    assert res.status_code == 200
+    assert res.json()["patient_name"] == "Override Name"
+    assert res.json()["patient_dob"]  == "1970-01-01"
+
+
+def test_patch_request_rejects_disallowed_fields(client):
+    row = _make_request_row(client)
+    res = client.patch(f"/api/billing/code-helper/requests/{row['id']}",
+                        json={"cpt_codes": []})
+    # PATCH ignores unrecognized fields silently — verify cpt_codes unchanged
+    assert res.status_code == 200
+    body = res.json()
+    assert body["cpt_codes"] == row["cpt_codes"]
+
+
+def test_delete_request(client):
+    row = _make_request_row(client)
+    res = client.delete(f"/api/billing/code-helper/requests/{row['id']}")
+    assert res.status_code == 204
+    res2 = client.get(f"/api/billing/code-helper/requests/{row['id']}")
+    assert res2.status_code == 404
