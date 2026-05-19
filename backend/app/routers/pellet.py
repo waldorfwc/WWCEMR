@@ -17,7 +17,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import desc, func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.models.pellet import (
@@ -3168,11 +3168,16 @@ def list_patients(
     if view not in PATIENT_VIEWS:
         raise HTTPException(status_code=422, detail=f"unknown view: {view}")
 
+    # Use selectinload (separate batched IN queries) instead of joinedload
+    # (LEFT JOIN cross-product). With ~1,200 patients × ~5,300 visits ×
+    # thousands of milestones + ~7,500 doses, joinedload was producing
+    # millions of rows that SQLAlchemy had to dedupe in Python — the
+    # "Loading week…" sat for 10 s on /pellets/patients?view=upcoming.
     q = (db.query(PelletPatient)
-           .options(joinedload(PelletPatient.visits)
-                     .joinedload(PelletVisit.milestones),
-                    joinedload(PelletPatient.visits)
-                     .joinedload(PelletVisit.doses)))
+           .options(selectinload(PelletPatient.visits)
+                     .selectinload(PelletVisit.milestones),
+                    selectinload(PelletPatient.visits)
+                     .selectinload(PelletVisit.doses)))
     # 'active' / 'inactive' status are DERIVED from last_visit_date (handled
     # post-query). Any other status value (e.g. 'declined') still filters
     # the DB column directly.
