@@ -117,3 +117,44 @@ def test_create_request_includes_denials_in_prompt(client):
 def test_create_request_missing_note_returns_422(client):
     res = client.post("/api/billing/code-helper/requests", data={})
     assert res.status_code == 422
+
+
+import base64
+from io import BytesIO
+
+
+def _tiny_valid_pdf_bytes() -> bytes:
+    """Minimal one-page PDF header. Real PDFs are bigger; this is just
+    enough for the upload to be accepted and forwarded to the mocked AI."""
+    return b"%PDF-1.4\n%fake\n%%EOF\n"
+
+
+def test_create_request_pdf_input(client):
+    pdf_bytes = _tiny_valid_pdf_bytes()
+    captured = {}
+    def fake_create(**kw):
+        captured["messages"] = kw["messages"]
+        return _fake_ai_response()
+    with patch("app.services.code_helper_ai.Anthropic") as M:
+        M.return_value.messages.create.side_effect = fake_create
+        res = client.post(
+            "/api/billing/code-helper/requests",
+            data={"payer_name": "Aetna"},
+            files={"note_pdf": ("clinical-note.pdf", pdf_bytes, "application/pdf")},
+        )
+    assert res.status_code == 201, res.text
+    assert res.json()["payer_name"] == "Aetna"
+    # PDF should have produced a document content block
+    types = [b["type"] for b in captured["messages"][0]["content"]]
+    assert "document" in types
+
+
+def test_create_request_pdf_too_large_returns_422(client):
+    too_big = b"%PDF-1.4\n" + b"A" * (10 * 1024 * 1024 + 1)  # 10 MB + 1 byte
+    res = client.post(
+        "/api/billing/code-helper/requests",
+        data={"payer_name": "Cigna"},
+        files={"note_pdf": ("big.pdf", too_big, "application/pdf")},
+    )
+    assert res.status_code == 422
+    assert "too large" in res.text.lower() or "10" in res.text

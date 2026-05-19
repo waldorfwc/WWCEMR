@@ -166,10 +166,15 @@ def create_request(
     if not note_text and not note_pdf:
         raise HTTPException(422, "Provide note_text or note_pdf")
 
-    # PDF support deferred to Task 7.
     note_pdf_b64 = None
     if note_pdf is not None:
-        raise HTTPException(422, "PDF upload not yet supported in this build")
+        body = note_pdf.file.read()
+        if len(body) > 10 * 1024 * 1024:
+            raise HTTPException(422, "PDF too large (>10 MB)")
+        if not body.startswith(b"%PDF"):
+            raise HTTPException(422, "Not a valid PDF (missing %PDF header)")
+        import base64
+        note_pdf_b64 = base64.b64encode(body).decode("ascii")
 
     # Pull active, payer-relevant denials.
     q = db.query(CodeHelperDenial).filter(CodeHelperDenial.is_active.is_(True))
