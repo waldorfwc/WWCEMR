@@ -20,7 +20,10 @@ class EMMDMJustification(BaseModel):
     risk:               str
 
     def __getitem__(self, key: str) -> str:
-        return getattr(self, key)
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key)
 
 
 class DenialFlag(BaseModel):
