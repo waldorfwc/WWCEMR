@@ -194,7 +194,7 @@ def create_request(
             note_text=note_text, note_pdf_b64=note_pdf_b64,
             payer=payer_name, active_denials=active_denials,
         )
-    except RuntimeError as e:
+    except Exception as e:
         # AI call failed — save the row with the error and 502 out.
         row = CodeHelperRequest(
             requested_by=user.get("email") or "system",
