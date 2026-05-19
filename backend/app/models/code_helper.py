@@ -8,7 +8,6 @@ from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, JSON,
     String, Text,
 )
-from sqlalchemy.orm import relationship
 
 from app.database import Base
 from app.models.guid import GUID, new_uuid
