@@ -9,6 +9,7 @@ const baseNav = [
   { to: '/documents', label: 'Charts' },
   { to: '/active-ar', label: 'Active AR' },
   { to: '/billing', label: 'Billing' },
+  { to: '/billing/code-helper', label: 'Code Helper' },
 ]
 
 const RECALLS_ENTRY = { to: '/recalls', label: 'Recalls' }
