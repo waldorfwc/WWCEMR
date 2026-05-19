@@ -598,6 +598,14 @@ class PelletVisit(Base):
     provider        = Column(String(120), nullable=True)
     # Deep link into ModMed (Patient Link column from the appt export)
     modmed_link     = Column(Text, nullable=True)
+    # Source row id from a Smartsheet history backfill, if applicable.
+    # Populated by scripts/pellet_smartsheet_history_import.py — used to
+    # avoid double-importing on re-runs.
+    smartsheet_row_id = Column(String(40), nullable=True, index=True)
+    # The "Pellet Visit ID" column from the Smartsheet — the practice's
+    # legacy visit identifier. Useful when cross-referencing the old
+    # tracking spreadsheet.
+    smartsheet_visit_id = Column(String(40), nullable=True)
 
     # Bag fill (Tattiana pre-fills based on dose card)
     bagged_at       = Column(DateTime, nullable=True)

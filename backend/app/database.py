@@ -307,6 +307,12 @@ def _apply_lightweight_migrations():
         ("larc_assignments", "benefits_verified_at", "DATE"),
         # Billing-doc dedup: SHA-256 of uploaded bytes
         ("billing_documents", "content_hash", "VARCHAR(64)"),
+        # Pellet history backfill — source row id from Smartsheet trackers,
+        # used by scripts/pellet_smartsheet_history_import.py for idempotency.
+        ("pellet_visits", "smartsheet_row_id", "VARCHAR(40)"),
+        # The "Pellet Visit ID" column from the Smartsheet — the practice's
+        # legacy visit identifier carried forward into the new system.
+        ("pellet_visits", "smartsheet_visit_id", "VARCHAR(40)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
@@ -334,6 +340,9 @@ def _apply_lightweight_migrations():
         # Billing-doc dup detection on upload
         ("ix_billing_doc_content_hash",
          "billing_documents", "content_hash"),
+        # Pellet history backfill idempotency
+        ("ix_pellet_visit_smartsheet_row",
+         "pellet_visits", "smartsheet_row_id"),
     ]
     with engine.begin() as conn:
         for idx_name, table, cols_clause in indexes:
