@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload
@@ -276,16 +276,26 @@ def get_document_file(doc_id: str,
         raise HTTPException(status_code=403, detail="not authorized")
     try:
         fh = storage.open_for_read(d.storage_filename)
+        body = fh.read()
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="file missing on disk")
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    finally:
+        try:
+            fh.close()
+        except Exception:
+            pass
 
     _log_access(db, d, current_user.get("email") or "system", "downloaded")
     db.commit()
-    return StreamingResponse(
-        fh, media_type=d.mime_type or "application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{d.original_filename}"'},
+    return Response(
+        content=body,
+        media_type=d.mime_type or "application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{d.original_filename}"',
+            "Content-Length": str(len(body)),
+        },
     )
 
 
