@@ -343,6 +343,9 @@ def _apply_lightweight_migrations():
         # Pellet history backfill idempotency
         ("ix_pellet_visit_smartsheet_row",
          "pellet_visits", "smartsheet_row_id"),
+        # Code Helper patient roster lookup — match_patient queries by lower(last_name)
+        ("ix_patients_last_name_lower",
+         "patients", "lower(last_name)"),
     ]
     with engine.begin() as conn:
         for idx_name, table, cols_clause in indexes:
