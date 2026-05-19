@@ -858,8 +858,25 @@ function PdfViewer({ docId, totalPages }) {
   const containerRef = useRef(null)
   const scrollAreaRef = useRef(null)
   const pageRefs = useRef({})           // {pageNumber: HTMLDivElement}
-  // The auth header gets attached by api(); but react-pdf does its own
-  // fetch. We pass the cookie/header via the file URL with credentials.
+  // react-pdf delegates to pdf.js's HTTP fetch, which doesn't reliably
+  // honor `httpHeaders` for the Authorization bearer token. So we fetch
+  // the PDF bytes via axios (which has the auth interceptor wired up)
+  // and hand react-pdf a Uint8Array instead of a URL.
+  const [pdfData, setPdfData] = useState(null)
+  const [loadError, setLoadError] = useState(null)
+  useEffect(() => {
+    let alive = true
+    setPdfData(null); setLoadError(null)
+    api.get(`/billing/documents/${docId}/file`, { responseType: 'arraybuffer' })
+       .then(res => { if (alive) setPdfData(new Uint8Array(res.data)) })
+       .catch(err => {
+         if (!alive) return
+         setLoadError(err?.response?.status === 404
+           ? 'File missing on disk.'
+           : `Failed to fetch (HTTP ${err?.response?.status || '?'}).`)
+       })
+    return () => { alive = false }
+  }, [docId])
 
   useEffect(() => {
     function update() {
@@ -985,16 +1002,16 @@ function PdfViewer({ docId, totalPages }) {
       </div>
 
       <div ref={scrollAreaRef} className="flex-1 overflow-auto p-4 flex flex-col items-center gap-4">
-        <Document file={{
-                    url: `/api/billing/documents/${docId}/file`,
-                    httpHeaders: {
-                      Authorization: `Bearer ${localStorage.getItem('session_token') || ''}`,
-                    },
-                    withCredentials: false,
-                  }}
+        {loadError && (
+          <div className="text-red-600 mt-8">{loadError}</div>
+        )}
+        {!loadError && !pdfData && (
+          <div className="text-gray-400 mt-8">Loading PDF…</div>
+        )}
+        <Document file={pdfData ? { data: pdfData } : null}
                   onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-                  loading={<div className="text-gray-400 mt-8">Loading PDF…</div>}
-                  error={<div className="text-red-600 mt-8">Failed to load PDF.</div>}>
+                  loading={<div className="text-gray-400 mt-8">Rendering…</div>}
+                  error={<div className="text-red-600 mt-8">Failed to render PDF.</div>}>
           {Array.from({ length: numPages || 0 }, (_, i) => i + 1).map(p => (
             <div key={p}
                   data-pagenum={p}
