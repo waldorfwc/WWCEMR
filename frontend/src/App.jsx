@@ -61,7 +61,7 @@ import { LoginPage, AuthCallback } from './pages/Login'
 import { useCurrentUser } from './hooks/useCurrentUser'
 import PrivateRoute from './components/PrivateRoute'
 import CodeHelper from './pages/CodeHelper'
-// TODO(Task 10): import CodeHelperDenials from './pages/CodeHelperDenials'
+import CodeHelperDenials from './pages/CodeHelperDenials'
 
 function ProtectedApp({ user, onLogout }) {
   const { isAdmin, isClinical, isLoading } = useCurrentUser()
@@ -90,7 +90,7 @@ function ProtectedApp({ user, onLogout }) {
               <Route path="insurance-documents" element={<InsuranceDocuments />} />
             </Route>
             <Route path="/billing/code-helper"         element={<CodeHelper />} />
-            {/* TODO(Task 10): <Route path="/billing/code-helper/denials" element={<CodeHelperDenials />} /> */}
+            <Route path="/billing/code-helper/denials" element={<CodeHelperDenials />} />
             <Route path="/checklist"           element={<MyChecklist />} />
             <Route path="/manager-dashboard"   element={
               <PrivateRoute perm="checklist:manage"><ManagerDashboard /></PrivateRoute>
