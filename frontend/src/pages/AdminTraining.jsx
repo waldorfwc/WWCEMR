@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import api from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 
 const CATEGORY_BADGE = {
@@ -357,6 +358,7 @@ function CellEditor({ user, template, cell, canAuthorize, currentUser, onClose, 
   const isMe = user.email === me
   const [notes, setNotes] = useState('')
   const [error, setError] = useState(null)
+  const confirm = useConfirm()
 
   const authorizeAsTrainer = useMutation({
     mutationFn: () => api.post('/training/trainers', {
@@ -485,7 +487,13 @@ function CellEditor({ user, template, cell, canAuthorize, currentUser, onClose, 
                 </button>
               ) : (
                 <button className="text-xs px-3 py-1.5 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 flex items-center gap-1"
-                        onClick={() => revokeTrainer.mutate()}
+                        onClick={async () => {
+                          if (await confirm({
+                            title: 'Revoke trainer authorization?',
+                            message: `${user.display_name || user.email} will no longer be able to certify others for "${template.title}".`,
+                            confirmLabel: 'Revoke',
+                          })) revokeTrainer.mutate()
+                        }}
                         disabled={revokeTrainer.isPending}>
                   <ShieldX size={11} /> Revoke trainer authorization
                 </button>
@@ -519,7 +527,14 @@ function CellEditor({ user, template, cell, canAuthorize, currentUser, onClose, 
               <input className="input text-xs" placeholder="Reason (optional)"
                      value={notes} onChange={e => setNotes(e.target.value)} />
               <button className="text-xs px-3 py-1.5 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 flex items-center gap-1"
-                      onClick={() => revokeCert.mutate()} disabled={revokeCert.isPending}>
+                      onClick={async () => {
+                        if (await confirm({
+                          title: 'Revoke certification?',
+                          message: `${user.display_name || user.email}'s certification for "${template.title}" will be revoked.`,
+                          confirmLabel: 'Revoke',
+                        })) revokeCert.mutate()
+                      }}
+                      disabled={revokeCert.isPending}>
                 <ShieldX size={11} /> Revoke certification
               </button>
             </div>

@@ -62,6 +62,7 @@ import { useCurrentUser } from './hooks/useCurrentUser'
 import PrivateRoute from './components/PrivateRoute'
 import CodeHelper from './pages/CodeHelper'
 import CodeHelperDenials from './pages/CodeHelperDenials'
+import { ConfirmProvider } from './components/ui/ConfirmDialog'
 
 function ProtectedApp({ user, onLogout }) {
   const { isAdmin, isClinical, isLoading } = useCurrentUser()
@@ -168,18 +169,20 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={
-        user ? <Navigate to="/" /> : <LoginPage onLogin={handleLogin} />
-      } />
-      <Route path="/auth/callback" element={<AuthCallback onLogin={handleLogin} />} />
-      {/* Public patient pages — no staff auth, no app chrome */}
-      <Route path="/p/surgery/:id" element={<PatientSurgery />} />
-      {/* Public provider portal — signed-token, no login */}
-      <Route path="/p/missing-charges/:token" element={<ProviderMissingChargesPortal />} />
-      <Route path="/*" element={
-        user ? <ProtectedApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
-      } />
-    </Routes>
+    <ConfirmProvider>
+      <Routes>
+        <Route path="/login" element={
+          user ? <Navigate to="/" /> : <LoginPage onLogin={handleLogin} />
+        } />
+        <Route path="/auth/callback" element={<AuthCallback onLogin={handleLogin} />} />
+        {/* Public patient pages — no staff auth, no app chrome */}
+        <Route path="/p/surgery/:id" element={<PatientSurgery />} />
+        {/* Public provider portal — signed-token, no login */}
+        <Route path="/p/missing-charges/:token" element={<ProviderMissingChargesPortal />} />
+        <Route path="/*" element={
+          user ? <ProtectedApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
+        } />
+      </Routes>
+    </ConfirmProvider>
   )
 }

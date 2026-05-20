@@ -6,6 +6,7 @@ import {
   GraduationCap, AlertCircle, CheckSquare, Users, Trash2, Edit3,
 } from 'lucide-react'
 import api from '../utils/api'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 
 export default function AdminTrainingCards() {
@@ -189,6 +190,7 @@ function TaskCard({ task, allGroups, qc }) {
   const [adding, setAdding] = useState('user')  // 'user' | 'group'
   const [showMissing, setShowMissing] = useState(false)
   const allUsers = Object.values(t.userByEmail)
+  const confirm = useConfirm()
 
   function refresh() {
     qc.invalidateQueries({ queryKey: ['training-matrix'] })
@@ -311,8 +313,12 @@ function TaskCard({ task, allGroups, qc }) {
         icon={<ShieldCheck size={12} className="text-plum-700"/>}
         title="Trainers"
         emails={t.trainers}
-        onRemove={(e) => {
-          if (confirm(`Revoke trainer authorization for ${e}?`)) revokeTrainer.mutate(e)
+        onRemove={async (e) => {
+          if (await confirm({
+            title: 'Revoke trainer authorization?',
+            message: `${e} will no longer be able to certify others for "${t.title}".`,
+            confirmLabel: 'Revoke',
+          })) revokeTrainer.mutate(e)
         }}
       />
 
@@ -322,8 +328,12 @@ function TaskCard({ task, allGroups, qc }) {
         title="Certified"
         emails={t.certified}
         emphasizeEmails={t.expiring}
-        onRemove={(e) => {
-          if (confirm(`Revoke certification for ${e}?`)) {
+        onRemove={async (e) => {
+          if (await confirm({
+            title: 'Revoke certification?',
+            message: `${e}'s certification for "${t.title}" will be revoked.`,
+            confirmLabel: 'Revoke',
+          })) {
             const id = certIdFor(e)
             if (id) revokeCert.mutate(id)
           }
@@ -404,10 +414,15 @@ function TaskCard({ task, allGroups, qc }) {
               ))}
             </select>
             <button className="btn-primary text-[11px]"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!pickedGroup) return
                       const g = allGroups.find(g => g.id === pickedGroup)
-                      if (g && confirm(`Issue certifications to all ${g.member_count} members of "${g.name}" on "${t.title}"?\n\nAlready-certified members are skipped.`)) {
+                      if (g && await confirm({
+                        title: 'Certify whole group?',
+                        message: `Issue certifications to all ${g.member_count} members of "${g.name}" on "${t.title}".\n\nAlready-certified members are skipped.`,
+                        confirmLabel: 'Certify group',
+                        danger: false,
+                      })) {
                         certifyGroup.mutate(pickedGroup)
                       }
                     }}
@@ -415,10 +430,14 @@ function TaskCard({ task, allGroups, qc }) {
               + Certify whole group
             </button>
             <button className="text-[11px] text-danger hover:underline"
-                    onClick={() => {
+                    onClick={async () => {
                       if (!pickedGroup) return
                       const g = allGroups.find(g => g.id === pickedGroup)
-                      if (g && confirm(`Revoke certifications for ALL members of "${g.name}" on "${t.title}"?\n\nUsed when an SOP changes and everyone needs to re-train.`)) {
+                      if (g && await confirm({
+                        title: 'Revoke certifications for whole group?',
+                        message: `Revoke certifications for ALL members of "${g.name}" on "${t.title}".\n\nUsed when an SOP changes and everyone needs to re-train.`,
+                        confirmLabel: 'Revoke all',
+                      })) {
                         revokeGroup.mutate(pickedGroup)
                       }
                     }}

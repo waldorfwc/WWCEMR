@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2, X, Eye, AlertTriangle, ExternalLink, GraduationCap, ArrowUp, ArrowDown, ArrowUpDown, Search } from 'lucide-react'
 import api from '../utils/api'
+import { useConfirm } from '../components/ui/ConfirmDialog'
 
 
 const CATEGORIES = ['clinical', 'admin', 'billing', 'safety', 'compliance', 'communication']
@@ -1025,6 +1026,7 @@ function TemplateDrawer({ templateId, onClose }) {
 
 function TrainersAndTrainees({ templateId, users, groupsList }) {
   const qc = useQueryClient()
+  const confirm = useConfirm()
   const { data: trainersData, isLoading: trainersLoading } = useQuery({
     queryKey: ['training-trainers', templateId],
     queryFn: () => api.get('/training/trainers',
@@ -1151,8 +1153,12 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
                 </span>
                 <button type="button"
                          className="ml-auto text-[10px] text-danger hover:underline"
-                         onClick={() => {
-                           if (confirm(`Revoke ${t.user_email} as a trainer for this template?`))
+                         onClick={async () => {
+                           if (await confirm({
+                             title: 'Revoke trainer?',
+                             message: `${t.user_email} will no longer be a trainer for this template.`,
+                             confirmLabel: 'Revoke',
+                           }))
                              revokeTrainer.mutate(t.user_email)
                          }}>
                   revoke
@@ -1221,8 +1227,13 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
                   <button type="button"
                            className="ml-auto text-[10px] text-plum-700 hover:underline"
                            title="Mark this trainee certified on their behalf (admin override)"
-                           onClick={() => {
-                             if (confirm(`Activate ${c.user_email}'s certification on their behalf? They won't need to log in to acknowledge.`))
+                           onClick={async () => {
+                             if (await confirm({
+                               title: 'Activate certification on their behalf?',
+                               message: `${c.user_email} won't need to log in to acknowledge.`,
+                               confirmLabel: 'Activate',
+                               danger: false,
+                             }))
                                forceAck.mutate(c.id)
                            }}>
                     activate now
@@ -1230,8 +1241,12 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
                 )}
                 <button type="button"
                          className={`text-[10px] text-danger hover:underline ${pending ? '' : 'ml-auto'}`}
-                         onClick={() => {
-                           if (confirm(`Revoke ${c.user_email}'s certification?`))
+                         onClick={async () => {
+                           if (await confirm({
+                             title: 'Revoke certification?',
+                             message: `${c.user_email}'s certification will be revoked.`,
+                             confirmLabel: 'Revoke',
+                           }))
                              revokeCert.mutate(c.id)
                          }}>
                   revoke
