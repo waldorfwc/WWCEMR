@@ -469,13 +469,12 @@ function CalendarVisitCard({ patient, onOpen }) {
   const paid = patient.active_visit_payment_status === 'collected'
   const sent = patient.active_visit_payment_status === 'sent'
   const hasDoses = patient.active_visit_has_doses
-  const allPulled = hasDoses
-                      && patient.active_visit_doses_planned === 0
-                      && patient.active_visit_doses_pulled > 0
+  // Bagged = bag was explicitly filled (bagged_at set by Fill Bag).
+  const bagged = !!patient.active_visit_bagged_at
 
-  // Color: green = paid + bagged, blue = paid, amber = not paid yet
+  // Color: green = bagged + paid, blue = paid, amber = not paid yet
   const tone =
-    allPulled && paid     ? 'bg-green-50 border-green-200 hover:bg-green-100' :
+    bagged && paid        ? 'bg-green-50 border-green-200 hover:bg-green-100' :
     paid                  ? 'bg-blue-50 border-blue-200 hover:bg-blue-100' :
     sent                  ? 'bg-amber-50 border-amber-200 hover:bg-amber-100' :
                             'bg-gray-50 border-gray-200 hover:bg-gray-100'
@@ -536,8 +535,14 @@ function CalendarVisitCard({ patient, onOpen }) {
             <span className="bg-gray-200 text-gray-700 px-1 rounded" title="No payment activity yet">no $</span>
           )}
           {/* Bag state */}
-          {allPulled && paid && (
+          {bagged && paid && (
             <span className="bg-green-200 text-green-800 px-1 rounded" title="Bag filled + paid">ready</span>
+          )}
+          {bagged && !paid && (
+            <span className="bg-indigo-200 text-indigo-800 px-1 rounded"
+                  title={`Bag filled ${patient.active_visit_bagged_at?.slice(0, 10) || ''} — awaiting payment`.trim()}>
+              bagged
+            </span>
           )}
           {!hasDoses && (
             <span className="bg-red-100 text-red-700 px-1 rounded" title="No doses on visit yet">no doses</span>

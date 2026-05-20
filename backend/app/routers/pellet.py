@@ -2947,6 +2947,8 @@ def _patient_view_extras(p: PelletPatient, today: _date,
         "active_visit_scheduled_date": str(active.scheduled_date)
                                           if active and active.scheduled_date else None,
         "active_visit_has_doses": bool(active and (active.doses or [])),
+        "active_visit_bagged_at": (active.bagged_at.isoformat()
+                                     if active and active.bagged_at else None),
         "active_visit_doses_pulled": (
             sum(1 for d in (active.doses or [])
                   if d.status in ("pulled", "added"))
