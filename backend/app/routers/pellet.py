@@ -2873,6 +2873,29 @@ def _get_active_months_cutoff(db: Session) -> int:
     return max(1, min(120, n))   # clamp 1..120 months
 
 
+def _bagged_milestone(active):
+    """The active visit's completed 'bagged' milestone, or None."""
+    if not active:
+        return None
+    return next((m for m in (active.milestones or [])
+                  if m.kind == "bagged" and m.status == "done"), None)
+
+
+def _active_visit_bagged(active) -> bool:
+    return bool(active and (active.bagged_at or _bagged_milestone(active)))
+
+
+def _active_visit_bagged_at(active):
+    """ISO timestamp the bag was marked — prefers v.bagged_at (Fill Bag),
+    falls back to the 'bagged' milestone's completed_at."""
+    if not active:
+        return None
+    if active.bagged_at:
+        return active.bagged_at.isoformat()
+    ms = _bagged_milestone(active)
+    return ms.completed_at.isoformat() if ms and ms.completed_at else None
+
+
 def _patient_view_extras(p: PelletPatient, today: _date,
                             active_months: int = DEFAULT_PELLET_ACTIVE_MONTHS) -> dict:
     """Compute view-related fields on a patient: last visit date, days-
@@ -2947,8 +2970,12 @@ def _patient_view_extras(p: PelletPatient, today: _date,
         "active_visit_scheduled_date": str(active.scheduled_date)
                                           if active and active.scheduled_date else None,
         "active_visit_has_doses": bool(active and (active.doses or [])),
-        "active_visit_bagged_at": (active.bagged_at.isoformat()
-                                     if active and active.bagged_at else None),
+        # "Bagged" = the visit's 'bagged' milestone is done. That milestone
+        # is completed by Fill Bag, the dose-card set, OR a manual advance —
+        # only Fill Bag also sets v.bagged_at, so the milestone is the
+        # authoritative signal (column kept as a fallback).
+        "active_visit_bagged": _active_visit_bagged(active),
+        "active_visit_bagged_at": _active_visit_bagged_at(active),
         "active_visit_doses_pulled": (
             sum(1 for d in (active.doses or [])
                   if d.status in ("pulled", "added"))

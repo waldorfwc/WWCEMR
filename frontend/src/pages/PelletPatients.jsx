@@ -469,8 +469,9 @@ function CalendarVisitCard({ patient, onOpen }) {
   const paid = patient.active_visit_payment_status === 'collected'
   const sent = patient.active_visit_payment_status === 'sent'
   const hasDoses = patient.active_visit_has_doses
-  // Bagged = bag was explicitly filled (bagged_at set by Fill Bag).
-  const bagged = !!patient.active_visit_bagged_at
+  // Bagged = the visit's 'bagged' milestone is done (Fill Bag, dose-card,
+  // or manual advance). See active_visit_bagged in the API.
+  const bagged = !!patient.active_visit_bagged
 
   // Color: green = bagged + paid, blue = paid, amber = not paid yet
   const tone =
