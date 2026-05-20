@@ -605,15 +605,22 @@ function MammoHistoryCard({ patient, qc, onAdd }) {
 
 function LabsHistoryCard({ patient, qc, onAdd }) {
   const labs = patient.labs || []
+  const notRequired = !!patient.labs_not_required
   const del = useMutation({
     mutationFn: (id) => api.delete(`/pellets/patients/${patient.id}/labs/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['pellet-patient', patient.id] }),
     onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
   })
+  const setNotRequired = useMutation({
+    mutationFn: (val) => api.patch(`/pellets/patients/${patient.id}`,
+                                    { labs_not_required: val }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['pellet-patient', patient.id] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Update failed'),
+  })
 
   return (
     <div className={`border rounded p-3 ${
-      patient.labs_verified ? 'border-green-200 bg-green-50/40' : 'border-amber-200 bg-amber-50/40'
+      (patient.labs_verified || notRequired) ? 'border-green-200 bg-green-50/40' : 'border-amber-200 bg-amber-50/40'
     }`}>
       <div className="flex items-baseline justify-between mb-2">
         <div>
@@ -625,7 +632,16 @@ function LabsHistoryCard({ patient, qc, onAdd }) {
           <Plus size={11}/> Add entry
         </button>
       </div>
-      {labs.length === 0 ? (
+      <label className="flex items-center gap-1.5 text-[11px] text-gray-700 mb-2 cursor-pointer select-none">
+        <input type="checkbox"
+               checked={notRequired}
+               disabled={setNotRequired.isPending}
+               onChange={e => setNotRequired.mutate(e.target.checked)} />
+        Labs not required for this patient (e.g. testosterone-only)
+      </label>
+      {notRequired ? (
+        <div className="text-[12px] text-green-700">Labs marked not required.</div>
+      ) : labs.length === 0 ? (
         <div className="text-[12px] text-amber-700">No labs on file.</div>
       ) : (
         <ul className="space-y-1 text-[12px]">

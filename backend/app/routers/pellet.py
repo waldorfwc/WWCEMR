@@ -2896,6 +2896,59 @@ def _active_visit_bagged_at(active):
     return ms.completed_at.isoformat() if ms and ms.completed_at else None
 
 
+# ── "Ready to insert" gate ──────────────────────────────────────────
+# A visit is ready when, as of its scheduled insertion date:
+#   1. mammo result is acceptable (BI-RADS 1/2 or testosterone-only)
+#   2. mammo is within 1 year (waived for testosterone-only — no mammo)
+#   3. labs are in: FSH+TSH+E2 all entered within 14 days, OR not required
+#   4. payment collected
+#   5. doses bagged
+#   6. not already inserted
+ACCEPTABLE_MAMMO_RESULTS = {
+    "BI-RADS 1", "BI-RADS 2", "Not Required - Testosterone Only",
+}
+MAMMO_NOT_REQUIRED = "Not Required - Testosterone Only"
+
+
+def _has_lab_value(v) -> bool:
+    return bool(v) and str(v).strip().lower() != "pending"
+
+
+def _mammo_ready(p, ref_date) -> bool:
+    if not p.mammo_result or p.mammo_result not in ACCEPTABLE_MAMMO_RESULTS:
+        return False
+    if p.mammo_result == MAMMO_NOT_REQUIRED:
+        return True   # testosterone-only: no mammo, no date check
+    if not p.mammo_date or not ref_date:
+        return False
+    return p.mammo_date >= ref_date - timedelta(days=365)
+
+
+def _labs_ready(p, ref_date) -> bool:
+    if p.labs_not_required:
+        return True
+    if not (_has_lab_value(p.labs_fsh)
+            and _has_lab_value(p.labs_tsh)
+            and _has_lab_value(p.labs_estradiol)):
+        return False
+    if not p.labs_date or not ref_date:
+        return False
+    return p.labs_date >= ref_date - timedelta(days=14)
+
+
+def _visit_ready(p, active) -> bool:
+    if not active or not active.scheduled_date:
+        return False
+    if active.status == "inserted":
+        return False
+    if active.payment_status != "collected":
+        return False
+    if not _active_visit_bagged(active):
+        return False
+    ref = active.scheduled_date
+    return _mammo_ready(p, ref) and _labs_ready(p, ref)
+
+
 def _patient_view_extras(p: PelletPatient, today: _date,
                             active_months: int = DEFAULT_PELLET_ACTIVE_MONTHS) -> dict:
     """Compute view-related fields on a patient: last visit date, days-
@@ -2976,6 +3029,14 @@ def _patient_view_extras(p: PelletPatient, today: _date,
         # authoritative signal (column kept as a fallback).
         "active_visit_bagged": _active_visit_bagged(active),
         "active_visit_bagged_at": _active_visit_bagged_at(active),
+        # "Ready to insert" — see _visit_ready. Sub-flags drive the tooltip.
+        "active_visit_ready": _visit_ready(p, active),
+        "active_visit_mammo_ready": (
+            _mammo_ready(p, active.scheduled_date)
+            if active and active.scheduled_date else False),
+        "active_visit_labs_ready": (
+            _labs_ready(p, active.scheduled_date)
+            if active and active.scheduled_date else False),
         "active_visit_doses_pulled": (
             sum(1 for d in (active.doses or [])
                   if d.status in ("pulled", "added"))
@@ -3008,6 +3069,7 @@ def _patient_dict(p: PelletPatient, include_visits: bool = False,
         "mammo_verified_by": p.mammo_verified_by,
         "mammo_verified_at": p.mammo_verified_at.isoformat() if p.mammo_verified_at else None,
         "labs_verified":     bool(p.labs_verified),
+        "labs_not_required": bool(p.labs_not_required),
         "labs_date":         str(p.labs_date) if p.labs_date else None,
         "labs_fsh":          p.labs_fsh,
         "labs_tsh":          p.labs_tsh,
@@ -3282,15 +3344,9 @@ def list_patients(
         decorated.sort(key=lambda t: t[0].patient_name)
 
     elif view == "ready":
-        # Has active visit, payment collected, all planned doses pulled into bag
-        def is_ready(p, x):
-            if not x["active_visit_id"]: return False
-            if x["active_visit_payment_status"] != "collected": return False
-            if x["active_visit_doses_planned"] > 0: return False    # still has planned
-            if x["active_visit_doses_pulled"] == 0: return False    # nothing pulled
-            if x["active_visit_status"] == "inserted": return False
-            return True
-        decorated = [(p, x) for (p, x) in decorated if is_ready(p, x)]
+        # Mammo current + acceptable, labs in, paid, bagged — see _visit_ready.
+        # Same flag the calendar's green "ready" badge uses, so they agree.
+        decorated = [(p, x) for (p, x) in decorated if x["active_visit_ready"]]
         decorated.sort(key=lambda t: t[1]["active_visit_scheduled_date"] or "")
 
     elif view == "paid":
@@ -3356,6 +3412,7 @@ class PatientPatch(BaseModel):
     modmed_link:       Optional[str] = None
     notes:             Optional[str] = None
     recall_interval_months: Optional[int] = None
+    labs_not_required:      Optional[bool] = None
     preferred_lab_name:     Optional[str] = None
     preferred_lab_phone:    Optional[str] = None
     preferred_lab_address:  Optional[str] = None

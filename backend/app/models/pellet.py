@@ -466,6 +466,9 @@ class PelletPatient(Base):
     mammo_verified_at = Column(DateTime, nullable=True)
 
     labs_verified   = Column(Boolean, default=False, nullable=False)
+    # Labs not clinically required for this patient (e.g. testosterone-only) —
+    # satisfies the labs leg of the "ready" check without recorded values.
+    labs_not_required = Column(Boolean, default=False, nullable=False)
     labs_date       = Column(Date, nullable=True)
     labs_fsh        = Column(String(40), nullable=True)    # numeric or "pending"
     labs_tsh        = Column(String(40), nullable=True)

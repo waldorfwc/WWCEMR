@@ -313,6 +313,8 @@ def _apply_lightweight_migrations():
         # The "Pellet Visit ID" column from the Smartsheet — the practice's
         # legacy visit identifier carried forward into the new system.
         ("pellet_visits", "smartsheet_visit_id", "VARCHAR(40)"),
+        # Labs-not-required flag for the pellet "ready" check.
+        ("pellet_patients", "labs_not_required", "BOOLEAN DEFAULT 0"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

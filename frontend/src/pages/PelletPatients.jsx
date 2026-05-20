@@ -472,10 +472,13 @@ function CalendarVisitCard({ patient, onOpen }) {
   // Bagged = the visit's 'bagged' milestone is done (Fill Bag, dose-card,
   // or manual advance). See active_visit_bagged in the API.
   const bagged = !!patient.active_visit_bagged
+  // Ready = mammo current + acceptable, labs in, paid, AND bagged.
+  // Computed server-side (active_visit_ready) so the badge matches the tab.
+  const ready = !!patient.active_visit_ready
 
-  // Color: green = bagged + paid, blue = paid, amber = not paid yet
+  // Color: green = ready, blue = paid, amber = sent/awaiting
   const tone =
-    bagged && paid        ? 'bg-green-50 border-green-200 hover:bg-green-100' :
+    ready                 ? 'bg-green-50 border-green-200 hover:bg-green-100' :
     paid                  ? 'bg-blue-50 border-blue-200 hover:bg-blue-100' :
     sent                  ? 'bg-amber-50 border-amber-200 hover:bg-amber-100' :
                             'bg-gray-50 border-gray-200 hover:bg-gray-100'
@@ -535,13 +538,16 @@ function CalendarVisitCard({ patient, onOpen }) {
           {!sent && !paid && (
             <span className="bg-gray-200 text-gray-700 px-1 rounded" title="No payment activity yet">no $</span>
           )}
-          {/* Bag state */}
-          {bagged && paid && (
-            <span className="bg-green-200 text-green-800 px-1 rounded" title="Bag filled + paid">ready</span>
+          {/* Ready / bag state */}
+          {ready && (
+            <span className="bg-green-200 text-green-800 px-1 rounded"
+                  title="Ready to insert — mammo current + acceptable, labs in, paid, bagged">
+              ready
+            </span>
           )}
-          {bagged && !paid && (
+          {!ready && bagged && (
             <span className="bg-indigo-200 text-indigo-800 px-1 rounded"
-                  title={`Bag filled ${patient.active_visit_bagged_at?.slice(0, 10) || ''} — awaiting payment`.trim()}>
+                  title={`Bag filled ${patient.active_visit_bagged_at?.slice(0, 10) || ''} — not yet ready`.trim()}>
               bagged
             </span>
           )}
