@@ -346,6 +346,12 @@ def _apply_lightweight_migrations():
         # Code Helper patient roster lookup — match_patient queries by lower(last_name)
         ("ix_patients_last_name_lower",
          "patients", "lower(last_name)"),
+        # Pellet dashboard — active dose-type filter runs on every load
+        ("ix_pellet_dose_type_active",
+         "pellet_dose_types", "is_active"),
+        # Pellet dashboard — open-count "lines_remaining" uncounted lookup
+        ("ix_pellet_count_line_uncounted",
+         "pellet_count_lines", "count_id, counted_at"),
     ]
     with engine.begin() as conn:
         for idx_name, table, cols_clause in indexes:

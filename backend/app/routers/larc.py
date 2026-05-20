@@ -21,7 +21,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
 from app.models.larc import (
@@ -671,7 +671,7 @@ def get_device(device_id: str,
                 current_user: dict = Depends(require_permission("larc:read"))):
     d = (db.query(LarcDevice)
            .options(joinedload(LarcDevice.device_type),
-                    joinedload(LarcDevice.assignments).joinedload(LarcAssignment.milestones))
+                    selectinload(LarcDevice.assignments).selectinload(LarcAssignment.milestones))
            .filter(LarcDevice.id == device_id).first())
     if not d:
         raise HTTPException(status_code=404, detail="device not found")

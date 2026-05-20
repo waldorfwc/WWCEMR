@@ -362,21 +362,27 @@ def dashboard(db: Session = Depends(get_db),
     #   • Otherwise: legacy global path — alert when total ≤ threshold.
     reorder = []
     types = db.query(PelletDoseType).filter(PelletDoseType.is_active.is_(True)).all()
+    # Single bulk pull of per-(dose_type, location) on-hand balances — avoids
+    # one SUM query per dose type inside the loop below (was 1-2 N queries).
+    balance_rows = (db.query(PelletLot.dose_type_id,
+                              PelletStock.location,
+                              func.coalesce(func.sum(PelletStock.doses_on_hand), 0))
+                      .join(PelletStock, PelletStock.lot_id == PelletLot.id)
+                      .group_by(PelletLot.dose_type_id, PelletStock.location)
+                      .all())
+    balances_by_type: dict = {}
+    for type_id, loc, doses in balance_rows:
+        balances_by_type.setdefault(str(type_id), {})[loc] = int(doses or 0)
+
     for t in types:
         per_loc = t.reorder_thresholds_by_location or None
         min_pack = min(t.pack_sizes) if t.pack_sizes else 6
+        type_balances = balances_by_type.get(str(t.id), {})
         if per_loc:
-            # Pull per-location on-hand for this dose type
-            loc_rows = (db.query(PelletStock.location,
-                                  func.coalesce(func.sum(PelletStock.doses_on_hand), 0))
-                          .join(PelletLot, PelletLot.id == PelletStock.lot_id)
-                          .filter(PelletLot.dose_type_id == t.id)
-                          .group_by(PelletStock.location).all())
-            balances = {loc: int(d or 0) for (loc, d) in loc_rows}
             for loc, thresh_packs in per_loc.items():
                 if thresh_packs is None:
                     continue
-                doses = balances.get(loc, 0)
+                doses = type_balances.get(loc, 0)
                 packs = doses // (min_pack or 6) if (min_pack or 6) else 0
                 if packs <= int(thresh_packs):
                     reorder.append({
@@ -393,10 +399,8 @@ def dashboard(db: Session = Depends(get_db),
 
         if not t.reorder_threshold_packs and t.reorder_threshold_packs != 0:
             continue
-        # Legacy global threshold
-        doses = (db.query(func.coalesce(func.sum(PelletStock.doses_on_hand), 0))
-                   .join(PelletLot, PelletLot.id == PelletStock.lot_id)
-                   .filter(PelletLot.dose_type_id == t.id).scalar() or 0)
+        # Legacy global threshold — sum the per-location balances we already have
+        doses = sum(type_balances.values())
         packs = int(doses) // (min_pack or 6) if (min_pack or 6) else 0
         if packs <= (t.reorder_threshold_packs or 0):
             reorder.append({
@@ -443,6 +447,17 @@ def dashboard(db: Session = Depends(get_db),
     open_counts = (db.query(PelletCount)
                      .filter(PelletCount.status == "in_progress")
                      .order_by(PelletCount.started_at).all())
+    # Single GROUP BY for all open counts' uncounted lines — avoids one
+    # COUNT query per open count below.
+    open_count_ids = [c.id for c in open_counts]
+    remaining_by_count: dict = {}
+    if open_count_ids:
+        remaining_rows = (db.query(PelletCountLine.count_id,
+                                    func.count(PelletCountLine.id))
+                            .filter(PelletCountLine.count_id.in_(open_count_ids),
+                                    PelletCountLine.counted_at.is_(None))
+                            .group_by(PelletCountLine.count_id).all())
+        remaining_by_count = {cid: int(n) for (cid, n) in remaining_rows}
 
     # Open orders (placed / partially_received) — flag late ones
     open_orders = (db.query(PelletOrder)
@@ -491,10 +506,7 @@ def dashboard(db: Session = Depends(get_db),
                 "location": c.location,
                 "started_at": c.started_at.isoformat(),
                 "started_by": c.started_by,
-                "lines_remaining": (db.query(PelletCountLine)
-                                      .filter(PelletCountLine.count_id == c.id,
-                                              PelletCountLine.counted_at.is_(None))
-                                      .count()),
+                "lines_remaining": remaining_by_count.get(c.id, 0),
             }
             for c in open_counts
         ],
