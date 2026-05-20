@@ -495,8 +495,11 @@ function CalendarVisitCard({ patient, onOpen }) {
   }, [menuOpen])
 
   const isNew = patient.patient_type === 'new'
-  const mammoOk = !!patient.mammo_verified
-  const labsOk  = !!patient.labs_verified
+  // Mammo/labs chips reflect the SAME ready requirements (acceptable result +
+  // date windows, anchored to the scheduled insertion date) — not the looser
+  // "verified" flag — so 4 green chips always equals "ready".
+  const mammoOk = !!patient.active_visit_mammo_ready
+  const labsOk  = !!patient.active_visit_labs_ready
 
   return (
     <div className={`relative border rounded transition ${tone}`}>
@@ -512,20 +515,22 @@ function CalendarVisitCard({ patient, onOpen }) {
           <span className="text-[11px] font-medium truncate flex-1">{patient.patient_name}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1 text-[9px] text-gray-600 mt-0.5">
-          {/* Mammogram */}
+          {/* Mammogram — meets ready requirement (acceptable result + within 1yr of visit) */}
           <span className={`px-1 rounded ${
             mammoOk ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'
           }`} title={mammoOk
-                    ? `Mammo verified ${patient.mammo_date || ''}`.trim()
-                    : 'Mammo NOT verified'}>
+                    ? `Mammo OK — ${patient.mammo_result || ''} ${patient.mammo_date || ''}`.trim()
+                    : 'Mammo missing, result not acceptable, or older than 1yr at the visit'}>
             {mammoOk ? 'mammo ✓' : 'mammo ✗'}
           </span>
-          {/* Labs */}
+          {/* Labs — meets ready requirement (3 values within 14d of visit, or not required) */}
           <span className={`px-1 rounded ${
             labsOk ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'
           }`} title={labsOk
-                    ? `Labs verified ${patient.labs_date || ''}`.trim()
-                    : 'Labs NOT verified'}>
+                    ? (patient.labs_not_required
+                        ? 'Labs not required'
+                        : `Labs in ${patient.labs_date || ''}`.trim())
+                    : 'Labs missing, incomplete, or older than 14d at the visit'}>
             {labsOk ? 'labs ✓' : 'labs ✗'}
           </span>
           {/* Payment */}
