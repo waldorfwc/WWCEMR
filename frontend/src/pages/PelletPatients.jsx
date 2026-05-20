@@ -538,21 +538,24 @@ function CalendarVisitCard({ patient, onOpen }) {
           {!sent && !paid && (
             <span className="bg-gray-200 text-gray-700 px-1 rounded" title="No payment activity yet">no $</span>
           )}
-          {/* Ready / bag state */}
+          {/* Bag — ✓/✗ like mammo & labs (or 'no doses' if none on the visit) */}
+          {!hasDoses ? (
+            <span className="bg-red-100 text-red-700 px-1 rounded" title="No doses on visit yet">no doses</span>
+          ) : (
+            <span className={`px-1 rounded ${
+              bagged ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'
+            }`} title={bagged
+                      ? `Bagged ${patient.active_visit_bagged_at?.slice(0, 10) || ''}`.trim()
+                      : 'Bag NOT filled'}>
+              {bagged ? 'bag ✓' : 'bag ✗'}
+            </span>
+          )}
+          {/* Overall ready summary */}
           {ready && (
             <span className="bg-green-200 text-green-800 px-1 rounded"
                   title="Ready to insert — mammo current + acceptable, labs in, paid, bagged">
               ready
             </span>
-          )}
-          {!ready && bagged && (
-            <span className="bg-indigo-200 text-indigo-800 px-1 rounded"
-                  title={`Bag filled ${patient.active_visit_bagged_at?.slice(0, 10) || ''} — not yet ready`.trim()}>
-              bagged
-            </span>
-          )}
-          {!hasDoses && (
-            <span className="bg-red-100 text-red-700 px-1 rounded" title="No doses on visit yet">no doses</span>
           )}
         </div>
       </button>
