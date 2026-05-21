@@ -58,16 +58,11 @@ export default function CodeHelper() {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Wand2 size={22} className="text-plum-700" />
-            Code Helper
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            AI-assisted CPT + ICD-10 generation from a clinical note.
-          </p>
-        </div>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500 flex items-center gap-1.5">
+          <Wand2 size={16} className="text-plum-700" />
+          AI-assisted CPT + ICD-10 generation from a clinical note.
+        </p>
         <Link to="/billing/code-helper/denials"
               className="btn-secondary text-sm flex items-center gap-1">
           Manage denial list <ChevronRight size={13} />

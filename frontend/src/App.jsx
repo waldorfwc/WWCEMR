@@ -89,9 +89,9 @@ function ProtectedApp({ user, onLogout }) {
               <Route path="bank-recon"         element={<BankRecon />} />
               <Route path="missing-charges"    element={<MissingCharges />} />
               <Route path="insurance-documents" element={<InsuranceDocuments />} />
+              <Route path="code-helper"         element={<CodeHelper />} />
+              <Route path="code-helper/denials" element={<CodeHelperDenials />} />
             </Route>
-            <Route path="/billing/code-helper"         element={<CodeHelper />} />
-            <Route path="/billing/code-helper/denials" element={<CodeHelperDenials />} />
             <Route path="/checklist"           element={<MyChecklist />} />
             <Route path="/manager-dashboard"   element={
               <PrivateRoute perm="checklist:manage"><ManagerDashboard /></PrivateRoute>
