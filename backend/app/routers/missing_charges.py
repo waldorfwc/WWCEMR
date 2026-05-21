@@ -691,7 +691,7 @@ def patch_provider_mapping(mapping_id: str, payload: MappingPatch,
 @router.delete("/provider-mappings/{mapping_id}", status_code=204)
 def delete_provider_mapping(mapping_id: str,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("claim:read"))):
+                              current_user: dict = Depends(require_permission("user:manage"))):
     m = db.query(ProviderUserMapping).filter(ProviderUserMapping.id == mapping_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="mapping not found")

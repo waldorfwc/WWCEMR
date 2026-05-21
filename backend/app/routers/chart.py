@@ -3,6 +3,7 @@ Patient chart — comprehensive view of a patient's clinical data.
 Pulls demographics, history, medications, allergies, vitals, insurance, and documents.
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
@@ -190,7 +191,12 @@ def _bg_import_clinical():
     db = SessionLocal()
     try:
         result = import_all_clinical(db)
-        print(f"[chart] Clinical import result: {result}")
+        # Log counts only — never the raw result, which could carry PHI.
+        logging.getLogger(__name__).info(
+            "[chart] clinical import complete: %s",
+            {k: v for k, v in result.items() if isinstance(v, (int, float, bool))}
+            if isinstance(result, dict) else type(result).__name__,
+        )
     finally:
         db.close()
 

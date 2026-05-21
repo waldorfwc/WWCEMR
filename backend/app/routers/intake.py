@@ -6,6 +6,7 @@ Intake document management:
 - Browse, download, override matches
 """
 
+import logging
 import os
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
@@ -42,6 +43,14 @@ from app.config import settings
 
 router = APIRouter(prefix="/intake", tags=["intake"])
 
+logger = logging.getLogger(__name__)
+
+
+def _safe_counts(obj):
+    """Numeric/bool-only view of a stats dict — keeps PHI out of logs."""
+    return ({k: v for k, v in obj.items() if isinstance(v, (int, float, bool))}
+            if isinstance(obj, dict) else type(obj).__name__)
+
 
 # ── Patient Directory (chart_number -> name/dob) ─────────────────────────────
 
@@ -58,7 +67,7 @@ def _bg_build_directory():
     db = SessionLocal()
     try:
         result = build_patient_directory(db)
-        print(f"[intake] Directory build result: {result}")
+        logger.info("[intake] directory build complete: %s", _safe_counts(result))
     finally:
         db.close()
 
@@ -126,11 +135,11 @@ def _bg_index_and_match(intake_dir: str):
     db = SessionLocal()
     try:
         idx = index_intake_documents(db, intake_dir)
-        print(f"[intake] Index result: {idx}")
+        logger.info("[intake] index complete: %s", _safe_counts(idx))
         # Auto-match if directory is populated
         if db.query(PatientDirectory).count() > 0:
             match = match_intake_to_charts(db)
-            print(f"[intake] Match result: {match}")
+            logger.info("[intake] match complete: %s", _safe_counts(match))
     finally:
         db.close()
 

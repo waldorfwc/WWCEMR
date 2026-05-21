@@ -22,6 +22,14 @@ server {
     listen       ${PORT};
     server_name  _;
 
+    # Security headers. Conservative set (no CSP yet — that needs per-page
+    # tuning). HSTS has no includeSubDomains/preload to avoid affecting
+    # sibling subdomains. Repeated in /assets/ because nginx drops inherited
+    # add_header directives in any location that defines its own.
+    add_header X-Frame-Options           "SAMEORIGIN" always;
+    add_header X-Content-Type-Options    "nosniff" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
     # SPA static assets
     root         /usr/share/nginx/html;
     index        index.html;
@@ -37,6 +45,9 @@ server {
     location /assets/ {
         expires 1y;
         add_header Cache-Control "public, immutable";
+        add_header X-Frame-Options           "SAMEORIGIN" always;
+        add_header X-Content-Type-Options    "nosniff" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
         try_files $uri =404;
     }
 
