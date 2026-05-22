@@ -4743,6 +4743,129 @@ def bill_visit(visit_id: str, payload: BillIn,
     return _visit_dict(v)
 
 
+# Revert one workflow step — reversible status, audited ---------------
+
+class RevertIn(BaseModel):
+    reason: str
+
+
+def _reopen_milestone(v: PelletVisit, kind: str) -> None:
+    m = next((m for m in (v.milestones or []) if m.kind == kind), None)
+    if m:
+        m.status = "pending"
+        m.completed_at = None
+        m.completed_by = None
+
+
+@router.post("/visits/{visit_id}/revert")
+def revert_visit_status(visit_id: str, payload: RevertIn,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(require_permission("pellet:work"))):
+    """Step a visit one stage backward: un-bill (billed→inserted),
+    un-insert (inserted→in_progress), or un-bag (bagged→scheduled).
+    A reason is required; every revert writes a StateTransitionAudit row
+    (actor + before→after + reason). Un-insert and un-bill require
+    pellet:manage; un-bag needs only pellet:work."""
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required")
+    v = (db.query(PelletVisit).options(joinedload(PelletVisit.milestones),
+                                         joinedload(PelletVisit.doses)
+                                           .joinedload(PelletVisitDose.dose_type))
+           .filter(PelletVisit.id == visit_id).first())
+    if not v:
+        raise HTTPException(status_code=404, detail="visit not found")
+    by = current_user.get("email") or "system"
+    bagged_done = any(m.kind == "bagged" and m.status == "done"
+                      for m in (v.milestones or []))
+
+    if v.status == "billed":
+        if not _is_admin(current_user):
+            raise HTTPException(status_code=403, detail="un-bill requires pellet:manage")
+        before, after, action = "billed", "inserted", "unbill"
+        v.status = "inserted"
+        v.billed_at = None
+        v.billed_by = None
+        _reopen_milestone(v, "billed")
+
+    elif v.status == "inserted":
+        if not _is_admin(current_user):
+            raise HTTPException(status_code=403, detail="un-insert requires pellet:manage")
+        before, after, action = "inserted", "in_progress", "uninsert"
+        for d in v.doses:
+            if d.status == "inserted":
+                d.status = "pulled"
+                d.resolved_at = None
+                d.resolved_by = None
+        v.inserted_at = None
+        v.inserted_by = None
+        v.outcome = None
+        v.status = "in_progress"
+        _reopen_milestone(v, "inserted")
+
+    elif v.status == "in_progress" and bagged_done:
+        before, after, action = "bagged", "scheduled", "unbag"
+        _reopen_milestone(v, "bagged")
+        # Return pulled pellets to stock — but ONLY for real (non-historical)
+        # bag-fills. Historical/imported visits never decremented live stock,
+        # so restoring would create phantom inventory.
+        location = v.location
+        for d in v.doses:
+            if d.status in ("planned", "pulled"):
+                if (not v.is_historical) and d.lot_id and location:
+                    stock = _get_or_create_stock(db, d.lot_id, location)
+                    stock.doses_on_hand += d.quantity
+                    _audit(db, actor=by, action="dose_returned",
+                            lot_id=d.lot_id, location=location, delta_doses=d.quantity,
+                            summary=f"Un-bag returned {d.quantity}× {d.dose_type.label} to stock",
+                            detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
+                                    "reason": reason})
+                d.status = "returned"
+                d.resolved_at = datetime.utcnow()
+                d.resolved_by = by
+        v.bagged_at = None
+        v.bagged_by = None
+
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail=f"nothing to revert from status '{v.status}'")
+
+    from app.services.state_audit import log_state_transition
+    log_state_transition(db, entity_type="pellet_visit", entity_id=v.id,
+                          action=f"revert_{action}", actor=by,
+                          before=before, after=after,
+                          summary=f"Reverted {before} → {after}",
+                          detail={"reason": reason, "visit_id": str(v.id)})
+    _audit(db, actor=by, action=f"visit_revert_{action}",
+            summary=f"Reverted {before} → {after}: {reason}",
+            detail={"visit_id": str(v.id), "reason": reason})
+    db.commit(); db.refresh(v)
+    return _visit_dict(v)
+
+
+@router.get("/visits/{visit_id}/transitions")
+def visit_transitions(visit_id: str,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(require_permission("pellet:read"))):
+    """Status-change history for a visit (who flipped it A→B, when, why)."""
+    from app.models.state_transition import StateTransitionAudit
+    rows = (db.query(StateTransitionAudit)
+              .filter(StateTransitionAudit.entity_type == "pellet_visit",
+                      StateTransitionAudit.entity_id == str(visit_id))
+              .order_by(StateTransitionAudit.at.desc()).all())
+    return [{
+        "id":     str(r.id),
+        "action": r.action,
+        "before": r.before_value,
+        "after":  r.after_value,
+        "actor":  r.actor,
+        "at":     r.at.isoformat() if r.at else None,
+        "reason": (r.detail or {}).get("reason") if isinstance(r.detail, dict) else None,
+        "summary": r.summary,
+    } for r in rows]
+
+
 # Generic milestone toggle (for any pending milestone) ---------------
 
 class MilestoneAdvanceIn(BaseModel):

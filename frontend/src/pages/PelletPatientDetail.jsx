@@ -4,7 +4,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, User, Plus, CheckCircle2, Circle, Edit3, Save, X,
   DollarSign, Calendar, Pill, Shield, Send, ExternalLink, Trash2,
-  PackageOpen, AlertTriangle, History, MessageSquare, Clock,
+  PackageOpen, AlertTriangle, History, MessageSquare, Clock, RotateCcw,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
@@ -1084,6 +1084,9 @@ function VisitCard({ visit, patient, qc }) {
         </div>
       )}
 
+      {/* Reversible status — step one stage back, audited */}
+      <RevertControl visit={visit} patient={patient} qc={qc} />
+
       {/* Drawers */}
       {bagOpen && (
         <BagFillDrawer visit={visit} qc={qc} onClose={() => setBagOpen(false)} />
@@ -1107,6 +1110,91 @@ function VisitCard({ visit, patient, qc }) {
       {cancelOpen && (
         <CancelVisitDrawer visit={visit} qc={qc}
                             onClose={() => setCancelOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+
+function RevertControl({ visit, patient, qc }) {
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState('')
+  const [showHistory, setShowHistory] = useState(false)
+
+  const bagged = (visit.milestones || []).some(m => m.kind === 'bagged' && m.status === 'done')
+  const target =
+    visit.status === 'billed'                          ? { verb: 'Un-bill',   to: 'inserted' }  :
+    visit.status === 'inserted'                        ? { verb: 'Un-insert', to: 'bagged' }    :
+    (visit.status === 'in_progress' && bagged)         ? { verb: 'Un-bag',    to: 'scheduled' } :
+    null
+
+  const revert = useMutation({
+    mutationFn: () => api.post(`/pellets/visits/${visit.id}/revert`,
+                                { reason: reason.trim() }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-patient', patient.id] })
+      qc.invalidateQueries({ queryKey: ['pellet-visit-transitions', visit.id] })
+      setOpen(false); setReason('')
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Revert failed'),
+  })
+
+  const { data: history } = useQuery({
+    queryKey: ['pellet-visit-transitions', visit.id],
+    queryFn: () => api.get(`/pellets/visits/${visit.id}/transitions`).then(r => r.data),
+    enabled: showHistory,
+  })
+
+  return (
+    <div className="mt-3 border-t border-gray-100 pt-3">
+      <div className="flex items-center gap-3">
+        {target && !open && (
+          <button className="text-[11px] flex items-center gap-1 text-amber-700 hover:underline"
+                  onClick={() => setOpen(true)}
+                  title={`Step this visit back: ${target.verb} → ${target.to}`}>
+            <RotateCcw size={11}/> {target.verb} (→ {target.to})
+          </button>
+        )}
+        <button className="text-[11px] text-gray-500 hover:underline flex items-center gap-1"
+                onClick={() => setShowHistory(s => !s)}>
+          <History size={11}/> {showHistory ? 'Hide history' : 'Status history'}
+        </button>
+      </div>
+
+      {open && target && (
+        <div className="mt-2 p-2 rounded border border-amber-200 bg-amber-50/50">
+          <div className="text-[11px] text-gray-700 mb-1">
+            {target.verb}: <strong>{visit.status.replace(/_/g, ' ')}</strong> → <strong>{target.to}</strong>.
+            {' '}A reason is required (logged with your name).
+          </div>
+          <textarea className="input text-[12px] w-full" rows={2}
+                    placeholder="Reason for reverting…"
+                    value={reason} onChange={e => setReason(e.target.value)} />
+          <div className="flex gap-2 justify-end mt-1">
+            <button className="btn-secondary text-[11px]"
+                    onClick={() => { setOpen(false); setReason('') }}>Cancel</button>
+            <button className="text-[11px] px-2 py-1 rounded text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50"
+                    disabled={!reason.trim() || revert.isPending}
+                    onClick={() => revert.mutate()}>
+              {revert.isPending ? 'Reverting…' : `Confirm ${target.verb}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showHistory && (
+        <ul className="mt-2 space-y-1">
+          {(history || []).length === 0 ? (
+            <li className="text-[11px] text-gray-400 italic">No status changes recorded.</li>
+          ) : history.map(h => (
+            <li key={h.id} className="text-[11px] text-gray-600">
+              <span className="font-mono">{h.before} → {h.after}</span>
+              {' · '}{(h.actor || '').split('@')[0]}
+              {h.at && <> · {fmt.date(h.at.slice(0, 10))}</>}
+              {h.reason && <> · "{h.reason}"</>}
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   )
