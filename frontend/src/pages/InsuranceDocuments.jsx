@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, FileScan, Search, X, Check, ChevronLeft, ChevronRight,
@@ -864,6 +864,12 @@ function PdfViewer({ docId, totalPages }) {
   // and hand react-pdf a Uint8Array instead of a URL.
   const [pdfData, setPdfData] = useState(null)
   const [loadError, setLoadError] = useState(null)
+  // Stable file-prop reference. A new object literal each render makes
+  // react-pdf reload the document — and pdf.js has already transferred
+  // (detached) this Uint8Array's ArrayBuffer to the worker, so the reload
+  // fails with "Failed to render PDF". This is what broke zoom/rotate.
+  // Memoizing keeps the document loaded once; zoom/rotate just re-render <Page>.
+  const fileProp = useMemo(() => (pdfData ? { data: pdfData } : null), [pdfData])
   useEffect(() => {
     let alive = true
     setPdfData(null); setLoadError(null)
@@ -1008,7 +1014,7 @@ function PdfViewer({ docId, totalPages }) {
         {!loadError && !pdfData && (
           <div className="text-gray-400 mt-8">Loading PDF…</div>
         )}
-        <Document file={pdfData ? { data: pdfData } : null}
+        <Document file={fileProp}
                   onLoadSuccess={({ numPages: n }) => setNumPages(n)}
                   loading={<div className="text-gray-400 mt-8">Rendering…</div>}
                   error={<div className="text-red-600 mt-8">Failed to render PDF.</div>}>
