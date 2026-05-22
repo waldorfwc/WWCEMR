@@ -106,8 +106,21 @@ async def preview_csv(
             .filter(Bai2Transaction.dedup_key.in_(keys)).all()
         }
 
+    # Overlap guard: flag transactions whose date is already covered by a
+    # prior import's date range. The bank re-words the same deposit between
+    # exports (ACH DEP… vs …HCCLAIMPMT…), so the dedup_key alone misses
+    # these overlap-day re-imports — date coverage is the reliable signal.
+    prior_ranges = [
+        (s, e) for (s, e) in
+        db.query(Bai2Import.date_range_start, Bai2Import.date_range_end).all()
+        if s and e
+    ]
+    def _date_covered(d):
+        return any(s <= d <= e for (s, e) in prior_ranges)
+
     txns = []
     for t in parsed.transactions:
+        covered = _date_covered(t.transaction_date)
         txns.append({
             "dedup_key": t.dedup_key,
             "date": str(t.transaction_date),
@@ -117,6 +130,7 @@ async def preview_csv(
             "method": t.method,
             "last_4": t.last_4,
             "already_imported": t.dedup_key in already_in_db,
+            "date_already_covered": covered,
         })
 
     return {
@@ -133,6 +147,9 @@ async def preview_csv(
             "skipped_duplicate_in_file": parsed.skipped_duplicate_in_file,
             "skipped_always_drop": parsed.skipped_always_drop,
             "already_imported_count": sum(1 for t in txns if t["already_imported"]),
+            "date_covered_count": sum(
+                1 for t in txns
+                if t["date_already_covered"] and not t["already_imported"]),
         },
         "transactions": txns,
     }
