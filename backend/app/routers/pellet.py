@@ -3022,6 +3022,7 @@ def _patient_view_extras(p: PelletPatient, today: _date,
         "active_visit_payment_status": active.payment_status if active else None,
         "active_visit_scheduled_date": str(active.scheduled_date)
                                           if active and active.scheduled_date else None,
+        "active_visit_location": active.location if active else None,
         "active_visit_has_doses": bool(active and (active.doses or [])),
         # "Bagged" = the visit's 'bagged' milestone is done. That milestone
         # is completed by Fill Bag, the dose-card set, OR a manual advance —
@@ -3262,6 +3263,7 @@ def list_patients(
     bucket: Optional[str] = None,
     view: str = "roster",
     search: Optional[str] = None,
+    location: Optional[str] = None,
     # Date-range filter for the 'upcoming' view (next_scheduled_date)
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
@@ -3312,6 +3314,11 @@ def list_patients(
     if bucket:
         decorated = [(p, x) for (p, x) in decorated
                       if bucket in patient_buckets(p)]
+
+    # Active-visit location filter (used by the calendar's location dropdown)
+    if location:
+        decorated = [(p, x) for (p, x) in decorated
+                      if x["active_visit_location"] == location]
 
     # ── View-specific filter + sort ──
     if view == "last_visits":

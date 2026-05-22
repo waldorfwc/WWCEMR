@@ -29,7 +29,7 @@ export default function PelletPatients() {
   // still overrides this via the applyPreset effect below.
   const [view, setView] = useState('upcoming')
   const [filters, setFilters] = useState({
-    search: '', patient_type: '', status: '',
+    search: '', patient_type: '', status: '', location: '',
   })
   const [adding, setAdding] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -61,6 +61,7 @@ export default function PelletPatients() {
       search:       f.search ?? '',
       patient_type: f.patient_type ?? '',
       status:       f.status ?? '',
+      location:     f.location ?? '',
     })
   }
 
@@ -171,7 +172,7 @@ export default function PelletPatients() {
 
       {/* Search + type filters */}
       <div className="card mb-3">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-sm">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Search</label>
             <div className="relative">
@@ -202,6 +203,16 @@ export default function PelletPatients() {
               <option value="active">Active (seen recently)</option>
               <option value="inactive">Inactive (not seen)</option>
               <option value="declined">Declined</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+            <select className="input text-sm w-full" value={filters.location}
+                    onChange={e => setFilters({ ...filters, location: e.target.value })}>
+              <option value="">All locations</option>
+              <option value="white_plains">White Plains</option>
+              <option value="brandywine">Brandywine</option>
+              <option value="arlington">Arlington</option>
             </select>
           </div>
         </div>
@@ -249,7 +260,8 @@ export default function PelletPatients() {
 
       {/* View body — calendar for upcoming, table for everything else */}
       {view === 'upcoming' ? (
-        <UpcomingCalendar onOpen={(id) => navigate(`/pellets/patients/${id}`)} />
+        <UpcomingCalendar location={filters.location}
+                          onOpen={(id) => navigate(`/pellets/patients/${id}`)} />
       ) : (
         <ViewTable view={view} patients={patients} isLoading={isLoading}
                     onOpen={(id) => navigate(`/pellets/patients/${id}`)} />
@@ -282,6 +294,15 @@ function dayLabel(d) {
 function monthDay(d) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
+
+// Location chips — color-coded abbreviations for fast scanning of the week.
+const LOC_ABBR = { white_plains: 'WP', brandywine: 'BW', arlington: 'ARL' }
+const LOC_CHIP = {
+  white_plains: 'bg-sky-200 text-sky-800',
+  brandywine:   'bg-purple-200 text-purple-800',
+  arlington:    'bg-teal-200 text-teal-800',
+}
+const LOC_NAME = { white_plains: 'White Plains', brandywine: 'Brandywine', arlington: 'Arlington' }
 
 
 function ActiveMonthsControl() {
@@ -342,7 +363,7 @@ function ActiveMonthsControl() {
 }
 
 
-function UpcomingCalendar({ onOpen }) {
+function UpcomingCalendar({ onOpen, location }) {
   const [start, setStart] = useState(() => {
     const t = new Date()
     t.setHours(0, 0, 0, 0)
@@ -355,9 +376,12 @@ function UpcomingCalendar({ onOpen }) {
   const today = toISO(new Date())
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pellet-upcoming-calendar', fromDate, toDate],
+    queryKey: ['pellet-upcoming-calendar', fromDate, toDate, location || ''],
     queryFn: () => api.get('/pellets/patients', {
-      params: { view: 'upcoming', from_date: fromDate, to_date: toDate, per_page: 500 },
+      params: {
+        view: 'upcoming', from_date: fromDate, to_date: toDate, per_page: 500,
+        ...(location ? { location } : {}),
+      },
     }).then(r => r.data),
   })
 
@@ -513,6 +537,13 @@ function CalendarVisitCard({ patient, onOpen }) {
             {isNew ? 'NEW' : 'EST'}
           </span>
           <span className="text-[11px] font-medium truncate flex-1">{patient.patient_name}</span>
+          {patient.active_visit_location && (
+            <span className={`text-[8px] font-bold px-1 rounded shrink-0 ${
+              LOC_CHIP[patient.active_visit_location] || 'bg-gray-200 text-gray-700'
+            }`} title={LOC_NAME[patient.active_visit_location] || patient.active_visit_location}>
+              {LOC_ABBR[patient.active_visit_location] || patient.active_visit_location}
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-1 text-[9px] text-gray-600 mt-0.5">
           {/* Mammogram — meets ready requirement (acceptable result + within 1yr of visit) */}
