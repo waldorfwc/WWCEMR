@@ -1934,7 +1934,8 @@ def delete_surgery_note(
     if not n:
         raise HTTPException(status_code=404, detail="note not found")
     email = (current_user.get("email") or "").lower()
-    has_manage = "surgery:manage" in (current_user.get("permissions") or [])
+    has_manage = "surgery:manage" in (current_user.get("effective_permissions")
+                                         or current_user.get("permissions") or [])
     if n.created_by.lower() != email and not has_manage:
         raise HTTPException(status_code=403,
                             detail="Only the author or a surgery manager can delete this note.")

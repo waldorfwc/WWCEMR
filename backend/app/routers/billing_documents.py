@@ -35,7 +35,8 @@ router = APIRouter(prefix="/billing/documents", tags=["billing-documents"])
 
 
 def _is_admin(user: dict) -> bool:
-    perms = set(user.get("permissions") or [])
+    perms = set(user.get("effective_permissions")
+                  or user.get("permissions") or [])
     return "user:manage" in perms
 
 

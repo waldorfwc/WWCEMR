@@ -96,7 +96,8 @@ CONFIRMED_DOSE_STATUSES = {"inserted", "added", "reduced", "returned", "disposed
 
 
 def _is_admin(user: dict) -> bool:
-    perms = set(user.get("permissions") or [])
+    perms = set(user.get("effective_permissions")
+                  or user.get("permissions") or [])
     return ("pellet:manage" in perms) or ("user:manage" in perms)
 
 
