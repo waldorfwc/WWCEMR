@@ -27,8 +27,7 @@ export function LoginPage({ onLogin }) {
       <div className="bg-white rounded-xl border border-border-subtle p-8 w-[420px] text-center">
         <img src={logoFull} alt="WWC Gynecology & Aesthetics" className="w-40 mx-auto mb-6" />
         <div className="mb-6">
-          <div className="font-serif text-xl text-ink">Revenue &amp; Records Workspace</div>
-          <div className="text-xs text-muted mt-1">Maryland · Internal Use Only</div>
+          <div className="font-serif text-xl text-ink">WWC Apps</div>
         </div>
 
         <a
