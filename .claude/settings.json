@@ -9,7 +9,11 @@
       "Bash(python scripts/seed_practice_config.py)",
       "Bash(pip list:*)",
       "Bash(pip show:*)",
-      "Bash(/Users/wwcclaudecode/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh:*)"
+      "Bash(/Users/wwcclaudecode/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh:*)",
+      "Bash(source /Users/wwcclaudecode/Documents/wwc-era-project/backend/venv/bin/activate)",
+      "Bash(python scripts/check_api_contracts.py)",
+      "Bash(python scripts/pellet_patient_xlsx_roster_seed.py)",
+      "mcp__claude_ai_Gmail__search_threads"
     ]
   }
 }
