@@ -36,6 +36,7 @@ import BankRecon from './pages/BankRecon'
 import Billing from './pages/Billing'
 import MissingCharges from './pages/MissingCharges'
 import InsuranceDocuments from './pages/InsuranceDocuments'
+import InsuranceContacts from './pages/InsuranceContacts'
 import ProviderMissingChargesPortal from './pages/ProviderMissingChargesPortal'
 import Pellets from './pages/Pellets'
 import PelletCounts from './pages/PelletCounts'
@@ -89,6 +90,7 @@ function ProtectedApp({ user, onLogout }) {
               <Route path="bank-recon"         element={<BankRecon />} />
               <Route path="missing-charges"    element={<MissingCharges />} />
               <Route path="insurance-documents" element={<InsuranceDocuments />} />
+              <Route path="insurance-contacts"  element={<InsuranceContacts />} />
               <Route path="code-helper"         element={<CodeHelper />} />
               <Route path="code-helper/denials" element={<CodeHelperDenials />} />
             </Route>

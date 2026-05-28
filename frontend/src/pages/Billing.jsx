@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Banknote, Receipt, FileScan, Stethoscope } from 'lucide-react'
+import { Banknote, Receipt, FileScan, Stethoscope, Phone } from 'lucide-react'
 
 
 const TABS = [
   { to: '/billing/bank-recon',          label: 'Bank Recon',          icon: Banknote },
   { to: '/billing/missing-charges',     label: 'Missing Charges',     icon: Receipt },
   { to: '/billing/insurance-documents', label: 'Insurance Documents', icon: FileScan },
+  { to: '/billing/insurance-contacts',  label: 'Insurance Contacts',  icon: Phone },
   { to: '/billing/code-helper',         label: 'Code Helper',         icon: Stethoscope },
 ]
 
