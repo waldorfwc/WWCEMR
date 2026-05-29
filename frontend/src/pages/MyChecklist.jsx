@@ -4,7 +4,7 @@ import {
   CheckCircle2, Circle, SkipForward, RotateCcw, Settings, Clock, AlertCircle,
   ThumbsUp, ThumbsDown, MessageSquareWarning, PackageCheck, CalendarClock,
   ClipboardList, X, Printer, Plus, Pencil, Trash2, ChevronDown, ChevronRight,
-  Share2,
+  Share2, BookOpen,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import api, { fmt } from '../utils/api'
@@ -81,6 +81,11 @@ export default function MyChecklist() {
                   onClick={() => setShowResponsibilities(true)}>
             <ClipboardList size={14} /> My Job Responsibilities
           </button>
+          <a className="btn-secondary text-sm flex items-center gap-1"
+             href="https://training.waldorfwomenscare.com"
+             target="_blank" rel="noopener noreferrer">
+            <BookOpen size={14} /> Documentation &amp; Training
+          </a>
           <button className="btn-secondary text-sm flex items-center gap-1"
                   onClick={() => setShowSettings(s => !s)}>
             <Settings size={14} /> {showSettings ? 'Close Settings' : 'Settings'}
