@@ -17,12 +17,6 @@ from app.routers.auth import require_permission
 router = APIRouter(prefix="/insurance-contacts", tags=["insurance-contacts"])
 
 
-def _is_admin(user: dict) -> bool:
-    perms = set(user.get("effective_permissions")
-                  or user.get("permissions") or [])
-    return "user:manage" in perms
-
-
 # ─── Pydantic shapes ────────────────────────────────────────────────
 
 class LabeledLink(BaseModel):
