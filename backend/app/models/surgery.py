@@ -291,6 +291,13 @@ class Surgery(Base):
                         # is owned by BlockDay
         order_by="SurgerySlot.start_time",
     )
+    payments = relationship(
+        "SurgeryPayment",
+        primaryjoin="Surgery.id == SurgeryPayment.surgery_id",
+        foreign_keys="SurgeryPayment.surgery_id",
+        cascade="all, delete-orphan",
+        order_by="SurgeryPayment.requested_at.desc()",
+    )
 
 
 # ─── Milestones ──────────────────────────────────────────────────────

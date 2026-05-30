@@ -13,6 +13,9 @@ from app.routers import imports, claims, patients, denials, appeals, eob, audit
 from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, docusign as docusign_router, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts
 from app.routers import google_sync as google_sync_router
 
+# Ensure Stripe models register with Base.metadata so init_db creates the tables.
+from app.models import stripe_payment as _stripe_payment_models  # noqa: F401
+
 # RBAC guards. Every router below gates on a specific permission, computed
 # from the user's group memberships + per-user extras/revokes (see
 # app/services/permissions.py). Specific routers gate on tighter permissions
