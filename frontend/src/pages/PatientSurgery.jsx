@@ -575,6 +575,14 @@ function SlotPicker({ surgeryId, headers, status, onPicked, onBack, endpoint = '
   }
   useEffect(() => { loadSlots() }, [])
 
+  // Pre-select the earliest available slot on first load (new bookings only).
+  useEffect(() => {
+    if (isReschedule) return
+    if (selected) return
+    if (!days?.length) return
+    setSelected(days[0])
+  }, [days])
+
   async function confirmPick() {
     if (!selected) return
     setConfirming(true); setError(null)
@@ -584,6 +592,22 @@ function SlotPicker({ surgeryId, headers, status, onPicked, onBack, endpoint = '
       onPicked(r.data)
     } catch (err) {
       setError(err?.response?.data?.detail || 'Could not book that date — try another.')
+      setConfirming(false)
+    }
+  }
+
+  async function confirmSelectSlot() {
+    if (!selected) return
+    setConfirming(true); setError(null)
+    try {
+      const r = await publicApi.post(
+        `/p/surgery/${surgeryId}/select-slot`,
+        { block_day_id: selected.block_day_id, start_time: selected.proposed_start_time },
+        { headers }
+      )
+      onPicked(r.data)
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Could not book that slot — try another.')
       setConfirming(false)
     }
   }
@@ -649,24 +673,22 @@ function SlotPicker({ surgeryId, headers, status, onPicked, onBack, endpoint = '
             <div className="bg-red-50 border border-red-200 text-red-800 text-sm p-2 rounded mb-3">{error}</div>
           )}
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setSelected(null); setError(null) }}
-              className="btn-secondary flex-1 text-base py-2 disabled:opacity-50"
-              disabled={confirming}
-            >
-              Pick a different date
-            </button>
-            <button
-              type="button"
-              onClick={confirmPick}
-              className="btn-primary flex-1 text-base py-2 disabled:opacity-60"
-              disabled={confirming}
-            >
-              {confirming ? 'Confirming…' : 'Confirm this date'}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={confirmSelectSlot}
+            className="btn-primary w-full text-base py-3 mb-2 disabled:opacity-60"
+            disabled={confirming}
+          >
+            {confirming ? 'Booking…' : `Confirm this time (${selected.proposed_start_time})`}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSelected(null); setError(null) }}
+            className="btn-secondary w-full text-base py-2 disabled:opacity-50"
+            disabled={confirming}
+          >
+            Pick a different date
+          </button>
         </div>
       </div>
     )
@@ -724,25 +746,39 @@ function SlotPicker({ surgeryId, headers, status, onPicked, onBack, endpoint = '
               <Hospital size={14} /> {FACILITY_LABEL[facility]}
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {items.map(d => (
-                <button
-                  key={d.block_day_id}
-                  onClick={() => setSelected(d)}
-                  className="bg-white border border-border-subtle hover:border-plum-300 hover:bg-plum-50 rounded p-3 text-left transition-colors"
-                >
-                  <div className="text-sm font-semibold text-gray-900">
-                    {d.weekday}, {fmt(d.block_date)}
-                  </div>
-                  <div className="text-xs text-gray-600 mt-0.5 flex items-center gap-1">
-                    <Clock size={10} /> {d.proposed_start_time} ({d.duration_minutes} min)
-                  </div>
-                  {d.cases_already_booked > 0 && (
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      {d.cases_already_booked} other case{d.cases_already_booked > 1 ? 's' : ''} that day
+              {items.map(d => {
+                const isEarliest = !isReschedule && d.block_day_id === days[0]?.block_day_id
+                return (
+                  <button
+                    key={d.block_day_id}
+                    onClick={() => setSelected(d)}
+                    className={`border rounded p-3 text-left transition-colors ${
+                      isEarliest
+                        ? 'bg-plum-50 border-plum-400 hover:border-plum-600'
+                        : 'bg-white border-border-subtle hover:border-plum-300 hover:bg-plum-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {d.weekday}, {fmt(d.block_date)}
+                      </span>
+                      {isEarliest && (
+                        <span className="text-[10px] text-plum-700 font-semibold bg-plum-100 border border-plum-300 rounded px-1.5 py-0.5">
+                          Recommended
+                        </span>
+                      )}
                     </div>
-                  )}
-                </button>
-              ))}
+                    <div className="text-xs text-gray-600 mt-0.5 flex items-center gap-1">
+                      <Clock size={10} /> {d.proposed_start_time} ({d.duration_minutes} min)
+                    </div>
+                    {d.cases_already_booked > 0 && (
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        {d.cases_already_booked} other case{d.cases_already_booked > 1 ? 's' : ''} that day
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
         ))}
