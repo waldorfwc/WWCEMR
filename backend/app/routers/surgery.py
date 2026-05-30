@@ -937,6 +937,46 @@ class SurgeryPatch(BaseModel):
     urgency: Optional[str] = None
 
 
+# ─── Slot duration patch (Phase D3) ────────────────────────────────
+
+class SlotPatch(BaseModel):
+    duration_minutes: int
+    override_reason: Optional[str] = None
+
+
+@router.patch("/slots/{slot_id}")
+def patch_slot(
+    slot_id: str,
+    payload: SlotPatch,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    from app.models.surgery import SurgeryNote
+    slot = db.query(SurgerySlot).filter(SurgerySlot.id == slot_id).first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="slot not found")
+
+    new_dur = payload.duration_minutes
+    if new_dur <= 0:
+        raise HTTPException(status_code=422, detail="duration must be > 0")
+    if not (payload.override_reason or "").strip():
+        raise HTTPException(status_code=422, detail="override_reason required")
+
+    actor = current_user.get("email") or "system"
+    old = slot.duration_minutes
+    slot.duration_minutes = new_dur
+
+    if slot.surgery_id:
+        db.add(SurgeryNote(
+            surgery_id=slot.surgery_id, created_by=actor,
+            content=(f"Duration {old} → {new_dur} min. "
+                     f"Reason: {payload.override_reason}"),
+        ))
+    db.commit()
+    return {"ok": True, "slot_id": str(slot.id),
+            "duration_minutes": slot.duration_minutes}
+
+
 @router.patch("/{surgery_id}")
 def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                    db: Session = Depends(get_db),
