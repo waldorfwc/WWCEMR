@@ -134,3 +134,36 @@ def test_resolve_endpoint_marks_notified(client, db):
     # Subsequent dashboard call no longer includes it.
     body = client.get("/api/surgery/dashboard").json()
     assert body["blocked_conflicts"] == []
+
+
+def test_is_date_blacked_out_office_scope(db):
+    from datetime import date as _d, timedelta
+    from app.models.surgery import SurgeryBlackoutDay
+    from app.services.surgery_blackout_conflict import is_date_blacked_out
+    target = _d.today() + timedelta(days=3)
+    db.add(SurgeryBlackoutDay(blackout_date=target, scope="office",
+                                reason="holiday", label="Memorial Day"))
+    db.commit()
+    out = is_date_blacked_out(db, target, "medstar")
+    assert out is not None
+    assert out.scope == "office"
+
+
+def test_is_date_blacked_out_facility_scope_only_matches_same_facility(db):
+    from datetime import date as _d, timedelta
+    from app.models.surgery import SurgeryBlackoutDay
+    from app.services.surgery_blackout_conflict import is_date_blacked_out
+    target = _d.today() + timedelta(days=3)
+    db.add(SurgeryBlackoutDay(blackout_date=target, scope="facility",
+                                facility="medstar", reason="facility_closed",
+                                label="MedStar maintenance"))
+    db.commit()
+    assert is_date_blacked_out(db, target, "medstar") is not None
+    assert is_date_blacked_out(db, target, "crmc") is None
+
+
+def test_is_date_blacked_out_clear_date(db):
+    from datetime import date as _d, timedelta
+    from app.services.surgery_blackout_conflict import is_date_blacked_out
+    target = _d.today() + timedelta(days=3)
+    assert is_date_blacked_out(db, target, "medstar") is None

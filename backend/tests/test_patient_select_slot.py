@@ -73,3 +73,16 @@ def test_select_slot_rejects_overlap_not_exact_match(client, db):
         "block_day_id": str(bd.id), "start_time": "08:00",
     })
     assert resp.status_code == 409
+
+
+def test_select_slot_rejects_blacked_out_date(client, db):
+    from app.models.surgery import SurgeryBlackoutDay
+    s, bd = _seed(db)
+    db.add(SurgeryBlackoutDay(blackout_date=bd.block_date, scope="office",
+                                reason="holiday", label="Memorial Day"))
+    db.commit()
+    resp = client.post(f"/api/p/surgery/{s.id}/select-slot", json={
+        "block_day_id": str(bd.id), "start_time": "07:30",
+    })
+    assert resp.status_code == 409
+    assert "blocked" in resp.json()["detail"].lower()

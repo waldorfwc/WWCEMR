@@ -35,6 +35,7 @@ from app.services.surgery_block_schedule import (
     DURATIONS, can_fit, book_slot, CapacityViolation,
 )
 from app.services.surgery_slot_conflict import overlapping_slot
+from app.services.surgery_blackout_conflict import is_date_blacked_out
 
 log = logging.getLogger(__name__)
 
@@ -441,6 +442,14 @@ def patient_select_slot(
     bd = db.query(BlockDay).filter(BlockDay.id == payload.block_day_id).first()
     if not bd:
         raise HTTPException(status_code=404, detail="block day not found")
+
+    blackout = is_date_blacked_out(db, bd.block_date, bd.facility)
+    if blackout:
+        raise HTTPException(
+            status_code=409,
+            detail=f"that date is blocked: {blackout.label or blackout.reason} "
+                   f"({blackout.scope})",
+        )
 
     start = _parse_hhmm(payload.start_time)
     duration = _default_duration_for(db, s, bd)

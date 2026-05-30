@@ -65,3 +65,28 @@ def _scope_matches(s: Surgery, b: SurgeryBlackoutDay) -> bool:
         # surgeries. If/when there's >1 operating surgeon, refine this.
         return True
     return False
+
+
+def is_date_blacked_out(
+    db: Session,
+    blackout_date,           # date
+    facility: str | None,    # surgery's selected facility (used for facility-scope)
+) -> "SurgeryBlackoutDay | None":
+    """Return the SurgeryBlackoutDay that blocks `blackout_date` for the
+    given `facility`, or None if the date is clear.
+
+    Scope rules mirror find_blocked_conflicts:
+      office    — applies to any surgery on that date
+      facility  — applies only if facility matches blackout.facility
+      provider  — applies (single-surgeon practice; same caveat as before)
+    """
+    rows = (db.query(SurgeryBlackoutDay)
+              .filter(SurgeryBlackoutDay.blackout_date == blackout_date).all())
+    for b in rows:
+        if b.scope == "office":
+            return b
+        if b.scope == "facility" and facility == b.facility:
+            return b
+        if b.scope == "provider":
+            return b
+    return None

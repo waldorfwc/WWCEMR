@@ -24,6 +24,7 @@ from app.models.surgery import (
 )
 from app.routers.auth import get_current_user, require_permission
 from app.services.surgery_slot_conflict import overlapping_slot
+from app.services.surgery_blackout_conflict import is_date_blacked_out
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
 
@@ -1957,6 +1958,14 @@ def coordinator_schedule(
     start = _parse_hhmm(payload.start_time)
     default = _default_duration_for(db, s, bd)
     duration = payload.duration_minutes or default
+
+    blackout = is_date_blacked_out(db, bd.block_date, s.selected_facility or bd.facility)
+    if blackout:
+        raise HTTPException(
+            status_code=409,
+            detail=f"that date is blocked: {blackout.label or blackout.reason} "
+                   f"({blackout.scope})",
+        )
 
     # Conflict check: reject if the new slot's time window overlaps any existing slot.
     conflict = overlapping_slot(db, bd.id, start, duration)
