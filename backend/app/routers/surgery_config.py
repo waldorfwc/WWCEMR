@@ -114,3 +114,54 @@ def put_config(payload: ConfigPayload,
             row.updated_by = actor
     db.commit()
     return _read_config(db)
+
+
+# ─── Alert recipients ───────────────────────────────────────────────
+
+@router.get("/admin/alert-recipients")
+def list_recipients(db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("claim:read"))):
+    rows = db.query(SurgeryAlertRecipient).all()
+    out = {k: [] for k in ALERT_KINDS}
+    for r in rows:
+        out.setdefault(r.alert_kind, []).append(r.email)
+    for k in out:
+        out[k].sort()
+    return out
+
+
+@router.post("/admin/alert-recipients", status_code=201)
+def add_recipient(payload: RecipientIn,
+                  db: Session = Depends(get_db),
+                  current_user: dict = Depends(require_permission("user:manage"))):
+    if payload.alert_kind not in ALERT_KINDS:
+        raise HTTPException(status_code=422,
+                            detail=f"unknown alert_kind: {payload.alert_kind}")
+    email = payload.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=422, detail="email required")
+    actor = current_user.get("email") or "system"
+    exists = (db.query(SurgeryAlertRecipient)
+                .filter(SurgeryAlertRecipient.alert_kind == payload.alert_kind,
+                         SurgeryAlertRecipient.email == email).first())
+    if exists:
+        raise HTTPException(status_code=409, detail="recipient already exists")
+    row = SurgeryAlertRecipient(alert_kind=payload.alert_kind,
+                                  email=email, added_by=actor)
+    db.add(row)
+    db.commit()
+    return {"id": str(row.id), "alert_kind": row.alert_kind, "email": row.email}
+
+
+@router.delete("/admin/alert-recipients", status_code=204)
+def delete_recipient(alert_kind: str, email: str,
+                     db: Session = Depends(get_db),
+                     current_user: dict = Depends(require_permission("user:manage"))):
+    row = (db.query(SurgeryAlertRecipient)
+             .filter(SurgeryAlertRecipient.alert_kind == alert_kind,
+                      SurgeryAlertRecipient.email == email.strip().lower())
+             .first())
+    if row:
+        db.delete(row)
+        db.commit()
+    return None
