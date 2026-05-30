@@ -13,12 +13,24 @@ const FACILITY_LABEL = {
   office:  'Office',
 }
 
+const URGENCY_TONE = {
+  routine:   'bg-gray-100 text-gray-700',
+  expedited: 'bg-amber-100 text-amber-800',
+  urgent:    'bg-red-100 text-red-700',
+}
+const URGENCY_LABEL = {
+  routine: 'Routine', expedited: 'Expedited', urgent: 'Urgent',
+}
+const URGENCY_RANK = { urgent: 0, expedited: 1, routine: 2 }
+
 
 export default function SurgeryWaitlist() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const [facilityFilter, setFacilityFilter] = useState('')
   const [matchingFor, setMatchingFor] = useState(null)   // block_day_id
+  const [sortKey, setSortKey] = useState('urgency')   // 'urgency' | 'notice' | 'facility'
+  const [sortDir, setSortDir] = useState('asc')
 
   const { data, isLoading } = useQuery({
     queryKey: ['surgery-waitlist', facilityFilter],
@@ -37,20 +49,19 @@ export default function SurgeryWaitlist() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-waitlist'] }),
   })
 
-  const list = data?.waitlist || []
-
-  // Group by facility (or 'multi' for multi-eligible)
-  const grouped = useMemo(() => {
-    const out = {}
-    for (const w of list) {
-      const fac = w.eligible_facilities.length === 1
-                  ? w.eligible_facilities[0]
-                  : 'multi'
-      if (!out[fac]) out[fac] = []
-      out[fac].push(w)
-    }
-    return out
-  }, [list])
+  const list = useMemo(() => {
+    const rows = [...(data?.waitlist || [])]
+    rows.sort((a, b) => {
+      let av, bv
+      if (sortKey === 'urgency')  { av = URGENCY_RANK[a.urgency] ?? 99; bv = URGENCY_RANK[b.urgency] ?? 99 }
+      else if (sortKey === 'notice') { av = a.advance_notice_days ?? 0; bv = b.advance_notice_days ?? 0 }
+      else                        { av = (a.facility || ''); bv = (b.facility || '') }
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ?  1 : -1
+      return 0
+    })
+    return rows
+  }, [data, sortKey, sortDir])
 
   // Days with open capacity (not full) — used for the "Find matches for this day" picker
   const openDays = (blockDays?.days || []).filter(d => {
@@ -110,68 +121,62 @@ export default function SurgeryWaitlist() {
         </div>
       </div>
 
-      {Object.keys(grouped).length === 0 ? (
+      {list.length === 0 ? (
         <div className="card text-sm text-gray-500 italic">
           No one on the waitlist. Use the "Add to waitlist" button on a surgery's detail page.
         </div>
       ) : (
-        <div className="space-y-3">
-          {Object.entries(grouped).map(([fac, items]) => (
-            <div key={fac}>
-              <h2 className="text-sm font-semibold text-gray-700 mb-2">
-                {fac === 'multi' ? 'Multi-facility eligible' : FACILITY_LABEL[fac]}
-                <span className="text-xs text-gray-500 font-normal ml-2">({items.length})</span>
-              </h2>
-              <div className="card !p-0 overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-plum-50 text-gray-600 text-[10px] uppercase tracking-wide">
-                    <tr>
-                      <th className="text-left px-3 py-1">Patient</th>
-                      <th className="text-left px-2 py-1">Procedure</th>
-                      <th className="text-left px-2 py-1">Phone</th>
-                      <th className="text-left px-2 py-1">Notice (days)</th>
-                      <th className="text-left px-2 py-1">Waiting since</th>
-                      <th className="text-right px-3 py-1">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map(w => (
-                      <tr key={w.waitlist_id} className="border-t border-gray-100 hover:bg-plum-50/30">
-                        <td className="px-3 py-1.5">
-                          <button className="font-medium text-plum-700 hover:underline"
-                                  onClick={() => navigate(`/surgery/${w.surgery_id}`)}>
-                            {w.patient_name}
-                          </button>
-                          <div className="text-[10px] text-gray-500 font-mono">{w.chart_number}</div>
-                        </td>
-                        <td className="px-2 py-1.5 max-w-[260px] truncate">
-                          {(w.procedure_descriptions || []).join(', ') || '—'}
-                          {w.procedure_classification && (
-                            <div className="text-[10px] text-gray-500 capitalize">
-                              {w.procedure_classification.replace(/_/g, ' ')}
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-2 py-1.5 font-mono">{w.phone || '—'}</td>
-                        <td className="px-2 py-1.5">{w.advance_notice_days}</td>
-                        <td className="px-2 py-1.5">{fmt.date(w.signed_up_at?.slice(0, 10))}</td>
-                        <td className="px-3 py-1.5 text-right">
-                          <button className="text-[11px] text-red-700 hover:underline flex items-center gap-1 ml-auto"
-                                  onClick={() => {
-                                    if (confirm(`Remove ${w.patient_name} from the waitlist?`)) {
-                                      removeFromWaitlist.mutate(w.surgery_id)
-                                    }
-                                  }}>
-                            <Trash2 size={11} /> Remove
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
+        <div className="card !p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-[11px] uppercase text-gray-500">
+              <tr>
+                <th className="text-left px-4 py-2">Patient</th>
+                <th className="text-left px-3 py-2">
+                  <button onClick={() => { setSortKey('notice'); setSortDir(d => d === 'asc' ? 'desc' : 'asc') }}>
+                    Notice {sortKey === 'notice' && (sortDir === 'asc' ? '↑' : '↓')}
+                  </button>
+                </th>
+                <th className="text-left px-3 py-2">Type</th>
+                <th className="text-left px-3 py-2">
+                  <button onClick={() => { setSortKey('facility'); setSortDir(d => d === 'asc' ? 'desc' : 'asc') }}>
+                    Location {sortKey === 'facility' && (sortDir === 'asc' ? '↑' : '↓')}
+                  </button>
+                </th>
+                <th className="text-left px-3 py-2">
+                  <button onClick={() => { setSortKey('urgency'); setSortDir(d => d === 'asc' ? 'desc' : 'asc') }}>
+                    Urgency {sortKey === 'urgency' && (sortDir === 'asc' ? '↑' : '↓')}
+                  </button>
+                </th>
+                <th className="px-4 py-2 w-[120px] text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map(w => (
+                <tr key={w.id} className="border-t border-border-subtle hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <Link to={`/surgery/${w.surgery_id}`} className="text-plum-700 hover:underline">
+                      {w.patient_name}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-3 text-[12px]">{w.advance_notice_days}d</td>
+                  <td className="px-3 py-3 text-[12px]">{w.procedure_name || '—'}</td>
+                  <td className="px-3 py-3 text-[12px]">{FACILITY_LABEL[w.facility] || w.facility || '—'}</td>
+                  <td className="px-3 py-3">
+                    <span className={`text-[11px] px-2 py-0.5 rounded ${URGENCY_TONE[w.urgency] || URGENCY_TONE.routine}`}>
+                      {URGENCY_LABEL[w.urgency] || 'Routine'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50"
+                            onClick={() => removeFromWaitlist.mutate(w.surgery_id)}
+                            title="Remove from waitlist">
+                      <Trash2 size={11} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
