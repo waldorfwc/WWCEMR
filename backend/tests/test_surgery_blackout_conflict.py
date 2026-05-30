@@ -82,3 +82,28 @@ def test_cancelled_surgeries_excluded(db):
     db.commit()
 
     assert find_blocked_conflicts(db) == []
+
+
+def test_dashboard_includes_blocked_conflicts(client, db):
+    from datetime import date as _d, timedelta
+    s = Surgery(
+        chart_number="1", patient_name="Pat",
+        scheduled_date=_d.today() + timedelta(days=2),
+        selected_facility="office",
+        status="confirmed",
+        eligible_facilities=["office"],
+    )
+    db.add(s)
+    db.add(SurgeryBlackoutDay(
+        blackout_date=_d.today() + timedelta(days=2),
+        scope="office", reason="holiday", label="Memorial Day",
+    ))
+    db.commit()
+
+    resp = client.get("/api/surgery/dashboard")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "blocked_conflicts" in body
+    assert len(body["blocked_conflicts"]) == 1
+    assert body["blocked_conflicts"][0]["patient_name"] == "Pat"
+    assert body["blocked_conflicts"][0]["blackout_reason"] == "holiday"

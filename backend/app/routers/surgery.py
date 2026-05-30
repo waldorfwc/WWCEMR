@@ -302,7 +302,7 @@ def dashboard(db: Session = Depends(get_db),
         for bd in find_office_release_candidates(db)
     ]
 
-    return {
+    response = {
         "buckets": bucket_counts,
         "completed_30d": n_completed_30d,
         "stuck_count": stuck_count,
@@ -312,6 +312,9 @@ def dashboard(db: Session = Depends(get_db),
         "hospital_unbooked": hospital_unbooked,
         "office_underbooked": office_underbooked,
     }
+    from app.services.surgery_blackout_conflict import find_blocked_conflicts
+    response["blocked_conflicts"] = find_blocked_conflicts(db)
+    return response
 
 
 # ─── Dashboard buckets (Phase 2.7) ─────────────────────────────────
