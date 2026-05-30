@@ -79,3 +79,38 @@ class TemplatePatch(BaseModel):
     default_duration_minutes: Optional[int] = None
     default_cpt_code: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+# ─── Config (key/value) ─────────────────────────────────────────────
+
+def _read_config(db: Session) -> dict:
+    rows = db.query(SurgeryConfig).all()
+    out = dict(CONFIG_DEFAULTS)
+    for r in rows:
+        out[r.key] = r.value
+    return out
+
+
+@router.get("/config")
+def get_config(db: Session = Depends(get_db),
+               current_user: dict = Depends(require_permission("claim:read"))):
+    return _read_config(db)
+
+
+@router.put("/config")
+def put_config(payload: ConfigPayload,
+               db: Session = Depends(get_db),
+               current_user: dict = Depends(require_permission("user:manage"))):
+    actor = current_user.get("email") or "system"
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        if k not in CONFIG_DEFAULTS:
+            continue
+        row = db.query(SurgeryConfig).filter(SurgeryConfig.key == k).first()
+        if row is None:
+            db.add(SurgeryConfig(key=k, value=v, updated_by=actor))
+        else:
+            row.value = v
+            row.updated_by = actor
+    db.commit()
+    return _read_config(db)
