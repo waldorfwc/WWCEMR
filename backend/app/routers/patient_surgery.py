@@ -29,6 +29,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.surgery import (
     BlockDay, PatientAuthAttempt, Surgery, SurgeryFile, SurgeryMilestone, SurgerySlot,
+    SurgeryNote,
 )
 from app.services.surgery_block_schedule import (
     DURATIONS, can_fit, book_slot, CapacityViolation,
@@ -395,6 +396,83 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
         "ok": True,
         **result,
         "message": "Surgery rescheduled. Your previous appointment time has been released.",
+    }
+
+
+class SelectSlotIn(BaseModel):
+    block_day_id: str
+    start_time: str          # "HH:MM"
+
+
+def _parse_hhmm(s: str) -> time:
+    h, m = s.split(":")
+    return time(int(h), int(m))
+
+
+def _default_duration_for(db: Session, surgery: Surgery, block_day: BlockDay) -> int:
+    """Look up procedure-template duration; fall back to procedure_kind map."""
+    from app.models.surgery_config import SurgeryProcedureTemplate
+    kind = block_day.block_kind
+    template = (db.query(SurgeryProcedureTemplate)
+                  .filter(SurgeryProcedureTemplate.procedure_kind == kind,
+                          SurgeryProcedureTemplate.is_active.is_(True))
+                  .order_by(SurgeryProcedureTemplate.name.asc())
+                  .first())
+    if template:
+        return template.default_duration_minutes
+    fallback = {"office": 30, "minor": 60, "major": 120,
+                "robotic_180": 180, "robotic_240": 240}
+    return fallback.get(kind, 60)
+
+
+@router.post("/{surgery_id}/select-slot")
+def patient_select_slot(
+    surgery_id: str,
+    payload: SelectSlotIn,
+    db: Session = Depends(get_db),
+    _token: str = Depends(require_patient_token),
+):
+    """Patient self-schedules into a specific block-day slot by start time."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+
+    bd = db.query(BlockDay).filter(BlockDay.id == payload.block_day_id).first()
+    if not bd:
+        raise HTTPException(status_code=404, detail="block day not found")
+
+    start = _parse_hhmm(payload.start_time)
+
+    # Conflict check: reject if any slot on this block day already starts at this time.
+    existing = (db.query(SurgerySlot)
+                  .filter(SurgerySlot.block_day_id == bd.id,
+                          SurgerySlot.start_time == start)
+                  .first())
+    if existing:
+        raise HTTPException(status_code=409, detail="that start time is already booked")
+
+    duration = _default_duration_for(db, s, bd)
+    slot = SurgerySlot(
+        block_day_id=bd.id, surgery_id=s.id,
+        start_time=start, duration_minutes=duration,
+        procedure_kind=bd.block_kind,
+    )
+    db.add(slot)
+    s.scheduled_date = bd.block_date
+    s.selected_facility = bd.facility
+    db.add(SurgeryNote(
+        surgery_id=s.id,
+        created_by="patient:self-service",
+        content=(f"Patient self-scheduled {bd.block_date} {start.strftime('%H:%M')} "
+                 f"({duration} min) at {bd.facility}."),
+    ))
+    db.commit()
+    return {
+        "ok": True,
+        "slot_id": str(slot.id),
+        "block_day_id": str(bd.id),
+        "start_time": start.strftime("%H:%M"),
+        "duration_minutes": duration,
     }
 
 

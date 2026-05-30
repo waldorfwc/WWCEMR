@@ -12,6 +12,7 @@ from app.database import Base, get_db
 from app.main import app
 from app.models.user import User, UserGroup
 from app.routers.auth import get_current_user
+from app.routers.patient_surgery import require_patient_token
 
 
 TEST_USER = {"email": "tester@waldorfwomenscare.com", "name": "Test User", "group": "admin"}
@@ -69,8 +70,12 @@ def client(db):
     def override_get_current_user():
         return TEST_USER
 
+    def override_require_patient_token(surgery_id: str = None):
+        return "test-token"
+
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user
+    app.dependency_overrides[require_patient_token] = override_require_patient_token
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
