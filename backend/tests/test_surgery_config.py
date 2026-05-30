@@ -66,3 +66,39 @@ def test_delete_recipient(client):
     assert resp.status_code == 204
     out = client.get("/api/surgery/admin/alert-recipients").json()
     assert out["office_release"] == []
+
+
+def test_facility_crud_round_trip(client):
+    # Create
+    resp = client.post("/api/surgery/admin/facilities", json={
+        "code": "medstar", "label": "MedStar Southern Maryland",
+        "address": "7503 Surratts Rd, Clinton, MD",
+        "sort_order": 1,
+    })
+    assert resp.status_code == 201
+    fid = resp.json()["id"]
+
+    # List
+    out = client.get("/api/surgery/admin/facilities").json()
+    assert any(f["code"] == "medstar" for f in out["facilities"])
+
+    # Patch
+    resp = client.patch(f"/api/surgery/admin/facilities/{fid}", json={"label": "MedStar SMH"})
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "MedStar SMH"
+
+    # Picklist (claim:read) returns only active facilities, sorted
+    out = client.get("/api/surgery/picklists/facilities").json()
+    codes = [f["code"] for f in out["facilities"]]
+    assert "medstar" in codes
+
+    # Deactivate
+    client.patch(f"/api/surgery/admin/facilities/{fid}", json={"is_active": False})
+    out = client.get("/api/surgery/picklists/facilities").json()
+    assert "medstar" not in [f["code"] for f in out["facilities"]]
+
+
+def test_facility_dup_code_returns_409(client):
+    client.post("/api/surgery/admin/facilities", json={"code": "office", "label": "Office"})
+    resp = client.post("/api/surgery/admin/facilities", json={"code": "office", "label": "Office 2"})
+    assert resp.status_code == 409

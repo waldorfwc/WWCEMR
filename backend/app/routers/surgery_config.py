@@ -165,3 +165,71 @@ def delete_recipient(alert_kind: str, email: str,
         db.delete(row)
         db.commit()
     return None
+
+
+# ─── Facilities ─────────────────────────────────────────────────────
+
+def _facility_dict(f: Facility) -> dict:
+    return {"id": str(f.id), "code": f.code, "label": f.label,
+            "address": f.address, "is_active": f.is_active,
+            "sort_order": f.sort_order}
+
+
+@router.get("/admin/facilities")
+def list_facilities_admin(db: Session = Depends(get_db),
+                           current_user: dict = Depends(require_permission("claim:read"))):
+    rows = (db.query(Facility)
+              .order_by(Facility.sort_order.asc(), Facility.label.asc()).all())
+    return {"facilities": [_facility_dict(f) for f in rows]}
+
+
+@router.get("/picklists/facilities")
+def list_facilities_picklist(db: Session = Depends(get_db),
+                              current_user: dict = Depends(require_permission("claim:read"))):
+    rows = (db.query(Facility)
+              .filter(Facility.is_active.is_(True))
+              .order_by(Facility.sort_order.asc(), Facility.label.asc()).all())
+    return {"facilities": [_facility_dict(f) for f in rows]}
+
+
+@router.post("/admin/facilities", status_code=201)
+def create_facility(payload: FacilityIn,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("user:manage"))):
+    code = (payload.code or "").strip().lower()
+    label = (payload.label or "").strip()
+    if not code or not label:
+        raise HTTPException(status_code=422, detail="code and label required")
+    if db.query(Facility).filter(Facility.code == code).first():
+        raise HTTPException(status_code=409, detail="code already exists")
+    actor = current_user.get("email") or "system"
+    f = Facility(code=code, label=label, address=payload.address,
+                  is_active=payload.is_active, sort_order=payload.sort_order,
+                  created_by=actor, updated_by=actor)
+    db.add(f); db.commit(); db.refresh(f)
+    return _facility_dict(f)
+
+
+@router.patch("/admin/facilities/{facility_id}")
+def patch_facility(facility_id: str, payload: FacilityPatch,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(require_permission("user:manage"))):
+    f = db.query(Facility).filter(Facility.id == facility_id).first()
+    if not f:
+        raise HTTPException(status_code=404, detail="facility not found")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(f, k, v)
+    f.updated_by = current_user.get("email") or "system"
+    db.commit(); db.refresh(f)
+    return _facility_dict(f)
+
+
+@router.delete("/admin/facilities/{facility_id}", status_code=204)
+def delete_facility(facility_id: str,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("user:manage"))):
+    f = db.query(Facility).filter(Facility.id == facility_id).first()
+    if f:
+        db.delete(f); db.commit()
+    return None
