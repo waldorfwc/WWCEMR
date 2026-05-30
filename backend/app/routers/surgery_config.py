@@ -233,3 +233,84 @@ def delete_facility(facility_id: str,
     if f:
         db.delete(f); db.commit()
     return None
+
+
+# ─── Procedure templates ────────────────────────────────────────────
+
+def _template_dict(t: SurgeryProcedureTemplate) -> dict:
+    return {"id": str(t.id), "code": t.code, "name": t.name,
+            "procedure_kind": t.procedure_kind,
+            "default_duration_minutes": t.default_duration_minutes,
+            "default_cpt_code": t.default_cpt_code,
+            "is_active": t.is_active}
+
+
+@router.get("/admin/procedure-templates")
+def list_templates_admin(db: Session = Depends(get_db),
+                          current_user: dict = Depends(require_permission("claim:read"))):
+    rows = db.query(SurgeryProcedureTemplate).order_by(
+        SurgeryProcedureTemplate.name.asc()).all()
+    return {"templates": [_template_dict(t) for t in rows]}
+
+
+@router.get("/picklists/procedure-templates")
+def list_templates_picklist(db: Session = Depends(get_db),
+                             current_user: dict = Depends(require_permission("claim:read"))):
+    rows = (db.query(SurgeryProcedureTemplate)
+              .filter(SurgeryProcedureTemplate.is_active.is_(True))
+              .order_by(SurgeryProcedureTemplate.name.asc()).all())
+    return {"templates": [_template_dict(t) for t in rows]}
+
+
+@router.post("/admin/procedure-templates", status_code=201)
+def create_template(payload: TemplateIn,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("user:manage"))):
+    if payload.procedure_kind not in PROCEDURE_KINDS:
+        raise HTTPException(status_code=422,
+                            detail=f"unknown procedure_kind: {payload.procedure_kind}")
+    if payload.default_duration_minutes <= 0:
+        raise HTTPException(status_code=422, detail="duration must be > 0")
+    actor = current_user.get("email") or "system"
+    if db.query(SurgeryProcedureTemplate).filter(
+            SurgeryProcedureTemplate.code == payload.code).first():
+        raise HTTPException(status_code=409, detail="code already exists")
+    t = SurgeryProcedureTemplate(
+        code=payload.code, name=payload.name,
+        procedure_kind=payload.procedure_kind,
+        default_duration_minutes=payload.default_duration_minutes,
+        default_cpt_code=payload.default_cpt_code,
+        is_active=payload.is_active, created_by=actor, updated_by=actor,
+    )
+    db.add(t); db.commit(); db.refresh(t)
+    return _template_dict(t)
+
+
+@router.patch("/admin/procedure-templates/{template_id}")
+def patch_template(template_id: str, payload: TemplatePatch,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(require_permission("user:manage"))):
+    t = db.query(SurgeryProcedureTemplate).filter(
+            SurgeryProcedureTemplate.id == template_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="template not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "procedure_kind" in data and data["procedure_kind"] not in PROCEDURE_KINDS:
+        raise HTTPException(status_code=422,
+                            detail=f"unknown procedure_kind: {data['procedure_kind']}")
+    for k, v in data.items():
+        setattr(t, k, v)
+    t.updated_by = current_user.get("email") or "system"
+    db.commit(); db.refresh(t)
+    return _template_dict(t)
+
+
+@router.delete("/admin/procedure-templates/{template_id}", status_code=204)
+def delete_template(template_id: str,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("user:manage"))):
+    t = db.query(SurgeryProcedureTemplate).filter(
+            SurgeryProcedureTemplate.id == template_id).first()
+    if t:
+        db.delete(t); db.commit()
+    return None

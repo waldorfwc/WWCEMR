@@ -102,3 +102,28 @@ def test_facility_dup_code_returns_409(client):
     client.post("/api/surgery/admin/facilities", json={"code": "office", "label": "Office"})
     resp = client.post("/api/surgery/admin/facilities", json={"code": "office", "label": "Office 2"})
     assert resp.status_code == 409
+
+
+def test_template_crud_round_trip(client):
+    resp = client.post("/api/surgery/admin/procedure-templates", json={
+        "code": "robotic_180", "name": "Robotic hysterectomy",
+        "procedure_kind": "robotic_180",
+        "default_duration_minutes": 180,
+        "default_cpt_code": "58571",
+    })
+    assert resp.status_code == 201
+    tid = resp.json()["id"]
+    out = client.get("/api/surgery/picklists/procedure-templates").json()
+    assert any(t["code"] == "robotic_180" for t in out["templates"])
+
+    resp = client.patch(f"/api/surgery/admin/procedure-templates/{tid}",
+                         json={"default_duration_minutes": 200})
+    assert resp.json()["default_duration_minutes"] == 200
+
+
+def test_template_unknown_kind_returns_422(client):
+    resp = client.post("/api/surgery/admin/procedure-templates", json={
+        "code": "bogus", "name": "Bogus", "procedure_kind": "not_a_kind",
+        "default_duration_minutes": 60,
+    })
+    assert resp.status_code == 422
