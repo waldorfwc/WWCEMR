@@ -875,7 +875,15 @@ def get_surgery(surgery_id: str, db: Session = Depends(get_db),
            .first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
-    return _surgery_dict(s, include_milestones=True)
+    out = _surgery_dict(s, include_milestones=True)
+    # Expose the booked slot so the frontend can offer duration inline edit (Phase D6)
+    slot = (db.query(SurgerySlot)
+              .filter(SurgerySlot.surgery_id == s.id)
+              .order_by(SurgerySlot.start_time)
+              .first())
+    out["booked_slot_id"] = str(slot.id) if slot else None
+    out["booked_duration_minutes"] = slot.duration_minutes if slot else None
+    return out
 
 
 class SurgeryPatch(BaseModel):

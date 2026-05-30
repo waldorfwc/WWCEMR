@@ -1654,6 +1654,8 @@ function milestoneInlineContent(m, surgery) {
 
 function PatientPicksDateBody({ surgery }) {
   const qc = useQueryClient()
+  const currentUser = useCurrentUser()
+  const canEditSchedule = currentUser.has('surgery:work')
   const modmedDone = !!surgery.scheduled_in_modmed_at
   const medsDone = !!surgery.office_meds_pickup_confirmed_at
   const isOffice = surgery.selected_facility === 'office'
@@ -1684,6 +1686,15 @@ function PatientPicksDateBody({ surgery }) {
         <strong>Picked:</strong> {fmt.date(surgery.scheduled_date)}
         {surgery.scheduled_start_time && ` · ${surgery.scheduled_start_time.slice(0,5)}`}
         {surgery.selected_facility && ` · ${FACILITY_SHORT[surgery.selected_facility] || surgery.selected_facility}`}
+        {canEditSchedule && surgery.booked_slot_id && surgery.booked_duration_minutes != null && (
+          <span className="ml-2">
+            <SlotDurationEdit
+              slotId={surgery.booked_slot_id}
+              currentMinutes={surgery.booked_duration_minutes}
+              onSaved={() => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })}
+            />
+          </span>
+        )}
       </div>
       {surgery.reschedule_count > 0 && (
         <div className="text-amber-700 text-[11px]">
@@ -3525,6 +3536,48 @@ function ScheduleForPatientModal({ surgery, templates, onClose, onSaved }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+
+// ─── Phase D6: Slot duration inline edit ────────────────────────────
+
+function SlotDurationEdit({ slotId, currentMinutes, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [draftMin, setDraftMin] = useState(currentMinutes)
+  const [reason, setReason] = useState('')
+  const save = useMutation({
+    mutationFn: () => api.patch(`/surgery/slots/${slotId}`, {
+      duration_minutes: draftMin,
+      override_reason: reason.trim(),
+    }).then(r => r.data),
+    onSuccess: () => { setEditing(false); setReason(''); onSaved() },
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  if (!editing) {
+    return (
+      <button className="text-[11px] text-plum-700 hover:underline"
+              onClick={() => { setDraftMin(currentMinutes); setEditing(true) }}>
+        Adjust duration ({currentMinutes}m)
+      </button>
+    )
+  }
+  return (
+    <div className="flex items-center gap-1 text-[11px]">
+      <input type="number" className="input text-[11px] w-16"
+             value={draftMin} onChange={e => setDraftMin(Number(e.target.value))} />
+      <input className="input text-[11px] flex-1"
+             placeholder="Reason (required)"
+             value={reason} onChange={e => setReason(e.target.value)} />
+      <button className="text-plum-700 hover:underline"
+              disabled={!reason.trim() || save.isPending}
+              onClick={() => save.mutate()}>Save</button>
+      <button className="text-gray-500 hover:underline"
+              onClick={() => { setEditing(false); setReason(''); setDraftMin(currentMinutes) }}>
+        Cancel
+      </button>
     </div>
   )
 }
