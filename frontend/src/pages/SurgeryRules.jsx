@@ -470,7 +470,66 @@ function ThresholdsTab() {
   )
 }
 function RecipientsTab() {
-  return <div className="text-gray-500 text-sm italic">Recipients editor coming next…</div>
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['surgery-recipients'],
+    queryFn: () => api.get('/surgery/admin/alert-recipients').then(r => r.data),
+  })
+  const add = useMutation({
+    mutationFn: ({ alert_kind, email }) =>
+      api.post('/surgery/admin/alert-recipients', { alert_kind, email }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-recipients'] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Add failed'),
+  })
+  const remove = useMutation({
+    mutationFn: ({ alert_kind, email }) =>
+      api.delete('/surgery/admin/alert-recipients', { params: { alert_kind, email } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-recipients'] }),
+  })
+
+  function ListEditor({ title, kind, hint }) {
+    const [draft, setDraft] = useState('')
+    const list = data?.[kind] || []
+    return (
+      <div className="bg-white rounded-lg border border-border-subtle p-5 max-w-xl mb-3">
+        <h3 className="text-sm font-semibold mb-1">{title}</h3>
+        <p className="text-[11px] text-gray-500 mb-3">{hint}</p>
+        <div className="flex items-center gap-2 mb-3">
+          <input className="input text-sm flex-1"
+                 placeholder="someone@waldorfwomenscare.com"
+                 value={draft} onChange={e => setDraft(e.target.value)} />
+          <button className="btn-primary text-sm" disabled={!draft.trim()}
+                  onClick={() => { add.mutate({ alert_kind: kind, email: draft.trim() }); setDraft('') }}>
+            Add
+          </button>
+        </div>
+        {list.length === 0 ? (
+          <div className="text-[11px] text-gray-400 italic">
+            No configured recipients — falling back to role-based query.
+          </div>
+        ) : (
+          <ul className="space-y-1">
+            {list.map(e => (
+              <li key={e} className="flex items-center justify-between text-[12px]">
+                <span>{e}</span>
+                <button onClick={() => remove.mutate({ alert_kind: kind, email: e })}
+                        className="text-red-600 text-[11px] hover:underline">Remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <ListEditor title="Office release alert"   kind="office_release"
+                   hint="Notified when an office procedure day is short on bookings." />
+      <ListEditor title="Hospital release alert" kind="hospital_release"
+                   hint="Notified when a hospital block day is fully empty." />
+    </div>
+  )
 }
 function FacilitiesTab() {
   return <div className="text-gray-500 text-sm italic">Facilities editor coming next…</div>
