@@ -93,8 +93,13 @@ def _office_release_recipients(db) -> list:
         # iterates email/notify_email/display_name still works without
         # touching the User model.
         from types import SimpleNamespace
+        # slack_user_id=None so _resolve_slack_user_id can read it without
+        # AttributeError if a future change enables notify_slack on configured
+        # recipients. Slack is intentionally disabled because we don't map
+        # arbitrary configured emails to Slack user IDs.
         return [SimpleNamespace(email=e, notify_email=True,
-                                  notify_slack=False, display_name=e)
+                                  notify_slack=False, slack_user_id=None,
+                                  display_name=e)
                 for e in configured]
     schedulers = _scheduler_recipients(db)
     managers   = _office_manager_recipients(db)
@@ -109,8 +114,13 @@ def _hospital_release_recipients(db) -> list:
     configured = _configured_recipients(db, "hospital_release")
     if configured:
         from types import SimpleNamespace
+        # slack_user_id=None so _resolve_slack_user_id can read it without
+        # AttributeError if a future change enables notify_slack on configured
+        # recipients. Slack is intentionally disabled because we don't map
+        # arbitrary configured emails to Slack user IDs.
         return [SimpleNamespace(email=e, notify_email=True,
-                                  notify_slack=False, display_name=e)
+                                  notify_slack=False, slack_user_id=None,
+                                  display_name=e)
                 for e in configured]
     return _scheduler_recipients(db)
 
@@ -151,19 +161,20 @@ def send_hospital_release_alert(recipients: list[User],
         for bd in days
     )
 
+    lookahead = _cfg(db, "hospital_lookahead_days")
     subject = f"WWC · {len(days)} hospital block day(s) unbooked — release recommended"
     sent_count = 0
     for user in recipients:
         name = user.display_name or user.email.split("@")[0]
         html = f"""
         <p>Hi {name},</p>
-        <p>The following hospital block days are within 14 days and currently have
+        <p>The following hospital block days are within {lookahead} days and currently have
            no surgeries scheduled. Please contact the hospital to release these
            blocks (or book any pending cases that should fit):</p>
         <ul>{rows_html}</ul>
         <p><a href="https://gw.waldorfwomenscare.com/surgery/block-schedule" style="color:#7B2D5E">Open block schedule →</a></p>
         """
-        text = (f"Hi {name}, {len(days)} hospital block day(s) unbooked within 14 days:\n"
+        text = (f"Hi {name}, {len(days)} hospital block day(s) unbooked within {lookahead} days:\n"
                 f"{rows_text}\n\nBlock schedule: https://gw.waldorfwomenscare.com/surgery/block-schedule")
 
         if user.notify_email:
@@ -171,7 +182,7 @@ def send_hospital_release_alert(recipients: list[User],
                 sent_count += 1
         if user.notify_slack:
             slack_text = (
-                f"📅 *{len(days)}* hospital block day(s) unbooked within 14 days:\n"
+                f"📅 *{len(days)}* hospital block day(s) unbooked within {lookahead} days:\n"
                 + "\n".join(f"• {bd.block_date} ({bd.block_date.strftime('%a')}) — "
                             f"{FACILITY_LABEL.get(bd.facility, bd.facility)}"
                             for bd in days[:8])
@@ -210,10 +221,10 @@ def send_office_release_alert(scheduler_users: list[User],
     if not recipients:
         return {"sent": 0}
 
+    threshold = _cfg(db, "office_full_threshold")
     sent_count = 0
     for bd in days:
         booked = len(bd.slots or [])
-        threshold = _cfg(db, "office_full_threshold")
         open_slots = threshold - booked
         subject = (f"WWC · Office procedure day {bd.block_date} only has {booked} of "
                    f"{threshold} booked — open the rest for clinic")
