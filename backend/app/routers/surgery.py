@@ -1952,6 +1952,33 @@ def delete_surgery_note(
     return None
 
 
+@router.post("/{surgery_id}/blocked-conflict/resolve")
+def resolve_blocked_conflict(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    """Mark that the hospital has been notified of a blackout-day conflict.
+    Stamps blocked_conflict_notified_at so the surgery is excluded from
+    subsequent find_blocked_conflicts() calls and the dashboard alert list."""
+    from app.models.surgery import SurgeryNote
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    actor = current_user.get("email") or "system"
+    s.blocked_conflict_notified_at = datetime.utcnow()
+    s.blocked_conflict_notified_by = actor
+
+    # Audit trail
+    db.add(SurgeryNote(
+        surgery_id=s.id,
+        created_by=actor,
+        content=f"Marked hospital notified of conflict on {s.scheduled_date}.",
+    ))
+    db.commit()
+    return {"ok": True, "notified_at": s.blocked_conflict_notified_at.isoformat()}
+
+
 # ─── Post-op appointments ──────────────────────────────────────────
 
 class PostOpApptsPayload(BaseModel):

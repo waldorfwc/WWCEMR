@@ -107,3 +107,30 @@ def test_dashboard_includes_blocked_conflicts(client, db):
     assert len(body["blocked_conflicts"]) == 1
     assert body["blocked_conflicts"][0]["patient_name"] == "Pat"
     assert body["blocked_conflicts"][0]["blackout_reason"] == "holiday"
+
+
+def test_resolve_endpoint_marks_notified(client, db):
+    from datetime import date as _d, timedelta
+    s = Surgery(
+        chart_number="1", patient_name="Pat",
+        scheduled_date=_d.today() + timedelta(days=2),
+        selected_facility="office",
+        status="confirmed",
+        eligible_facilities=["office"],
+    )
+    db.add(s)
+    db.add(SurgeryBlackoutDay(
+        blackout_date=_d.today() + timedelta(days=2),
+        scope="office", reason="holiday", label="Holiday",
+    ))
+    db.commit()
+
+    resp = client.post(f"/api/surgery/{s.id}/blocked-conflict/resolve")
+    assert resp.status_code == 200, resp.text
+    db.refresh(s)
+    assert s.blocked_conflict_notified_at is not None
+    assert s.blocked_conflict_notified_by  # filled with TEST_USER email
+
+    # Subsequent dashboard call no longer includes it.
+    body = client.get("/api/surgery/dashboard").json()
+    assert body["blocked_conflicts"] == []
