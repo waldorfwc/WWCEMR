@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import {
@@ -38,6 +38,13 @@ export default function SurgeryDetail() {
   const qc = useQueryClient()
   const [showCancel, setShowCancel] = useState(false)
   const [freedBlockDayId, setFreedBlockDayId] = useState(null)
+  const [showSchedule, setShowSchedule] = useState(false)
+
+  const { data: tpl } = useQuery({
+    queryKey: ['surgery-templates'],
+    queryFn: () => api.get('/surgery/picklists/procedure-templates').then(r => r.data.templates),
+    staleTime: 60_000,
+  })
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['surgery', id],
@@ -113,6 +120,13 @@ export default function SurgeryDetail() {
             )}
             {!s.scheduled_date && isCancelable && (
               <WaitlistToggle surgeryId={s.id} />
+            )}
+            {!s.scheduled_date && isCancelable && (
+              <button type="button"
+                      className="btn-primary text-xs flex items-center gap-1"
+                      onClick={() => setShowSchedule(true)}>
+                Schedule for patient
+              </button>
             )}
             {isCancelable && (
               <button type="button"
@@ -208,6 +222,19 @@ export default function SurgeryDetail() {
         <MatchesDrawer
           blockDayId={freedBlockDayId}
           onClose={() => setFreedBlockDayId(null)}
+        />
+      )}
+
+      {showSchedule && (
+        <ScheduleForPatientModal
+          surgery={s}
+          templates={tpl || []}
+          onClose={() => setShowSchedule(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['surgery', s.id] })
+            qc.invalidateQueries({ queryKey: ['surgery-list'] })
+            qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+          }}
         />
       )}
     </div>
@@ -3313,6 +3340,190 @@ function LarcDevicePickerDrawer({ surgery, preferred, onClose }) {
             <Save size={12} /> {create.isPending ? 'Picking…' : 'Pick device'}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ─── Schedule-for-patient modal ───────────────────────────────────
+// Coordinator picks a block day + start time + duration (with override
+// reason if >10% off the template default), then calls POST /surgery/:id/schedule.
+
+function _hhmm(timeStr) {
+  // Normalize "HH:MM:SS" or "HH:MM" to "HH:MM"
+  return (timeStr || '').slice(0, 5)
+}
+
+function _blockAvailableStarts(bd) {
+  // Generate 15-min increments from block start to 60 min before end,
+  // skipping already-booked slot start times.
+  const booked = new Set((bd.slots || []).map(sl => _hhmm(sl.start_time)))
+  const [sh, sm] = _hhmm(bd.start_time).split(':').map(Number)
+  const [eh, em] = _hhmm(bd.end_time).split(':').map(Number)
+  const startMin = sh * 60 + sm
+  const endMin = eh * 60 + em - 60   // leave 60 min gap at end
+  const results = []
+  for (let t = startMin; t <= endMin; t += 15) {
+    const hh = String(Math.floor(t / 60)).padStart(2, '0')
+    const mm = String(t % 60).padStart(2, '0')
+    const label = `${hh}:${mm}`
+    if (!booked.has(label)) results.push(label)
+  }
+  return results
+}
+
+const PROCEDURE_KIND_FALLBACK_DURATION = {
+  office: 30, minor: 60, major: 120,
+  robotic_180: 180, robotic_240: 240,
+}
+
+function ScheduleForPatientModal({ surgery, templates, onClose, onSaved }) {
+  const [selected, setSelected] = useState(null)   // { block_day_id, start_time }
+  const [duration, setDuration] = useState(null)
+  const [overrideReason, setOverrideReason] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['surgery-block-days-for-schedule', surgery.selected_facility],
+    queryFn: () => api.get('/surgery/admin/block-days', {
+      params: { facility: surgery.selected_facility || undefined, days: 60 },
+    }).then(r => r.data),
+    staleTime: 30_000,
+  })
+
+  const templateDefault = useMemo(() => {
+    const kind = surgery.procedure_classification
+    const t = templates.find(t => t.procedure_kind === kind && t.is_active !== false)
+    if (t) return t.default_duration_minutes
+    return PROCEDURE_KIND_FALLBACK_DURATION[kind] || 60
+  }, [surgery.procedure_classification, templates])
+
+  useEffect(() => {
+    setDuration(templateDefault)
+  }, [templateDefault])
+
+  const schedule = useMutation({
+    mutationFn: () =>
+      api.post(`/surgery/${surgery.id}/schedule`, {
+        block_day_id: selected.block_day_id,
+        start_time:   selected.start_time,
+        duration_minutes: duration,
+        override_reason: overrideReason.trim() || undefined,
+      }).then(r => r.data),
+    onSuccess: () => { onSaved(); onClose() },
+    onError: (e) => alert(e?.response?.data?.detail || 'Schedule failed'),
+  })
+
+  const durationOff = duration != null && Math.abs(duration - templateDefault) > templateDefault * 0.10
+  const needsReason = durationOff && !overrideReason.trim()
+
+  const days = data?.days || []
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center"
+         onClick={onClose}>
+      <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl overflow-hidden"
+           onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border-subtle">
+          <div>
+            <h2 className="font-serif font-semibold text-ink text-[16px]">
+              Schedule for patient — {surgery.patient_name}
+            </h2>
+            <div className="text-muted text-[11px] mt-0.5">
+              {(surgery.procedures || []).map(p => p.description || p).join(', ')}
+              {surgery.procedure_classification && ` · ${surgery.procedure_classification}`}
+            </div>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+        </div>
+
+        {/* Block day list */}
+        <div className="p-5 max-h-96 overflow-y-auto space-y-3">
+          {isLoading && (
+            <div className="text-gray-500 text-sm">Loading block days…</div>
+          )}
+          {!isLoading && days.length === 0 && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded text-sm">
+              No block days found in the next 60 days.
+            </div>
+          )}
+          {!isLoading && days.map(bd => {
+            const starts = _blockAvailableStarts(bd)
+            return (
+              <div key={bd.id}
+                   className="border border-border-subtle rounded p-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className="text-sm font-medium">{bd.block_date}</span>
+                  <span className="text-[11px] text-gray-500">·</span>
+                  <span className="text-[11px] text-gray-600">{bd.facility}</span>
+                  <span className="text-[11px] text-gray-500">·</span>
+                  <span className="text-[11px] text-gray-600">{bd.block_kind}</span>
+                  <span className="text-[11px] text-gray-400 ml-auto">
+                    {_hhmm(bd.start_time)}–{_hhmm(bd.end_time)}
+                  </span>
+                </div>
+                {starts.length === 0 ? (
+                  <div className="text-[11px] text-gray-400 italic">No available slots</div>
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {starts.map(t => {
+                      const isSelected = selected?.block_day_id === bd.id && selected?.start_time === t
+                      return (
+                        <button key={t}
+                                type="button"
+                                onClick={() => setSelected({ block_day_id: bd.id, start_time: t })}
+                                className={`text-[12px] px-2 py-0.5 rounded border ${
+                                  isSelected
+                                    ? 'border-plum-700 bg-plum-50 text-plum-800 font-medium'
+                                    : 'border-gray-200 hover:bg-plum-50 hover:border-plum-300'
+                                }`}>
+                          {t}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Duration + override + confirm */}
+        {selected && (
+          <div className="border-t border-border-subtle px-5 py-4 space-y-3 bg-gray-50">
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] uppercase text-gray-500 w-36">Duration (min)</label>
+              <input type="number" min={5} step={5}
+                     className="input text-sm w-24"
+                     value={duration ?? ''}
+                     onChange={e => setDuration(Number(e.target.value))} />
+              <span className="text-[11px] text-gray-400">
+                template default: {templateDefault} min
+              </span>
+            </div>
+            {durationOff && (
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] uppercase text-gray-500 w-36">Override reason</label>
+                <input className="input text-sm flex-1"
+                       value={overrideReason}
+                       onChange={e => setOverrideReason(e.target.value)}
+                       placeholder="Required — duration differs >10% from template default" />
+              </div>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <button type="button"
+                      className="btn-primary text-sm"
+                      disabled={needsReason || schedule.isPending}
+                      onClick={() => schedule.mutate()}>
+                {schedule.isPending ? 'Scheduling…' : `Confirm — ${selected.start_time} on ${selected.block_day_id ? days.find(d => d.id === selected.block_day_id)?.block_date || '' : ''}`}
+              </button>
+              <button type="button" className="btn-secondary text-sm" onClick={onClose}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
