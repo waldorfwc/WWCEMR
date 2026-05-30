@@ -55,30 +55,36 @@ def find_blocked_conflicts(db: Session) -> list[dict]:
     return out
 
 
-def _scope_matches(s: Surgery, b: SurgeryBlackoutDay) -> bool:
+def _scope_matches(s, b):
     if b.scope == "office":
         return True
     if b.scope == "facility":
         return s.selected_facility == b.facility
     if b.scope == "provider":
-        # Single-surgeon practice: provider PTO grounds the day for all
-        # surgeries. If/when there's >1 operating surgeon, refine this.
+        # If the blackout names a specific surgeon (owner_email), only match
+        # surgeries assigned to that surgeon. If no surgeon is named OR the
+        # surgery has no surgeon_email yet, fall back to today's behavior
+        # (single-surgeon practice — all surgeries on the date apply).
+        if b.owner_email and s.surgeon_email:
+            return s.surgeon_email.lower() == b.owner_email.lower()
         return True
     return False
 
 
 def is_date_blacked_out(
-    db: Session,
-    blackout_date,           # date
-    facility: str | None,    # surgery's selected facility (used for facility-scope)
-) -> "SurgeryBlackoutDay | None":
+    db,
+    blackout_date,
+    facility,
+    surgeon_email=None,
+):
     """Return the SurgeryBlackoutDay that blocks `blackout_date` for the
     given `facility`, or None if the date is clear.
 
     Scope rules mirror find_blocked_conflicts:
       office    — applies to any surgery on that date
       facility  — applies only if facility matches blackout.facility
-      provider  — applies (single-surgeon practice; same caveat as before)
+      provider  — applies; if the blackout names a surgeon and surgeon_email
+                  is provided, only blocks that surgeon's surgeries
     """
     rows = (db.query(SurgeryBlackoutDay)
               .filter(SurgeryBlackoutDay.blackout_date == blackout_date).all())
@@ -88,5 +94,9 @@ def is_date_blacked_out(
         if b.scope == "facility" and facility == b.facility:
             return b
         if b.scope == "provider":
+            if b.owner_email and surgeon_email:
+                if surgeon_email.lower() == b.owner_email.lower():
+                    return b
+                continue
             return b
     return None

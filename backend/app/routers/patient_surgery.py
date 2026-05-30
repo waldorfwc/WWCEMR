@@ -411,19 +411,33 @@ def _parse_hhmm(s: str) -> time:
     return time(int(h), int(m))
 
 
-def _default_duration_for(db: Session, surgery: Surgery, block_day: BlockDay) -> int:
-    """Look up procedure-template duration; fall back to procedure_kind map."""
+def _default_duration_for(db, surgery, block_day) -> int:
+    """Resolve allotted duration:
+       1. Coordinator's explicit Surgery.duration_minutes wins.
+       2. Then a SurgeryProcedureTemplate for this procedure_kind. If the
+          surgery is flagged `complex`, prefer a template whose name
+          contains "complex".
+       3. Else fall back to the kind→minutes map.
+    """
     from app.models.surgery_config import SurgeryProcedureTemplate
+    if surgery and surgery.duration_minutes:
+        return surgery.duration_minutes
+
     kind = block_day.block_kind
-    template = (db.query(SurgeryProcedureTemplate)
-                  .filter(SurgeryProcedureTemplate.procedure_kind == kind,
-                          SurgeryProcedureTemplate.is_active.is_(True))
-                  .order_by(SurgeryProcedureTemplate.name.asc())
-                  .first())
-    if template:
-        return template.default_duration_minutes
+    templates = (db.query(SurgeryProcedureTemplate)
+                   .filter(SurgeryProcedureTemplate.procedure_kind == kind,
+                            SurgeryProcedureTemplate.is_active.is_(True))
+                   .order_by(SurgeryProcedureTemplate.name.asc())
+                   .all())
+    if templates:
+        if surgery and surgery.complexity == "complex":
+            for t in templates:
+                if "complex" in (t.name or "").lower():
+                    return t.default_duration_minutes
+        return templates[0].default_duration_minutes
+
     fallback = {"office": 30, "minor": 60, "major": 120,
-                "robotic_180": 180, "robotic_240": 240}
+                 "robotic_180": 180, "robotic_240": 240}
     return fallback.get(kind, 60)
 
 
@@ -443,7 +457,7 @@ def patient_select_slot(
     if not bd:
         raise HTTPException(status_code=404, detail="block day not found")
 
-    blackout = is_date_blacked_out(db, bd.block_date, bd.facility)
+    blackout = is_date_blacked_out(db, bd.block_date, bd.facility, s.surgeon_email)
     if blackout:
         raise HTTPException(
             status_code=409,

@@ -972,6 +972,23 @@ def patch_slot(
     if not (payload.override_reason or "").strip():
         raise HTTPException(status_code=422, detail="override_reason required")
 
+    # Hard ceiling — no surgery is ever >8 hours.
+    if new_dur > 480:
+        raise HTTPException(status_code=422,
+                            detail="duration may not exceed 480 minutes (8h)")
+    # Also reject anything that would exceed the block day's window.
+    bd = db.query(BlockDay).filter(BlockDay.id == slot.block_day_id).first()
+    if bd:
+        from datetime import datetime as _dt, timedelta as _td
+        slot_start_dt = _dt.combine(bd.block_date, slot.start_time)
+        block_end_dt  = _dt.combine(bd.block_date, bd.end_time)
+        max_dur = int((block_end_dt - slot_start_dt).total_seconds() // 60)
+        if max_dur > 0 and new_dur > max_dur:
+            raise HTTPException(
+                status_code=422,
+                detail=f"duration would extend past block day end ({bd.end_time}); "
+                       f"max from this slot is {max_dur} min")
+
     # Conflict check: ensure the new (start, new_duration) doesn't overlap another slot.
     conflict = overlapping_slot(db, slot.block_day_id, slot.start_time, new_dur,
                                 exclude_slot_id=slot.id)
@@ -1449,6 +1466,56 @@ def mark_block_day_released(block_day_id: str,
         bd.release_alert_sent_at = datetime.utcnow()
         db.commit()
     return {"ok": True, "released_at": bd.release_alert_sent_at.isoformat()}
+
+
+@router.get("/admin/block-days/{block_day_id}/availability")
+def block_day_availability(
+    block_day_id: str,
+    surgery_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:read")),
+):
+    """Return the list of available start times on a block day, computed
+    server-side from the block day's start/end + the duration the booking
+    would consume.
+
+    If `surgery_id` is provided, the duration honors the same resolution
+    logic as the booking endpoints (Surgery.duration_minutes → template →
+    kind map). Otherwise duration is read from the matching procedure
+    template for the block's kind.
+    """
+    from datetime import datetime, timedelta
+    from app.routers.patient_surgery import _default_duration_for
+    bd = db.query(BlockDay).filter(BlockDay.id == block_day_id).first()
+    if not bd:
+        raise HTTPException(status_code=404, detail="block day not found")
+
+    surgery = None
+    if surgery_id:
+        surgery = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    duration = _default_duration_for(db, surgery, bd) if surgery else 60
+
+    # Generate 15-minute increments from start_time up to end_time - duration.
+    def _t_to_dt(t):
+        return datetime.combine(bd.block_date, t)
+    earliest = _t_to_dt(bd.start_time)
+    latest   = _t_to_dt(bd.end_time) - timedelta(minutes=duration)
+    candidates = []
+    cur = earliest
+    while cur <= latest:
+        candidates.append(cur.time())
+        cur += timedelta(minutes=15)
+
+    # Filter out any that would overlap an existing slot.
+    available = [t.strftime("%H:%M") for t in candidates
+                  if overlapping_slot(db, bd.id, t, duration) is None]
+    return {
+        "block_day_id": str(bd.id),
+        "block_date":   bd.block_date.isoformat(),
+        "facility":     bd.facility,
+        "duration_minutes": duration,
+        "available_starts": available,
+    }
 
 
 # ─── Boarding slips ─────────────────────────────────────────────────
@@ -1963,7 +2030,7 @@ def coordinator_schedule(
     default = _default_duration_for(db, s, bd)
     duration = payload.duration_minutes or default
 
-    blackout = is_date_blacked_out(db, bd.block_date, s.selected_facility or bd.facility)
+    blackout = is_date_blacked_out(db, bd.block_date, s.selected_facility or bd.facility, s.surgeon_email)
     if blackout:
         raise HTTPException(
             status_code=409,

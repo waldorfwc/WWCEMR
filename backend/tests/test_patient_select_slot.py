@@ -86,3 +86,18 @@ def test_select_slot_rejects_blacked_out_date(client, db):
     })
     assert resp.status_code == 409
     assert "blocked" in resp.json()["detail"].lower()
+
+
+def test_select_slot_uses_surgery_duration_minutes_override(client, db):
+    s, bd = _seed(db)
+    s.duration_minutes = 90
+    s.duration_source  = "coordinator"
+    db.commit()
+
+    resp = client.post(f"/api/p/surgery/{s.id}/select-slot", json={
+        "block_day_id": str(bd.id), "start_time": "07:30",
+    })
+    assert resp.status_code == 200, resp.text
+    from app.models.surgery import SurgerySlot
+    slot = db.query(SurgerySlot).filter_by(surgery_id=s.id).first()
+    assert slot.duration_minutes == 90  # honors coordinator's set

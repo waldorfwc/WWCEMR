@@ -66,3 +66,38 @@ def test_patch_duration_rejects_if_new_duration_overlaps_next_slot(client, db):
         "override_reason": "stretch",
     })
     assert resp.status_code == 409
+
+
+def test_patch_slot_rejects_above_480(client, db):
+    s, slot = _seed_with_slot(db)
+    resp = client.patch(f"/api/surgery/slots/{slot.id}", json={
+        "duration_minutes": 600, "override_reason": "long case",
+    })
+    assert resp.status_code == 422
+    assert "480" in resp.json()["detail"]
+
+
+def test_patch_slot_rejects_past_block_day_end(client, db):
+    from datetime import time as _t, date, timedelta
+    # Use a short block day: 08:00–10:00 (120 min window from slot start).
+    # This tests the block-day end check independently of the 480-min ceiling.
+    s = Surgery(chart_number="99", patient_name="Short",
+                 eligible_facilities=["medstar"], selected_facility="medstar",
+                 status="confirmed",
+                 procedures=[{"name": "Hyst", "kind": "robotic_180"}])
+    db.add(s); db.flush()
+    bd = BlockDay(facility="medstar",
+                   block_date=date.today() + timedelta(days=21),
+                   block_kind="robotic_180",
+                   start_time=_t(8, 0), end_time=_t(10, 0))
+    db.add(bd); db.flush()
+    slot = SurgerySlot(block_day_id=bd.id, surgery_id=s.id,
+                        start_time=_t(8, 0), duration_minutes=60,
+                        procedure_kind="robotic_180")
+    db.add(slot); db.commit()
+    # Slot at 08:00, block ends 10:00 → max 120 min. Request 150 → exceeds window.
+    resp = client.patch(f"/api/surgery/slots/{slot.id}", json={
+        "duration_minutes": 150, "override_reason": "long",
+    })
+    assert resp.status_code == 422
+    assert "block day end" in resp.json()["detail"]
