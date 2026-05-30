@@ -189,6 +189,7 @@ export function MonthlyCalendar() {
     queryFn: () => api.get('/surgery/calendar', {
       params: { start: gridStart, end: gridEnd },
     }).then(r => r.data),
+    keepPreviousData: true,
   })
 
   // Build day → surgeries map.
@@ -244,6 +245,7 @@ export function MonthlyCalendar() {
                 const fac = FACILITY_BADGE[s.facility] || { label: s.facility, tone: 'bg-gray-100 text-gray-700 border-gray-200' }
                 return (
                   <button key={s.id} onClick={() => navigate(`/surgery/${s.id}`)}
+                          title={s.patient_name}
                           className={`block w-full text-left text-[10px] truncate border rounded mb-0.5 px-1 py-0.5 ${fac.tone} hover:opacity-80`}>
                     <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${INDICATOR_TONE[s.indicator] || 'bg-gray-400'}`} />
                     {s.patient_name}
@@ -251,7 +253,10 @@ export function MonthlyCalendar() {
                 )
               })}
               {surgs.length > 6 && (
-                <div className="text-[10px] text-plum-700">+{surgs.length - 6} more</div>
+                <button onClick={() => navigate(`/surgery/calendar?view=week&anchor=${iso}`)}
+                        className="text-[10px] text-plum-700 hover:underline">
+                  +{surgs.length - 6} more
+                </button>
               )}
             </div>
           )
