@@ -21,6 +21,7 @@ from app.database import get_db
 from app.models.surgery import (
     Surgery, SurgeryMilestone, BlockSchedule, BlockDay, SurgerySlot,
     SurgeryBlackoutDay, SurgeryWaitlist, SURGERY_URGENCY_VALUES,
+    SURGERY_COMPLEXITY_VALUES, SURGERY_DURATION_SOURCES,
 )
 from app.routers.auth import get_current_user, require_permission
 from app.services.surgery_slot_conflict import overlapping_slot
@@ -166,6 +167,10 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "status": s.status,
         "sub_flag": s.sub_flag,
         "is_urgent": s.urgency == "urgent",
+        "complexity":       s.complexity,
+        "duration_minutes": s.duration_minutes,
+        "duration_source":  s.duration_source,
+        "surgeon_email":    s.surgeon_email,
         "current_milestone": cur_m.kind if cur_m else None,
         "current_milestone_title": cur_m.title if cur_m else None,
         "behind_schedule": behind,
@@ -945,6 +950,11 @@ class SurgeryPatch(BaseModel):
     status: Optional[str] = None
     sub_flag: Optional[str] = None
     urgency: Optional[str] = None
+    # Phase F fields
+    complexity:       Optional[str] = None
+    duration_minutes: Optional[int] = None
+    duration_source:  Optional[str] = None
+    surgeon_email:    Optional[str] = None
 
 
 # ─── Slot duration patch (Phase D3) ────────────────────────────────
@@ -1029,6 +1039,25 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         if data["urgency"] not in SURGERY_URGENCY_VALUES:
             raise HTTPException(status_code=422,
                                 detail=f"unknown urgency: {data['urgency']}")
+
+    if "complexity" in data:
+        if data["complexity"] not in SURGERY_COMPLEXITY_VALUES:
+            raise HTTPException(status_code=422,
+                                detail=f"unknown complexity: {data['complexity']}")
+    if "duration_minutes" in data:
+        if data["duration_minutes"] is not None and data["duration_minutes"] <= 0:
+            raise HTTPException(status_code=422, detail="duration_minutes must be > 0")
+    if "duration_source" in data:
+        if data["duration_source"] is not None and data["duration_source"] not in SURGERY_DURATION_SOURCES:
+            raise HTTPException(status_code=422,
+                                detail=f"unknown duration_source: {data['duration_source']}")
+    if "surgeon_email" in data:
+        em = (data["surgeon_email"] or "").strip().lower() or None
+        data["surgeon_email"] = em
+
+    # Auto-attribute duration_source when only duration_minutes is patched
+    if "duration_minutes" in data and "duration_source" not in data:
+        data["duration_source"] = "coordinator"
 
     # DOB string → date
     if "dob" in data and data["dob"]:

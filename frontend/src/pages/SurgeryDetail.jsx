@@ -193,6 +193,41 @@ export default function SurgeryDetail() {
               <option value="urgent">Urgent</option>
             </select>
           </Field>
+
+          <Field label="Complexity">
+            <select className="input text-sm"
+                    value={s.complexity || 'standard'}
+                    onChange={e => patch.mutate({ complexity: e.target.value })}>
+              <option value="standard">Standard</option>
+              <option value="complex">Complex</option>
+            </select>
+          </Field>
+
+          <Field label="Duration (min)">
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" className="input text-sm w-24"
+                     defaultValue={s.duration_minutes ?? ''}
+                     onBlur={e => {
+                       const v = e.target.value === '' ? null : Number(e.target.value)
+                       if (v !== s.duration_minutes) patch.mutate({ duration_minutes: v })
+                     }} />
+              {s.duration_source && (
+                <span className="text-[10px] text-gray-500">
+                  from {s.duration_source}
+                </span>
+              )}
+            </div>
+          </Field>
+
+          <Field label="Surgeon email">
+            <input className="input text-sm w-full"
+                   defaultValue={s.surgeon_email ?? ''}
+                   placeholder="acooke@waldorfwomenscare.com"
+                   onBlur={e => {
+                     const v = e.target.value.trim() || null
+                     if (v !== s.surgeon_email) patch.mutate({ surgeon_email: v })
+                   }} />
+          </Field>
         </div>
       </div>
 

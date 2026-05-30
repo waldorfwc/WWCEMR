@@ -81,3 +81,26 @@ def test_waitlist_handles_no_facility_anywhere(client, db):
 
     rows = client.get("/api/surgery/admin/waitlist").json()["waitlist"]
     assert rows[0]["facility"] is None
+
+
+def test_patch_surgery_accepts_new_phase_f_fields(client, db):
+    s = _make_surgery(db)
+    db.commit()
+    resp = client.patch(f"/api/surgery/{s.id}", json={
+        "complexity":       "complex",
+        "duration_minutes": 240,
+        "surgeon_email":    "ACOOKE@waldorfwomenscare.com",
+    })
+    assert resp.status_code == 200, resp.text
+    db.refresh(s)
+    assert s.complexity == "complex"
+    assert s.duration_minutes == 240
+    assert s.duration_source == "coordinator"
+    assert s.surgeon_email == "acooke@waldorfwomenscare.com"
+
+
+def test_patch_surgery_rejects_unknown_complexity(client, db):
+    s = _make_surgery(db)
+    db.commit()
+    resp = client.patch(f"/api/surgery/{s.id}", json={"complexity": "extreme"})
+    assert resp.status_code == 422
