@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.surgery import (
     Surgery, SurgeryMilestone, BlockSchedule, BlockDay, SurgerySlot,
-    SurgeryBlackoutDay, SurgeryWaitlist,
+    SurgeryBlackoutDay, SurgeryWaitlist, SURGERY_URGENCY_VALUES,
 )
 from app.routers.auth import get_current_user, require_permission
 
@@ -945,11 +945,9 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     data = payload.model_dump(exclude_unset=True)
 
     if "urgency" in data:
-        from app.models.surgery import SURGERY_URGENCY_VALUES
         if data["urgency"] not in SURGERY_URGENCY_VALUES:
             raise HTTPException(status_code=422,
                                 detail=f"unknown urgency: {data['urgency']}")
-        s.urgency = data["urgency"]
 
     # DOB string → date
     if "dob" in data and data["dob"]:

@@ -63,3 +63,21 @@ def test_patch_surgery_rejects_bogus_urgency(client, db):
 
     resp = client.patch(f"/api/surgery/{s.id}", json={"urgency": "panic"})
     assert resp.status_code == 422
+
+
+def test_waitlist_handles_empty_procedures(client, db):
+    s = _make_surgery(db, procedures=[])
+    db.add(SurgeryWaitlist(surgery_id=s.id, advance_notice_days=3))
+    db.commit()
+
+    rows = client.get("/api/surgery/admin/waitlist").json()["waitlist"]
+    assert rows[0]["procedure_name"] is None
+
+
+def test_waitlist_handles_no_facility_anywhere(client, db):
+    s = _make_surgery(db, selected_facility=None, eligible_facilities=[])
+    db.add(SurgeryWaitlist(surgery_id=s.id, advance_notice_days=3))
+    db.commit()
+
+    rows = client.get("/api/surgery/admin/waitlist").json()["waitlist"]
+    assert rows[0]["facility"] is None
