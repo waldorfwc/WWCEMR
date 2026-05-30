@@ -51,3 +51,18 @@ def test_patch_slot_writes_note(client, db):
     n = notes[-1]
     assert "180" in (n.content or "")
     assert "210" in (n.content or "")
+
+
+def test_patch_duration_rejects_if_new_duration_overlaps_next_slot(client, db):
+    from datetime import time as _t
+    s, slot = _seed_with_slot(db, dur=60)   # slot at 08:00 + 60min → 09:00
+    # Add a second slot at 10:00.
+    db.add(SurgerySlot(block_day_id=slot.block_day_id, start_time=_t(10, 0),
+                        duration_minutes=60, procedure_kind="robotic_180"))
+    db.commit()
+    # Patching slot to 180min would extend 08:00 → 11:00, overlapping the 10:00 slot.
+    resp = client.patch(f"/api/surgery/slots/{slot.id}", json={
+        "duration_minutes": 180,
+        "override_reason": "stretch",
+    })
+    assert resp.status_code == 409

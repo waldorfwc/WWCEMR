@@ -59,3 +59,17 @@ def test_select_slot_writes_audit_note(client, db):
     # SurgeryNote uses `content` (not `body`) — matches existing schema.
     note = db.query(SurgeryNote).filter(SurgeryNote.surgery_id == s.id).first()
     assert note is not None
+
+
+def test_select_slot_rejects_overlap_not_exact_match(client, db):
+    from datetime import date as _d, time as _t, timedelta
+    s, bd = _seed(db)
+    # Occupy 07:30 for 180 min.
+    db.add(SurgerySlot(block_day_id=bd.id, start_time=_t(7, 30),
+                        duration_minutes=180, procedure_kind="robotic_180"))
+    db.commit()
+    # Try to book 08:00 — exact-time match would allow this (BUG), overlap should reject.
+    resp = client.post(f"/api/p/surgery/{s.id}/select-slot", json={
+        "block_day_id": str(bd.id), "start_time": "08:00",
+    })
+    assert resp.status_code == 409

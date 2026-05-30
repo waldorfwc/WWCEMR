@@ -23,6 +23,7 @@ from app.models.surgery import (
     SurgeryBlackoutDay, SurgeryWaitlist, SURGERY_URGENCY_VALUES,
 )
 from app.routers.auth import get_current_user, require_permission
+from app.services.surgery_slot_conflict import overlapping_slot
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
 
@@ -969,6 +970,17 @@ def patch_slot(
         raise HTTPException(status_code=422, detail="duration must be > 0")
     if not (payload.override_reason or "").strip():
         raise HTTPException(status_code=422, detail="override_reason required")
+
+    # Conflict check: ensure the new (start, new_duration) doesn't overlap another slot.
+    conflict = overlapping_slot(db, slot.block_day_id, slot.start_time, new_dur,
+                                exclude_slot_id=slot.id)
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail=f"new duration overlaps an existing slot at "
+                   f"{conflict.start_time.strftime('%H:%M')} "
+                   f"({conflict.duration_minutes} min)",
+        )
 
     actor = current_user.get("email") or "system"
     old = slot.duration_minutes
@@ -1943,12 +1955,18 @@ def coordinator_schedule(
     if not bd:
         raise HTTPException(status_code=404, detail="block day not found")
     start = _parse_hhmm(payload.start_time)
-    if db.query(SurgerySlot).filter(SurgerySlot.block_day_id == bd.id,
-                                     SurgerySlot.start_time == start).first():
-        raise HTTPException(status_code=409, detail="that start time is already booked")
-
     default = _default_duration_for(db, s, bd)
     duration = payload.duration_minutes or default
+
+    # Conflict check: reject if the new slot's time window overlaps any existing slot.
+    conflict = overlapping_slot(db, bd.id, start, duration)
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail=f"that time overlaps an existing slot at "
+                   f"{conflict.start_time.strftime('%H:%M')} "
+                   f"({conflict.duration_minutes} min)",
+        )
     # If >10% off the template default, require an override reason.
     threshold = default * 0.10
     if abs(duration - default) > threshold and not (payload.override_reason or "").strip():

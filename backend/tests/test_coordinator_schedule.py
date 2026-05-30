@@ -56,3 +56,15 @@ def test_coordinator_schedule_writes_note(client, db):
     assert len(notes) >= 1
     assert any("coordinator" in (n.content or "").lower()
                 or "scheduled" in (n.content or "").lower() for n in notes)
+
+
+def test_coordinator_schedule_rejects_overlap_not_exact_match(client, db):
+    from datetime import time as _t
+    s, bd = _seed(db)
+    db.add(SurgerySlot(block_day_id=bd.id, start_time=_t(7, 30),
+                        duration_minutes=180, procedure_kind="robotic_180"))
+    db.commit()
+    resp = client.post(f"/api/surgery/{s.id}/schedule", json={
+        "block_day_id": str(bd.id), "start_time": "08:00",
+    })
+    assert resp.status_code == 409

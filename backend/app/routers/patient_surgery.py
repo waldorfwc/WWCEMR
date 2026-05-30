@@ -34,6 +34,7 @@ from app.models.surgery import (
 from app.services.surgery_block_schedule import (
     DURATIONS, can_fit, book_slot, CapacityViolation,
 )
+from app.services.surgery_slot_conflict import overlapping_slot
 
 log = logging.getLogger(__name__)
 
@@ -442,16 +443,17 @@ def patient_select_slot(
         raise HTTPException(status_code=404, detail="block day not found")
 
     start = _parse_hhmm(payload.start_time)
-
-    # Conflict check: reject if any slot on this block day already starts at this time.
-    existing = (db.query(SurgerySlot)
-                  .filter(SurgerySlot.block_day_id == bd.id,
-                          SurgerySlot.start_time == start)
-                  .first())
-    if existing:
-        raise HTTPException(status_code=409, detail="that start time is already booked")
-
     duration = _default_duration_for(db, s, bd)
+
+    # Conflict check: reject if the new slot's time window overlaps any existing slot.
+    conflict = overlapping_slot(db, bd.id, start, duration)
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail=f"that time overlaps an existing slot at "
+                   f"{conflict.start_time.strftime('%H:%M')} "
+                   f"({conflict.duration_minutes} min)",
+        )
     slot = SurgerySlot(
         block_day_id=bd.id, surgery_id=s.id,
         start_time=start, duration_minutes=duration,
