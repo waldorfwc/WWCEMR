@@ -176,6 +176,15 @@ export default function SurgeryDetail() {
           <Field label="Chart # / Phone / Email">
             <ContactCell s={s} onPatch={patch.mutate} />
           </Field>
+          <Field label="Urgency">
+            <select className="input text-sm"
+                    value={s.urgency || 'routine'}
+                    onChange={e => patch.mutate({ urgency: e.target.value })}>
+              <option value="routine">Routine</option>
+              <option value="expedited">Expedited</option>
+              <option value="urgent">Urgent</option>
+            </select>
+          </Field>
         </div>
       </div>
 
