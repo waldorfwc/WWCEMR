@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
+import api from '../utils/api'
 import {
   ArrowLeft, BookOpen, Calendar, Hospital, Building2, Phone,
   AlertTriangle, FileText, Clock, Users, ShieldCheck, MessageSquare,
@@ -418,7 +420,54 @@ function MilestoneRulesTab() {
 
 
 function ThresholdsTab() {
-  return <div className="text-gray-500 text-sm italic">Thresholds editor coming next…</div>
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState(null)
+  const live = draft || data || {}
+
+  const save = useMutation({
+    mutationFn: (body) => api.put('/surgery/config', body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-config'] })
+      setDraft(null)
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  function field(key, label, hint) {
+    return (
+      <div className="flex items-center gap-3">
+        <label className="text-[12px] text-gray-600 w-56">{label}</label>
+        <input type="number" min="1" className="input text-sm w-24"
+               value={live[key] ?? ''}
+               onChange={e => setDraft({ ...live, [key]: Number(e.target.value) })} />
+        {hint && <span className="text-[11px] text-gray-400">{hint}</span>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white rounded-lg border border-border-subtle p-5 max-w-2xl">
+      <h2 className="text-base font-semibold mb-3">Release-alert thresholds</h2>
+      <div className="space-y-3">
+        {field('office_full_threshold',   'Office full threshold', '(<this = release the rest)')}
+        {field('office_lookahead_days',   'Office lookahead days', '(fire alert this many days ahead)')}
+        {field('hospital_lookahead_days', 'Hospital lookahead days', '(scan empty hospital days within this window)')}
+      </div>
+      <div className="mt-4 flex items-center gap-2">
+        <button className="btn-primary text-sm" disabled={!draft || save.isPending}
+                onClick={() => save.mutate(draft)}>
+          {save.isPending ? 'Saving…' : 'Save'}
+        </button>
+        {draft && (
+          <button className="btn-secondary text-sm" onClick={() => setDraft(null)}>Cancel</button>
+        )}
+      </div>
+    </div>
+  )
 }
 function RecipientsTab() {
   return <div className="text-gray-500 text-sm italic">Recipients editor coming next…</div>
