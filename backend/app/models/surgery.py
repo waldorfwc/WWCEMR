@@ -261,6 +261,12 @@ class Surgery(Base):
     balance_override_by = Column(String(200), nullable=True)
     balance_override_at = Column(DateTime, nullable=True)
 
+    # Google Calendar sync tracking. event_id is what we PATCH/DELETE later.
+    # sync_status: 'synced' | 'pending' | 'failed' | null (never tried).
+    google_calendar_event_id    = Column(String(120), nullable=True)
+    google_calendar_sync_status = Column(String(20),  nullable=True)
+    google_calendar_sync_error  = Column(Text,        nullable=True)
+
     # Audit
     source = Column(String(20), nullable=True)         # smartsheet | upload | manual
     created_by = Column(String(200), nullable=True)

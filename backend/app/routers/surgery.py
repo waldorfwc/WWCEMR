@@ -177,6 +177,9 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "hours_overdue": hours_overdue,
         "stuck": s.status == "in_progress" and behind,
         "buckets": sorted(_surgery_buckets(s, today)) if s.milestones is not None else [],
+        "google_calendar_event_id":    s.google_calendar_event_id,
+        "google_calendar_sync_status": s.google_calendar_sync_status,
+        "google_calendar_sync_error":  s.google_calendar_sync_error,
         "created_at": s.created_at.isoformat() if s.created_at else None,
         "updated_at": s.updated_at.isoformat() if s.updated_at else None,
     }
@@ -1021,6 +1024,16 @@ def patch_slot(
                      f"Reason: {payload.override_reason}"),
         ))
     db.commit()
+    try:
+        if slot.surgery_id:
+            from app.services.google_calendar_sync import upsert_event_for_surgery
+            from app.models.surgery import Surgery as _Surgery
+            surgery = db.query(_Surgery).filter(_Surgery.id == slot.surgery_id).first()
+            if surgery:
+                upsert_event_for_surgery(db, surgery)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
     return {"ok": True, "slot_id": str(slot.id),
             "duration_minutes": slot.duration_minutes}
 
@@ -1284,6 +1297,12 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
         notes=payload.notes,
     ))
     db.commit(); db.refresh(s)
+    try:
+        from app.services.google_calendar_sync import delete_event_for_surgery
+        delete_event_for_surgery(db, s)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
     return {
         "id": str(s.id),
         "status": s.status,
@@ -2100,6 +2119,12 @@ def coordinator_schedule(
         content=audit_body,
     ))
     db.commit()
+    try:
+        from app.services.google_calendar_sync import upsert_event_for_surgery
+        upsert_event_for_surgery(db, s)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
     return {"ok": True, "slot_id": str(slot.id),
             "start_time": start.strftime("%H:%M"),
             "duration_minutes": duration,

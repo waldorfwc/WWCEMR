@@ -350,6 +350,13 @@ def patient_pick(surgery_id: str, payload: PickPayload,
     except DatePickerError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
+    try:
+        from app.services.google_calendar_sync import upsert_event_for_surgery
+        upsert_event_for_surgery(db, s)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+
     return {
         "ok": True,
         **result,
@@ -393,6 +400,13 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
                                       enforce_patient_min=True)
     except DatePickerError as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+    try:
+        from app.services.google_calendar_sync import upsert_event_for_surgery
+        upsert_event_for_surgery(db, s)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
 
     return {
         "ok": True,
@@ -492,6 +506,12 @@ def patient_select_slot(
                  f"({duration} min) at {bd.facility}."),
     ))
     db.commit()
+    try:
+        from app.services.google_calendar_sync import upsert_event_for_surgery
+        upsert_event_for_surgery(db, s)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
     return {
         "ok": True,
         "slot_id": str(slot.id),
@@ -554,6 +574,12 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
         notes=notes,
     ))
     db.commit()
+    try:
+        from app.services.google_calendar_sync import delete_event_for_surgery
+        delete_event_for_surgery(db, s)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
 
     msg = "Your surgery has been cancelled."
     if fee_required:
