@@ -163,6 +163,12 @@ export default function Surgery() {
                                          is_default: true }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-filter-presets'] }),
   })
+  const resolveConflict = useMutation({
+    mutationFn: (surgery_id) =>
+      api.post(`/surgery/${surgery_id}/blocked-conflict/resolve`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-dashboard'] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Failed to resolve'),
+  })
 
   const { data, isLoading } = useQuery({
     queryKey: ['surgery-list', filters],
@@ -256,6 +262,8 @@ export default function Surgery() {
         <ToDoPanel todos={dash?.todo || []}
                    hospitalUnbooked={dash?.hospital_unbooked || []}
                    officeUnderbooked={dash?.office_underbooked || []}
+                   blockedConflicts={dash?.blocked_conflicts || []}
+                   onResolveConflict={(id) => resolveConflict.mutate(id)}
                    onOpen={(id) => navigate(`/surgery/${id}`)} />
       </div>
 
@@ -694,8 +702,10 @@ function CriticalAlertsPanel({ alerts, onOpen }) {
 }
 
 
-function ToDoPanel({ todos, hospitalUnbooked = [], officeUnderbooked = [], onOpen }) {
-  const totalItems = todos.length + hospitalUnbooked.length + officeUnderbooked.length
+function ToDoPanel({ todos, hospitalUnbooked = [], officeUnderbooked = [],
+                     blockedConflicts = [], onResolveConflict, onOpen }) {
+  const totalItems = todos.length + hospitalUnbooked.length
+                   + officeUnderbooked.length + blockedConflicts.length
   return (
     <div className="card">
       <div className="flex items-center gap-1.5 mb-2">
@@ -706,8 +716,36 @@ function ToDoPanel({ todos, hospitalUnbooked = [], officeUnderbooked = [], onOpe
       {totalItems === 0 ? (
         <div className="text-xs text-gray-400 italic">All caught up.</div>
       ) : (
-        <ul className="text-xs space-y-1">
+        <div className="text-xs space-y-1">
+          {/* Blocked-day conflicts */}
+          {blockedConflicts.length > 0 && (
+            <section className="mb-3">
+              <h3 className="text-[11px] uppercase text-red-700 font-semibold mb-1.5 flex items-center gap-1">
+                <AlertTriangle size={11} /> Surgery on blocked day ({blockedConflicts.length})
+              </h3>
+              <ul className="space-y-1">
+                {blockedConflicts.map(c => (
+                  <li key={c.surgery_id}
+                      className="flex items-center justify-between border border-red-200 bg-red-50 rounded px-3 py-2">
+                    <button onClick={() => onOpen(c.surgery_id)}
+                            className="text-left text-[12px] flex-1 hover:underline">
+                      <strong className="text-red-800">{c.patient_name}</strong>
+                      <span className="text-gray-600"> · {c.scheduled_date} · {c.facility || '—'}</span>
+                      <div className="text-[11px] text-gray-500">
+                        Blocked: {c.blackout_label || c.blackout_reason} ({c.blackout_scope})
+                      </div>
+                    </button>
+                    <button onClick={() => onResolveConflict(c.surgery_id)}
+                            className="text-[11px] px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-100">
+                      Mark hospital notified
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
           {/* Hospital release-back alerts */}
+          <ul className="space-y-1">
           {hospitalUnbooked.map(b => (
             <li key={`hosp-${b.block_day_id}`}
                 className="flex items-baseline justify-between gap-2 px-1 py-0.5 rounded bg-red-50/40">
@@ -744,7 +782,8 @@ function ToDoPanel({ todos, hospitalUnbooked = [], officeUnderbooked = [], onOpe
               <span className="text-amber-700 shrink-0">{t.hours_overdue}h</span>
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
       )}
     </div>
   )
