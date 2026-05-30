@@ -1870,6 +1870,67 @@ def toggle_office_meds_pickup(
     return _surgery_dict(s, include_milestones=True)
 
 
+# ─── Coordinator schedule endpoint (Phase D2) ───────────────────────
+
+class CoordinatorScheduleIn(BaseModel):
+    block_day_id: str
+    start_time: str
+    duration_minutes: Optional[int] = None
+    override_reason: Optional[str] = None
+
+
+@router.post("/{surgery_id}/schedule")
+def coordinator_schedule(
+    surgery_id: str,
+    payload: CoordinatorScheduleIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    from app.models.surgery import SurgeryNote
+    from app.routers.patient_surgery import _parse_hhmm, _default_duration_for
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    bd = db.query(BlockDay).filter(BlockDay.id == payload.block_day_id).first()
+    if not bd:
+        raise HTTPException(status_code=404, detail="block day not found")
+    start = _parse_hhmm(payload.start_time)
+    if db.query(SurgerySlot).filter(SurgerySlot.block_day_id == bd.id,
+                                     SurgerySlot.start_time == start).first():
+        raise HTTPException(status_code=409, detail="that start time is already booked")
+
+    default = _default_duration_for(db, s, bd)
+    duration = payload.duration_minutes or default
+    # If >10% off the template default, require an override reason.
+    threshold = default * 0.10
+    if abs(duration - default) > threshold and not (payload.override_reason or "").strip():
+        raise HTTPException(status_code=422,
+                            detail="override_reason required: duration differs >10% from template default")
+
+    actor = current_user.get("email") or "system"
+    slot = SurgerySlot(
+        block_day_id=bd.id, surgery_id=s.id,
+        start_time=start, duration_minutes=duration,
+        procedure_kind=bd.block_kind,
+    )
+    db.add(slot)
+    s.scheduled_date = bd.block_date
+    s.selected_facility = bd.facility
+    audit_body = (f"Coordinator scheduled {bd.block_date} {start.strftime('%H:%M')} "
+                  f"({duration} min, template default {default} min) at {bd.facility}.")
+    if payload.override_reason:
+        audit_body += f" Override reason: {payload.override_reason}"
+    db.add(SurgeryNote(
+        surgery_id=s.id, created_by=actor,
+        content=audit_body,
+    ))
+    db.commit()
+    return {"ok": True, "slot_id": str(slot.id),
+            "start_time": start.strftime("%H:%M"),
+            "duration_minutes": duration,
+            "template_default": default}
+
+
 # ─── Surgery notes (timestamped log) ───────────────────────────────
 
 class SurgeryNoteIn(BaseModel):
