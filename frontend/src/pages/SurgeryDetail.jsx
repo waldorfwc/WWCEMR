@@ -10,13 +10,7 @@ import {
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MatchesDrawer } from './SurgeryWaitlist'
-
-
-const FACILITY_LABEL = {
-  medstar: 'MedStar Southern Maryland',
-  crmc:    'University of MD Charles Regional',
-  office:  'White Plains Office',
-}
+import { useFacilities } from '../hooks/useFacilities'
 
 const STATUS_TONE = {
   incomplete:    'bg-amber-100 text-amber-800',
@@ -300,6 +294,7 @@ function KlaraPanel({ surgery }) {
 
 function BoardingSlipPanel({ surgery }) {
   const qc = useQueryClient()
+  const { labelOf } = useFacilities()
   const [error, setError] = useState(null)
   const [generated, setGenerated] = useState(null)
 
@@ -310,7 +305,7 @@ function BoardingSlipPanel({ surgery }) {
   })
 
   const facility = surgery.selected_facility
-  const facilityLabel = FACILITY_LABEL[facility]
+  const facilityLabel = labelOf(facility)
   const ready = facility === 'medstar' || facility === 'crmc'
 
   return (
@@ -1366,6 +1361,7 @@ const FACILITY_OPTIONS = [
 
 
 function FacilityCell({ s, onPatch }) {
+  const { labelOf } = useFacilities()
   const [editing, setEditing] = useState(false)
   const [selected, setSelected] = useState(s.selected_facility || '')
   const [eligible, setEligible] = useState(new Set(s.eligible_facilities || []))
@@ -1375,13 +1371,13 @@ function FacilityCell({ s, onPatch }) {
       <div>
         <div className="flex items-baseline gap-2">
           {s.selected_facility ? (
-            <span>{FACILITY_LABEL[s.selected_facility]}</span>
+            <span>{labelOf(s.selected_facility)}</span>
           ) : (s.eligible_facilities || []).length > 1 ? (
             <span className="text-amber-700">
-              {s.eligible_facilities.map(f => FACILITY_LABEL[f] || f).join(' OR ')}
+              {s.eligible_facilities.map(f => labelOf(f)).join(' OR ')}
             </span>
           ) : (s.eligible_facilities || []).length === 1 ? (
-            <span>{FACILITY_LABEL[s.eligible_facilities[0]] || s.eligible_facilities[0]}</span>
+            <span>{labelOf(s.eligible_facilities[0])}</span>
           ) : (
             <span className="text-gray-400">—</span>
           )}

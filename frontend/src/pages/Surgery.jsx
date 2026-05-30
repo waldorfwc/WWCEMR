@@ -9,6 +9,7 @@ import {
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { WeeklyCalendar } from './SurgeryCalendar'
+import { useFacilities } from '../hooks/useFacilities'
 
 
 const STATUS_TONE = {
@@ -21,11 +22,6 @@ const STATUS_TONE = {
   unresponsive:  'bg-gray-100 text-gray-500',
 }
 
-const FACILITY_LABEL = {
-  medstar: 'MedStar',
-  crmc:    'CRMC',
-  office:  'Office',
-}
 
 // Dashboard bucket definitions — matches backend ALL_BUCKETS order.
 // `tone` controls the tile color; `descr` shows in a tooltip.
@@ -794,10 +790,11 @@ function MilestoneGroup({ group, onOpen }) {
 
 
 function SurgeryRow({ s, onOpen }) {
+  const { labelOf } = useFacilities()
   const procDescr = (s.procedures || [])[0]?.description || ''
   const cpts = (s.procedures || []).map(p => p.cpt).filter(Boolean).join(', ')
   const eligibles = (s.eligible_facilities || [])
-                      .map(f => FACILITY_LABEL[f] || f)
+                      .map(f => labelOf(f))
                       .join(' or ')
 
   return (
@@ -816,7 +813,7 @@ function SurgeryRow({ s, onOpen }) {
       </td>
       <td className="px-2 py-1.5">
         {s.selected_facility
-          ? <span className="text-gray-700">{FACILITY_LABEL[s.selected_facility]}</span>
+          ? <span className="text-gray-700">{labelOf(s.selected_facility)}</span>
           : <span className="text-amber-700 italic" title={eligibles}>{eligibles || '—'}</span>}
       </td>
       <td className="px-2 py-1.5">
@@ -1013,6 +1010,7 @@ function ManualCreateButton() {
 function ManualCreateDrawer({ onClose }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const { labelOf } = useFacilities()
   // Picklists drive insurance/surgeon dropdowns
   const { data: picks } = useQuery({
     queryKey: ['surgery-picklists'],
@@ -1257,7 +1255,7 @@ function ManualCreateDrawer({ onClose }) {
                               ? 'bg-plum-100 border-plum-300 text-plum-700 font-semibold'
                               : 'bg-white border-gray-200 text-muted'
                           }`}>
-                    {FACILITY_LABEL[f]}
+                    {labelOf(f)}
                   </button>
                 ))}
               </div>

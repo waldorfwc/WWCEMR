@@ -5,13 +5,7 @@ import {
   ArrowLeft, ListPlus, Phone, Trash2, Calendar, AlertCircle, X, Copy, Check,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
-
-
-const FACILITY_LABEL = {
-  medstar: 'MedStar',
-  crmc:    'CRMC',
-  office:  'Office',
-}
+import { useFacilities } from '../hooks/useFacilities'
 
 const URGENCY_TONE = {
   routine:   'bg-gray-100 text-gray-700',
@@ -27,6 +21,7 @@ const URGENCY_RANK = { urgent: 0, expedited: 1, routine: 2 }
 export default function SurgeryWaitlist() {
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const { labelOf } = useFacilities()
   const [facilityFilter, setFacilityFilter] = useState('')
   const [matchingFor, setMatchingFor] = useState(null)   // block_day_id
   const [sortKey, setSortKey] = useState('urgency')   // 'urgency' | 'notice' | 'facility'
@@ -121,7 +116,7 @@ export default function SurgeryWaitlist() {
             <button key={d.id}
                     className="text-[11px] px-2 py-1 rounded border border-plum-200 bg-white hover:bg-plum-50 text-plum-700"
                     onClick={() => setMatchingFor(d.id)}>
-              {fmt.date(d.block_date)} · {FACILITY_LABEL[d.facility]}
+              {fmt.date(d.block_date)} · {labelOf(d.facility)}
             </button>
           ))}
           {openDays.length === 0 && (
@@ -169,7 +164,7 @@ export default function SurgeryWaitlist() {
                   </td>
                   <td className="px-3 py-3 text-[12px]">{w.advance_notice_days}d</td>
                   <td className="px-3 py-3 text-[12px]">{w.procedure_name || '—'}</td>
-                  <td className="px-3 py-3 text-[12px]">{FACILITY_LABEL[w.facility] || w.facility || '—'}</td>
+                  <td className="px-3 py-3 text-[12px]">{labelOf(w.facility) || '—'}</td>
                   <td className="px-3 py-3">
                     <span className={`text-[11px] px-2 py-0.5 rounded ${URGENCY_TONE[w.urgency] || URGENCY_TONE.routine}`}>
                       {URGENCY_LABEL[w.urgency] || 'Routine'}
@@ -240,7 +235,7 @@ export function MatchesDrawer({ blockDayId, onClose }) {
             <h2 className="font-serif font-semibold text-ink text-[18px]">Waitlist matches</h2>
             {data?.block_day && (
               <div className="text-[11px] text-muted">
-                {fmt.date(data.block_day.block_date)} · {FACILITY_LABEL[data.block_day.facility]} · {data.block_day.block_kind.replace(/_/g, ' ')}
+                {fmt.date(data.block_day.block_date)} · {labelOf(data.block_day.facility)} · {data.block_day.block_kind.replace(/_/g, ' ')}
               </div>
             )}
           </div>

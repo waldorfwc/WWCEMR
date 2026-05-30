@@ -5,13 +5,7 @@ import {
   ArrowLeft, Calendar, Plus, RefreshCw, Trash2, AlertTriangle, X,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
-
-
-const FACILITY_LABEL = {
-  medstar: 'MedStar Southern Maryland',
-  crmc:    'University of MD Charles Regional',
-  office:  'White Plains Office',
-}
+import { useFacilities } from '../hooks/useFacilities'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -19,6 +13,7 @@ const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 export default function SurgeryBlockSchedule() {
   const qc = useQueryClient()
   const [tab, setTab] = useState('upcoming')   // upcoming | schedules | blackouts
+  const { labelOf } = useFacilities()
 
   const { data: schedules } = useQuery({
     queryKey: ['surgery-block-schedules'],
@@ -116,7 +111,7 @@ function BlockDayRow({ d }) {
           <div className="text-sm font-medium text-gray-900">
             <Calendar size={12} className="inline mr-1 text-plum-600" />
             {fmt.date(d.block_date)} ({new Date(d.block_date).toLocaleDateString('en-US', { weekday: 'short' })})
-            <span className="text-gray-500 font-normal ml-2">{FACILITY_LABEL[d.facility]}</span>
+            <span className="text-gray-500 font-normal ml-2">{labelOf(d.facility)}</span>
           </div>
           <div className="text-[10px] text-gray-500">
             {d.start_time?.slice(0, 5)}–{d.end_time?.slice(0, 5)} · {d.block_kind.replace(/_/g, ' ')}
@@ -194,7 +189,7 @@ function ScheduleRow({ s, qc }) {
   return (
     <div className="card !p-3 flex items-baseline justify-between gap-2">
       <div>
-        <div className="text-sm font-medium">{FACILITY_LABEL[s.facility]}</div>
+        <div className="text-sm font-medium">{labelOf(s.facility)}</div>
         <div className="text-[11px] text-gray-700">
           {recurrenceLabel(s)} · {s.start_time?.slice(0, 5)}–{s.end_time?.slice(0, 5)} · {s.block_kind.replace(/_/g, ' ')}
         </div>
@@ -202,7 +197,7 @@ function ScheduleRow({ s, qc }) {
       </div>
       <button className="text-xs text-red-700 hover:underline flex items-center gap-1"
               onClick={() => {
-                if (confirm(`Delete this ${FACILITY_LABEL[s.facility]} schedule? Future block days created from it won't be auto-removed but new ones won't be made.`)) {
+                if (confirm(`Delete this ${labelOf(s.facility)} schedule? Future block days created from it won't be auto-removed but new ones won't be made.`)) {
                   remove.mutate()
                 }
               }}>
@@ -495,7 +490,7 @@ function BlackoutRow({ b, qc }) {
         <span className="text-gray-500 ml-2">({new Date(b.blackout_date).toLocaleDateString('en-US', { weekday: 'short' })})</span>
         <strong className="ml-2">{b.label || b.reason}</strong>
         <span className="text-gray-500 ml-2">· {b.scope}</span>
-        {b.facility && <span className="text-gray-500 ml-1">· {FACILITY_LABEL[b.facility]}</span>}
+        {b.facility && <span className="text-gray-500 ml-1">· {labelOf(b.facility)}</span>}
         {b.owner_email && <span className="text-gray-500 ml-1">· {b.owner_email.split('@')[0]}</span>}
       </div>
       <button className="text-gray-400 hover:text-red-700"
