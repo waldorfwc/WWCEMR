@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ChevronLeft, ChevronRight, Calendar as CalIcon } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 
@@ -178,16 +178,114 @@ export function WeeklyCalendar({ compact = false }) {
 }
 
 
-export default function SurgeryCalendar() {
+export function MonthlyCalendar() {
+  const navigate = useNavigate()
+  const [anchor, setAnchor] = useState(() => isoDate(new Date()))
+  const gridStart = useMemo(() => startOfMonthGrid(anchor), [anchor])
+  const gridEnd = useMemo(() => addDays(gridStart, 41), [gridStart])  // 6 rows × 7 cols - 1
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['surgery-calendar', gridStart, gridEnd],
+    queryFn: () => api.get('/surgery/calendar', {
+      params: { start: gridStart, end: gridEnd },
+    }).then(r => r.data),
+  })
+
+  // Build day → surgeries map.
+  const byDay = useMemo(() => {
+    const m = {}
+    for (const s of (data?.surgeries || [])) {
+      const k = s.scheduled_date
+      if (!k) continue
+      if (!m[k]) m[k] = []
+      m[k].push(s)
+    }
+    return m
+  }, [data])
+
+  const days = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
+
   return (
     <div>
-      <div className="mb-3">
-        <Link to="/surgery" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
-          <ArrowLeft size={12} /> Surgery dashboard
-        </Link>
-        <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Surgery calendar</h1>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <button className="btn-secondary text-sm flex items-center gap-1"
+                  onClick={() => setAnchor(a => addMonths(a, -1))}>
+            <ChevronLeft size={14} /> Prev
+          </button>
+          <button className="btn-secondary text-sm"
+                  onClick={() => setAnchor(isoDate(new Date()))}>Today</button>
+          <button className="btn-secondary text-sm flex items-center gap-1"
+                  onClick={() => setAnchor(a => addMonths(a, 1))}>
+            Next <ChevronRight size={14} />
+          </button>
+        </div>
+        <h2 className="text-lg font-semibold text-gray-900">{monthLabel(anchor)}</h2>
+        <div></div>
       </div>
-      <WeeklyCalendar />
+
+      <div className="grid grid-cols-7 text-[11px] uppercase text-gray-500 mb-1">
+        {WEEKDAY_LABELS.map(d => (
+          <div key={d} className="text-center py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 border-t border-l border-border-subtle">
+        {days.map(iso => {
+          const surgs = byDay[iso] || []
+          const isToday = iso === isoDate(new Date())
+          const dim = !inSameMonth(iso, anchor)
+          return (
+            <div key={iso}
+                 className={`min-h-[110px] border-r border-b border-border-subtle p-1 ${
+                   dim ? 'bg-gray-50 text-gray-400' : 'bg-white'
+                 } ${isToday ? 'ring-2 ring-plum-400 ring-inset' : ''}`}>
+              <div className="text-[11px] font-semibold mb-1">{iso.slice(-2)}</div>
+              {surgs.slice(0, 6).map(s => {
+                const fac = FACILITY_BADGE[s.facility] || { label: s.facility, tone: 'bg-gray-100 text-gray-700 border-gray-200' }
+                return (
+                  <button key={s.id} onClick={() => navigate(`/surgery/${s.id}`)}
+                          className={`block w-full text-left text-[10px] truncate border rounded mb-0.5 px-1 py-0.5 ${fac.tone} hover:opacity-80`}>
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${INDICATOR_TONE[s.indicator] || 'bg-gray-400'}`} />
+                    {s.patient_name}
+                  </button>
+                )
+              })}
+              {surgs.length > 6 && (
+                <div className="text-[10px] text-plum-700">+{surgs.length - 6} more</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
+export default function SurgeryCalendarPage() {
+  const [params, setParams] = useSearchParams()
+  const view = params.get('view') === 'week' ? 'week' : 'month'
+
+  function setView(v) {
+    const next = new URLSearchParams(params)
+    next.set('view', v)
+    setParams(next, { replace: true })
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <CalIcon size={20} /> Surgery Calendar
+        </h1>
+        <div className="inline-flex rounded border border-border-subtle overflow-hidden text-sm">
+          <button className={`px-3 py-1 ${view === 'month' ? 'bg-plum-600 text-white' : 'bg-white text-gray-700 hover:bg-plum-50'}`}
+                  onClick={() => setView('month')}>Month</button>
+          <button className={`px-3 py-1 ${view === 'week' ? 'bg-plum-600 text-white' : 'bg-white text-gray-700 hover:bg-plum-50'}`}
+                  onClick={() => setView('week')}>Week</button>
+        </div>
+      </div>
+      {view === 'month' ? <MonthlyCalendar /> : <WeeklyCalendar />}
     </div>
   )
 }
@@ -283,4 +381,24 @@ function shortName(fullName) {
 function parseIso(iso) {
   const [y, m, d] = iso.split('-').map(n => parseInt(n, 10))
   return new Date(y, m - 1, d)
+}
+
+function startOfMonthGrid(iso) {
+  const [y, m] = iso.split('-').map(n => parseInt(n, 10))
+  const first = new Date(y, m - 1, 1)
+  const wd = (first.getDay() + 6) % 7  // 0=Mon, 6=Sun
+  first.setDate(first.getDate() - wd)
+  return isoDate(first)
+}
+function monthLabel(iso) {
+  const [y, m] = iso.split('-').map(n => parseInt(n, 10))
+  return new Date(y, m - 1, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' })
+}
+function addMonths(iso, n) {
+  const [y, m] = iso.split('-').map(x => parseInt(x, 10))
+  const dt = new Date(y, m - 1 + n, 1)
+  return isoDate(dt)
+}
+function inSameMonth(iso, anchorIso) {
+  return iso.slice(0, 7) === anchorIso.slice(0, 7)
 }
