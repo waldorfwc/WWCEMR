@@ -167,10 +167,14 @@ export default function SurgeryWaitlist() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50"
-                            onClick={() => removeFromWaitlist.mutate(w.surgery_id)}
+                    <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 inline-flex items-center gap-1"
+                            onClick={() => {
+                              if (confirm(`Remove ${w.patient_name} from the waitlist?`)) {
+                                removeFromWaitlist.mutate(w.surgery_id)
+                              }
+                            }}
                             title="Remove from waitlist">
-                      <Trash2 size={11} />
+                      <Trash2 size={11} /> Remove
                     </button>
                   </td>
                 </tr>
