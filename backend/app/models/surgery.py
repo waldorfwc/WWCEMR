@@ -29,7 +29,9 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 from app.models.guid import GUID, new_uuid
 
-SURGERY_URGENCY_VALUES = ("routine", "expedited", "urgent")
+SURGERY_URGENCY_VALUES    = ("routine", "expedited", "urgent")
+SURGERY_COMPLEXITY_VALUES = ("standard", "complex")
+SURGERY_DURATION_SOURCES  = ("coordinator", "template", "order_extract")
 
 # ─── Surgery (the main row) ──────────────────────────────────────────
 
@@ -94,6 +96,24 @@ class Surgery(Base):
     # it does not gate scheduling.
     urgency = Column(String(20), default="routine", nullable=False)
     # values: routine | expedited | urgent
+
+    # Complexity tier — physician's internal determination, never patient-facing.
+    # Used by _default_duration_for to pick among same-procedure_kind templates.
+    complexity = Column(String(20), default="standard", nullable=False)
+    # values: standard | complex
+
+    # Allotted surgery duration. Coordinator's explicit set takes priority;
+    # if null, the booking endpoints fall back to the procedure template or
+    # the kind→minutes map. `duration_source` tracks where the value came
+    # from for the audit trail (coordinator | template | order_extract).
+    duration_minutes = Column(Integer, nullable=True)
+    duration_source  = Column(String(30), nullable=True)
+    # values: coordinator | template | order_extract | null
+
+    # Email of the operating surgeon. Used by provider-scope blackout
+    # conflict detection so PTO for surgeon A doesn't ground surgeon B's
+    # surgeries. Single-surgeon today; this future-proofs.
+    surgeon_email = Column(String(200), nullable=True)
 
     # Facility selection — multi-facility supported because some procedures
     # can be done at either MedStar OR CRMC, and the patient chooses.
@@ -259,6 +279,14 @@ class Surgery(Base):
                                   cascade="all, delete-orphan")
     consent_envelopes = relationship("SurgeryConsentEnvelope", back_populates="surgery",
                                      cascade="all, delete-orphan")
+    slots = relationship(
+        "SurgerySlot",
+        primaryjoin="Surgery.id == SurgerySlot.surgery_id",
+        foreign_keys="SurgerySlot.surgery_id",
+        viewonly=True,  # avoid cascade complications — SurgerySlot lifecycle
+                        # is owned by BlockDay
+        order_by="SurgerySlot.start_time",
+    )
 
 
 # ─── Milestones ──────────────────────────────────────────────────────
@@ -563,6 +591,11 @@ class SurgeryNote(Base):
                          nullable=False)
     content = Column(Text, nullable=False)
     created_by = Column(String(200), nullable=False)
+    kind = Column(String(40), nullable=True)
+    # Optional categorization for audit filtering — values established by
+    # callers; current callers use: slot_scheduled |
+    # slot_scheduled_by_coordinator | slot_duration_changed |
+    # blocked_conflict_resolved | other
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

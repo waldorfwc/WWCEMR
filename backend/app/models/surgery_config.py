@@ -58,6 +58,11 @@ class Facility(Base):
     code       = Column(String(20), nullable=False)
     label      = Column(String(120), nullable=False)
     address    = Column(Text, nullable=True)
+    # Hospital scheduler contact — used by the "Mark hospital notified"
+    # release action to email the facility's scheduler. Optional; if unset,
+    # the resolve action just stamps the audit timestamp without sending.
+    hospital_contact_name  = Column(String(120), nullable=True)
+    hospital_contact_email = Column(String(200), nullable=True)
     is_active  = Column(Boolean, default=True, nullable=False)
     sort_order = Column(Integer, default=100, nullable=False)
     created_by = Column(String(120), nullable=True)
