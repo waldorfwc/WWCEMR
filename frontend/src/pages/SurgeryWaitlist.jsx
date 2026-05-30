@@ -79,6 +79,15 @@ export default function SurgeryWaitlist() {
     return slots.length < 8   // office capacity rough heuristic
   })
 
+  function clickSort(key) {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
   if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
 
   return (
@@ -132,18 +141,18 @@ export default function SurgeryWaitlist() {
               <tr>
                 <th className="text-left px-4 py-2">Patient</th>
                 <th className="text-left px-3 py-2">
-                  <button onClick={() => { setSortKey('notice'); setSortDir(d => d === 'asc' ? 'desc' : 'asc') }}>
+                  <button onClick={() => clickSort('notice')}>
                     Notice {sortKey === 'notice' && (sortDir === 'asc' ? '↑' : '↓')}
                   </button>
                 </th>
                 <th className="text-left px-3 py-2">Type</th>
                 <th className="text-left px-3 py-2">
-                  <button onClick={() => { setSortKey('facility'); setSortDir(d => d === 'asc' ? 'desc' : 'asc') }}>
+                  <button onClick={() => clickSort('facility')}>
                     Location {sortKey === 'facility' && (sortDir === 'asc' ? '↑' : '↓')}
                   </button>
                 </th>
                 <th className="text-left px-3 py-2">
-                  <button onClick={() => { setSortKey('urgency'); setSortDir(d => d === 'asc' ? 'desc' : 'asc') }}>
+                  <button onClick={() => clickSort('urgency')}>
                     Urgency {sortKey === 'urgency' && (sortDir === 'asc' ? '↑' : '↓')}
                   </button>
                 </th>
