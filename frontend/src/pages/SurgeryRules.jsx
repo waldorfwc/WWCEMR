@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft, BookOpen, Calendar, Hospital, Building2, Phone,
   AlertTriangle, FileText, Clock, Users, ShieldCheck, MessageSquare,
   CheckCircle2, ChevronRight,
+  Sliders, Mail, Stethoscope, ListChecks,
 } from 'lucide-react'
 
 
@@ -46,19 +48,12 @@ function Warning({ children }) {
 }
 
 
-export default function SurgeryRules() {
+function MilestoneRulesTab() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-4 flex items-baseline justify-between">
         <div className="flex items-center gap-3">
-          <Link to="/surgery" className="text-muted hover:text-plum-700">
-            <ArrowLeft size={18} />
-          </Link>
           <div>
-            <h1 className="font-serif text-[24px] font-semibold text-ink m-0 flex items-center gap-2">
-              <BookOpen size={22} className="text-plum-700" />
-              Surgery Scheduling Reference
-            </h1>
             <div className="text-muted text-[12px] mt-0.5">
               Working rules for the WWC surgery scheduling workflow. Use as a lookup —
               every rule below is enforced (or surfaced) by the system.
@@ -417,6 +412,67 @@ export default function SurgeryRules() {
         contradicts what you observe in the app, the app is correct — please flag it
         so this doc can be brought back into sync.
       </div>
+    </div>
+  )
+}
+
+
+function ThresholdsTab() {
+  return <div className="text-gray-500 text-sm italic">Thresholds editor coming next…</div>
+}
+function RecipientsTab() {
+  return <div className="text-gray-500 text-sm italic">Recipients editor coming next…</div>
+}
+function FacilitiesTab() {
+  return <div className="text-gray-500 text-sm italic">Facilities editor coming next…</div>
+}
+function TemplatesTab() {
+  return <div className="text-gray-500 text-sm italic">Templates editor coming next…</div>
+}
+
+
+const TABS = [
+  { k: 'milestones', label: 'Milestone rules',     icon: ListChecks },
+  { k: 'thresholds', label: 'Thresholds',          icon: Sliders },
+  { k: 'recipients', label: 'Alert recipients',    icon: Mail },
+  { k: 'facilities', label: 'Facilities',          icon: Building2 },
+  { k: 'templates',  label: 'Procedure templates', icon: Stethoscope },
+]
+
+export default function SurgeryRules() {
+  const [tab, setTab] = useState('milestones')
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-3">
+        <Link to="/surgery" className="text-muted hover:text-plum-700">
+          <ArrowLeft size={18} />
+        </Link>
+        <h1 className="font-serif text-[24px] font-semibold text-ink m-0 flex items-center gap-2">
+          <BookOpen size={22} className="text-plum-700" />
+          Surgery rules
+        </h1>
+      </div>
+      <div className="flex gap-1 border-b border-border-subtle mb-4">
+        {TABS.map(t => {
+          const Icon = t.icon
+          return (
+            <button key={t.k}
+                    onClick={() => setTab(t.k)}
+                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition ${
+                      tab === t.k
+                        ? 'border-plum-600 text-plum-700'
+                        : 'border-transparent text-gray-500 hover:text-plum-700 hover:border-plum-200'
+                    }`}>
+              <Icon size={14} /> {t.label}
+            </button>
+          )
+        })}
+      </div>
+      {tab === 'milestones' && <MilestoneRulesTab />}
+      {tab === 'thresholds' && <ThresholdsTab />}
+      {tab === 'recipients' && <RecipientsTab />}
+      {tab === 'facilities' && <FacilitiesTab />}
+      {tab === 'templates'  && <TemplatesTab />}
     </div>
   )
 }
