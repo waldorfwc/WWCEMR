@@ -600,7 +600,7 @@ def seed_from_smartsheet(
 
             status=status,
             sub_flag=sub_flag,
-            is_urgent=(row.get("Urgent") in (True, "true")),
+            urgency=("urgent" if row.get("Urgent") in (True, "true") else "routine"),
 
             notes=row.get("Special Surgery Instructions") or row.get("Comments"),
             latest_comment=row.get("Latest comment"),

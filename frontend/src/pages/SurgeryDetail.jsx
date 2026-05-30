@@ -82,7 +82,7 @@ export default function SurgeryDetail() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold text-gray-900">{s.patient_name}</h1>
-              {s.is_urgent && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">🚨 URGENT</span>}
+              {s.urgency === "urgent" && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">🚨 URGENT</span>}
               <span className={`text-[11px] px-2 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{s.status}</span>
               {s.sub_flag && <span className="text-[10px] text-gray-500">· {s.sub_flag.replace(/_/g, ' ')}</span>}
               {s.behind_schedule && (
@@ -101,14 +101,14 @@ export default function SurgeryDetail() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => patch.mutate({ is_urgent: !s.is_urgent })}
+              onClick={() => patch.mutate({ urgency: s.urgency === "urgent" ? "routine" : "urgent" })}
               className={`text-xs px-2 py-1 rounded border flex items-center gap-1 ${
-                s.is_urgent ? 'bg-red-50 border-red-200 text-red-700'
-                            : 'bg-white border-gray-200 text-gray-600 hover:border-red-300'
+                s.urgency === "urgent" ? 'bg-red-50 border-red-200 text-red-700'
+                                       : 'bg-white border-gray-200 text-gray-600 hover:border-red-300'
               }`}
               disabled={patch.isPending}
             >
-              <Flag size={11} /> {s.is_urgent ? 'Clear urgent' : 'Mark urgent'}
+              <Flag size={11} /> {s.urgency === "urgent" ? 'Clear urgent' : 'Mark urgent'}
             </button>
             {s.status === 'incomplete' && (
               <button type="button"

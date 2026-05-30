@@ -328,7 +328,7 @@ function SurgeryCard({ surgery, onClick }) {
             className={cardClass}>
       <div className="flex items-center gap-1.5">
         <span className={`w-2 h-2 rounded-full shrink-0 ${indicatorDot}`} />
-        {surgery.is_urgent && <span className="text-[10px] shrink-0" title="urgent">🚨</span>}
+        {surgery.urgency === "urgent" && <span className="text-[10px] shrink-0" title="urgent">🚨</span>}
         {surgery.is_robotic && <span className="text-[10px] shrink-0" title="robotic">🤖</span>}
         {surgery.is_incomplete && <span className="text-[10px] shrink-0" title="incomplete — needs chart #, DOB, procedure">⚠</span>}
         <span className="text-[11px] font-semibold text-gray-900 truncate flex-1">{short}</span>

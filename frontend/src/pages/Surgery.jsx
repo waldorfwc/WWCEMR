@@ -840,7 +840,7 @@ function SurgeryRow({ s, onOpen }) {
     <tr className="border-t border-gray-100 hover:bg-plum-50/30 cursor-pointer" onClick={onOpen}>
       <td className="px-3 py-1.5">
         <div className="flex items-center gap-1">
-          {s.is_urgent && <span title="Urgent">🚨</span>}
+          {s.urgency === "urgent" && <span title="Urgent">🚨</span>}
           <span className="font-medium">{s.patient_name}</span>
         </div>
       </td>

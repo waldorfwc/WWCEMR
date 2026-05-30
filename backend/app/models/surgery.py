@@ -247,8 +247,6 @@ class Surgery(Base):
     sub_flag = Column(String(40), nullable=True)
     # values: klara_sent | awaiting_clearance | awaiting_date |
     #         unpaid_balance | ready
-    is_urgent = Column(Boolean, default=False, nullable=False)
-
     # Assets
     order_pdf_path = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)

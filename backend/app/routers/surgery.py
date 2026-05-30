@@ -165,7 +165,7 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "allowed_amount": (str(s.allowed_amount) if s.allowed_amount is not None else None),
         "status": s.status,
         "sub_flag": s.sub_flag,
-        "is_urgent": bool(s.is_urgent),
+        "is_urgent": s.urgency == "urgent",
         "current_milestone": cur_m.kind if cur_m else None,
         "current_milestone_title": cur_m.title if cur_m else None,
         "behind_schedule": behind,
@@ -554,7 +554,7 @@ def calendar(
                                       if s.scheduled_start_time else None),
             "facility": s.selected_facility,
             "is_robotic": bool(s.is_robotic),
-            "is_urgent": bool(s.is_urgent),
+            "is_urgent": s.urgency == "urgent",
             "is_incomplete": s.status == "incomplete",
             "procedure": primary_proc,
             "estimated_minutes": s.estimated_minutes,
@@ -612,7 +612,7 @@ def list_surgeries(
     if facility:
         q = q.filter(Surgery.selected_facility == facility)
     if urgent_only:
-        q = q.filter(Surgery.is_urgent.is_(True))
+        q = q.filter(Surgery.urgency == "urgent")
     if search:
         like = f"%{search}%"
         q = q.filter(or_(
@@ -675,7 +675,7 @@ def list_surgeries(
 
     # Sort: urgent first, then most behind, then by created_at desc
     rows.sort(key=lambda s: (
-        0 if s.is_urgent else 1,
+        0 if s.urgency == "urgent" else 1,
         -_is_behind(s)[1],
         -(s.created_at.timestamp() if s.created_at else 0),
     ))
@@ -847,7 +847,7 @@ def create_manual(payload: ManualSurgeryIn,
         estimated_minutes=payload.estimated_minutes,
         is_robotic=payload.is_robotic,
         procedure_classification=classification,
-        is_urgent=payload.is_urgent,
+        urgency=("urgent" if payload.is_urgent else "routine"),
         notes=payload.notes,
         status="incomplete",
         source="manual",
@@ -1051,6 +1051,10 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                                 detail="assistant_surgeon_appt_date must be YYYY-MM-DD")
     elif "assistant_surgeon_appt_date" in data:
         data["assistant_surgeon_appt_date"] = None
+
+    # Convert legacy is_urgent shim → urgency enum
+    if "is_urgent" in data:
+        s.urgency = "urgent" if data.pop("is_urgent") else "routine"
 
     # Apply
     for k, v in data.items():
