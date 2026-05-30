@@ -47,6 +47,17 @@ def init_db():
     seed_larc_device_types()
     from app.services.pellet_seed import seed_pellet_dose_types
     seed_pellet_dose_types()
+    # Phase B — seed default surgery facilities (idempotent).
+    try:
+        from app.services.surgery_config_seed import seed_default_facilities
+        db = SessionLocal()
+        try:
+            seed_default_facilities(db)
+        finally:
+            db.close()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("surgery_config_seed failed")
 
 
 def _migrate_billing_doc_status_open_to_new():

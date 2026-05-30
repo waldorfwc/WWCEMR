@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import api from '../utils/api'
@@ -7,6 +7,7 @@ import {
   AlertTriangle, FileText, Clock, Users, ShieldCheck, MessageSquare,
   CheckCircle2, ChevronRight,
   Sliders, Mail, Stethoscope, ListChecks,
+  Plus, Trash2, Save, X, Edit3, Search,
 } from 'lucide-react'
 
 
@@ -531,8 +532,264 @@ function RecipientsTab() {
     </div>
   )
 }
+// ─── FacilitiesTab ───────────────────────────────────────────────
+
+const NEW_FACILITY = {
+  id:         '__new',
+  code:       '',
+  label:      '',
+  address:    '',
+  is_active:  true,
+  sort_order: 100,
+}
+
 function FacilitiesTab() {
-  return <div className="text-gray-500 text-sm italic">Facilities editor coming next…</div>
+  const qc = useQueryClient()
+  const [editingId, setEditingId] = useState(null)
+  const [draft, setDraft]         = useState(null)
+  const [filter, setFilter]       = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['surgery-facilities'],
+    queryFn:  () => api.get('/surgery/admin/facilities').then(r => r.data.facilities),
+  })
+
+  const facilities = useMemo(() => {
+    const rows = data || []
+    const q = filter.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter(f =>
+      (f.code    || '').toLowerCase().includes(q) ||
+      (f.label   || '').toLowerCase().includes(q) ||
+      (f.address || '').toLowerCase().includes(q)
+    )
+  }, [data, filter])
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/surgery/admin/facilities', body).then(r => r.data),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['surgery-facilities'] }); setEditingId(null); setDraft(null) },
+    onError:    (e) => alert(e?.response?.data?.detail || 'Create failed'),
+  })
+
+  const patchMut = useMutation({
+    mutationFn: ({ id, body }) => api.patch(`/surgery/admin/facilities/${id}`, body).then(r => r.data),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['surgery-facilities'] }); setEditingId(null); setDraft(null) },
+    onError:    (e) => alert(e?.response?.data?.detail || 'Update failed'),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/surgery/admin/facilities/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['surgery-facilities'] }),
+    onError:    (e) => alert(e?.response?.data?.detail || 'Delete failed'),
+  })
+
+  function startEdit(row) {
+    setEditingId(row.id)
+    setDraft({
+      code:       row.code       || '',
+      label:      row.label      || '',
+      address:    row.address    || '',
+      is_active:  row.is_active  ?? true,
+      sort_order: row.sort_order ?? 100,
+    })
+  }
+
+  function cancelEdit() { setEditingId(null); setDraft(null) }
+
+  function startNewRow() {
+    setEditingId('__new')
+    setDraft({ code: '', label: '', address: '', is_active: true, sort_order: 100 })
+  }
+
+  function save() {
+    if (!draft?.code?.trim())  { alert('Code is required.');  return }
+    if (!draft?.label?.trim()) { alert('Label is required.'); return }
+    const body = {
+      code:       draft.code.trim(),
+      label:      draft.label.trim(),
+      address:    draft.address.trim() || null,
+      is_active:  draft.is_active,
+      sort_order: Number(draft.sort_order) || 100,
+    }
+    if (editingId === '__new') createMut.mutate(body)
+    else                       patchMut.mutate({ id: editingId, body })
+  }
+
+  function confirmDelete(row) {
+    if (!window.confirm(`Delete "${row.label}"?`)) return
+    deleteMut.mutate(row.id)
+  }
+
+  const showNewRow = editingId === '__new'
+  const rows = showNewRow ? [NEW_FACILITY, ...facilities] : facilities
+  const isSaving = createMut.isPending || patchMut.isPending
+
+  return (
+    <div>
+      <div className="bg-white rounded-lg border border-border-subtle">
+        {/* Card header */}
+        <div className="px-5 py-4 border-b border-border-subtle flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900">Facilities</h2>
+            <p className="text-[12px] text-gray-500 mt-0.5">
+              Surgical facilities available for scheduling. Inactive facilities are hidden from the scheduler.
+            </p>
+          </div>
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input text-sm pl-7 pr-2 py-1 w-48"
+                   placeholder="Filter…"
+                   value={filter}
+                   onChange={e => setFilter(e.target.value)} />
+          </div>
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  onClick={startNewRow}
+                  disabled={!!editingId}>
+            <Plus size={12} /> Add row
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-[11px] uppercase text-gray-500">
+              <tr>
+                <th className="text-left px-5 py-2 w-[10%]">Code</th>
+                <th className="text-left px-3 py-2 w-[28%]">Label</th>
+                <th className="text-left px-3 py-2 w-[28%]">Address</th>
+                <th className="text-center px-3 py-2 w-[8%]">Active</th>
+                <th className="text-center px-3 py-2 w-[8%]">Sort</th>
+                <th className="text-right px-5 py-2 w-[120px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={6} className="px-5 py-6 text-gray-400 text-[12px]">Loading…</td></tr>
+              )}
+              {!isLoading && rows.length === 0 && (
+                <tr><td colSpan={6} className="px-5 py-6 text-gray-400 text-[12px] italic">
+                  No facilities yet — click <strong>Add row</strong> to start.
+                </td></tr>
+              )}
+              {rows.map(row => {
+                const isEditing = editingId === row.id
+                const dimmed    = !isEditing && !row.is_active
+                return (
+                  <tr key={row.id}
+                      className={`border-t border-border-subtle ${
+                        isEditing ? 'bg-plum-50/40'
+                        : dimmed  ? 'opacity-60 hover:bg-gray-50'
+                        :           'hover:bg-gray-50'
+                      }`}>
+                    {isEditing ? (
+                      <FacilityEditRow
+                        draft={draft}
+                        setDraft={setDraft}
+                        save={save}
+                        cancel={cancelEdit}
+                        isSaving={isSaving}
+                      />
+                    ) : (
+                      <FacilityDisplayRow
+                        row={row}
+                        startEdit={() => startEdit(row)}
+                        onDelete={() => confirmDelete(row)}
+                        disabled={!!editingId}
+                      />
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FacilityDisplayRow({ row, startEdit, onDelete, disabled }) {
+  return (
+    <>
+      <td className="px-5 py-3 align-middle">
+        <code className="text-[12px] bg-gray-100 px-1 py-0.5 rounded">{row.code}</code>
+      </td>
+      <td className="px-3 py-3 align-middle font-medium text-gray-900">{row.label}</td>
+      <td className="px-3 py-3 align-middle text-[12px] text-gray-600">{row.address || <span className="italic text-gray-400">—</span>}</td>
+      <td className="px-3 py-3 align-middle text-center">
+        <span className={`inline-block w-2 h-2 rounded-full ${row.is_active ? 'bg-green-500' : 'bg-gray-300'}`} title={row.is_active ? 'Active' : 'Inactive'} />
+      </td>
+      <td className="px-3 py-3 align-middle text-center text-[12px] text-gray-500">{row.sort_order}</td>
+      <td className="px-5 py-3 align-middle text-right">
+        <div className="inline-flex items-center gap-1">
+          <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1 disabled:opacity-30"
+                  onClick={startEdit}
+                  disabled={disabled}
+                  title="Edit row">
+            <Edit3 size={11} /> Edit
+          </button>
+          <button className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1 disabled:opacity-30"
+                  onClick={onDelete}
+                  disabled={disabled}
+                  title="Delete">
+            <Trash2 size={11} />
+          </button>
+        </div>
+      </td>
+    </>
+  )
+}
+
+function FacilityEditRow({ draft, setDraft, save, cancel, isSaving }) {
+  return (
+    <>
+      <td className="px-5 py-3 align-top">
+        <input className="input text-sm w-24"
+               placeholder="office"
+               value={draft.code}
+               onChange={e => setDraft({ ...draft, code: e.target.value })}
+               autoFocus />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input className="input text-sm w-full"
+               placeholder="Facility label"
+               value={draft.label}
+               onChange={e => setDraft({ ...draft, label: e.target.value })} />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input className="input text-sm w-full"
+               placeholder="City, ST  or full address"
+               value={draft.address}
+               onChange={e => setDraft({ ...draft, address: e.target.value })} />
+      </td>
+      <td className="px-3 py-3 align-top text-center">
+        <input type="checkbox"
+               className="h-4 w-4 rounded border-gray-300 text-plum-600 focus:ring-plum-500"
+               checked={draft.is_active}
+               onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input type="number" min="1"
+               className="input text-sm w-16 text-center"
+               value={draft.sort_order}
+               onChange={e => setDraft({ ...draft, sort_order: e.target.value })} />
+      </td>
+      <td className="px-5 py-3 align-top text-right">
+        <div className="inline-flex items-center gap-1">
+          <button className="text-[11px] px-2 py-1 rounded bg-plum-600 text-white hover:bg-plum-700 flex items-center gap-1 disabled:opacity-50"
+                  onClick={save}
+                  disabled={isSaving}>
+            <Save size={11} /> {isSaving ? 'Saving…' : 'Save'}
+          </button>
+          <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50"
+                  onClick={cancel}
+                  disabled={isSaving}>
+            Cancel
+          </button>
+        </div>
+      </td>
+    </>
+  )
 }
 function TemplatesTab() {
   return <div className="text-gray-500 text-sm italic">Templates editor coming next…</div>
