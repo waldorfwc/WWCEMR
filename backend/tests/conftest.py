@@ -25,6 +25,7 @@ _TEST_USER_PERMS = [
     "audit:read",
     "bankrecon:read", "bankrecon:generate",
     "report:financial",
+    "surgery:read", "surgery:work", "surgery:cancel", "surgery:manage",
 ]
 
 

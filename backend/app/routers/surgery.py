@@ -931,6 +931,7 @@ class SurgeryPatch(BaseModel):
     # Status transitions
     status: Optional[str] = None
     sub_flag: Optional[str] = None
+    urgency: Optional[str] = None
 
 
 @router.patch("/{surgery_id}")
@@ -942,6 +943,13 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         raise HTTPException(status_code=404, detail="surgery not found")
 
     data = payload.model_dump(exclude_unset=True)
+
+    if "urgency" in data:
+        from app.models.surgery import SURGERY_URGENCY_VALUES
+        if data["urgency"] not in SURGERY_URGENCY_VALUES:
+            raise HTTPException(status_code=422,
+                                detail=f"unknown urgency: {data['urgency']}")
+        s.urgency = data["urgency"]
 
     # DOB string → date
     if "dob" in data and data["dob"]:
@@ -2525,9 +2533,14 @@ def waitlist_list(facility: Optional[str] = None,
             "advance_notice_days": w.advance_notice_days,
             "signed_up_at": w.signed_up_at.isoformat() if w.signed_up_at else None,
             "procedure_classification": s.procedure_classification,
+            "procedure_name": (s.procedures[0].get("name") if s.procedures else None),
             "procedure_descriptions": [
                 p.get("description") for p in (s.procedures or []) if p.get("description")
             ],
+            "facility": (s.selected_facility
+                         or (s.eligible_facilities[0]
+                             if s.eligible_facilities else None)),
+            "urgency": s.urgency,
             "eligible_facilities": s.eligible_facilities or [],
         })
     return {"waitlist": out}
