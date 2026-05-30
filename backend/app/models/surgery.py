@@ -29,6 +29,7 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 from app.models.guid import GUID, new_uuid
 
+SURGERY_URGENCY_VALUES = ("routine", "expedited", "urgent")
 
 # ─── Surgery (the main row) ──────────────────────────────────────────
 
@@ -88,6 +89,11 @@ class Surgery(Base):
     # Auto-derived from CPT but admin-overridable
     procedure_classification = Column(String(20), nullable=True)
     # values: minor | major | office | robotic_180 | robotic_240
+    # Waitlist urgency. `routine` is the default; `expedited` and `urgent`
+    # surface in the waitlist sort + UI accent. Used only as a sort key —
+    # it does not gate scheduling.
+    urgency = Column(String(20), default="routine", nullable=False)
+    # values: routine | expedited | urgent
 
     # Facility selection — multi-facility supported because some procedures
     # can be done at either MedStar OR CRMC, and the patient chooses.
