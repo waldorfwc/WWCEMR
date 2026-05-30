@@ -179,6 +179,10 @@ class Surgery(Base):
     reschedule_count = Column(Integer, default=0, nullable=False)
     last_rescheduled_at = Column(DateTime, nullable=True)
     last_rescheduled_by = Column(String(80), nullable=True)   # 'patient:self-service' or staff email
+    # Set when the user clicks "Mark hospital notified" on the blocked-day
+    # conflict To-do (Phase C). When set, the conflict drops off the list.
+    blocked_conflict_notified_at = Column(DateTime, nullable=True)
+    blocked_conflict_notified_by = Column(String(120), nullable=True)
 
     # Post-op
     post_op_appt_date = Column(Date, nullable=True)
