@@ -45,6 +45,10 @@ def issue_challenge(db: Session, surgery: Surgery) -> tuple[str, str]:
 
     The caller never persists the plaintext code — only logs the
     challenge_token for the verify step.
+
+    Precondition: surgery.cell_phone or surgery.phone must be non-empty.
+    If both are blank, the SMS silently no-ops and the patient cannot
+    sign in. The /login endpoint must validate this before calling.
     """
     code = _generate_code()
     challenge_token = secrets.token_urlsafe(32)
@@ -66,6 +70,9 @@ def issue_challenge(db: Session, surgery: Surgery) -> tuple[str, str]:
 def verify_code(db: Session, challenge_token: str, code: str) -> Optional[str]:
     """Return surgery_id on success, None on any failure. Replay-safe
     (used_at is stamped on the first successful check)."""
+    # TODO: tighten with SELECT ... FOR UPDATE to close the TOCTOU window
+    # between the read below and the used_at/fail_count write. Two
+    # concurrent requests with the right code could both succeed today.
     row = (db.query(PatientPortalAuthCode)
               .filter(PatientPortalAuthCode.challenge_token == challenge_token)
               .first())

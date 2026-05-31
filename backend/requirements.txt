@@ -14,6 +14,7 @@ xlrd
 pdfplumber
 python-jose[cryptography]
 passlib[bcrypt]
+bcrypt
 httpx
 python-dateutil
 aiofiles

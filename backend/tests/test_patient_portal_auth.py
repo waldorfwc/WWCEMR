@@ -84,3 +84,19 @@ def test_jwt_roundtrip(db):
     s = _make_surgery(db, scheduled_date=date(2026, 6, 1))
     token = issue_portal_token(s)
     assert verify_portal_token(token) == s.id
+
+
+def test_verify_code_returns_none_when_expired(db):
+    from datetime import datetime, timedelta
+    s = _make_surgery(db)
+    with patch("app.services.patient_portal_auth.send_sms",
+                return_value=True):
+        challenge_token, code = issue_challenge(db, s)
+    # Manually expire the row to bypass time-wait.
+    from app.models.patient_portal import PatientPortalAuthCode
+    row = (db.query(PatientPortalAuthCode)
+              .filter(PatientPortalAuthCode.challenge_token == challenge_token)
+              .first())
+    row.expires_at = datetime.utcnow() - timedelta(seconds=1)
+    db.commit()
+    assert verify_code(db, challenge_token, code) is None
