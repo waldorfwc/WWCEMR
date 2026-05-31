@@ -2736,6 +2736,65 @@ def consent_docusign_sync(surgery_id: str,
     }
 
 
+@router.post("/{surgery_id}/consent/boldsign-send")
+def send_consent_via_boldsign(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    """Send all matching BoldSign consent envelopes for this surgery.
+    Mirrors the DocuSign endpoint but uses the BoldSign service. Both
+    endpoints can coexist while the practice migrates templates."""
+    from app.services import boldsign_envelopes as bs
+    from app.models.surgery import SurgeryConsentEnvelope
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    actor = current_user.get("email") or "system"
+    try:
+        result = bs.send_consent_envelopes(db, s, sent_by=actor)
+    except bs.BoldSignEnvelopeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    # Fetch the freshly-written envelope rows so we can return their DB ids
+    sent_ids = {item["envelope_id"] for item in result.get("sent", [])}
+    rows = (
+        db.query(SurgeryConsentEnvelope)
+        .filter(
+            SurgeryConsentEnvelope.surgery_id == s.id,
+            SurgeryConsentEnvelope.boldsign_envelope_id.in_(sent_ids),
+        )
+        .all()
+    ) if sent_ids else []
+    return {
+        "sent_count": len(rows),
+        "envelopes": [{
+            "id":                    str(r.id),
+            "boldsign_envelope_id":  r.boldsign_envelope_id,
+            "consent_template_id":   str(r.template_id) if r.template_id else None,
+            "status":                r.status,
+        } for r in rows],
+    }
+
+
+@router.post("/admin/consent/boldsign-sync/{surgery_id}")
+def sync_boldsign_envelopes(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    """Force-reconcile BoldSign envelope statuses for one surgery. Useful
+    if a webhook was missed."""
+    from app.services import boldsign_envelopes as bs
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    try:
+        out = bs.sync_surgery_envelopes(db, s)
+    except bs.BoldSignEnvelopeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return out
+
+
 @router.post("/{surgery_id}/consent/signed")
 def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = ConsentTransitionPayload(),
                          db: Session = Depends(get_db),

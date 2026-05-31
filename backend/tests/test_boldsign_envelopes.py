@@ -132,3 +132,40 @@ def test_apply_status_maps_declined(db):
     )
     _apply_status_to_row(row, {"status": "Declined"})
     assert row.status == "declined"
+
+
+def test_boldsign_send_endpoint(client, db, monkeypatch):
+    """End-to-end: hit the new endpoint, confirm an envelope row is
+    created from a mocked BoldSign API response."""
+    from unittest.mock import patch, MagicMock
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+
+    s = _make_surgery(db)
+    _make_template(db)
+    # Seed the consent-sent email template so the I6 hook doesn't skip
+    from app.models.patient_email import EmailTemplate
+    db.add(EmailTemplate(
+        kind="docusign_consent_sent", label="x",
+        subject="Sign your forms", html_body="<p>Hi {{patient_name}}</p>",
+    ))
+    db.commit()
+
+    fake_resp = MagicMock(status_code=201)
+    fake_resp.json.return_value = {"documentId": "bs_doc_endpoint_test"}
+    fake_client = MagicMock()
+    fake_client.__enter__.return_value.post.return_value = fake_resp
+
+    with patch("app.services.boldsign_envelopes._http", return_value=fake_client), \
+         patch("app.services.patient_email.send_email", return_value=True):
+        resp = client.post(f"/api/surgery/{s.id}/consent/boldsign-send")
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["sent_count"] == 1
+    assert body["envelopes"][0]["boldsign_envelope_id"] == "bs_doc_endpoint_test"
+
+
+def test_boldsign_send_endpoint_404_for_unknown_surgery(client, monkeypatch):
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+    resp = client.post("/api/surgery/00000000-0000-0000-0000-000000000000/consent/boldsign-send")
+    assert resp.status_code == 404
