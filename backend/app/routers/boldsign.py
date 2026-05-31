@@ -58,9 +58,18 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
     """Receive a BoldSign document-status event. Returns 200 on
     successfully-applied events, 400 on bad signature, 404 if the event
     refers to a documentId we don't have a row for (logged + 200 — we
-    don't want BoldSign to retry forever for orphan events)."""
+    don't want BoldSign to retry forever for orphan events).
+
+    Setup mode: if BOLDSIGN_WEBHOOK_SECRET is unset, accept every request
+    and return 200 (logged at WARN). Lets BoldSign's "Verify" dashboard
+    button pass during initial setup. Once the secret is configured in
+    Cloud Run, full HMAC verification kicks back in."""
     body = await request.body()
     signature = request.headers.get("x-boldsign-signature", "")
+    if not _webhook_secret():
+        log.warning("BoldSign webhook in SETUP MODE — no secret configured, "
+                     "accepting unverified request")
+        return {"received": True, "applied": False, "reason": "setup mode"}
     if not _verify_signature(body, signature):
         raise HTTPException(status_code=400, detail="bad signature")
 

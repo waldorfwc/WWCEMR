@@ -45,14 +45,20 @@ def test_webhook_rejects_bad_signature(client, monkeypatch):
     assert resp.status_code == 400
 
 
-def test_webhook_rejects_when_secret_missing(client, monkeypatch):
+def test_webhook_setup_mode_when_secret_missing(client, monkeypatch):
+    """When BOLDSIGN_WEBHOOK_SECRET is unset, the endpoint enters setup
+    mode and returns 200 to let BoldSign's Verify button pass during
+    initial dashboard configuration."""
     monkeypatch.delenv("BOLDSIGN_WEBHOOK_SECRET", raising=False)
     body = b'{"event":"Completed"}'
     sig = _sign(body, "some-secret")
     resp = client.post("/api/boldsign/webhook",
                         content=body,
                         headers={"x-boldsign-signature": sig})
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    body_json = resp.json()
+    assert body_json["received"] is True
+    assert body_json["reason"] == "setup mode"
 
 
 def test_webhook_applies_completed_status(client, db, monkeypatch):
