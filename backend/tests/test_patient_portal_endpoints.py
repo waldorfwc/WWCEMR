@@ -192,3 +192,34 @@ def test_dashboard_rejects_token_for_different_surgery(client, db):
     r = client.get(f"/api/patient/portal/{s2.id}/dashboard",
                      headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403
+
+
+def test_dashboard_payment_milestone_reflects_paid_amount(client, db):
+    """Payment milestone must read from SurgeryPayment.amount_paid where
+    status=='paid' — verifies the column-name fix."""
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.stripe_payment import SurgeryPayment
+    from datetime import date as _d
+    s = Surgery(
+        chart_number="X1", patient_name="Doe, Jane", first_name="Jane",
+        cell_phone="+12405551234", dob=_d(1990, 1, 1),
+        eligible_facilities=["office"], selected_facility="office",
+        patient_responsibility=250,
+        status="confirmed",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+    # 150 of 250 collected — partial → in_progress
+    db.add(SurgeryPayment(
+        surgery_id=s.id, status="paid",
+        amount_requested=250, amount_paid=150,
+        requested_by="staff",
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    payment_m = next(m for m in r.json()["milestones"] if m["key"] == "payment")
+    assert payment_m["paid"] == 150
+    assert payment_m["due"] == 250
+    assert payment_m["status"] == "in_progress"

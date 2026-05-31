@@ -188,11 +188,11 @@ def _money(x) -> float | None:
 
 
 def _payment_milestone(surgery: Surgery) -> dict:
-    """Sum SurgeryPayment(status='succeeded') and compare to pt responsibility."""
+    """Sum SurgeryPayment(status='paid') and compare to pt responsibility."""
     paid = 0.0
     for p in (surgery.payments or []):
-        if p.status == "succeeded":
-            paid += float(p.amount or 0)
+        if p.status == "paid":
+            paid += float(p.amount_paid or 0)
     due = float(surgery.patient_responsibility or 0)
     if due <= 0:
         return {"key": "payment", "label": "Patient responsibility",
@@ -234,7 +234,7 @@ def _self_report_milestone(surgery, *, attr, label, key) -> dict:
 def _next_action(milestones: list[dict]) -> dict | None:
     """First non-done milestone wins; map to a CTA stub."""
     priority = ["payment", "schedule", "consent",
-                 "labs", "hospital_preop"]
+                 "fmla", "labs", "hospital_preop"]
     for key in priority:
         m = next((x for x in milestones if x["key"] == key), None)
         if m and m.get("status") in ("todo", "in_progress"):
