@@ -84,9 +84,8 @@ def _seed_consent_template_from_env():
     """One-time: if a legacy D&C template ID env var is set, register it
     in consent_templates so the matcher can use it. Idempotent.
 
-    Originally seeded from DOCUSIGN_TEMPLATE_ID_DC; now seeds into the
-    boldsign_template_id column (K1 rename). The env var is still named
-    DOCUSIGN_TEMPLATE_ID_DC for backwards compat — K4 renames it.
+    Seeded from DOCUSIGN_TEMPLATE_ID_DC into the docusign_template_id column.
+    BoldSign templates are admin-added via the Consent Templates UI.
     """
     if not settings.docusign_template_id_dc:
         return
@@ -94,13 +93,13 @@ def _seed_consent_template_from_env():
     db = SessionLocal()
     try:
         existing = (db.query(ConsentTemplate)
-                    .filter(ConsentTemplate.boldsign_template_id == settings.docusign_template_id_dc)
+                    .filter(ConsentTemplate.docusign_template_id == settings.docusign_template_id_dc)
                     .first())
         if existing:
             return
         db.add(ConsentTemplate(
             name="D&C (legacy seed)",
-            boldsign_template_id=settings.docusign_template_id_dc,
+            docusign_template_id=settings.docusign_template_id_dc,
             procedure_match=["d&c", "dilation", "dilatation"],
             facility_match=None,
             insurance_match=[],

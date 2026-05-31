@@ -662,7 +662,8 @@ class ConsentTemplate(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
     name = Column(String(200), nullable=False)
-    boldsign_template_id = Column(String(80), nullable=False)
+    docusign_template_id = Column(String(80), nullable=True)
+    boldsign_template_id = Column(String(80), nullable=True)
     # JSON list of substrings, e.g. ["d&c", "dilation", "dilatation"]
     procedure_match = Column(JSON, nullable=False, default=list)
     # null = matches any facility; otherwise "medstar" | "crmc" | "office"
@@ -688,7 +689,8 @@ class SurgeryConsentEnvelope(Base):
     __tablename__ = "surgery_consent_envelopes"
     __table_args__ = (
         Index("ix_consent_env_surgery", "surgery_id"),
-        Index("ix_consent_env_envelope", "boldsign_envelope_id"),
+        Index("ix_consent_env_docusign", "docusign_envelope_id"),
+        Index("ix_consent_env_boldsign", "boldsign_envelope_id"),
         UniqueConstraint("surgery_id", "template_id", name="uq_surgery_template"),
     )
 
@@ -699,6 +701,7 @@ class SurgeryConsentEnvelope(Base):
     template_id = Column(GUID(),
                           ForeignKey("consent_templates.id"),
                           nullable=False)
+    docusign_envelope_id = Column(String(80), nullable=True, unique=True)
     boldsign_envelope_id = Column(String(80), nullable=True, unique=True)
     # values: pending | sent | delivered | signed | declined | voided | failed
     status = Column(String(20), default="pending", nullable=False)
