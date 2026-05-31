@@ -219,3 +219,46 @@ def test_send_ad_hoc_rejects_blank_recipient(client, db):
         "subject": "x", "body_html": "<p>y</p>",
     })
     assert resp.status_code == 422
+
+
+# ─── I8: admin email-template endpoints ───────────────────────────
+
+def test_list_email_templates_returns_seeded(client, db):
+    from app.services.surgery_config_seed import seed_default_email_templates
+    seed_default_email_templates(db)
+    resp = client.get("/api/surgery/admin/email-templates")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["templates"]) == 7
+    assert "stripe_payment_link" in body["allowed_kinds"]
+
+
+def test_patch_email_template_persists(client, db):
+    db.add(EmailTemplate(
+        kind="surgery_confirmation", label="orig",
+        subject="orig", html_body="<p>orig</p>",
+    ))
+    db.commit()
+    t = db.query(EmailTemplate).filter_by(kind="surgery_confirmation").first()
+
+    resp = client.patch(f"/api/surgery/admin/email-templates/{t.id}", json={
+        "subject": "New subject",
+        "is_active": False,
+    })
+    assert resp.status_code == 200
+    db.refresh(t)
+    assert t.subject == "New subject"
+    assert t.is_active is False
+    assert t.updated_by == "tester@waldorfwomenscare.com"
+
+
+def test_preview_renders_with_context(client, db):
+    resp = client.post("/api/surgery/admin/email-templates/preview", json={
+        "subject":   "Hi {{name}}",
+        "html_body": "<p>Pay <strong>${{amount}}</strong></p>",
+        "context":   {"name": "Pat", "amount": "100.00"},
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["subject"]   == "Hi Pat"
+    assert "100.00" in body["html_body"]

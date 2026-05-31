@@ -318,3 +318,75 @@ def delete_template(template_id: str,
     if t:
         db.delete(t); db.commit()
     return None
+
+
+# ─── Email templates (Phase I) ─────────────────────────────────────
+
+from app.models.patient_email import EmailTemplate, EMAIL_TEMPLATE_KINDS
+
+
+class EmailTemplatePatch(BaseModel):
+    label:     Optional[str] = None
+    subject:   Optional[str] = None
+    html_body: Optional[str] = None
+    text_body: Optional[str] = None
+    is_active: Optional[bool] = None
+    notes:     Optional[str] = None
+
+
+class EmailTemplatePreviewIn(BaseModel):
+    subject:   str
+    html_body: str
+    context:   dict
+
+
+def _email_template_dict(t: EmailTemplate) -> dict:
+    return {
+        "id":         str(t.id),
+        "kind":       t.kind,
+        "label":      t.label,
+        "subject":    t.subject,
+        "html_body":  t.html_body,
+        "text_body":  t.text_body,
+        "is_active":  t.is_active,
+        "notes":      t.notes,
+        "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+        "updated_by": t.updated_by,
+    }
+
+
+@router.get("/admin/email-templates")
+def list_email_templates(db: Session = Depends(get_db),
+                          current_user: dict = Depends(require_permission("claim:read"))):
+    rows = db.query(EmailTemplate).order_by(EmailTemplate.label.asc()).all()
+    return {
+        "templates": [_email_template_dict(t) for t in rows],
+        "allowed_kinds": list(EMAIL_TEMPLATE_KINDS),
+    }
+
+
+@router.patch("/admin/email-templates/{template_id}")
+def patch_email_template(template_id: str,
+                          payload: EmailTemplatePatch,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(require_permission("user:manage"))):
+    t = db.query(EmailTemplate).filter(EmailTemplate.id == template_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="template not found")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(t, k, v)
+    t.updated_by = current_user.get("email") or "system"
+    db.commit(); db.refresh(t)
+    return _email_template_dict(t)
+
+
+@router.post("/admin/email-templates/preview")
+def preview_email_template(payload: EmailTemplatePreviewIn,
+                            current_user: dict = Depends(require_permission("claim:read"))):
+    """Render subject + html with provided context. No DB writes, no send."""
+    from app.services.patient_email import render
+    return {
+        "subject":   render(payload.subject, payload.context or {}),
+        "html_body": render(payload.html_body, payload.context or {}),
+    }
