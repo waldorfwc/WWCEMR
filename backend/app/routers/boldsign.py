@@ -38,27 +38,63 @@ def _webhook_secret() -> str:
     return os.environ.get("BOLDSIGN_WEBHOOK_SECRET", "").strip()
 
 
+def _parse_signature_header(header: str) -> tuple[str, str]:
+    """Parse a Stripe-style signed-payload header:
+        't=<unix_ts>, s0=<sig>'
+    Returns (timestamp, signature). Tolerates extra whitespace and
+    additional s1/s2/... scheme tokens (we ignore non-s0).
+    """
+    ts = ""
+    sig = ""
+    for part in (header or "").split(","):
+        kv = part.strip().split("=", 1)
+        if len(kv) != 2:
+            continue
+        k, v = kv[0].strip(), kv[1].strip()
+        if k == "t":
+            ts = v
+        elif k == "s0" and not sig:
+            sig = v
+    return ts, sig
+
+
 def _verify_signature(body: bytes, signature: str) -> bool:
-    """HMAC-SHA256 match. BoldSign signs the raw request body with the
-    webhook secret configured in their Dashboard. The X-Boldsign-Signature
-    header is the BASE64 encoding of the digest; some accounts also send
-    a hex form. We accept either.
+    """HMAC-SHA256 match. BoldSign signs in the Stripe pattern:
+        signed_payload = f"{timestamp}.{raw_body}"
+        s0 = hex(hmac_sha256(secret, signed_payload))
+    The X-Boldsign-Signature header is 't=<ts>, s0=<digest>'.
+    We also accept (a) a bare hex/base64 digest of the body (legacy/test
+    shape) for compatibility with our own unit tests.
     """
     secret = _webhook_secret()
     if not secret:
         log.warning("BoldSign webhook received but BOLDSIGN_WEBHOOK_SECRET is not set")
         return False
-    sig = (signature or "").strip()
+    raw = (signature or "").strip()
+    ts, s0 = _parse_signature_header(raw)
+
+    # Path 1 — Stripe-style signed payload
+    if ts and s0:
+        signed = f"{ts}.".encode("utf-8") + body
+        digest = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).digest()
+        expected_hex = digest.hex()
+        expected_b64 = base64.b64encode(digest).decode("ascii")
+        if hmac.compare_digest(expected_hex, s0) or hmac.compare_digest(expected_b64, s0):
+            return True
+        log.warning(
+            "BoldSign signature mismatch (signed-payload): got s0=%r..., "
+            "expected hex=%r... or b64=%r...",
+            s0[:16], expected_hex[:16], expected_b64[:16],
+        )
+        return False
+
+    # Path 2 — bare digest of body (used by our unit tests)
     digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).digest()
-    expected_b64 = base64.b64encode(digest).decode("ascii")
-    expected_hex = digest.hex()
-    if hmac.compare_digest(expected_b64, sig):
-        return True
-    if hmac.compare_digest(expected_hex, sig):
+    if (hmac.compare_digest(digest.hex(), raw)
+            or hmac.compare_digest(base64.b64encode(digest).decode("ascii"), raw)):
         return True
     log.warning(
-        "BoldSign signature mismatch: got %r, expected b64=%r or hex=%r",
-        sig[:20] + "...", expected_b64[:20] + "...", expected_hex[:20] + "...",
+        "BoldSign signature mismatch (bare): header=%r", raw[:60]
     )
     return False
 
