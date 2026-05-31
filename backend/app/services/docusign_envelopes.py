@@ -217,6 +217,23 @@ def send_consent_envelopes(db: Session, s: Surgery, *,
     db.commit()
     db.refresh(s)
 
+    # ── patient heads-up email (sent once per envelope-send call when at
+    #    least one envelope was newly dispatched to DocuSign) ──────────
+    if sent:
+        from app.services.patient_email import send_patient_email
+        send_patient_email(
+            db, kind="docusign_consent_sent",
+            to_email=s.email,
+            context={
+                "patient_name": s.patient_name or "Patient",
+                "surgery_date": (s.scheduled_date.isoformat()
+                                 if s.scheduled_date else ""),
+            },
+            sent_by=sent_by,
+            surgery_id=s.id,
+            chart_number=s.chart_number,
+        )
+
     return {
         "sent": sent,
         "skipped": skipped,
