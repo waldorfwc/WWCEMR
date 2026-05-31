@@ -126,3 +126,35 @@ def login(payload: LoginPayload, request: Request,
     challenge_token, _code = auth.issue_challenge(db, matched)
     _log_attempt(db, matched.id, success=True, request=request)
     return {"challenge_token": challenge_token}
+
+
+# ─── /verify ────────────────────────────────────────────────────
+
+class VerifyPayload(BaseModel):
+    challenge_token: str
+    code: str
+
+
+@router.post("/verify")
+def verify(payload: VerifyPayload, db: Session = Depends(get_db)):
+    """Step 2 of sign-in. Returns JWT on success.
+
+    All failure modes (unknown challenge, expired, wrong code, too many
+    fails) collapse to a single 401 with a generic message — same
+    no-leak posture as /login.
+    """
+    code = "".join(c for c in (payload.code or "") if c.isdigit())
+    if len(code) != 6:
+        raise HTTPException(status_code=401, detail="Invalid code")
+    surgery_id = auth.verify_code(db, payload.challenge_token, code)
+    if surgery_id is None:
+        raise HTTPException(status_code=401, detail="Invalid code")
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=401, detail="Invalid code")
+    token = auth.issue_portal_token(s)
+    return {
+        "token": token,
+        "surgery_id": str(s.id),
+        "expires_at": auth.compute_token_exp(s).isoformat(),
+    }

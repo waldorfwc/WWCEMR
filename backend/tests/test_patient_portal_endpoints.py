@@ -62,3 +62,43 @@ def test_login_validates_last4_length(client, db):
     r = client.post("/api/patient/portal/login",
                      json={"dob": "1990-01-01", "phone_last4": "12"})
     assert r.status_code == 422
+
+
+def test_verify_returns_token_on_correct_code(client, db):
+    s = _seed_surgery(db)
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"):
+        with patch("app.services.patient_portal_auth.send_sms",
+                    return_value=True):
+            login = client.post("/api/patient/portal/login",
+                                  json={"dob": "1990-01-01",
+                                          "phone_last4": "1234"}).json()
+    r = client.post("/api/patient/portal/verify",
+                     json={"challenge_token": login["challenge_token"],
+                              "code": "111111"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "token" in body and body["token"].count(".") == 2  # JWT shape
+    assert body["surgery_id"] == str(s.id)
+
+
+def test_verify_rejects_wrong_code(client, db):
+    _seed_surgery(db)
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"):
+        with patch("app.services.patient_portal_auth.send_sms",
+                    return_value=True):
+            login = client.post("/api/patient/portal/login",
+                                  json={"dob": "1990-01-01",
+                                          "phone_last4": "1234"}).json()
+    r = client.post("/api/patient/portal/verify",
+                     json={"challenge_token": login["challenge_token"],
+                              "code": "000000"})
+    assert r.status_code == 401
+
+
+def test_verify_rejects_unknown_challenge(client, db):
+    _seed_surgery(db)
+    r = client.post("/api/patient/portal/verify",
+                     json={"challenge_token": "not-real", "code": "111111"})
+    assert r.status_code == 401
