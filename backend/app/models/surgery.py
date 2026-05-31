@@ -211,6 +211,12 @@ class Surgery(Base):
     # conflict To-do (Phase C). When set, the conflict drops off the list.
     blocked_conflict_notified_at = Column(DateTime, nullable=True)
     blocked_conflict_notified_by = Column(String(120), nullable=True)
+    # Patient portal — self-report milestone flags (P1 dashboard reads these,
+    # P5 wires the CTAs that flip them).
+    labs_self_reported              = Column(Boolean, default=False, nullable=False)
+    labs_self_reported_at           = Column(DateTime, nullable=True)
+    hospital_preop_self_reported    = Column(Boolean, default=False, nullable=False)
+    hospital_preop_self_reported_at = Column(DateTime, nullable=True)
 
     # Post-op
     post_op_appt_date = Column(Date, nullable=True)
