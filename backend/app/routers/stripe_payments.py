@@ -89,6 +89,16 @@ def request_payment(
         surgery_id=s.id,
         chart_number=s.chart_number,
     )
+    from app.services.patient_sms import send_patient_sms
+    send_patient_sms(
+        db, kind="sms_payment_link",
+        surgery=s,
+        context={
+            "amount":       f"{amount:.2f}",
+            "checkout_url": pay.checkout_url,
+        },
+        sent_by=actor,
+    )
 
     return _payment_dict(pay)
 

@@ -51,6 +51,19 @@ def _already_sent_for(db: Session, surgery_id, lead_days: int) -> bool:
     return False
 
 
+def _sms_already_sent_for(db: Session, surgery_id, lead_days: int) -> bool:
+    from app.models.patient_sms import PatientSms
+    rows = (db.query(PatientSms)
+              .filter(PatientSms.surgery_id == surgery_id,
+                       PatientSms.template_kind == "sms_surgery_reminder")
+              .all())
+    for r in rows:
+        ctx = r.context or {}
+        if str(ctx.get("days_until")) == str(lead_days):
+            return True
+    return False
+
+
 def run_reminder_sweep(db: Session, today: date | None = None) -> dict:
     """Returns a summary dict for logging/admin."""
     today = today or date.today()
@@ -89,6 +102,20 @@ def run_reminder_sweep(db: Session, today: date | None = None) -> dict:
                 surgery_id=s.id,
                 chart_number=s.chart_number,
             )
+            if not _sms_already_sent_for(db, s.id, lead):
+                from app.services.patient_sms import send_patient_sms
+                send_patient_sms(
+                    db, kind="sms_surgery_reminder",
+                    surgery=s,
+                    context={
+                        "patient_name": s.patient_name,
+                        "surgery_date": target.isoformat(),
+                        "start_time":   slot_start,
+                        "facility":     s.selected_facility or "",
+                        "days_until":   str(lead),
+                    },
+                    sent_by="system:reminder_cron",
+                )
             summary["sent"] += 1
         summary["lead_days"].append({"days": lead, "candidates": len(candidates)})
     log.info("surgery reminder sweep: %s", summary)

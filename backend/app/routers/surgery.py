@@ -2987,6 +2987,44 @@ def send_ad_hoc_patient_email(
     }
 
 
+class PatientSmsIn(BaseModel):
+    body: str
+    to_phone: Optional[str] = None
+
+
+@router.post("/{surgery_id}/send-patient-sms")
+def send_ad_hoc_patient_sms(
+    surgery_id: str,
+    payload: PatientSmsIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    """Compose-and-send an ad-hoc SMS to the patient. Uses the
+    sms_generic_message template's wrapper (adds opt-out language)
+    via the {{body}} placeholder. Gated on Surgery.sms_consent."""
+    from app.services.patient_sms import send_patient_sms
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if not payload.body.strip():
+        raise HTTPException(status_code=422, detail="body is required")
+    actor = current_user.get("email") or "system"
+    row = send_patient_sms(
+        db, kind="sms_generic_message",
+        surgery=s,
+        to_phone=payload.to_phone,
+        context={"body": payload.body.strip()},
+        sent_by=actor,
+    )
+    return {
+        "id":      str(row.id),
+        "status":  row.status,
+        "to":      row.to_phone,
+        "sent_at": row.sent_at.isoformat() if row.sent_at else None,
+        "failure_reason": row.failure_reason,
+    }
+
+
 @router.get("/{surgery_id}/patient-emails")
 def list_patient_emails(
     surgery_id: str,
