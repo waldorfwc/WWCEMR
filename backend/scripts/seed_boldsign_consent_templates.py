@@ -31,92 +31,102 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models.surgery import ConsentTemplate
+# Side-effect imports so SQLAlchemy can resolve Surgery's cross-module
+# relationships (payments, emails, sms, etc.) at mapper-config time.
+from app.models import stripe_payment  # noqa: F401
+from app.models import patient_email  # noqa: F401
+from app.models import patient_sms  # noqa: F401
 
 
 # (name, boldsign_id, procedure_match, facility_match, is_supplemental)
 TEMPLATES = [
     # ── Hospital procedures (MedStar + CRMC) ──────────────────────
     ("Hospital — Robotic-Assisted TLH Consent",
-     "TODO",
+     "1e12f2cc-73e3-418d-a8b5-88cc25aa7c07",
      ["robotic-assisted hysterectomy", "total laparoscopic hysterectomy", "tlh"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Total Abdominal Hysterectomy Consent",
-     "TODO",
+     "9733016a-f008-4d0f-aa14-a7f35d82e731",
      ["total abdominal hysterectomy", "abdominal hysterectomy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Robotic-Assisted Laparoscopic Myomectomy",
-     "TODO",
+     "5df3519d-bf6f-4d5c-8976-836830a8eb29",
      ["robotic-assisted laparoscopic myomectomy", "robotic myomectomy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Abdominal Myomectomy Consent",
-     "TODO",
+     "53dbd2d8-dfed-4d0f-b328-70087e2af564",
      ["abdominal myomectomy", "open myomectomy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Hysteroscopic Removal of Fibroids (MyoSure) Consent",
-     "TODO",
+     "4dd415e1-8182-4a2b-9b74-baa859f18fa5",
      ["myosure", "hysteroscopic myomectomy", "hysteroscopy with myomectomy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Hysteroscopic Endometrial Ablation Consent",
-     "TODO",
+     "deab1f55-1167-41a5-9f94-03b95b3bf613",
      ["hysteroscopy with endometrial ablation"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Hysteroscopy D&C Consent",
-     "TODO",
+     "bf5aa2a7-a466-49f4-b595-ad90e71caada",
      ["hysteroscopy with d&c", "d&c", "dilation and curettage"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Diagnostic Laparoscopy Consent",
-     "TODO",
+     "79b91d75-52cc-4c43-ad4d-dec0a586ea38",
      ["diagnostic laparoscopy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Laparoscopic Ovarian/Fallopian Tube/Pelvic Surgery, Cystectomy",
-     "TODO",
+     "3f8f1dca-fd6e-4b39-977c-e7aa891d5eb1",
      ["ovarian cyst", "cystectomy", "endometriosis",
       "ablation/excision of endometriosis", "oophorectomy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Laparoscopic Removal of Bilateral Tubes for Sterilization",
-     "TODO",
+     "3f76eedd-f5d5-4724-bc60-d2c8deac58cf",
      ["bilateral salpingectomy", "tubal sterilization",
       "tubal ligation", "tubal occlusion", "salpingectomy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — Cold Knife Cone Consent",
-     "TODO",
+     "678fef4e-7eaf-4b8d-afbe-326096869548",
      ["cold knife cone", "cone biopsy"],
      ["medstar", "crmc"], False),
 
     ("Hospital — LEEP Consent",
-     "TODO",
+     "38156839-964a-4632-be23-d23d7a847ffe",
      ["cervical leep", "leep"],
      ["medstar", "crmc"], False),
 
     ("Hospital — IUD Removal and Insertion Consent",
-     "TODO",
+     "9450cf2b-398d-45a2-97bd-84f169635ee2",
      ["iud insertion", "iud removal"],
      ["medstar", "crmc"], False),
 
     # ── Office procedures (White Plains) ──────────────────────────
     ("Office — Hysteroscopy D&C Consent",
-     "TODO",
+     "3bcfa608-eb8c-4c38-8fc4-1dd1c0efb556",
      ["hysteroscopy with d&c", "d&c", "dilation and curettage"],
      ["office"], False),
 
     ("Office — LEEP Consent",
-     "TODO",
+     "0648f5c9-f158-45b4-8553-59f6ee6b3181",
      ["cervical leep", "leep"],
      ["office"], False),
 
     ("Office — Endometrial Ablation (NovaSure) Consent",
-     "TODO",
+     "0ae2f511-7d48-472c-9c64-3c8fe8640383",
      ["novasure"],
+     ["office"], False),
+
+    ("Office — Hysteroscopic IUD Removal Consent",
+     "2f5105e4-2bd8-476b-bdb3-543940ff84b3",
+     ["iud removal", "hysteroscopic iud removal"],
      ["office"], False),
 
     # NOTE: LARC enrollment forms (Mirena/Skyla/Kyleena, Nexplanon, Paragard)

@@ -92,14 +92,16 @@ def select_template_id(s: Surgery, db: Optional[Session] = None) -> Optional[str
 # ─── Send flow ──────────────────────────────────────────────────────
 
 def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
-    """Build BoldSign signers list.
+    """Build BoldSign roles list.
 
     Order: Patient (signerOrder=1), Provider (signerOrder=2),
     Witness optional (signerOrder=3).
+    Field names follow BoldSign's send-from-template schema:
+    signerName/signerEmail/signerOrder/roleIndex.
     """
-    signers = [{
-        "name": s.patient_name or "Patient",
-        "emailAddress": s.email or "",
+    roles = [{
+        "signerName": s.patient_name or "Patient",
+        "signerEmail": s.email or "",
         "signerType": "Signer",
         "signerOrder": 1,
         "roleIndex": 1,
@@ -107,31 +109,33 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
     provider_email = os.environ.get("CONSENT_PROVIDER_EMAIL", "").strip()
     provider_name = os.environ.get("CONSENT_PROVIDER_NAME", "Dr. Aryian Cooke").strip()
     if provider_email:
-        signers.append({
-            "name": provider_name,
-            "emailAddress": provider_email,
+        roles.append({
+            "signerName": provider_name,
+            "signerEmail": provider_email,
             "signerType": "Signer",
             "signerOrder": 2,
             "roleIndex": 2,
         })
     witness_email = os.environ.get("CONSENT_WITNESS_EMAIL", "").strip()
     if witness_email:
-        signers.append({
-            "name": "Witness",
-            "emailAddress": witness_email,
+        roles.append({
+            "signerName": "Witness",
+            "signerEmail": witness_email,
             "signerType": "Signer",
             "signerOrder": 3,
             "roleIndex": 3,
         })
-    return signers
+    return roles
 
 
 def _create_envelope(s: Surgery, template: ConsentTemplate) -> str:
-    """Call BoldSign send-from-template; return BoldSign documentId."""
+    """Call BoldSign send-from-template; return BoldSign documentId.
+
+    BoldSign expects templateId as a query parameter, with title/message/
+    roles/enableSigningOrder in the JSON body."""
     if not _is_configured():
         raise BoldSignEnvelopeError("BoldSign API key not configured")
     payload = {
-        "templateId": template.boldsign_template_id,
         "title": (
             f"WWC — {template.name} — {s.patient_name or 'Patient'}"
         ),
@@ -139,11 +143,15 @@ def _create_envelope(s: Surgery, template: ConsentTemplate) -> str:
             f"Please review and electronically sign the {template.name} form "
             f"for your upcoming procedure at Waldorf Women's Care."
         ),
-        "signers": _build_signer_payload(s, template),
+        "roles": _build_signer_payload(s, template),
         "enableSigningOrder": False,
     }
     with _http() as c:
-        r = c.post("/v1/template/send", json=payload)
+        r = c.post(
+            "/v1/template/send",
+            params={"templateId": template.boldsign_template_id},
+            json=payload,
+        )
     if r.status_code >= 300:
         raise BoldSignEnvelopeError(
             f"BoldSign send failed for template {template.name!r}: "
