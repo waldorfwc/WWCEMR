@@ -194,6 +194,11 @@ DEFAULT_SMS_TEMPLATES = [
         "label": "SMS — staff-composed message",
         "body": "WWC Gyn: {{body}} Reply STOP to opt out.",
     },
+    {
+        "kind": "sms_portal_login_code",
+        "label": "SMS — portal sign-in code",
+        "body": "WWC: Your portal sign-in code is {{code}}. Expires in 5 minutes. Reply STOP to opt out.",
+    },
 ]
 
 

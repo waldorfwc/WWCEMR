@@ -143,11 +143,12 @@ def test_ad_hoc_send(db):
 
 
 def test_template_kinds_includes_four():
-    assert len(SMS_TEMPLATE_KINDS) == 4
+    assert len(SMS_TEMPLATE_KINDS) == 5
     assert "sms_payment_link"          in SMS_TEMPLATE_KINDS
     assert "sms_surgery_confirmation"  in SMS_TEMPLATE_KINDS
     assert "sms_surgery_reminder"      in SMS_TEMPLATE_KINDS
     assert "sms_generic_message"       in SMS_TEMPLATE_KINDS
+    assert "sms_portal_login_code"     in SMS_TEMPLATE_KINDS
 
 
 # ─── seed tests (J2) ─────────────────────────────────────────────
@@ -158,7 +159,7 @@ def test_seed_inserts_all_four_templates(db):
     )
 
     n = seed_default_sms_templates(db)
-    assert n == len(DEFAULT_SMS_TEMPLATES) == 4
+    assert n == len(DEFAULT_SMS_TEMPLATES) == 5
 
     # Re-run is a no-op
     n2 = seed_default_sms_templates(db)
@@ -205,7 +206,7 @@ def test_list_sms_templates_returns_seeded(client, db):
     resp = client.get("/api/surgery/admin/sms-templates")
     assert resp.status_code == 200
     body = resp.json()
-    assert len(body["templates"]) == 4
+    assert len(body["templates"]) == 5
     assert "sms_payment_link" in body["allowed_kinds"]
 
 
@@ -332,3 +333,8 @@ def test_build_context_extras_can_override(db):
 
     ctx = build_sms_context(s, facility_name="ASC Annex")
     assert ctx["facility_name"] == "ASC Annex"
+
+
+def test_sms_template_kinds_includes_portal_login_code():
+    from app.models.patient_sms import SMS_TEMPLATE_KINDS
+    assert "sms_portal_login_code" in SMS_TEMPLATE_KINDS

@@ -60,6 +60,11 @@ TEMPLATES = [
      "Generic message",
      "WWC: {{message}} "
      "Questions? Call {{practice_phone}}. Reply STOP to opt out."),
+
+    ("sms_portal_login_code",
+     "Portal sign-in code",
+     "WWC: Your portal sign-in code is {{code}}. "
+     "Expires in 5 minutes. Reply STOP to opt out."),
 ]
 
 

@@ -28,6 +28,7 @@ SMS_TEMPLATE_KINDS = (
     "sms_surgery_confirmation",
     "sms_surgery_reminder",
     "sms_generic_message",
+    "sms_portal_login_code",
 )
 
 
