@@ -119,27 +119,10 @@ TEMPLATES = [
      ["novasure"],
      ["office"], False),
 
-    # ── LARC enrollment (office-only, attached to LARC visits) ────
-    ("Mirena / Skyla / Kyleena LARC Enrollment",
-     "TODO",
-     ["mirena", "skyla", "kyleena"],
-     ["office"], False),
-
-    ("Nexplanon LARC Enrollment",
-     "TODO",
-     ["nexplanon"],
-     ["office"], False),
-
-    ("Paragard LARC Enrollment",
-     "TODO",
-     ["paragard"],
-     ["office"], False),
-
-    # ── BHRT (pellet program; not a surgery — attach via pellet module) ──
-    ("BHRT — Letter of Medical Necessity",
-     "TODO",
-     ["pellet", "bhrt", "bioidentical hormone", "hormone replacement"],
-     ["office"], False),
+    # NOTE: LARC enrollment forms (Mirena/Skyla/Kyleena, Nexplanon, Paragard)
+    # and BHRT — Letter of Medical Necessity are NOT in this seed. They belong
+    # to the LARC and Pellet modules, which have their own envelope-send
+    # entry points (or will).
 ]
 
 
