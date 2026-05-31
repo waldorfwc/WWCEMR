@@ -134,3 +134,39 @@ def test_template_kinds_includes_all_seven():
     assert "docusign_consent_sent"    in EMAIL_TEMPLATE_KINDS
     assert "generic_patient_message"  in EMAIL_TEMPLATE_KINDS
     assert "surgery_post_op_followup" in EMAIL_TEMPLATE_KINDS
+
+
+# ─── seed_default_email_templates() ───────────────────────────────
+
+def test_seed_inserts_all_seven_templates(db):
+    from app.services.surgery_config_seed import (
+        seed_default_email_templates, DEFAULT_EMAIL_TEMPLATES,
+    )
+
+    n = seed_default_email_templates(db)
+    assert n == len(DEFAULT_EMAIL_TEMPLATES) == 7
+
+    # Re-run is a no-op
+    n2 = seed_default_email_templates(db)
+    assert n2 == 0
+
+    # Every EMAIL_TEMPLATE_KINDS value has a row
+    kinds_in_db = {t.kind for t in db.query(EmailTemplate).all()}
+    assert set(EMAIL_TEMPLATE_KINDS) == kinds_in_db
+
+
+def test_seed_does_not_overwrite_existing(db):
+    from app.services.surgery_config_seed import seed_default_email_templates
+
+    # Pre-existing admin-edited template
+    db.add(EmailTemplate(
+        kind="surgery_confirmation", label="custom",
+        subject="Custom subject", html_body="<p>Custom body</p>",
+    ))
+    db.commit()
+
+    seed_default_email_templates(db)
+    row = (db.query(EmailTemplate)
+             .filter(EmailTemplate.kind == "surgery_confirmation").first())
+    assert row.label == "custom"
+    assert row.subject == "Custom subject"
