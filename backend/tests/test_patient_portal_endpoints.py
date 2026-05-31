@@ -80,6 +80,7 @@ def test_verify_returns_token_on_correct_code(client, db):
     body = r.json()
     assert "token" in body and body["token"].count(".") == 2  # JWT shape
     assert body["surgery_id"] == str(s.id)
+    assert "expires_at" in body and "T" in body["expires_at"]
 
 
 def test_verify_rejects_wrong_code(client, db):
@@ -101,4 +102,45 @@ def test_verify_rejects_unknown_challenge(client, db):
     _seed_surgery(db)
     r = client.post("/api/patient/portal/verify",
                      json={"challenge_token": "not-real", "code": "111111"})
+    assert r.status_code == 401
+
+
+def test_verify_rejects_replay_of_correct_code(client, db):
+    _seed_surgery(db)
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"):
+        with patch("app.services.patient_portal_auth.send_sms",
+                    return_value=True):
+            login = client.post("/api/patient/portal/login",
+                                  json={"dob": "1990-01-01",
+                                          "phone_last4": "1234"}).json()
+    # First call succeeds.
+    r1 = client.post("/api/patient/portal/verify",
+                      json={"challenge_token": login["challenge_token"],
+                                "code": "111111"})
+    assert r1.status_code == 200
+    # Replay with same code + same challenge_token must be rejected.
+    r2 = client.post("/api/patient/portal/verify",
+                      json={"challenge_token": login["challenge_token"],
+                                "code": "111111"})
+    assert r2.status_code == 401
+
+
+def test_verify_kills_challenge_after_three_wrong_codes(client, db):
+    _seed_surgery(db)
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"):
+        with patch("app.services.patient_portal_auth.send_sms",
+                    return_value=True):
+            login = client.post("/api/patient/portal/login",
+                                  json={"dob": "1990-01-01",
+                                          "phone_last4": "1234"}).json()
+    ch = login["challenge_token"]
+    for _ in range(3):
+        r = client.post("/api/patient/portal/verify",
+                         json={"challenge_token": ch, "code": "000000"})
+        assert r.status_code == 401
+    # Even the correct code is now refused — challenge is dead.
+    r = client.post("/api/patient/portal/verify",
+                     json={"challenge_token": ch, "code": "111111"})
     assert r.status_code == 401
