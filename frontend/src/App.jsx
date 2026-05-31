@@ -64,6 +64,15 @@ import PrivateRoute from './components/PrivateRoute'
 import CodeHelper from './pages/CodeHelper'
 import CodeHelperDenials from './pages/CodeHelperDenials'
 import { ConfirmProvider } from './components/ui/ConfirmDialog'
+import PortalLogin from './pages/portal/PortalLogin'
+import PortalVerify from './pages/portal/PortalVerify'
+import PortalShell from './pages/portal/PortalShell'
+import PortalDashboard from './pages/portal/Dashboard'
+import PaymentsStub from './pages/portal/stubs/PaymentsStub'
+import ScheduleStub from './pages/portal/stubs/ScheduleStub'
+import ConsentStub from './pages/portal/stubs/ConsentStub'
+import DocumentsStub from './pages/portal/stubs/DocumentsStub'
+import MessagesStub from './pages/portal/stubs/MessagesStub'
 
 function ProtectedApp({ user, onLogout }) {
   const { isAdmin, isClinical, isLoading } = useCurrentUser()
@@ -181,6 +190,17 @@ export default function App() {
         <Route path="/p/surgery/:id" element={<PatientSurgery />} />
         {/* Public provider portal — signed-token, no login */}
         <Route path="/p/missing-charges/:token" element={<ProviderMissingChargesPortal />} />
+        {/* Patient portal — own auth, own shell */}
+        <Route path="/portal/login" element={<PortalLogin />} />
+        <Route path="/portal/verify" element={<PortalVerify />} />
+        <Route path="/portal/s/:sid" element={<PortalShell />}>
+          <Route index element={<PortalDashboard />} />
+          <Route path="payments" element={<PaymentsStub />} />
+          <Route path="schedule" element={<ScheduleStub />} />
+          <Route path="consent" element={<ConsentStub />} />
+          <Route path="documents" element={<DocumentsStub />} />
+          <Route path="messages" element={<MessagesStub />} />
+        </Route>
         <Route path="/*" element={
           user ? <ProtectedApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
         } />
