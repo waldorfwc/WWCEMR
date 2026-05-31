@@ -56,9 +56,11 @@ def _procedure_template_matches(t: ConsentTemplate, procedure_text: str) -> bool
 
 
 def _facility_template_matches(t: ConsentTemplate, surgery_facility: Optional[str]) -> bool:
-    if not t.facility_match:
+    # facility_match is a JSON list. Empty/null = matches any facility.
+    fm = t.facility_match or []
+    if not fm:
         return True
-    return _lc(t.facility_match) == _lc(surgery_facility)
+    return _lc(surgery_facility) in [_lc(code) for code in fm]
 
 
 def _insurance_template_matches(t: ConsentTemplate, primary_insurance: Optional[str]) -> bool:

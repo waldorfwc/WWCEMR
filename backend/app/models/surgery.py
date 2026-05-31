@@ -666,8 +666,9 @@ class ConsentTemplate(Base):
     boldsign_template_id = Column(String(80), nullable=True)
     # JSON list of substrings, e.g. ["d&c", "dilation", "dilatation"]
     procedure_match = Column(JSON, nullable=False, default=list)
-    # null = matches any facility; otherwise "medstar" | "crmc" | "office"
-    facility_match = Column(String(20), nullable=True)
+    facility_match = Column(JSON, nullable=False, default=list)
+    # JSON list of facility codes. Empty list = matches any facility.
+    # Example: ["medstar","crmc"] for hospital-only templates.
     # JSON list of substrings (case-insensitive) matched against
     # surgery.primary_insurance. Empty list = matches any insurance.
     insurance_match = Column(JSON, nullable=False, default=list)

@@ -29,7 +29,7 @@ def _make_template(db, **kw):
         name="Robotic hyst consent",
         boldsign_template_id="bs_tmpl_robotic_hyst",
         procedure_match=["Robotic", "hysterectomy"],
-        facility_match=None,
+        facility_match=[],
     )
     defaults.update(kw)
     t = ConsentTemplate(**defaults)
@@ -169,3 +169,40 @@ def test_boldsign_send_endpoint_404_for_unknown_surgery(client, monkeypatch):
     monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
     resp = client.post("/api/surgery/00000000-0000-0000-0000-000000000000/consent/boldsign-send")
     assert resp.status_code == 404
+
+
+def test_facility_match_empty_list_matches_any_facility(db):
+    s = _make_surgery(db)
+    s.selected_facility = "medstar"
+    t = _make_template(db, facility_match=[])
+    db.commit()
+    assert select_template_id(s, db) == "bs_tmpl_robotic_hyst"
+
+
+def test_facility_match_hospital_list_matches_both_hospitals(db):
+    """Hospital templates have facility_match=['medstar','crmc'] so both
+    fire — but NOT office surgeries."""
+    s = _make_surgery(db)
+    t = _make_template(db, facility_match=["medstar", "crmc"])
+    db.commit()
+
+    s.selected_facility = "medstar"
+    assert select_template_id(s, db) == "bs_tmpl_robotic_hyst"
+
+    s.selected_facility = "crmc"
+    assert select_template_id(s, db) == "bs_tmpl_robotic_hyst"
+
+    s.selected_facility = "office"
+    assert select_template_id(s, db) is None
+
+
+def test_facility_match_office_list_matches_only_office(db):
+    s = _make_surgery(db)
+    t = _make_template(db, facility_match=["office"])
+    db.commit()
+
+    s.selected_facility = "office"
+    assert select_template_id(s, db) == "bs_tmpl_robotic_hyst"
+
+    s.selected_facility = "medstar"
+    assert select_template_id(s, db) is None
