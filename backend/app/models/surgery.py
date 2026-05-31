@@ -71,6 +71,14 @@ class Surgery(Base):
     phone = Column(String(40), nullable=True)
     cell_phone = Column(String(40), nullable=True)
 
+    # SMS consent (Phase J). Patient must opt in before any transactional
+    # SMS goes out. Defaults to False; flipped True by either the patient
+    # (on /p/surgery/:id) or the coordinator (on SurgeryDetail).
+    sms_consent       = Column(Boolean, default=False, nullable=False)
+    sms_consented_at  = Column(DateTime, nullable=True)
+    sms_consented_by  = Column(String(120), nullable=True)
+    # 'patient:self-service' for patient-driven opt-in, staff email otherwise.
+
     # Insurance
     primary_insurance = Column(String(200), nullable=True)
     primary_member_id = Column(String(80), nullable=True)

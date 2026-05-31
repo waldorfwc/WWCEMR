@@ -1,0 +1,151 @@
+"""Patient transactional SMS — render template + Twilio send + audit + consent.
+
+Soft-fail mirrors patient_email. Additionally, every send checks
+Surgery.sms_consent — if False, returns a 'skipped' PatientSms row with
+failure_reason="patient has not opted in to SMS".
+"""
+from __future__ import annotations
+
+import logging
+import re
+from typing import Any, Optional
+
+from sqlalchemy.orm import Session
+
+from app.models.patient_sms import (
+    SmsTemplate, PatientSms, SMS_TEMPLATE_KINDS, PATIENT_SMS_STATUSES,
+)
+from app.models.surgery import Surgery
+from app.services.checklist_notifications import send_sms
+
+log = logging.getLogger(__name__)
+
+
+_VAR_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
+
+
+def render(body: str, context: dict) -> str:
+    def _repl(m):
+        return str(context.get(m.group(1), ""))
+    return _VAR_RE.sub(_repl, body)
+
+
+def _segments(text: str) -> int:
+    """Twilio segment count: 160 chars per single-segment SMS (GSM-7
+    encoding). Multi-segment messages use 153 chars per segment because
+    of UDH overhead. Cheap approximation — Twilio's actual count may
+    differ for emojis/Unicode."""
+    if len(text) <= 160:
+        return 1
+    return (len(text) + 152) // 153
+
+
+def send_patient_sms(
+    db: Session,
+    *,
+    kind: Optional[str],
+    surgery: Optional[Surgery],
+    context: dict,
+    sent_by: str,
+    to_phone: Optional[str] = None,
+    chart_number: Optional[str] = None,
+    ad_hoc_body: Optional[str] = None,
+) -> PatientSms:
+    """Send a patient SMS and write the audit row.
+
+    Modes:
+      Template send  — pass `kind`. Body comes from SmsTemplate and is
+                       rendered with `context`.
+      Ad-hoc send    — pass `kind=None` + `ad_hoc_body`.
+
+    The `surgery` argument is required for template sends (to look up
+    consent + cell_phone). For ad-hoc, pass a Surgery row if you have
+    one, or None + explicit `to_phone` + `chart_number` to bypass.
+    """
+    # Resolve recipient
+    phone = to_phone or (surgery.cell_phone if surgery else None)
+    phone = (phone or "").strip()
+
+    # Consent gate
+    if surgery is not None and not surgery.sms_consent:
+        return _record(db,
+            surgery_id=(surgery.id if surgery else None),
+            chart_number=chart_number or (surgery.chart_number if surgery else None),
+            to_phone=phone or "(missing)",
+            kind=kind, body="(unsent — no consent)",
+            status="skipped",
+            failure_reason="patient has not opted in to SMS",
+            sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+
+    # Resolve body
+    if kind:
+        template = (db.query(SmsTemplate)
+                      .filter(SmsTemplate.kind == kind,
+                               SmsTemplate.is_active.is_(True))
+                      .first())
+        if template is None:
+            return _record(db,
+                surgery_id=(surgery.id if surgery else None),
+                chart_number=chart_number or (surgery.chart_number if surgery else None),
+                to_phone=phone or "(missing)",
+                kind=kind, body="(unrendered)",
+                status="skipped",
+                failure_reason=f"no active template for kind={kind}",
+                sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+        body = render(template.body, context)
+    else:
+        if not ad_hoc_body:
+            return _record(db,
+                surgery_id=(surgery.id if surgery else None),
+                chart_number=chart_number or (surgery.chart_number if surgery else None),
+                to_phone=phone or "(missing)",
+                kind=None, body="(missing)",
+                status="skipped",
+                failure_reason="ad-hoc send missing body",
+                sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+        body = render(ad_hoc_body, context)
+
+    if not phone:
+        return _record(db,
+            surgery_id=(surgery.id if surgery else None),
+            chart_number=chart_number or (surgery.chart_number if surgery else None),
+            to_phone="(missing)",
+            kind=kind, body=body,
+            status="skipped",
+            failure_reason="recipient phone number is blank",
+            sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+
+    segments = _segments(body)
+    try:
+        ok = send_sms(phone, body)
+    except Exception as e:
+        log.warning("patient sms Twilio raised: %s", e)
+        ok = False
+    status = "sent" if ok else "failed"
+    failure_reason = None if ok else "Twilio send returned False (check TWILIO_* config)"
+
+    return _record(db,
+        surgery_id=(surgery.id if surgery else None),
+        chart_number=chart_number or (surgery.chart_number if surgery else None),
+        to_phone=phone, kind=kind, body=body,
+        status=status, failure_reason=failure_reason,
+        sent_by=sent_by, context=context,
+        segments=str(segments), twilio_sid=None,
+        # twilio_sid: we don't currently capture the Twilio Message SID
+        # because send_sms returns a bool. If we extend send_sms to
+        # return the SID later, plumb it through here.
+    )
+
+
+def _record(db, *, surgery_id, chart_number, to_phone, kind, body,
+            status, failure_reason, sent_by, context, segments, twilio_sid) -> PatientSms:
+    row = PatientSms(
+        surgery_id=surgery_id, chart_number=chart_number,
+        to_phone=to_phone, template_kind=kind,
+        rendered_body=body, status=status,
+        failure_reason=failure_reason, sent_by=sent_by,
+        context=context or {}, segments=segments, twilio_sid=twilio_sid,
+    )
+    db.add(row)
+    db.commit(); db.refresh(row)
+    return row

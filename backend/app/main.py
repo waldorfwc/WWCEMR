@@ -14,6 +14,7 @@ from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashbo
 from app.routers import google_sync as google_sync_router
 from app.routers import stripe_payments
 from app.models import patient_email as _patient_email_models  # noqa: F401
+from app.models import patient_sms as _patient_sms_models  # noqa: F401
 
 # RBAC guards. Every router below gates on a specific permission, computed
 # from the user's group memberships + per-user extras/revokes (see
