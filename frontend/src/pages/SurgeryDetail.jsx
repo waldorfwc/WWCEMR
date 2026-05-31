@@ -243,6 +243,8 @@ export default function SurgeryDetail() {
 
       <LarcDevicePickerCard surgery={s} />
 
+      {s && <PaymentsSection surgery={s} />}
+
       <NotesPanel surgery={s} />
 
       {showCancel && (
@@ -271,6 +273,113 @@ export default function SurgeryDetail() {
             qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
           }}
         />
+      )}
+    </div>
+  )
+}
+
+
+// ─── Payments section ─────────────────────────────────────────────
+
+function PaymentsSection({ surgery }) {
+  const qc = useQueryClient()
+  const { data, refetch } = useQuery({
+    queryKey: ['surgery-payments', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/payments`).then(r => r.data),
+  })
+
+  const requestMut = useMutation({
+    mutationFn: (body) =>
+      api.post(`/surgery/${surgery.id}/request-payment`, body || {}).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-payments', surgery.id] })
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Stripe error'),
+  })
+
+  const outstanding = Number(data?.outstanding_balance || 0)
+  const payments = data?.payments || []
+  const fmtMoney = (v) => `$${Number(v || 0).toFixed(2)}`
+
+  function copy(url) {
+    if (navigator.clipboard) navigator.clipboard.writeText(url)
+  }
+
+  return (
+    <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4 mt-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">Payments</h2>
+        {outstanding > 0 && (
+          <button className="btn-primary text-sm"
+                  onClick={() => requestMut.mutate({})}
+                  disabled={requestMut.isPending}>
+            {requestMut.isPending ? 'Creating link…' : `Request payment (${fmtMoney(outstanding)})`}
+          </button>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 text-[12px] mb-3">
+        <div>
+          <div className="text-gray-500">Patient responsibility</div>
+          <div className="font-mono">{fmtMoney(data?.patient_responsibility)}</div>
+        </div>
+        <div>
+          <div className="text-gray-500">Amount paid</div>
+          <div className="font-mono">{fmtMoney(data?.amount_paid)}</div>
+        </div>
+        <div>
+          <div className="text-gray-500">Outstanding balance</div>
+          <div className={`font-mono ${outstanding > 0 ? 'text-amber-700 font-semibold' : 'text-green-700'}`}>
+            {fmtMoney(outstanding)}
+          </div>
+        </div>
+      </div>
+
+      {payments.length === 0 ? (
+        <div className="text-[12px] text-gray-400 italic">No payment activity.</div>
+      ) : (
+        <table className="w-full text-[12px]">
+          <thead className="text-[11px] uppercase text-gray-500">
+            <tr>
+              <th className="text-left py-1">Status</th>
+              <th className="text-left py-1">Amount</th>
+              <th className="text-left py-1">Requested</th>
+              <th className="text-left py-1">Description</th>
+              <th className="text-left py-1">Link</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.map(p => (
+              <tr key={p.id} className="border-t border-border-subtle">
+                <td className="py-1.5">
+                  <span className={`px-2 py-0.5 rounded text-[11px] ${
+                    p.status === 'paid'      ? 'bg-green-100 text-green-700' :
+                    p.status === 'refunded'  ? 'bg-violet-100 text-violet-700' :
+                    p.status === 'failed'    ? 'bg-red-100 text-red-700' :
+                    p.status === 'expired'   ? 'bg-gray-100 text-gray-500' :
+                                               'bg-amber-100 text-amber-700'
+                  }`}>{p.status}</span>
+                </td>
+                <td className="py-1.5 font-mono">{fmtMoney(p.amount_requested)}</td>
+                <td className="py-1.5">{(p.requested_at || '').slice(0, 10)}</td>
+                <td className="py-1.5">{p.description || '—'}</td>
+                <td className="py-1.5">
+                  {p.checkout_url && p.status === 'requested' ? (
+                    <>
+                      <a href={p.checkout_url} target="_blank" rel="noopener noreferrer"
+                         className="text-plum-700 hover:underline">Open</a>
+                      {' · '}
+                      <button onClick={() => copy(p.checkout_url)}
+                              className="text-plum-700 hover:underline">Copy</button>
+                    </>
+                  ) : (
+                    <span className="text-gray-400">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )

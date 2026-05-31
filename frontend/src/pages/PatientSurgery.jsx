@@ -243,6 +243,7 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
     return (
       <AlreadyScheduledScreen
         surgeryId={surgeryId}
+        token={token}
         headers={headers}
         status={status}
         onReschedule={() => setMode('reschedule')}
@@ -253,7 +254,7 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
 
   // Has balance due → show payment screen
   if (!status.balance_clear) {
-    return <BalanceDueScreen status={status} />
+    return <BalanceDueScreen status={status} token={token} id={surgeryId} />
   }
 
   // Clearance is required and we don't yet have cardiologist info — collect it.
@@ -292,7 +293,7 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
 }
 
 
-function AlreadyScheduledScreen({ surgeryId, headers, status, onReschedule, onCancel }) {
+function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedule, onCancel }) {
   // Compute days until surgery to disable patient-facing reschedule within 14 days
   const daysUntil = (() => {
     if (!status.scheduled_date) return null
@@ -344,6 +345,8 @@ function AlreadyScheduledScreen({ surgeryId, headers, status, onReschedule, onCa
       )}
 
       <FmlaUploadPanel surgeryId={surgeryId} headers={headers} />
+
+      <PaymentSection surgery={status} token={token} id={surgeryId} />
 
       <p className="text-xs text-gray-500 mt-3 text-center">
         Questions? Call us at <a href="tel:+12402522140" className="text-plum-700">240-252-2140</a>.
@@ -521,7 +524,7 @@ function CancelledScreen({ status, result }) {
 }
 
 
-function BalanceDueScreen({ status }) {
+function BalanceDueScreen({ status, token, id }) {
   return (
     <div className="bg-white rounded-lg border border-border-subtle shadow-sm p-6">
       <div className="flex items-center gap-2 mb-3 text-amber-700">
@@ -532,9 +535,9 @@ function BalanceDueScreen({ status }) {
         Hi {status.patient_first_name},
       </p>
       <p className="text-sm text-gray-700 mb-3">
-        Before you can pick a surgery date, please pay your portion through ModMed Pay.
+        Before you can pick a surgery date, please pay your patient responsibility.
       </p>
-      <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm space-y-1">
+      <div className="bg-amber-50 border border-amber-200 rounded p-3 text-sm space-y-1 mb-4">
         <div className="flex justify-between"><span>Procedure</span>
           <span className="text-right">{status.procedure_descriptions?.join(', ')}</span>
         </div>
@@ -549,10 +552,47 @@ function BalanceDueScreen({ status }) {
           <span className="font-mono">${status.balance_due?.toFixed(2)}</span>
         </div>
       </div>
+      <PaymentSection surgery={status} token={token} id={id} />
       <p className="text-xs text-gray-600 mt-3">
-        Pay through your ModMed patient portal or call <a href="tel:+12402522140" className="text-plum-700">240-252-2140</a> for a payment plan.
+        Questions? Call <a href="tel:+12402522140" className="text-plum-700">240-252-2140</a>.
         Once your balance is $0, refresh this page to pick a date.
       </p>
+    </div>
+  )
+}
+
+
+function PaymentSection({ surgery, token, id }) {
+  const [paying, setPaying] = useState(false)
+  const [error, setError] = useState(null)
+
+  const balance = Math.max(
+    0,
+    Number(surgery.patient_responsibility || 0) - Number(surgery.amount_paid || 0)
+  )
+  if (balance <= 0) return null
+
+  async function pay() {
+    setPaying(true); setError(null)
+    try {
+      const r = await publicApi.post(`/p/surgery/${id}/pay`, {},
+                                      { headers: { Authorization: `Bearer ${token}` } })
+      window.location.href = r.data.checkout_url
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Payment could not be started')
+      setPaying(false)
+    }
+  }
+
+  return (
+    <div className="bg-white border border-plum-200 rounded-lg p-4 mb-4">
+      <div className="text-[12px] text-gray-500 uppercase tracking-wider">Balance due</div>
+      <div className="text-3xl font-serif text-plum-800 my-2">${balance.toFixed(2)}</div>
+      {error && <div className="text-red-600 text-[12px] mb-2">{error}</div>}
+      <button className="btn-primary w-full text-base py-3"
+              onClick={pay} disabled={paying}>
+        {paying ? 'Starting payment…' : `Pay $${balance.toFixed(2)}`}
+      </button>
     </div>
   )
 }
