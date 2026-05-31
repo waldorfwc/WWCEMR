@@ -53,7 +53,8 @@ The existing patient_surgery auth gives a JWT immediately after DOB + last-4 mat
       POST /api/patient/portal/verify
         { challenge_token, code }
       → checks hash + expiry
-      → on success: issues JWT (PATIENT_PORTAL_AUDIENCE), TTL 1 hr,
+      → on success: issues JWT (PATIENT_PORTAL_AUDIENCE), TTL pegged to
+                    surgery.scheduled_date + 30 days (see "Token TTL" below),
                     redirects to /portal/s/{surgery_id}/
       → on failure: 401 + increments PatientAuthAttempt counter
 [5] All /portal/* routes require the JWT in Authorization header
@@ -64,6 +65,10 @@ The existing patient_surgery auth gives a JWT immediately after DOB + last-4 mat
 - **Surgery-scoped sessions.** JWT's `sub` is the `surgery_id`, not a patient ID. WWC tracks Surgery rows, not Patient rows, so a person with two upcoming surgeries gets two portal sessions. Future Patient-table consolidation can change this without breaking the URL structure.
 - **Code storage.** `PatientPortalAuthCode(surgery_id, code_hash, expires_at, used_at)`. Hash with bcrypt so a DB dump doesn't leak active codes. Mark `used_at` on success so a code can't be replayed.
 - **Code transport.** Twilio SMS via the existing `send_sms` infrastructure. New SMS template `sms_portal_login_code` (5th kind — extends `SMS_TEMPLATE_KINDS`).
+- **Token TTL.** JWT `exp` = `surgery.scheduled_date + 30 days`, computed at sign-in. Rationale: covers prep + surgery + post-op window (instructions, follow-up) without forcing a re-auth mid-flow. Edge cases:
+  - `scheduled_date` not set yet → use `today + 30 days`. Patient will re-auth later when scheduling and the new token spans the surgery itself.
+  - Surgery rescheduled to later date → token unchanged (still valid through original date + 30); we don't re-issue on reschedule.
+  - Surgery date already in the past at sign-in → use `max(today, scheduled_date) + 30 days`. Floor at 30 days from now so a patient signing in for a post-op review doesn't get a token that expired yesterday.
 - **Rate limits.**
   - Login (DOB+last4): existing pattern — 3 fails in 15 min = lockout.
   - Code verify: 3 wrong codes for the same challenge_token = challenge invalidated (must restart).
@@ -240,9 +245,12 @@ Routing wired in `App.jsx` (or wherever the top-level router lives) under the `/
 
 These don't block the spec — they affect P2+ details. Flagging now so we don't relitigate later.
 
-1. **Portal URL — subdomain or path?** Currently writing this as `gw.waldorfwomenscare.com/portal/*`. We could split it onto `portal.waldorfwomenscare.com` later if branding warrants. P1 lives at `/portal` on the existing domain to avoid the DNS+TLS setup.
-2. **First-touch onboarding.** How does a patient discover the portal URL? Likely an email signature link + a line in confirmation/reminder emails. Not a code change for P1, but worth a coordinator briefing.
-3. **Token TTL.** 1 hr matches the existing magic-link TTL. Patient portal use may benefit from longer (e.g. 4 hr) so it doesn't expire mid-task. Worth revisiting after P2 once we see usage patterns.
+1. **First-touch onboarding.** How does a patient discover the portal URL? Likely an email signature link + a line in confirmation/reminder emails. Not a code change for P1, but worth a coordinator briefing.
+
+### Resolved
+
+- **Portal URL** → path-based (`/portal/*` on the existing `gw.waldorfwomenscare.com`). No new DNS/TLS work.
+- **Token TTL** → `surgery.scheduled_date + 30 days` (see Auth flow → Token TTL for edge cases).
 
 ## Tech stack
 
@@ -254,4 +262,9 @@ These don't block the spec — they affect P2+ details. Flagging now so we don't
 
 - **SMS deliverability.** Twilio is reliable but carrier filtering can occasionally drop short-code-style messages. We're sending from a long-code (+12402522415) so risk is low, but the verify page should offer "didn't receive a code? resend after 60s" affordance.
 - **Phone-number drift.** Patients change phones. The "call the office" recovery path is a manual interrupt for the coordinator — should be rare but plan on it.
-- **Token leakage.** localStorage is XSS-readable. P1 portal has no high-risk write actions (just reading dashboard) so blast radius is low. P2 adds payments, so before P2 we should harden against XSS (audit dependencies, set strict CSP). Note for P2 plan.
+- **Token leakage.** localStorage is XSS-readable, and a 30-day-post-surgery TTL is longer than a typical web session. P1 portal has no high-risk write actions (just reading dashboard) so blast radius is low. Compensating controls to design **before** P2 lands payments under this same JWT:
+  - Step-up auth on payment confirmation (re-send a one-time SMS code at submit-pay time).
+  - Strict CSP + Trusted Types audit on the portal entry.
+  - "Sign out everywhere" affordance (server-side denylist of JTI claims) since long-TTL tokens can't otherwise be revoked.
+
+  Captured in the P2 plan, not blocking P1.
