@@ -16,7 +16,7 @@ import secrets
 from datetime import date, datetime, timedelta
 from typing import Optional
 
-import bcrypt as _bcrypt
+import bcrypt as _bcrypt  # passlib's bcrypt backend is broken against bcrypt>=4; use raw package
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session
 
