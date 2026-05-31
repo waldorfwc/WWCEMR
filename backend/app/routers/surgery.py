@@ -2930,3 +2930,14 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
         "scheduled_start_time": f"{h:02d}:{m:02d}",
         "facility": bd.facility,
     }
+
+
+# ─── Admin: manual reminder trigger ─────────────────────────────────
+
+@router.post("/admin/reminders/run-now")
+def run_reminders_now(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("user:manage")),
+):
+    from app.services.surgery_reminders import run_reminder_sweep
+    return run_reminder_sweep(db)

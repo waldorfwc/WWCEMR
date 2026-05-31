@@ -28,6 +28,9 @@ CONFIG_DEFAULTS = {
     "office_full_threshold":     6,
     "office_lookahead_days":     6,
     "hospital_lookahead_days":  14,
+    # Phase I — surgery reminder lead-days. Cron iterates these and emails
+    # patients whose surgery is exactly N days away (per entry).
+    "reminder_lead_days":        [3, 1],
 }
 
 ALERT_KINDS = ("office_release", "hospital_release")
@@ -37,9 +40,10 @@ PROCEDURE_KINDS = ("minor", "major", "office", "robotic_180", "robotic_240")
 # ─── Pydantic shapes ────────────────────────────────────────────────
 
 class ConfigPayload(BaseModel):
-    office_full_threshold:     Optional[int] = None
-    office_lookahead_days:     Optional[int] = None
-    hospital_lookahead_days:   Optional[int] = None
+    office_full_threshold:     Optional[int]       = None
+    office_lookahead_days:     Optional[int]       = None
+    hospital_lookahead_days:   Optional[int]       = None
+    reminder_lead_days:        Optional[list[int]] = None
 
 
 class RecipientIn(BaseModel):

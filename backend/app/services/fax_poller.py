@@ -277,6 +277,10 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(_missing_charges_weekly_emails, "cron",
                   day_of_week="mon", hour=8, minute=0,
                   id="missing_charges_weekly", max_instances=1, coalesce=True)
+    # Phase I — daily patient surgery reminders at 8 AM.
+    sched.add_job(_reminder_job, "cron", hour=8, minute=0,
+                  id="surgery_reminder_sweep", replace_existing=True,
+                  max_instances=1, coalesce=True)
     sched.start()
     return sched
 
@@ -288,5 +292,15 @@ def _missing_charges_weekly_emails():
         report = send_provider_emails(db, triggered_by="system:weekly-cron")
         log.info("Missing-charges weekly email run: %d providers, %d sent, %d skipped",
                  len(report["providers"]), report["sent_count"], report["skipped_count"])
+    finally:
+        db.close()
+
+
+def _reminder_job():
+    """Phase I — daily patient surgery reminders at 8 AM."""
+    db = SessionLocal()
+    try:
+        from app.services.surgery_reminders import run_reminder_sweep
+        run_reminder_sweep(db)
     finally:
         db.close()
