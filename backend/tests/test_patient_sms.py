@@ -142,7 +142,7 @@ def test_ad_hoc_send(db):
     assert row.template_kind is None
 
 
-def test_template_kinds_includes_four():
+def test_template_kinds_includes_five():
     assert len(SMS_TEMPLATE_KINDS) == 5
     assert "sms_payment_link"          in SMS_TEMPLATE_KINDS
     assert "sms_surgery_confirmation"  in SMS_TEMPLATE_KINDS
@@ -153,7 +153,7 @@ def test_template_kinds_includes_four():
 
 # ─── seed tests (J2) ─────────────────────────────────────────────
 
-def test_seed_inserts_all_four_templates(db):
+def test_seed_inserts_all_five_templates(db):
     from app.services.surgery_config_seed import (
         seed_default_sms_templates, DEFAULT_SMS_TEMPLATES,
     )
