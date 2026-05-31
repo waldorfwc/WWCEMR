@@ -170,3 +170,52 @@ def test_seed_does_not_overwrite_existing(db):
              .filter(EmailTemplate.kind == "surgery_confirmation").first())
     assert row.label == "custom"
     assert row.subject == "Custom subject"
+
+
+# ─── I7: ad-hoc endpoint tests ────────────────────────────────────
+
+def test_send_ad_hoc_endpoint_writes_audit(client, db):
+    from app.models.surgery import Surgery
+
+    db.add(EmailTemplate(
+        kind="generic_patient_message", label="x",
+        subject="{{subject}}",
+        html_body="<p>Hi {{patient_name}}</p>{{body}}<p>— {{sender_name}}</p>",
+    ))
+    s = Surgery(chart_number="1", patient_name="Pat",
+                 email="pat@example.com",
+                 eligible_facilities=["medstar"], selected_facility="medstar",
+                 status="confirmed")
+    db.add(s); db.commit()
+
+    from unittest.mock import patch
+    with patch("app.services.patient_email.send_email", return_value=True):
+        resp = client.post(f"/api/surgery/{s.id}/send-patient-email", json={
+            "subject": "Follow up question",
+            "body_html": "<p>Quick check on your lab work.</p>",
+        })
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "sent"
+
+    em = db.query(PatientEmail).filter(PatientEmail.surgery_id == s.id).first()
+    assert em is not None
+    assert em.rendered_subject == "Follow up question"
+    assert "lab work" in em.rendered_html
+
+
+def test_send_ad_hoc_rejects_blank_recipient(client, db):
+    from app.models.surgery import Surgery
+    db.add(EmailTemplate(
+        kind="generic_patient_message", label="x",
+        subject="{{subject}}", html_body="<p>{{body}}</p>",
+    ))
+    s = Surgery(chart_number="1", patient_name="Pat",
+                 email=None,
+                 eligible_facilities=["medstar"], selected_facility="medstar",
+                 status="confirmed")
+    db.add(s); db.commit()
+
+    resp = client.post(f"/api/surgery/{s.id}/send-patient-email", json={
+        "subject": "x", "body_html": "<p>y</p>",
+    })
+    assert resp.status_code == 422

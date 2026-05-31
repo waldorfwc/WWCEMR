@@ -2932,6 +2932,86 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
     }
 
 
+# ─── I7: Ad-hoc patient email composer ──────────────────────────────
+
+class PatientEmailIn(BaseModel):
+    subject: str
+    body_html: str       # HTML allowed; will be rendered as-is into the template wrapper
+    to_email: Optional[str] = None
+    # If null, uses Surgery.email. Override lets staff send to a guardian etc.
+
+
+@router.post("/{surgery_id}/send-patient-email")
+def send_ad_hoc_patient_email(
+    surgery_id: str,
+    payload: PatientEmailIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    """Compose-and-send an ad-hoc email to the patient. Uses the
+    generic_patient_message template kind — subject + body are merged into
+    the template's wrapper (signature, greeting) via {{subject}} + {{body}}
+    placeholders. Recipient defaults to surgery.email but can be overridden
+    on the payload (e.g. send to a guardian)."""
+    from app.services.patient_email import send_patient_email
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    actor = current_user.get("email") or "system"
+    to = (payload.to_email or s.email or "").strip()
+    if not to:
+        raise HTTPException(status_code=422,
+                            detail="recipient email required (and Surgery.email is empty)")
+    if not payload.subject.strip() or not payload.body_html.strip():
+        raise HTTPException(status_code=422,
+                            detail="subject and body_html are required")
+    row = send_patient_email(
+        db, kind="generic_patient_message",
+        to_email=to,
+        context={
+            "patient_name": s.patient_name,
+            "subject":      payload.subject.strip(),
+            "body":         payload.body_html,
+            "sender_name":  current_user.get("name") or actor,
+        },
+        sent_by=actor,
+        surgery_id=s.id,
+        chart_number=s.chart_number,
+    )
+    return {
+        "id":      str(row.id),
+        "status":  row.status,
+        "to":      row.to_email,
+        "sent_at": row.sent_at.isoformat() if row.sent_at else None,
+        "failure_reason": row.failure_reason,
+    }
+
+
+@router.get("/{surgery_id}/patient-emails")
+def list_patient_emails(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("claim:read")),
+):
+    """Audit history of patient emails for this surgery."""
+    from app.models.patient_email import PatientEmail
+    rows = (db.query(PatientEmail)
+              .filter(PatientEmail.surgery_id == surgery_id)
+              .order_by(PatientEmail.sent_at.desc()).all())
+    return {
+        "emails": [{
+            "id":               str(r.id),
+            "to_email":         r.to_email,
+            "template_kind":    r.template_kind,
+            "rendered_subject": r.rendered_subject,
+            "status":           r.status,
+            "failure_reason":   r.failure_reason,
+            "sent_at":          r.sent_at.isoformat() if r.sent_at else None,
+            "sent_by":          r.sent_by,
+        } for r in rows],
+    }
+
+
 # ─── Admin: manual reminder trigger ─────────────────────────────────
 
 @router.post("/admin/reminders/run-now")

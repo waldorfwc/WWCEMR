@@ -245,6 +245,8 @@ export default function SurgeryDetail() {
 
       {s && <PaymentsSection surgery={s} />}
 
+      {s && <PatientEmailsSection surgery={s} />}
+
       <NotesPanel surgery={s} />
 
       {showCancel && (
@@ -3680,6 +3682,129 @@ function ScheduleForPatientModal({ surgery, templates, onClose, onSaved }) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+
+// ─── I7: Ad-hoc patient email composer + audit history ──────────────
+
+function PatientEmailsSection({ surgery }) {
+  const qc = useQueryClient()
+  const [composing, setComposing] = useState(false)
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [toOverride, setToOverride] = useState('')
+
+  const { data } = useQuery({
+    queryKey: ['patient-emails', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/patient-emails`).then(r => r.data),
+  })
+
+  const sendMut = useMutation({
+    mutationFn: (body) =>
+      api.post(`/surgery/${surgery.id}/send-patient-email`, body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['patient-emails', surgery.id] })
+      setComposing(false); setSubject(''); setBody(''); setToOverride('')
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Send failed'),
+  })
+
+  const emails = data?.emails || []
+  const fmtDate = (iso) => (iso || '').slice(0, 16).replace('T', ' ')
+
+  return (
+    <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold">Patient emails</h2>
+        {!composing && (
+          <button className="btn-secondary text-sm" onClick={() => setComposing(true)}>
+            Compose email
+          </button>
+        )}
+      </div>
+
+      {composing && (
+        <div className="border border-plum-200 rounded p-3 mb-3 space-y-2 bg-plum-50/40">
+          <div>
+            <label className="text-[11px] uppercase text-gray-500 block mb-0.5">To</label>
+            <input className="input text-sm w-full"
+                   placeholder={surgery.email || 'patient email…'}
+                   value={toOverride}
+                   onChange={e => setToOverride(e.target.value)} />
+            <div className="text-[11px] text-gray-500 mt-0.5">
+              Defaults to {surgery.email || '(no patient email on file)'} if blank.
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase text-gray-500 block mb-0.5">Subject</label>
+            <input className="input text-sm w-full"
+                   value={subject}
+                   onChange={e => setSubject(e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase text-gray-500 block mb-0.5">
+              Body (HTML allowed)
+            </label>
+            <textarea className="input text-sm w-full font-mono"
+                      rows={6}
+                      placeholder="<p>Hi {{patient_name}},</p><p>…</p>"
+                      value={body}
+                      onChange={e => setBody(e.target.value)} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button className="btn-primary text-sm"
+                    onClick={() => sendMut.mutate({
+                      subject, body_html: body,
+                      to_email: toOverride.trim() || undefined,
+                    })}
+                    disabled={sendMut.isPending || !subject.trim() || !body.trim()}>
+              {sendMut.isPending ? 'Sending…' : 'Send email'}
+            </button>
+            <button className="btn-secondary text-sm"
+                    onClick={() => { setComposing(false); setSubject(''); setBody('') }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {emails.length === 0 ? (
+        <div className="text-[12px] text-gray-400 italic">No patient emails yet.</div>
+      ) : (
+        <table className="w-full text-[12px]">
+          <thead className="text-[11px] uppercase text-gray-500">
+            <tr>
+              <th className="text-left py-1">When</th>
+              <th className="text-left py-1">To</th>
+              <th className="text-left py-1">Subject</th>
+              <th className="text-left py-1">Kind</th>
+              <th className="text-left py-1">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {emails.map(e => (
+              <tr key={e.id} className="border-t border-border-subtle">
+                <td className="py-1.5 text-gray-500">{fmtDate(e.sent_at)}</td>
+                <td className="py-1.5">{e.to_email}</td>
+                <td className="py-1.5">{e.rendered_subject}</td>
+                <td className="py-1.5 text-gray-500">{e.template_kind || 'ad-hoc'}</td>
+                <td className="py-1.5">
+                  <span className={`px-2 py-0.5 rounded text-[11px] ${
+                    e.status === 'sent'    ? 'bg-green-100 text-green-700' :
+                    e.status === 'failed'  ? 'bg-red-100 text-red-700' :
+                                              'bg-amber-100 text-amber-700'
+                  }`}>{e.status}</span>
+                  {e.failure_reason && (
+                    <div className="text-[10px] text-red-600 mt-0.5">{e.failure_reason}</div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
