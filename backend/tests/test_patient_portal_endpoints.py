@@ -144,3 +144,51 @@ def test_verify_kills_challenge_after_three_wrong_codes(client, db):
     r = client.post("/api/patient/portal/verify",
                      json={"challenge_token": ch, "code": "111111"})
     assert r.status_code == 401
+
+
+def test_dashboard_requires_token(client, db):
+    s = _seed_surgery(db)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard")
+    assert r.status_code == 401
+
+
+def test_dashboard_returns_surgery_and_milestones(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from datetime import date as _d
+    s = Surgery(
+        chart_number="1", patient_name="Doe, Jane", first_name="Jane",
+        cell_phone="+12405551234", dob=_d(1990, 1, 1),
+        scheduled_date=_d(2026, 6, 15),
+        eligible_facilities=["office"], selected_facility="office",
+        procedures=[{"cpt": "58558", "description": "Hysteroscopy with D&C"}],
+        patient_responsibility=250,
+        status="confirmed",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Surgery summary
+    assert body["surgery"]["procedure"] == "Hysteroscopy with D&C"
+    assert body["surgery"]["surgery_date"] == "2026-06-15"
+    assert body["surgery"]["facility"] == "the office"  # FACILITY_SHORT
+    assert body["surgery"]["patient_responsibility"] == 250
+    # Milestones — list of {key, label, status, ...}
+    keys = [m["key"] for m in body["milestones"]]
+    assert "payment" in keys
+    assert "schedule" in keys
+    assert "consent" in keys
+    # Next-thing banner
+    assert "next_action" in body
+
+
+def test_dashboard_rejects_token_for_different_surgery(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s1 = _seed_surgery(db, cell="+12405551111", dob=date(1990, 1, 1))
+    s2 = _seed_surgery(db, cell="+12405552222", dob=date(1992, 2, 2))
+    token = issue_portal_token(s1)
+    r = client.get(f"/api/patient/portal/{s2.id}/dashboard",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403

@@ -58,7 +58,8 @@ _PUBLIC_ALLOWLIST = {
 # Prefix allowlist — anything under these prefixes is presumed token-gated
 # at the route level via a custom dependency (e.g. require_patient_token).
 _PUBLIC_PREFIX_ALLOWLIST = (
-    "/api/p/",   # patient-facing portal (require_patient_token)
+    "/api/p/",              # patient-facing portal (require_patient_token)
+    "/api/patient/portal/", # patient self-service portal (require_portal_token)
 )
 
 

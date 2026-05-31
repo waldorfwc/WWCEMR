@@ -12,13 +12,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.surgery import PatientAuthAttempt, Surgery
 from app.services import patient_portal_auth as auth
+from app.services.surgery_klara_drafter import FACILITY_SHORT
 
 router = APIRouter(prefix="/patient/portal", tags=["patient-portal"])
 
@@ -157,4 +158,127 @@ def verify(payload: VerifyPayload, db: Session = Depends(get_db)):
         "token": token,
         "surgery_id": str(s.id),
         "expires_at": auth.compute_token_exp(s).isoformat(),
+    }
+
+
+# ─── Auth dependency ────────────────────────────────────────────
+
+def require_portal_token(
+    surgery_id: str,
+    authorization: str = Header(default=""),
+) -> str:
+    """Validate Bearer token; ensure it's for THIS surgery_id."""
+    if not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Missing token")
+    token = authorization.split(" ", 1)[1].strip()
+    sub = auth.verify_portal_token(token)
+    if sub is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    if sub != surgery_id:
+        raise HTTPException(status_code=403, detail="Wrong surgery")
+    return sub
+
+
+# ─── /{surgery_id}/dashboard ────────────────────────────────────
+
+def _money(x) -> float | None:
+    if x is None:
+        return None
+    return float(x)
+
+
+def _payment_milestone(surgery: Surgery) -> dict:
+    """Sum SurgeryPayment(status='succeeded') and compare to pt responsibility."""
+    paid = 0.0
+    for p in (surgery.payments or []):
+        if p.status == "succeeded":
+            paid += float(p.amount or 0)
+    due = float(surgery.patient_responsibility or 0)
+    if due <= 0:
+        return {"key": "payment", "label": "Patient responsibility",
+                "status": "not_required", "paid": paid, "due": due}
+    status = "done" if paid >= due else ("in_progress" if paid > 0 else "todo")
+    return {"key": "payment", "label": "Patient responsibility paid",
+            "status": status, "paid": paid, "due": due}
+
+
+def _schedule_milestone(surgery: Surgery) -> dict:
+    return {
+        "key": "schedule",
+        "label": "Surgery date selected",
+        "status": "done" if surgery.scheduled_date else "todo",
+        "value": surgery.scheduled_date.isoformat() if surgery.scheduled_date else None,
+    }
+
+
+def _consent_milestone(surgery: Surgery) -> dict:
+    envs = list(surgery.consent_envelopes or [])
+    if not envs:
+        return {"key": "consent", "label": "Consent forms signed",
+                "status": "todo"}
+    if all(e.status == "signed" for e in envs):
+        return {"key": "consent", "label": "Consent forms signed",
+                "status": "done", "count": len(envs)}
+    return {"key": "consent", "label": "Consent forms signed",
+            "status": "in_progress",
+            "signed": sum(1 for e in envs if e.status == "signed"),
+            "total": len(envs)}
+
+
+def _self_report_milestone(surgery, *, attr, label, key) -> dict:
+    val = getattr(surgery, attr, False)
+    return {"key": key, "label": label,
+            "status": "done" if val else "todo"}
+
+
+def _next_action(milestones: list[dict]) -> dict | None:
+    """First non-done milestone wins; map to a CTA stub."""
+    priority = ["payment", "schedule", "consent",
+                 "labs", "hospital_preop"]
+    for key in priority:
+        m = next((x for x in milestones if x["key"] == key), None)
+        if m and m.get("status") in ("todo", "in_progress"):
+            return {"key": key, "label": m["label"]}
+    return None
+
+
+@router.get("/{surgery_id}/dashboard")
+def dashboard(surgery_id: str, db: Session = Depends(get_db),
+                _: str = Depends(require_portal_token)):
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    first_proc = (s.procedures or [{}])[0]
+    summary = {
+        "procedure":     first_proc.get("description") or first_proc.get("name") or "",
+        "surgeon":       s.surgeon_primary or "",
+        "surgery_date":  s.scheduled_date.isoformat() if s.scheduled_date else None,
+        "surgery_time":  s.scheduled_start_time.strftime("%H:%M")
+                            if s.scheduled_start_time else None,
+        "facility":      FACILITY_SHORT.get(s.selected_facility or "",
+                                             s.selected_facility or ""),
+        "patient_responsibility": _money(s.patient_responsibility),
+    }
+    milestones = [
+        _payment_milestone(s),
+        _schedule_milestone(s),
+        _consent_milestone(s),
+        _self_report_milestone(s, attr="hospital_preop_self_reported",
+                                  label="Hospital pre-op call",
+                                  key="hospital_preop"),
+        _self_report_milestone(s, attr="labs_self_reported",
+                                  label="Labs completed",
+                                  key="labs"),
+    ]
+    # FMLA row only when the column exists (P5+).
+    if hasattr(s, "fmla_status"):
+        milestones.append({
+            "key": "fmla",
+            "label": "FMLA submitted",
+            "status": getattr(s, "fmla_status", None) or "todo",
+        })
+    return {
+        "surgery": summary,
+        "milestones": milestones,
+        "next_action": _next_action(milestones),
     }
