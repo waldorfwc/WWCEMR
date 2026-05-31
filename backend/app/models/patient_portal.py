@@ -13,7 +13,6 @@ from app.models.guid import GUID, new_uuid
 class PatientPortalAuthCode(Base):
     __tablename__ = "patient_portal_auth_codes"
     __table_args__ = (
-        Index("ix_patient_portal_auth_codes_token", "challenge_token"),
         Index("ix_patient_portal_auth_codes_surgery", "surgery_id"),
     )
 

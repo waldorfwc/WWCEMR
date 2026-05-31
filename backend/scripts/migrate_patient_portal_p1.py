@@ -36,8 +36,6 @@ DDL = [
         created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
         sent_to_phone    VARCHAR(40) NULL
     )""",
-    """CREATE INDEX IF NOT EXISTS ix_patient_portal_auth_codes_token
-       ON patient_portal_auth_codes(challenge_token)""",
     """CREATE INDEX IF NOT EXISTS ix_patient_portal_auth_codes_surgery
        ON patient_portal_auth_codes(surgery_id)""",
 ]
