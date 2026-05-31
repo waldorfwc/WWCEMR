@@ -228,6 +228,29 @@ export default function SurgeryDetail() {
                      if (v !== s.surgeon_email) patch.mutate({ surgeon_email: v })
                    }} />
           </Field>
+
+          <Field label="Cell phone">
+            <input className="input text-sm w-full"
+                   defaultValue={s.cell_phone || ''}
+                   placeholder="+15555550100"
+                   onBlur={e => {
+                     const v = e.target.value.trim() || null
+                     if (v !== s.cell_phone) patch.mutate({ cell_phone: v })
+                   }} />
+          </Field>
+
+          <Field label="SMS opt-in">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox"
+                     checked={!!s.sms_consent}
+                     onChange={e => patch.mutate({ sms_consent: e.target.checked })} />
+              <span>
+                {s.sms_consent
+                  ? `Opted in${s.sms_consented_at ? ' on ' + s.sms_consented_at.slice(0,10) : ''}`
+                  : 'Not opted in — SMS sends will skip'}
+              </span>
+            </label>
+          </Field>
         </div>
       </div>
 

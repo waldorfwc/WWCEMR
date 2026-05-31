@@ -171,6 +171,9 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "duration_minutes": s.duration_minutes,
         "duration_source":  s.duration_source,
         "surgeon_email":    s.surgeon_email,
+        "sms_consent":      bool(s.sms_consent),
+        "sms_consented_at": s.sms_consented_at.isoformat() if s.sms_consented_at else None,
+        "cell_phone":       s.cell_phone,
         "current_milestone": cur_m.kind if cur_m else None,
         "current_milestone_title": cur_m.title if cur_m else None,
         "behind_schedule": behind,
@@ -958,6 +961,9 @@ class SurgeryPatch(BaseModel):
     duration_minutes: Optional[int] = None
     duration_source:  Optional[str] = None
     surgeon_email:    Optional[str] = None
+    # Phase J4 — SMS opt-in
+    sms_consent:      Optional[bool] = None
+    cell_phone:       Optional[str]  = None
 
 
 # ─── Slot duration patch (Phase D3) ────────────────────────────────
@@ -1114,6 +1120,19 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     # Convert legacy is_urgent shim → urgency enum
     if "is_urgent" in data:
         s.urgency = "urgent" if data.pop("is_urgent") else "routine"
+
+    # SMS consent — stamp/clear audit fields alongside the boolean
+    if "sms_consent" in data:
+        from datetime import datetime as _dt
+        if data["sms_consent"]:
+            s.sms_consented_at = _dt.utcnow()
+            s.sms_consented_by = current_user.get("email") or "system"
+        else:
+            s.sms_consented_at = None
+            s.sms_consented_by = None
+    if "cell_phone" in data:
+        v = (data["cell_phone"] or "").strip()
+        data["cell_phone"] = v or None
 
     # Apply
     for k, v in data.items():

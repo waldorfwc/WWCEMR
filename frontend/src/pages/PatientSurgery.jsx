@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import axios from 'axios'
 import {
   Calendar, CheckCircle2, Clock, AlertCircle, Hospital, Building2, Lock,
-  CreditCard, Phone, RotateCcw, XCircle, ArrowLeft,
+  CreditCard, Phone, RotateCcw, XCircle, ArrowLeft, MessageSquare,
 } from 'lucide-react'
 import logoMark from '../assets/wwc-logo.png'
 
@@ -248,6 +248,7 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
         status={status}
         onReschedule={() => setMode('reschedule')}
         onCancel={() => setMode('cancel')}
+        onSmsUpdate={r => setStatus(prev => ({ ...prev, ...r }))}
       />
     )
   }
@@ -282,18 +283,26 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
   }
 
   return (
-    <SlotPicker
-      surgeryId={surgeryId}
-      headers={headers}
-      status={status}
-      endpoint="pick"
-      onPicked={(c) => setConfirmation(c)}
-    />
+    <>
+      <SmsConsentCard
+        surgery={status}
+        token={token}
+        id={surgeryId}
+        onUpdate={r => setStatus(prev => ({ ...prev, ...r }))}
+      />
+      <SlotPicker
+        surgeryId={surgeryId}
+        headers={headers}
+        status={status}
+        endpoint="pick"
+        onPicked={(c) => setConfirmation(c)}
+      />
+    </>
   )
 }
 
 
-function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedule, onCancel }) {
+function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedule, onCancel, onSmsUpdate }) {
   // Compute days until surgery to disable patient-facing reschedule within 14 days
   const daysUntil = (() => {
     if (!status.scheduled_date) return null
@@ -343,6 +352,13 @@ function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedul
           14 days may incur a $351 fee.
         </p>
       )}
+
+      <SmsConsentCard
+        surgery={status}
+        token={token}
+        id={surgeryId}
+        onUpdate={onSmsUpdate}
+      />
 
       <FmlaUploadPanel surgeryId={surgeryId} headers={headers} />
 
@@ -863,6 +879,63 @@ function ConfirmationScreen({ status, confirmation }) {
       <p className="text-xs text-gray-500 mt-5 pt-3 border-t border-gray-100">
         Questions? Call us at <a href="tel:+12402522140" className="text-plum-700">240-252-2140</a>.
       </p>
+    </div>
+  )
+}
+
+
+function SmsConsentCard({ surgery, token, id, onUpdate }) {
+  const [phone, setPhone] = useState(surgery.cell_phone || '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function setConsent(value) {
+    setSaving(true); setError(null)
+    try {
+      const r = await publicApi.post(`/p/surgery/${id}/sms-consent`,
+        { sms_consent: value, cell_phone: phone.trim() || null },
+        { headers: { Authorization: `Bearer ${token}` } })
+      onUpdate?.(r.data)
+    } catch (e) {
+      setError(e?.response?.data?.detail || 'Failed to update preferences')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="bg-white border border-border-subtle rounded-lg p-4 mb-4">
+      <div className="text-[12px] text-gray-500 uppercase tracking-wider mb-1">Text reminders</div>
+      {surgery.sms_consent ? (
+        <>
+          <div className="text-sm text-gray-700">
+            You're opted in to text reminders at <span className="font-mono">{surgery.cell_phone || '(no number on file)'}</span>.
+          </div>
+          <button className="text-[12px] text-red-700 hover:underline mt-2"
+                  onClick={() => setConsent(false)} disabled={saving}>
+            {saving ? 'Updating…' : 'Stop texts'}
+          </button>
+        </>
+      ) : (
+        <>
+          <div className="text-sm text-gray-700 mb-2">
+            Get text reminders about your upcoming surgery. Standard messaging
+            rates may apply. Reply STOP at any time to unsubscribe.
+          </div>
+          <div className="flex items-center gap-2">
+            <input className="input text-sm flex-1"
+                   placeholder="Mobile number (e.g. +15555550100)"
+                   value={phone}
+                   onChange={e => setPhone(e.target.value)} />
+            <button className="btn-primary text-sm"
+                    onClick={() => setConsent(true)}
+                    disabled={saving || !phone.trim()}>
+              {saving ? 'Saving…' : 'Opt in'}
+            </button>
+          </div>
+          {error && <div className="text-red-600 text-[12px] mt-1">{error}</div>}
+        </>
+      )}
     </div>
   )
 }

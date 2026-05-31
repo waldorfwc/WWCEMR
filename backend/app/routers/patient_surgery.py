@@ -229,6 +229,8 @@ def patient_status(surgery_id: str, db: Session = Depends(get_db),
         "can_pick_date": can_pick,
         "status": s.status,
         "clearance_required": bool(s.clearance_required),
+        "sms_consent":   bool(s.sms_consent),
+        "cell_phone":    s.cell_phone,
     }
 
 
@@ -643,6 +645,41 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
         "refund_required": refund_required,
         "freed_block_day_id": freed_block_day_id,
         "message": msg,
+    }
+
+
+# ─── SMS consent (patient self-service) ─────────────────────────────
+
+class PatientSmsConsentIn(BaseModel):
+    sms_consent: bool
+    cell_phone:  Optional[str] = None
+
+
+@router.post("/{surgery_id}/sms-consent")
+def patient_sms_consent(
+    surgery_id: str,
+    payload: PatientSmsConsentIn,
+    db: Session = Depends(get_db),
+    _token: str = Depends(require_patient_token),
+):
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    from datetime import datetime as _dt
+    s.sms_consent = bool(payload.sms_consent)
+    if s.sms_consent:
+        s.sms_consented_at = _dt.utcnow()
+        s.sms_consented_by = "patient:self-service"
+        if payload.cell_phone and payload.cell_phone.strip():
+            s.cell_phone = payload.cell_phone.strip()
+    else:
+        s.sms_consented_at = None
+        s.sms_consented_by = None
+    db.commit()
+    return {
+        "sms_consent": s.sms_consent,
+        "cell_phone":  s.cell_phone,
+        "sms_consented_at": s.sms_consented_at.isoformat() if s.sms_consented_at else None,
     }
 
 
