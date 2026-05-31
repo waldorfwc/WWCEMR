@@ -1217,6 +1217,7 @@ const TABS = [
   { k: 'facilities', label: 'Facilities',          icon: Building2 },
   { k: 'templates',  label: 'Procedure templates', icon: Stethoscope },
   { k: 'emails',     label: 'Email templates',     icon: Mail },
+  { k: 'sms',        label: 'SMS templates',       icon: MessageSquare },
 ]
 
 export default function SurgeryRules() {
@@ -1254,6 +1255,143 @@ export default function SurgeryRules() {
       {tab === 'facilities' && <FacilitiesTab />}
       {tab === 'templates'  && <TemplatesTab />}
       {tab === 'emails'     && <EmailTemplatesTab />}
+      {tab === 'sms'        && <SmsTemplatesTab />}
+    </div>
+  )
+}
+
+
+function SmsTemplatesTab() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['sms-templates'],
+    queryFn: () => api.get('/surgery/admin/sms-templates').then(r => r.data),
+  })
+
+  const [editingId, setEditingId] = useState(null)
+  const [draft, setDraft] = useState(null)
+  const [previewVars, setPreviewVars] = useState('{\n  "patient_name": "Pat",\n  "surgery_date": "2026-06-15",\n  "start_time": "07:30",\n  "facility": "MedStar",\n  "days_until": "3"\n}')
+  const [preview, setPreview] = useState(null)
+
+  const patch = useMutation({
+    mutationFn: ({ id, body }) =>
+      api.patch(`/surgery/admin/sms-templates/${id}`, body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sms-templates'] })
+      setEditingId(null); setDraft(null); setPreview(null)
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  const previewMut = useMutation({
+    mutationFn: (body) =>
+      api.post('/surgery/admin/sms-templates/preview', body).then(r => r.data),
+    onSuccess: (data) => setPreview(data),
+    onError: (e) => alert(e?.response?.data?.detail || 'Preview failed'),
+  })
+
+  function startEdit(t) {
+    setEditingId(t.id)
+    setDraft({ label: t.label, body: t.body, is_active: t.is_active })
+    setPreview(null)
+  }
+
+  function runPreview() {
+    let ctx
+    try { ctx = JSON.parse(previewVars) }
+    catch { return alert('Preview vars JSON is invalid') }
+    previewMut.mutate({ body: draft?.body || '', context: ctx })
+  }
+
+  const list = data?.templates || []
+
+  return (
+    <div className="space-y-3">
+      {list.map(t => (
+        <div key={t.id}
+             className={`bg-white border rounded-lg p-4 ${
+               editingId === t.id ? 'border-plum-400' : 'border-border-subtle'
+             }`}>
+          <div className="flex items-center justify-between mb-1">
+            <div>
+              <div className="text-sm font-semibold">{t.label}</div>
+              <div className="text-[11px] text-gray-500 font-mono">{t.kind}</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] px-2 py-0.5 rounded ${
+                t.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+              }`}>{t.is_active ? 'active' : 'inactive'}</span>
+              {editingId !== t.id && (
+                <button className="btn-secondary text-[11px]" onClick={() => startEdit(t)}>
+                  Edit
+                </button>
+              )}
+            </div>
+          </div>
+
+          {editingId === t.id ? (
+            <div className="mt-2 space-y-2">
+              <div>
+                <label className="text-[11px] uppercase text-gray-500 block mb-0.5">
+                  {'Body (plain text — {{var}} for substitution)'}
+                </label>
+                <textarea className="input text-sm w-full font-mono" rows={4}
+                          value={draft.body}
+                          onChange={e => setDraft({ ...draft, body: e.target.value })} />
+                <div className="text-[10px] text-gray-400 mt-0.5">
+                  {draft.body.length} chars
+                  {draft.body.length > 160 && (
+                    <span className="text-amber-700 ml-2">
+                      (will send as multiple segments)
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] uppercase text-gray-500 block mb-0.5">
+                  Preview vars (JSON)
+                </label>
+                <textarea className="input text-[11px] w-full font-mono" rows={4}
+                          value={previewVars}
+                          onChange={e => setPreviewVars(e.target.value)} />
+              </div>
+              {preview && (
+                <div className="bg-gray-50 border border-border-subtle rounded p-2">
+                  <div className="text-[10px] uppercase text-gray-500 mb-1">
+                    Preview ({preview.length} chars · {preview.segments} segment{preview.segments === 1 ? '' : 's'})
+                  </div>
+                  <div className="text-[12px] font-mono whitespace-pre-wrap">{preview.body}</div>
+                </div>
+              )}
+              <div className="flex items-center gap-2 pt-1">
+                <button className="btn-primary text-sm"
+                        onClick={() => patch.mutate({ id: t.id, body: draft })}
+                        disabled={patch.isPending}>
+                  {patch.isPending ? 'Saving…' : 'Save'}
+                </button>
+                <button className="btn-secondary text-sm" onClick={runPreview}
+                        disabled={previewMut.isPending}>
+                  {previewMut.isPending ? 'Rendering…' : 'Preview'}
+                </button>
+                <label className="text-[11px] flex items-center gap-1 ml-2">
+                  <input type="checkbox"
+                         checked={draft.is_active}
+                         onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
+                  Active
+                </label>
+                <button className="btn-secondary text-sm ml-auto"
+                        onClick={() => { setEditingId(null); setDraft(null); setPreview(null) }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[12px] text-gray-700 mt-2 font-mono whitespace-pre-wrap line-clamp-3">
+              {t.body}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

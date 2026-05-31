@@ -195,3 +195,42 @@ def test_default_bodies_are_short():
         body = render(t["body"], sample)
         # 320 chars = 2 segments, still acceptable. Anything beyond is a smell.
         assert len(body) <= 320, f"{t['kind']} too long: {len(body)} chars"
+
+
+def test_list_sms_templates_returns_seeded(client, db):
+    from app.services.surgery_config_seed import seed_default_sms_templates
+    seed_default_sms_templates(db)
+    resp = client.get("/api/surgery/admin/sms-templates")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body["templates"]) == 4
+    assert "sms_payment_link" in body["allowed_kinds"]
+
+
+def test_patch_sms_template_persists(client, db):
+    db.add(SmsTemplate(
+        kind="sms_surgery_reminder", label="orig", body="orig body",
+    ))
+    db.commit()
+    t = db.query(SmsTemplate).filter_by(kind="sms_surgery_reminder").first()
+
+    resp = client.patch(f"/api/surgery/admin/sms-templates/{t.id}", json={
+        "body": "New body",
+        "is_active": False,
+    })
+    assert resp.status_code == 200
+    db.refresh(t)
+    assert t.body == "New body"
+    assert t.is_active is False
+
+
+def test_preview_sms_template_returns_segments(client):
+    resp = client.post("/api/surgery/admin/sms-templates/preview", json={
+        "body":    "Hi {{name}}, " + "x" * 100,
+        "context": {"name": "Pat"},
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "Hi Pat" in body["body"]
+    assert body["length"] > 0
+    assert body["segments"] in (1, 2)

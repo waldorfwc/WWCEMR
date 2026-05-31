@@ -3069,6 +3069,32 @@ def list_patient_emails(
     }
 
 
+@router.get("/{surgery_id}/patient-sms")
+def list_patient_sms(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("claim:read")),
+):
+    """Audit history of patient SMS messages for this surgery."""
+    from app.models.patient_sms import PatientSms
+    rows = (db.query(PatientSms)
+              .filter(PatientSms.surgery_id == surgery_id)
+              .order_by(PatientSms.sent_at.desc()).all())
+    return {
+        "messages": [{
+            "id":             str(r.id),
+            "to_phone":       r.to_phone,
+            "template_kind":  r.template_kind,
+            "rendered_body":  r.rendered_body,
+            "segments":       r.segments,
+            "status":         r.status,
+            "failure_reason": r.failure_reason,
+            "sent_at":        r.sent_at.isoformat() if r.sent_at else None,
+            "sent_by":        r.sent_by,
+        } for r in rows],
+    }
+
+
 # ─── Admin: manual reminder trigger ─────────────────────────────────
 
 @router.post("/admin/reminders/run-now")

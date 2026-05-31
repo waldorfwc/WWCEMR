@@ -270,6 +270,8 @@ export default function SurgeryDetail() {
 
       {s && <PatientEmailsSection surgery={s} />}
 
+      {s && <PatientSmsSection surgery={s} />}
+
       <NotesPanel surgery={s} />
 
       {showCancel && (
@@ -3821,6 +3823,61 @@ function PatientEmailsSection({ surgery }) {
                   }`}>{e.status}</span>
                   {e.failure_reason && (
                     <div className="text-[10px] text-red-600 mt-0.5">{e.failure_reason}</div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+
+// ─── J5: Per-surgery SMS audit history ──────────────────────────────
+
+function PatientSmsSection({ surgery }) {
+  const { data } = useQuery({
+    queryKey: ['patient-sms', surgery.id],
+    queryFn: () => api.get(`/surgery/${surgery.id}/patient-sms`).then(r => r.data),
+  })
+  const messages = data?.messages || []
+  const fmtDate = (iso) => (iso || '').slice(0, 16).replace('T', ' ')
+
+  return (
+    <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4">
+      <h2 className="text-lg font-semibold mb-3">Patient SMS history</h2>
+      {messages.length === 0 ? (
+        <div className="text-[12px] text-gray-400 italic">No SMS activity.</div>
+      ) : (
+        <table className="w-full text-[12px]">
+          <thead className="text-[11px] uppercase text-gray-500">
+            <tr>
+              <th className="text-left py-1">When</th>
+              <th className="text-left py-1">To</th>
+              <th className="text-left py-1">Kind</th>
+              <th className="text-left py-1">Body</th>
+              <th className="text-left py-1">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {messages.map(m => (
+              <tr key={m.id} className="border-t border-border-subtle">
+                <td className="py-1.5 text-gray-500">{fmtDate(m.sent_at)}</td>
+                <td className="py-1.5 font-mono">{m.to_phone}</td>
+                <td className="py-1.5 text-gray-500">{m.template_kind || 'ad-hoc'}</td>
+                <td className="py-1.5 max-w-md truncate" title={m.rendered_body}>
+                  {m.rendered_body}
+                </td>
+                <td className="py-1.5">
+                  <span className={`px-2 py-0.5 rounded text-[11px] ${
+                    m.status === 'sent'    ? 'bg-green-100 text-green-700' :
+                    m.status === 'failed'  ? 'bg-red-100 text-red-700' :
+                                              'bg-amber-100 text-amber-700'
+                  }`}>{m.status}</span>
+                  {m.failure_reason && (
+                    <div className="text-[10px] text-red-600 mt-0.5">{m.failure_reason}</div>
                   )}
                 </td>
               </tr>

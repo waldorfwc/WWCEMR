@@ -390,3 +390,68 @@ def preview_email_template(payload: EmailTemplatePreviewIn,
         "subject":   render(payload.subject, payload.context or {}),
         "html_body": render(payload.html_body, payload.context or {}),
     }
+
+
+# ─── SMS templates (Phase J) ───────────────────────────────────────
+
+from app.models.patient_sms import SmsTemplate, SMS_TEMPLATE_KINDS
+
+
+class SmsTemplatePatch(BaseModel):
+    label:     Optional[str] = None
+    body:      Optional[str] = None
+    is_active: Optional[bool] = None
+    notes:     Optional[str] = None
+
+
+class SmsTemplatePreviewIn(BaseModel):
+    body:    str
+    context: dict
+
+
+def _sms_template_dict(t: SmsTemplate) -> dict:
+    return {
+        "id":         str(t.id),
+        "kind":       t.kind,
+        "label":      t.label,
+        "body":       t.body,
+        "is_active":  t.is_active,
+        "notes":      t.notes,
+        "updated_at": t.updated_at.isoformat() if t.updated_at else None,
+        "updated_by": t.updated_by,
+    }
+
+
+@router.get("/admin/sms-templates")
+def list_sms_templates(db: Session = Depends(get_db),
+                        current_user: dict = Depends(require_permission("claim:read"))):
+    rows = db.query(SmsTemplate).order_by(SmsTemplate.label.asc()).all()
+    return {
+        "templates":     [_sms_template_dict(t) for t in rows],
+        "allowed_kinds": list(SMS_TEMPLATE_KINDS),
+    }
+
+
+@router.patch("/admin/sms-templates/{template_id}")
+def patch_sms_template(template_id: str,
+                        payload: SmsTemplatePatch,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(require_permission("user:manage"))):
+    t = db.query(SmsTemplate).filter(SmsTemplate.id == template_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="template not found")
+    data = payload.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(t, k, v)
+    t.updated_by = current_user.get("email") or "system"
+    db.commit(); db.refresh(t)
+    return _sms_template_dict(t)
+
+
+@router.post("/admin/sms-templates/preview")
+def preview_sms_template(payload: SmsTemplatePreviewIn,
+                          current_user: dict = Depends(require_permission("claim:read"))):
+    """Render body with context. Returns body + segment count."""
+    from app.services.patient_sms import render, _segments
+    body = render(payload.body, payload.context or {})
+    return {"body": body, "length": len(body), "segments": _segments(body)}
