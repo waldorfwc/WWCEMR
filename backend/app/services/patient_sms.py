@@ -7,6 +7,7 @@ failure_reason="patient has not opted in to SMS".
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any, Optional
 
@@ -17,6 +18,7 @@ from app.models.patient_sms import (
 )
 from app.models.surgery import Surgery
 from app.services.checklist_notifications import send_sms
+from app.services.surgery_klara_drafter import FACILITY_SHORT
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +30,55 @@ def render(body: str, context: dict) -> str:
     def _repl(m):
         return str(context.get(m.group(1), ""))
     return _VAR_RE.sub(_repl, body)
+
+
+def build_sms_context(surgery: Surgery, **extras) -> dict:
+    """Standard SMS template context for a Surgery.
+
+    Fills the variables used across the four seeded templates:
+        patient_name, surgery_date, surgery_time, facility_name, practice_phone
+
+    `extras` are merged in (kind-specific values like amount / payment_link /
+    message), so the caller can write a single call:
+
+        ctx = build_sms_context(surgery,
+                                amount="$250.00",
+                                payment_link=link)
+        send_patient_sms(db, kind="sms_payment_link",
+                         surgery=surgery, context=ctx, sent_by=user.email)
+
+    `practice_phone` comes from the WWC_PRACTICE_PHONE env var. If unset, the
+    var renders as an empty string — visible in QA but not a runtime error.
+    """
+    first = (surgery.first_name
+             or (surgery.patient_name or "").split(",")[-1].strip().split(" ")[0]
+             or "")
+
+    surgery_date = ""
+    if surgery.scheduled_date:
+        # "Wed Jun 3" — terse for SMS, drops the year
+        surgery_date = surgery.scheduled_date.strftime("%a %b %-d")
+
+    surgery_time = ""
+    if surgery.scheduled_start_time:
+        # "7:30 AM" — strip leading zero on hour for shorter SMS
+        surgery_time = surgery.scheduled_start_time.strftime("%-I:%M %p")
+
+    facility_name = ""
+    if surgery.selected_facility:
+        facility_name = FACILITY_SHORT.get(
+            surgery.selected_facility, surgery.selected_facility
+        )
+
+    ctx = {
+        "patient_name":   first,
+        "surgery_date":   surgery_date,
+        "surgery_time":   surgery_time,
+        "facility_name":  facility_name,
+        "practice_phone": os.environ.get("WWC_PRACTICE_PHONE", "").strip(),
+    }
+    ctx.update(extras)
+    return ctx
 
 
 def _segments(text: str) -> int:

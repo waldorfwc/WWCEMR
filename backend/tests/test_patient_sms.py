@@ -1,12 +1,14 @@
 """Patient SMS foundation (J1)."""
-from datetime import datetime
+from datetime import date, datetime, time
 from unittest.mock import patch
 
 from app.models.patient_sms import (
     SmsTemplate, PatientSms, SMS_TEMPLATE_KINDS, PATIENT_SMS_STATUSES,
 )
 from app.models.surgery import Surgery
-from app.services.patient_sms import render, _segments, send_patient_sms
+from app.services.patient_sms import (
+    render, _segments, send_patient_sms, build_sms_context,
+)
 
 
 def _make_surgery(db, sms_consent=True, cell="+15555550100"):
@@ -234,3 +236,99 @@ def test_preview_sms_template_returns_segments(client):
     assert "Hi Pat" in body["body"]
     assert body["length"] > 0
     assert body["segments"] in (1, 2)
+
+
+# ─── build_sms_context() ─────────────────────────────────────────
+
+def test_build_context_fills_known_vars(db, monkeypatch):
+    monkeypatch.setenv("WWC_PRACTICE_PHONE", "(301) 638-5511")
+    s = Surgery(
+        chart_number="42",
+        patient_name="Doe, Jane",
+        first_name="Jane",
+        cell_phone="+15555550100",
+        sms_consent=True,
+        eligible_facilities=["medstar"],
+        selected_facility="medstar",
+        scheduled_date=date(2026, 6, 3),
+        scheduled_start_time=time(7, 30),
+        status="confirmed",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+
+    ctx = build_sms_context(s)
+    assert ctx["patient_name"] == "Jane"
+    assert ctx["surgery_date"] == "Wed Jun 3"
+    assert ctx["surgery_time"] == "7:30 AM"
+    assert ctx["facility_name"] == "MedStar"
+    assert ctx["practice_phone"] == "(301) 638-5511"
+
+
+def test_build_context_handles_unscheduled_surgery(db):
+    s = Surgery(
+        chart_number="43",
+        patient_name="Smith, Pat",
+        first_name="Pat",
+        eligible_facilities=["office"],
+        selected_facility=None,             # not yet picked
+        scheduled_date=None,
+        scheduled_start_time=None,
+        status="new",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+
+    ctx = build_sms_context(s)
+    # Unset values render empty — never raise, never inject "None"
+    assert ctx["surgery_date"] == ""
+    assert ctx["surgery_time"] == ""
+    assert ctx["facility_name"] == ""
+    assert "None" not in " ".join(str(v) for v in ctx.values())
+
+
+def test_build_context_first_name_falls_back_to_patient_name(db):
+    s = Surgery(
+        chart_number="44",
+        patient_name="Doe, Jane",
+        first_name=None,
+        status="new",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+
+    ctx = build_sms_context(s)
+    assert ctx["patient_name"] == "Jane"
+
+
+def test_build_context_merges_extras(db):
+    s = Surgery(
+        chart_number="45",
+        patient_name="Doe, Jane",
+        first_name="Jane",
+        status="new",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+
+    ctx = build_sms_context(
+        s,
+        amount="$250.00",
+        payment_link="https://pay.example/abc",
+    )
+    assert ctx["amount"] == "$250.00"
+    assert ctx["payment_link"] == "https://pay.example/abc"
+    assert ctx["patient_name"] == "Jane"  # standard fields still present
+
+
+def test_build_context_extras_can_override(db):
+    """Caller-supplied extras win over standard fields — useful for
+    one-off corrections without mutating the Surgery row."""
+    s = Surgery(
+        chart_number="46",
+        patient_name="Doe, Jane",
+        first_name="Jane",
+        eligible_facilities=["medstar"],
+        selected_facility="medstar",
+        status="new",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+
+    ctx = build_sms_context(s, facility_name="ASC Annex")
+    assert ctx["facility_name"] == "ASC Annex"
