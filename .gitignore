@@ -33,3 +33,7 @@ scratch/
 
 # Superpowers workspace
 .superpowers/
+
+# Claude Code runtime artifacts
+.claude/scheduled_tasks.lock
+.playwright-mcp/
