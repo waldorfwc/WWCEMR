@@ -32,7 +32,7 @@ def test_login_generic_404_on_no_match(client, db):
     assert r.status_code == 404
     # Must not reveal whether DOB or phone was wrong
     assert "dob" not in r.text.lower()
-    assert "phone" not in r.text.lower() or "phone number" in r.text.lower()
+    assert "phone" not in r.text.lower()
 
 
 def test_login_locked_out_after_three_fails(client, db):
@@ -46,6 +46,8 @@ def test_login_locked_out_after_three_fails(client, db):
     r = client.post("/api/patient/portal/login",
                      json={"dob": "1990-01-01", "phone_last4": "1234"})
     assert r.status_code == 429
+    assert "15 minutes" in r.text
+    assert "240-252-2140" in r.text
 
 
 def test_login_validates_dob_format(client, db):

@@ -10,7 +10,6 @@ Auth flow (2-step):
 """
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,8 +19,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.surgery import PatientAuthAttempt, Surgery
 from app.services import patient_portal_auth as auth
-
-log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/patient/portal", tags=["patient-portal"])
 
@@ -70,10 +67,10 @@ def _match_surgery(
         dob = datetime.strptime(dob_str[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):
         raise HTTPException(status_code=422,
-                             detail="Date of birth must be YYYY-MM-DD")
+                             detail="Please enter your date of birth as YYYY-MM-DD")
     if len(last4_in) != 4:
         raise HTTPException(status_code=422,
-                             detail="Phone last 4 must be 4 digits")
+                             detail="Please enter the last 4 digits of your phone number")
 
     first_dob_match: Surgery | None = None
     for s in db.query(Surgery).filter(Surgery.dob == dob).all():
