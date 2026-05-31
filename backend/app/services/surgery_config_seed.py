@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.surgery_config import Facility, SurgeryProcedureTemplate
 from app.models.patient_email import EmailTemplate
+from app.models.patient_sms import SmsTemplate
 
 
 DEFAULT_FACILITIES = [
@@ -164,6 +165,49 @@ def seed_default_email_templates(db: Session) -> int:
         db.add(EmailTemplate(
             kind=t["kind"], label=t["label"],
             subject=t["subject"], html_body=t["html_body"],
+            updated_by="seed",
+        ))
+        inserted += 1
+    if inserted:
+        db.commit()
+    return inserted
+
+
+DEFAULT_SMS_TEMPLATES = [
+    {
+        "kind": "sms_payment_link",
+        "label": "SMS — payment link",
+        "body": "WWC Gyn: Your pre-op balance of ${{amount}} is ready to pay: {{checkout_url}} Reply STOP to opt out.",
+    },
+    {
+        "kind": "sms_surgery_confirmation",
+        "label": "SMS — surgery confirmation",
+        "body": "WWC Gyn: Your surgery is confirmed for {{surgery_date}} at {{start_time}} at {{facility}}. Reply STOP to opt out.",
+    },
+    {
+        "kind": "sms_surgery_reminder",
+        "label": "SMS — surgery reminder",
+        "body": "WWC Gyn: Reminder — your surgery is in {{days_until}} days ({{surgery_date}} at {{start_time}}). Reply STOP to opt out.",
+    },
+    {
+        "kind": "sms_generic_message",
+        "label": "SMS — staff-composed message",
+        "body": "WWC Gyn: {{body}} Reply STOP to opt out.",
+    },
+]
+
+
+def seed_default_sms_templates(db: Session) -> int:
+    """Idempotent: insert only kinds that don't already have a row."""
+    inserted = 0
+    for t in DEFAULT_SMS_TEMPLATES:
+        exists = (db.query(SmsTemplate)
+                    .filter(SmsTemplate.kind == t["kind"])
+                    .first())
+        if exists:
+            continue
+        db.add(SmsTemplate(
+            kind=t["kind"], label=t["label"], body=t["body"],
             updated_by="seed",
         ))
         inserted += 1

@@ -146,3 +146,52 @@ def test_template_kinds_includes_four():
     assert "sms_surgery_confirmation"  in SMS_TEMPLATE_KINDS
     assert "sms_surgery_reminder"      in SMS_TEMPLATE_KINDS
     assert "sms_generic_message"       in SMS_TEMPLATE_KINDS
+
+
+# ─── seed tests (J2) ─────────────────────────────────────────────
+
+def test_seed_inserts_all_four_templates(db):
+    from app.services.surgery_config_seed import (
+        seed_default_sms_templates, DEFAULT_SMS_TEMPLATES,
+    )
+
+    n = seed_default_sms_templates(db)
+    assert n == len(DEFAULT_SMS_TEMPLATES) == 4
+
+    # Re-run is a no-op
+    n2 = seed_default_sms_templates(db)
+    assert n2 == 0
+
+    kinds_in_db = {t.kind for t in db.query(SmsTemplate).all()}
+    assert set(SMS_TEMPLATE_KINDS) == kinds_in_db
+
+
+def test_seed_does_not_overwrite_existing(db):
+    from app.services.surgery_config_seed import seed_default_sms_templates
+
+    db.add(SmsTemplate(
+        kind="sms_surgery_reminder", label="custom",
+        body="Custom body",
+    ))
+    db.commit()
+
+    seed_default_sms_templates(db)
+    row = db.query(SmsTemplate).filter_by(kind="sms_surgery_reminder").first()
+    assert row.label == "custom"
+    assert row.body == "Custom body"
+
+
+def test_default_bodies_are_short():
+    """Confirm seeded templates stay under 160 chars when sample vars are
+    short — these go out as single SMS segments most of the time."""
+    from app.services.surgery_config_seed import DEFAULT_SMS_TEMPLATES
+    # Replace vars with realistic short values, check resulting length.
+    sample = {"amount": "750.00", "checkout_url": "https://stripe.com/abc",
+              "surgery_date": "2026-06-15", "start_time": "07:30",
+              "facility": "MedStar", "days_until": "3",
+              "body": "Quick question."}
+    for t in DEFAULT_SMS_TEMPLATES:
+        from app.services.patient_sms import render
+        body = render(t["body"], sample)
+        # 320 chars = 2 segments, still acceptable. Anything beyond is a smell.
+        assert len(body) <= 320, f"{t['kind']} too long: {len(body)} chars"
