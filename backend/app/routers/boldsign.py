@@ -14,6 +14,7 @@ This lives alongside the existing DocuSign webhook at /api/docusign/webhook
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -38,19 +39,28 @@ def _webhook_secret() -> str:
 
 
 def _verify_signature(body: bytes, signature: str) -> bool:
-    """HMAC-SHA256 hex digest match. BoldSign uses the raw request body
-    as the message; the secret is configured in their Dashboard at
-    webhook-endpoint setup time."""
+    """HMAC-SHA256 match. BoldSign signs the raw request body with the
+    webhook secret configured in their Dashboard. The X-Boldsign-Signature
+    header is the BASE64 encoding of the digest; some accounts also send
+    a hex form. We accept either.
+    """
     secret = _webhook_secret()
     if not secret:
         log.warning("BoldSign webhook received but BOLDSIGN_WEBHOOK_SECRET is not set")
         return False
-    expected = hmac.new(
-        secret.encode("utf-8"),
-        body,
-        hashlib.sha256,
-    ).hexdigest()
-    return hmac.compare_digest(expected, (signature or "").strip())
+    sig = (signature or "").strip()
+    digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).digest()
+    expected_b64 = base64.b64encode(digest).decode("ascii")
+    expected_hex = digest.hex()
+    if hmac.compare_digest(expected_b64, sig):
+        return True
+    if hmac.compare_digest(expected_hex, sig):
+        return True
+    log.warning(
+        "BoldSign signature mismatch: got %r, expected b64=%r or hex=%r",
+        sig[:20] + "...", expected_b64[:20] + "...", expected_hex[:20] + "...",
+    )
+    return False
 
 
 @router.post("/webhook")
