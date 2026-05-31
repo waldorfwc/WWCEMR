@@ -2912,6 +2912,29 @@ function ConsentPanel({ surgery }) {
     },
     onError: (e) => alert(e?.response?.data?.detail || 'DocuSign sync failed'),
   })
+  const boldsignSend = useMutation({
+    mutationFn: (ignoreWarnings) =>
+      api.post(`/surgery/${surgery.id}/consent/boldsign-send`,
+              { ignore_warnings: !!ignoreWarnings }).then(r => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      if (data?.skipped?.length) {
+        alert(`Sent ${data.sent.length}; skipped ${data.skipped.length} (already in flight).`)
+      }
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'BoldSign send failed'),
+  })
+  const boldsignSync = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/boldsign-sync`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'BoldSign sync failed'),
+  })
   const sentManual = useMutation({
     mutationFn: () => api.post(`/surgery/${surgery.id}/consent/sent`).then(r => r.data),
     onSuccess: () => {
@@ -2938,16 +2961,17 @@ function ConsentPanel({ surgery }) {
   const unmatched = matchData?.unmatched_procedures || []
   const canSend = matchData && matchData.matches.length > 0 && unmatched.length === 0
 
-  function handleSend() {
+  function handleSend(provider) {
+    const send = provider === 'boldsign' ? boldsignSend : docusignSend
     if (blockingWarnings.length > 0) {
       const ok = confirm(
         'Warnings:\n\n' + blockingWarnings.map(m => '• ' + m.warning).join('\n')
         + '\n\nSend anyway?'
       )
       if (!ok) return
-      docusignSend.mutate(true)
+      send.mutate(true)
     } else {
-      docusignSend.mutate(false)
+      send.mutate(false)
     }
   }
 
@@ -3031,27 +3055,42 @@ function ConsentPanel({ surgery }) {
         {!isSigned && envelopes.length === 0 && (
           <>
             <button className="btn-primary text-xs flex items-center gap-1"
-                    onClick={handleSend}
-                    disabled={!canSend || docusignSend.isPending}
+                    onClick={() => handleSend('boldsign')}
+                    disabled={!canSend || boldsignSend.isPending}
                     title={!canSend ? 'Resolve unmatched procedures first' : ''}>
+              <Send size={11} /> {boldsignSend.isPending ? 'Sending…' : 'Send via BoldSign'}
+            </button>
+            <button className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => handleSend('docusign')}
+                    disabled={!canSend || docusignSend.isPending}
+                    title={!canSend ? 'Resolve unmatched procedures first' : 'Legacy — use BoldSign for new envelopes'}>
               <Send size={11} /> {docusignSend.isPending ? 'Sending…' : 'Send via DocuSign'}
             </button>
             <button className="btn-secondary text-xs flex items-center gap-1"
                     onClick={() => sentManual.mutate()}
                     disabled={sentManual.isPending}
-                    title="Use this if you sent on paper / fax instead of DocuSign">
+                    title="Use this if you sent on paper / fax">
               <FileText size={11} /> {sentManual.isPending ? 'Saving…' : 'Mark sent (paper)'}
             </button>
           </>
         )}
         {!isSigned && envelopes.length > 0 && (
-          <button className="btn-secondary text-xs flex items-center gap-1"
-                  onClick={() => docusignSync.mutate()}
-                  disabled={docusignSync.isPending}
-                  title="Pull latest status from DocuSign">
-            <RefreshCw size={11} className={docusignSync.isPending ? 'animate-spin' : ''} />
-            {docusignSync.isPending ? 'Checking…' : 'Refresh from DocuSign'}
-          </button>
+          <>
+            <button className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => boldsignSync.mutate()}
+                    disabled={boldsignSync.isPending}
+                    title="Pull latest status from BoldSign">
+              <RefreshCw size={11} className={boldsignSync.isPending ? 'animate-spin' : ''} />
+              {boldsignSync.isPending ? 'Checking…' : 'Refresh from BoldSign'}
+            </button>
+            <button className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => docusignSync.mutate()}
+                    disabled={docusignSync.isPending}
+                    title="Pull latest status from DocuSign (legacy envelopes)">
+              <RefreshCw size={11} className={docusignSync.isPending ? 'animate-spin' : ''} />
+              {docusignSync.isPending ? 'Checking…' : 'Refresh from DocuSign'}
+            </button>
+          </>
         )}
         {!isSigned && (
           <button className="btn-secondary text-xs flex items-center gap-1"
