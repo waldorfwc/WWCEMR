@@ -2125,6 +2125,12 @@ def coordinator_schedule(
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+    try:
+        from app.routers.patient_surgery import _send_surgery_confirmation_email
+        _send_surgery_confirmation_email(db, s, slot, sent_by=actor)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("confirmation email failed: %s", e)
     return {"ok": True, "slot_id": str(slot.id),
             "start_time": start.strftime("%H:%M"),
             "duration_minutes": duration,

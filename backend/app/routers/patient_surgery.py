@@ -42,6 +42,35 @@ log = logging.getLogger(__name__)
 router = APIRouter(prefix="/p/surgery", tags=["patient-surgery"])
 
 
+# ─── Confirmation email helper ───────────────────────────────────────
+
+def _send_surgery_confirmation_email(db, surgery, slot, sent_by: str) -> None:
+    """Soft-fail confirmation email after a slot is booked."""
+    from app.services.patient_email import send_patient_email
+
+    start_time = (slot.start_time.strftime("%H:%M")
+                    if slot and slot.start_time else "")
+    surgery_date = (surgery.scheduled_date.isoformat()
+                      if surgery.scheduled_date else "")
+    procedure = ""
+    if surgery.procedures:
+        procedure = surgery.procedures[0].get("name", "")
+    send_patient_email(
+        db, kind="surgery_confirmation",
+        to_email=surgery.email,
+        context={
+            "patient_name": surgery.patient_name,
+            "surgery_date": surgery_date,
+            "start_time":   start_time,
+            "facility":     surgery.selected_facility or "",
+            "procedure":    procedure,
+        },
+        sent_by=sent_by,
+        surgery_id=surgery.id,
+        chart_number=surgery.chart_number,
+    )
+
+
 # ─── Token helpers ──────────────────────────────────────────────────
 
 PATIENT_TOKEN_TTL_HOURS = 1
@@ -356,6 +385,15 @@ def patient_pick(surgery_id: str, payload: PickPayload,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+    try:
+        pick_slot = (db.query(SurgerySlot)
+                       .filter(SurgerySlot.surgery_id == s.id)
+                       .order_by(SurgerySlot.start_time)
+                       .first())
+        _send_surgery_confirmation_email(db, s, pick_slot, sent_by="patient:self-service")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("confirmation email failed: %s", e)
 
     return {
         "ok": True,
@@ -512,6 +550,11 @@ def patient_select_slot(
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+    try:
+        _send_surgery_confirmation_email(db, s, slot, sent_by="patient:self-service")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("confirmation email failed: %s", e)
     return {
         "ok": True,
         "slot_id": str(slot.id),
