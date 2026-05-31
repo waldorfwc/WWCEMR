@@ -103,17 +103,13 @@ def run_reminder_sweep(db: Session, today: date | None = None) -> dict:
                 chart_number=s.chart_number,
             )
             if not _sms_already_sent_for(db, s.id, lead):
-                from app.services.patient_sms import send_patient_sms
+                from app.services.patient_sms import (
+                    send_patient_sms, build_sms_context,
+                )
                 send_patient_sms(
                     db, kind="sms_surgery_reminder",
                     surgery=s,
-                    context={
-                        "patient_name": s.patient_name,
-                        "surgery_date": target.isoformat(),
-                        "start_time":   slot_start,
-                        "facility":     s.selected_facility or "",
-                        "days_until":   str(lead),
-                    },
+                    context=build_sms_context(s, days_until=str(lead)),
                     sent_by="system:reminder_cron",
                 )
             summary["sent"] += 1

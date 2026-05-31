@@ -47,7 +47,7 @@ router = APIRouter(prefix="/p/surgery", tags=["patient-surgery"])
 def _send_surgery_confirmation_email(db, surgery, slot, sent_by: str) -> None:
     """Soft-fail confirmation email + SMS after a slot is booked."""
     from app.services.patient_email import send_patient_email
-    from app.services.patient_sms import send_patient_sms
+    from app.services.patient_sms import send_patient_sms, build_sms_context
 
     start_time = (slot.start_time.strftime("%H:%M")
                     if slot and slot.start_time else "")
@@ -56,7 +56,8 @@ def _send_surgery_confirmation_email(db, surgery, slot, sent_by: str) -> None:
     procedure = ""
     if surgery.procedures:
         procedure = surgery.procedures[0].get("name", "")
-    ctx = {
+    # Email uses the long ISO date + raw HH:MM (lives in a roomier rendering).
+    email_ctx = {
         "patient_name": surgery.patient_name,
         "surgery_date": surgery_date,
         "start_time":   start_time,
@@ -65,13 +66,14 @@ def _send_surgery_confirmation_email(db, surgery, slot, sent_by: str) -> None:
     }
     send_patient_email(
         db, kind="surgery_confirmation",
-        to_email=surgery.email, context=ctx,
+        to_email=surgery.email, context=email_ctx,
         sent_by=sent_by, surgery_id=surgery.id,
         chart_number=surgery.chart_number,
     )
     send_patient_sms(
         db, kind="sms_surgery_confirmation",
-        surgery=surgery, context=ctx,
+        surgery=surgery,
+        context=build_sms_context(surgery),
         sent_by=sent_by,
     )
 

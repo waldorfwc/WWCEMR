@@ -3079,8 +3079,8 @@ def send_ad_hoc_patient_sms(
 ):
     """Compose-and-send an ad-hoc SMS to the patient. Uses the
     sms_generic_message template's wrapper (adds opt-out language)
-    via the {{body}} placeholder. Gated on Surgery.sms_consent."""
-    from app.services.patient_sms import send_patient_sms
+    via the {{message}} placeholder. Gated on Surgery.sms_consent."""
+    from app.services.patient_sms import send_patient_sms, build_sms_context
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -3091,7 +3091,7 @@ def send_ad_hoc_patient_sms(
         db, kind="sms_generic_message",
         surgery=s,
         to_phone=payload.to_phone,
-        context={"body": payload.body.strip()},
+        context=build_sms_context(s, message=payload.body.strip()),
         sent_by=actor,
     )
     return {
