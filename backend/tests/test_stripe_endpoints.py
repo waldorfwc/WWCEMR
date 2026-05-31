@@ -175,3 +175,90 @@ def test_refund_rejects_non_paid_payment(client, db):
     db.add(p); db.commit()
     resp = client.post(f"/api/surgery/payments/{p.id}/refund", json={})
     assert resp.status_code == 409
+
+
+def test_request_payment_sends_link_email(client, db, monkeypatch):
+    from unittest.mock import MagicMock, patch
+    from decimal import Decimal
+
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_xxx")
+
+    # Seed both an active template + a surgery
+    from app.models.patient_email import EmailTemplate, PatientEmail
+    db.add(EmailTemplate(
+        kind="stripe_payment_link", label="x",
+        subject="Pay {{amount}}", html_body="<p>Link: {{checkout_url}}</p>",
+    ))
+    s = _make_surgery(db)
+    db.commit()
+
+    mock_pay = MagicMock(
+        id="pay_uuid", status="requested",
+        amount_requested=Decimal("750.00"), amount_paid=Decimal("0"),
+        amount_refunded=Decimal("0"), currency="usd",
+        description="Pre-op balance",
+        checkout_url="https://checkout.stripe.com/cs_test_99",
+        requested_by="tester@waldorfwomenscare.com",
+    )
+    for attr in ("requested_at", "paid_at", "refunded_at", "failed_at",
+                  "failure_reason"):
+        setattr(mock_pay, attr, None)
+
+    with patch("app.routers.stripe_payments.svc.create_checkout_session",
+                return_value=mock_pay), \
+         patch("app.services.patient_email.send_email", return_value=True):
+        resp = client.post(f"/api/surgery/{s.id}/request-payment", json={})
+
+    assert resp.status_code == 200
+    emails = (db.query(PatientEmail)
+                .filter(PatientEmail.template_kind == "stripe_payment_link")
+                .all())
+    assert len(emails) == 1
+    assert emails[0].to_email == s.email
+    assert "cs_test_99" in emails[0].rendered_html
+    assert emails[0].status == "sent"
+
+
+def test_webhook_session_completed_sends_receipt(client, db, monkeypatch):
+    from unittest.mock import patch
+    from decimal import Decimal
+
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_xxx")
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_xxx")
+
+    from app.models.patient_email import EmailTemplate, PatientEmail
+    from app.models.stripe_payment import SurgeryPayment
+    db.add(EmailTemplate(
+        kind="stripe_payment_receipt", label="x",
+        subject="Thanks {{amount}}",
+        html_body="<p>Received {{amount}} for {{surgery_date}}</p>",
+    ))
+    s = _make_surgery(db)
+    p = SurgeryPayment(
+        surgery_id=s.id, stripe_checkout_session_id="cs_test_recpt",
+        amount_requested=Decimal("750.00"), requested_by="tester@x.com",
+        status="requested",
+    )
+    db.add(p); db.commit()
+
+    event = {
+        "type": "checkout.session.completed",
+        "data": {"object": {
+            "id": "cs_test_recpt",
+            "amount_total": 75000,
+            "payment_intent": "pi_recpt",
+        }},
+    }
+    with patch("app.routers.stripe_payments.svc.parse_webhook_event",
+                return_value=event), \
+         patch("app.services.patient_email.send_email", return_value=True):
+        resp = client.post("/api/stripe/webhook", content=b'{}',
+                            headers={"stripe-signature": "abc"})
+    assert resp.status_code == 200
+
+    emails = (db.query(PatientEmail)
+                .filter(PatientEmail.template_kind == "stripe_payment_receipt")
+                .all())
+    assert len(emails) == 1
+    assert emails[0].to_email == s.email
+    assert "750.00" in emails[0].rendered_html

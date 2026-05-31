@@ -27,6 +27,7 @@ from app.models.surgery import Surgery
 from app.routers.auth import require_permission
 from app.routers.patient_surgery import require_patient_token
 from app.services import stripe_payments as svc
+from app.services.patient_email import send_patient_email
 
 log = logging.getLogger(__name__)
 
@@ -73,6 +74,21 @@ def request_payment(
     except Exception as e:
         log.exception("stripe checkout create failed")
         raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+
+    # Auto-email the patient with the checkout link (soft-fail).
+    send_patient_email(
+        db,
+        kind="stripe_payment_link",
+        to_email=s.email,
+        context={
+            "patient_name":  s.patient_name,
+            "amount":        f"{amount:.2f}",
+            "checkout_url":  pay.checkout_url,
+        },
+        sent_by=actor,
+        surgery_id=s.id,
+        chart_number=s.chart_number,
+    )
 
     return _payment_dict(pay)
 
@@ -240,6 +256,25 @@ def _handle_session_completed(db, event_type, obj):
         detail={"amount_paid": str(amount_paid)},
     ))
     db.commit()
+
+    # Auto-send a receipt email (soft-fail).
+    if s and s.email:
+        from datetime import date as _date
+        surgery_date = (s.scheduled_date.isoformat()
+                          if isinstance(s.scheduled_date, _date) else "")
+        send_patient_email(
+            db,
+            kind="stripe_payment_receipt",
+            to_email=s.email,
+            context={
+                "patient_name": s.patient_name,
+                "amount":       f"{amount_paid:.2f}",
+                "surgery_date": surgery_date,
+            },
+            sent_by="system:stripe_webhook",
+            surgery_id=s.id,
+            chart_number=s.chart_number,
+        )
 
 
 def _handle_refund(db, event_type, obj):
