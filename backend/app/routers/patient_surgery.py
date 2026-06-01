@@ -472,6 +472,7 @@ def _parse_hhmm(s: str) -> time:
     return time(int(h), int(m))
 
 
+# NOTE: keep in sync with the copy in app/services/surgery_self_schedule.py
 def _default_duration_for(db, surgery, block_day) -> int:
     """Resolve allotted duration:
        1. Coordinator's explicit Surgery.duration_minutes wins.

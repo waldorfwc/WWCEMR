@@ -41,6 +41,7 @@ def test_claim_books_the_slot_and_stamps_surgery(db):
     db.refresh(s)
     assert s.scheduled_date == bd.block_date
     assert s.selected_facility == "office"
+    assert s.scheduled_start_time == time(8, 0)
     assert result["start_time"] == "08:00"
     assert result["block_day_id"] == str(bd.id)
 

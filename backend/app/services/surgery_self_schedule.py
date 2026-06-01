@@ -28,7 +28,21 @@ log = logging.getLogger(__name__)
 
 class SelfScheduleError(Exception):
     """Raised when a slot claim can't proceed. Carries a patient-facing
-    message via str()."""
+    message via str() AND an HTTP status_code attribute.
+
+    NOTE: Unlike most other custom exceptions in this codebase (which let
+    the router decide the HTTP status), SelfScheduleError carries its own
+    status_code so the 404 (block day not found) vs. 409 (blackout,
+    overlap) distinction survives across multiple callers. Every caller
+    must read `e.status_code`:
+
+        try:
+            result = claim_slot_for_patient(...)
+        except SelfScheduleError as e:
+            raise HTTPException(status_code=e.status_code, detail=str(e))
+
+    Hardcoding 409 silently drops the 404 signal.
+    """
     def __init__(self, message: str, *, status_code: int = 409):
         super().__init__(message)
         self.status_code = status_code
@@ -39,6 +53,7 @@ def _parse_hhmm(s: str) -> dtime:
     return dtime(int(h), int(m))
 
 
+# NOTE: keep in sync with the copy in app/routers/patient_surgery.py
 def _default_duration_for(db: Session, surgery: Surgery, block_day: BlockDay) -> int:
     """Resolve allotted duration:
        1. Coordinator's explicit Surgery.duration_minutes wins.
