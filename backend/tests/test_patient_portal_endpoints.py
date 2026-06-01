@@ -694,3 +694,87 @@ def test_signed_pdf_streams_when_signed(client, db):
     assert r.status_code == 200
     assert r.content.startswith(b"%PDF")
     assert "pdf" in r.headers["content-type"].lower()
+
+
+def test_documents_aggregates_consents_and_receipts(client, db):
+    from datetime import date as _d, datetime as _dt
+    from decimal import Decimal
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    from app.models.stripe_payment import SurgeryPayment
+
+    s = _seed_surgery(db)
+    s.scheduled_date = _d(2026, 7, 1)
+    s.procedure_classification = "office_d_and_c"
+
+    # Signed consent + pending consent — only signed should appear
+    t1 = ConsentTemplate(name="Office — Hysteroscopy D&C Consent",
+                          boldsign_template_id="bs_t1",
+                          procedure_match=[], facility_match=[])
+    t2 = ConsentTemplate(name="LARC Form", boldsign_template_id="bs_t2",
+                          procedure_match=[], facility_match=[])
+    db.add_all([t1, t2]); db.flush()
+    db.add_all([
+        SurgeryConsentEnvelope(surgery_id=s.id, template_id=t1.id,
+                                  boldsign_envelope_id="bs_doc_1",
+                                  status="signed"),
+        SurgeryConsentEnvelope(surgery_id=s.id, template_id=t2.id,
+                                  boldsign_envelope_id="bs_doc_2",
+                                  status="sent"),
+    ])
+    db.add(SurgeryPayment(
+        surgery_id=s.id, status="paid",
+        amount_requested=Decimal("250.00"),
+        amount_paid=Decimal("250.00"),
+        requested_by="staff",
+        paid_at=_dt(2026, 5, 31, 12, 0),
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/documents",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Only the signed consent appears
+    assert len(body["consents"]) == 1
+    assert body["consents"][0]["template_name"] == "Office — Hysteroscopy D&C Consent"
+    # The paid receipt appears
+    assert len(body["receipts"]) == 1
+    assert float(body["receipts"][0]["amount"]) == 250.0
+    # Instructions structure exists with both kinds present (even if not yet uploaded)
+    assert "instructions" in body
+    assert "preop" in body["instructions"]
+    assert "postop" in body["instructions"]
+
+
+def test_documents_omits_unsigned_consents(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    s = _seed_surgery(db)
+    t = ConsentTemplate(name="X", boldsign_template_id="bs_x",
+                          procedure_match=[], facility_match=[])
+    db.add(t); db.flush()
+    db.add(SurgeryConsentEnvelope(
+        surgery_id=s.id, template_id=t.id,
+        boldsign_envelope_id="bs_doc",
+        status="sent",   # not yet signed
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/documents",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.json()["consents"] == []
+
+
+def test_documents_no_instructions_when_classification_blank(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    # procedure_classification stays None
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/documents",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    # When classification is blank, instructions section is null
+    assert r.json()["instructions"] is None

@@ -604,3 +604,55 @@ def portal_consent_signed_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{label}.pdf"'},
     )
+
+
+# ─── /{surgery_id}/documents ──────────────────────────────────────
+
+@router.get("/{surgery_id}/documents")
+def portal_documents(surgery_id: str, db: Session = Depends(get_db),
+                       _: str = Depends(require_portal_token)):
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+
+    # Consents — only show the ones the patient can actually download
+    consents = []
+    for env in (s.consent_envelopes or []):
+        if (env.status or "") not in ("signed", "completed"):
+            continue
+        consents.append({
+            "envelope_id":    str(env.id),
+            "template_name":  env.template.name if env.template else "",
+            "status":         env.status,
+            "signed_at":      env.signed_at.isoformat() if env.signed_at else None,
+        })
+
+    # Receipts — only paid rows
+    receipts = []
+    for p in (s.payments or []):
+        if p.status != "paid":
+            continue
+        receipts.append({
+            "id":         str(p.id),
+            "paid_at":    p.paid_at.isoformat() if p.paid_at else None,
+            "amount":     str(p.amount_paid or 0),
+        })
+
+    # Instructions: structure stays present so the frontend can show both
+    # rows. When the procedure has no classification, the whole section is
+    # null and the frontend renders the "not available" message.
+    if s.procedure_classification:
+        instructions = {
+            "preop":  {"available": None,   # Lazy: frontend probes on click
+                       "kind": "preop"},
+            "postop": {"available": None,
+                       "kind": "postop"},
+        }
+    else:
+        instructions = None
+
+    return {
+        "instructions": instructions,
+        "consents":     consents,
+        "receipts":     receipts,
+    }
