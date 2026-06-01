@@ -499,3 +499,31 @@ def portal_consent(surgery_id: str, db: Session = Depends(get_db),
         "all_complete": all_complete,
         "can_resend": s.scheduled_date is not None,
     }
+
+
+@router.post("/{surgery_id}/consent/resend")
+def portal_consent_resend(surgery_id: str, db: Session = Depends(get_db),
+                            _: str = Depends(require_portal_token)):
+    """Manual retry of consent envelope creation. Used when auto-send at
+    slot-claim time failed (e.g., BoldSign outage). Requires a scheduled
+    date — patient must have completed the schedule flow first."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if s.scheduled_date is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Please pick your surgery date first; consent forms "
+                   "are created when you schedule.",
+        )
+    from app.services.boldsign_envelopes import (
+        send_consent_envelopes, BoldSignEnvelopeError,
+    )
+    try:
+        send_consent_envelopes(db, s, sent_by="patient:portal:resend")
+    except BoldSignEnvelopeError as e:
+        # Service-level rejection (e.g. no matching templates) — surface
+        # the message to the patient.
+        raise HTTPException(status_code=409, detail=str(e))
+    # Re-fetch the consent payload so the frontend has fresh state.
+    return portal_consent(surgery_id, db=db, _="ignored")

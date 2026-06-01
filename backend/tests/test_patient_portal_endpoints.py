@@ -567,3 +567,36 @@ def test_consent_all_complete_when_every_envelope_signed(client, db):
     assert body["all_complete"] is True
     assert body["envelopes"][0]["can_sign"] is False
     assert body["envelopes"][0]["can_download"] is True
+
+
+def test_resend_blocked_when_not_scheduled(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.procedure_classification = "office_d_and_c"
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(f"/api/patient/portal/{s.id}/consent/resend",
+                      headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 409
+    assert "schedule" in r.text.lower()
+
+
+def test_resend_calls_send_consent_envelopes(client, db):
+    from datetime import date as _d
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.scheduled_date = _d(2026, 7, 1)
+    s.procedures = [{"cpt": "58558", "description": "Hysteroscopy with D&C"}]
+    s.selected_facility = "office"
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.boldsign_envelopes.send_consent_envelopes",
+                return_value={"sent": [], "skipped": [],
+                              "unmatched_procedures": [], "warnings": []}) as mock:
+        r = client.post(f"/api/patient/portal/{s.id}/consent/resend",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    mock.assert_called_once()
+    _, kwargs = mock.call_args
+    assert kwargs.get("sent_by") == "patient:portal:resend"
