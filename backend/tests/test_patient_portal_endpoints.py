@@ -306,3 +306,76 @@ def test_payments_returns_balance_and_history(client, db):
     assert float(body["balance"]) == 400
     assert len(body["history"]) == 1
     assert body["history"][0]["status"] == "paid"
+
+
+def test_step_up_sends_payment_purpose_sms(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db); s.patient_responsibility = 250; db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.patient_portal_auth.send_sms",
+                return_value=True) as mock_sms:
+        r = client.post(f"/api/patient/portal/{s.id}/payments/step-up",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    assert "step_up_token" in r.json()
+    body = mock_sms.call_args[0][1]
+    assert "payment" in body.lower() or "charge" in body.lower()
+
+
+def test_step_up_blocks_when_no_balance(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db); s.patient_responsibility = 0; db.commit()
+    token = issue_portal_token(s)
+    r = client.post(f"/api/patient/portal/{s.id}/payments/step-up",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 422  # no outstanding balance
+
+
+def test_checkout_rejects_invalid_code(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db); s.patient_responsibility = 250; db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"):
+        with patch("app.services.patient_portal_auth.send_sms",
+                    return_value=True):
+            step = client.post(
+                f"/api/patient/portal/{s.id}/payments/step-up",
+                headers={"Authorization": f"Bearer {token}"}
+            ).json()
+    r = client.post(
+        f"/api/patient/portal/{s.id}/payments/checkout",
+        json={"step_up_token": step["step_up_token"], "code": "000000"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 401
+
+
+def test_checkout_creates_session_with_correct_code(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db); s.patient_responsibility = 250; db.commit()
+    token = issue_portal_token(s)
+
+    class FakePay:
+        id = "pay_test_id"
+        checkout_url = "https://stripe.test/cs_123"
+
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"), \
+         patch("app.services.patient_portal_auth.send_sms",
+                return_value=True), \
+         patch("app.services.stripe_payments.is_configured",
+                return_value=True), \
+         patch("app.services.stripe_payments.create_checkout_session",
+                return_value=FakePay()):
+        step = client.post(
+            f"/api/patient/portal/{s.id}/payments/step-up",
+            headers={"Authorization": f"Bearer {token}"}
+        ).json()
+        r = client.post(
+            f"/api/patient/portal/{s.id}/payments/checkout",
+            json={"step_up_token": step["step_up_token"], "code": "111111"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["checkout_url"].startswith("https://stripe.test/")

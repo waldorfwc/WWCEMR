@@ -318,3 +318,78 @@ def portal_payments(surgery_id: str, db: Session = Depends(get_db),
         "balance": balance,
         "history": history,
     }
+
+
+# ─── /{surgery_id}/payments/step-up + /payments/checkout ────────
+
+import logging
+from app.services import stripe_payments as stripe_svc
+
+
+@router.post("/{surgery_id}/payments/step-up")
+def portal_payments_step_up(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Send a fresh SMS code for payment authorization. Caller must POST
+    /payments/checkout within 5 minutes with the code."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    due  = float(s.patient_responsibility or 0)
+    paid = float(s.amount_paid or 0)
+    if due <= 0 or paid >= due:
+        raise HTTPException(status_code=422,
+                              detail="No outstanding balance to pay.")
+    if not (s.cell_phone or s.phone or "").strip():
+        raise HTTPException(status_code=409,
+                              detail="No phone on file — call our office at "
+                                     "240-252-2140.")
+    challenge_token, _code = auth.issue_challenge(db, s, purpose="payment")
+    return {"step_up_token": challenge_token}
+
+
+class CheckoutPayload(BaseModel):
+    step_up_token: str
+    code: str
+
+
+@router.post("/{surgery_id}/payments/checkout")
+def portal_payments_checkout(
+    surgery_id: str,
+    payload: CheckoutPayload,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Verify the step-up code; create a Stripe Checkout session for the
+    outstanding balance. Returns the URL the browser should visit."""
+    code = "".join(c for c in (payload.code or "") if c.isdigit())
+    if len(code) != 6:
+        raise HTTPException(status_code=401, detail="Invalid code")
+    matched_sid = auth.verify_code(db, payload.step_up_token, code)
+    if matched_sid is None or matched_sid != surgery_id:
+        raise HTTPException(status_code=401, detail="Invalid code")
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    due  = float(s.patient_responsibility or 0)
+    paid = float(s.amount_paid or 0)
+    amount = max(0.0, due - paid)
+    if amount <= 0:
+        raise HTTPException(status_code=422,
+                              detail="No outstanding balance to pay.")
+    if not stripe_svc.is_configured():
+        raise HTTPException(status_code=503,
+                              detail="Payments aren't available right now.")
+    try:
+        pay = stripe_svc.create_checkout_session(
+            db, s, amount=amount,
+            description="Surgery balance (patient self-service)",
+            actor="patient:portal",
+        )
+    except Exception as e:
+        log = logging.getLogger(__name__)
+        log.exception("portal checkout create failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+    return {"checkout_url": pay.checkout_url, "payment_id": str(pay.id)}
