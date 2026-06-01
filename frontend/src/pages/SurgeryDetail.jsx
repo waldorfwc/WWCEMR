@@ -3104,12 +3104,6 @@ function ConsentPanel({ surgery }) {
               <Send size={11} /> {boldsignSend.isPending ? 'Sending…' : 'Send via BoldSign'}
             </button>
             <button className="btn-secondary text-xs flex items-center gap-1"
-                    onClick={() => handleSend('docusign')}
-                    disabled={!canSend || docusignSend.isPending}
-                    title={!canSend ? 'Resolve unmatched procedures first' : 'Legacy — use BoldSign for new envelopes'}>
-              <Send size={11} /> {docusignSend.isPending ? 'Sending…' : 'Send via DocuSign'}
-            </button>
-            <button className="btn-secondary text-xs flex items-center gap-1"
                     onClick={() => sentManual.mutate()}
                     disabled={sentManual.isPending}
                     title="Use this if you sent on paper / fax">
