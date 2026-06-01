@@ -895,6 +895,51 @@ def portal_uploads(surgery_id: str, db: Session = Depends(get_db),
     return {"uploads": docs}
 
 
+# ─── GET /{surgery_id}/fmla ────────────────────────────────────────
+
+@router.get("/{surgery_id}/fmla")
+def portal_fmla(surgery_id: str, db: Session = Depends(get_db),
+                  _: str = Depends(require_portal_token)):
+    """Aggregated FMLA state for the patient's UI: status, fee amount,
+    fee_paid flag, and both upload lists (with signed URLs on the
+    coordinator-uploaded completed forms only)."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    import os
+    from app.services.surgery_uploads import signed_download_url
+    fee_cents = int(os.environ.get("FMLA_FEE_CENTS", "2500") or "2500")
+    fee = Decimal(fee_cents) / Decimal(100)
+
+    def _doc(d, signed: bool) -> dict:
+        url = None
+        if signed:
+            try:
+                url = signed_download_url(d, ttl_minutes=5)
+            except Exception:
+                url = None
+        return {
+            "id":           str(d.id),
+            "filename":     d.filename,
+            "uploaded_at":  d.uploaded_at.isoformat() if d.uploaded_at else None,
+            "download_url": url,
+        }
+
+    blank_uploads     = [_doc(d, signed=False) for d in s.documents
+                            if d.kind == "fmla_blank"]
+    completed_uploads = [_doc(d, signed=True)  for d in s.documents
+                            if d.kind == "fmla_completed"]
+
+    return {
+        "status":            s.fmla_status or "",
+        "fee_amount":        f"{fee:.2f}",
+        "fee_paid":          bool(s.fmla_fee_paid),
+        "fee_paid_at":       s.fmla_fee_paid_at.isoformat() if s.fmla_fee_paid_at else None,
+        "blank_uploads":     blank_uploads,
+        "completed_uploads": completed_uploads,
+    }
+
+
 # ─── /{surgery_id}/fmla/step-up + /fmla/checkout ────────────────
 
 @router.post("/{surgery_id}/fmla/step-up")

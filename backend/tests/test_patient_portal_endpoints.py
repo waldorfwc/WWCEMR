@@ -1176,3 +1176,68 @@ def test_fmla_checkout_creates_session_with_kind_fmla_fee(client, db):
     assert captured["kind"] == "fmla_fee"
     assert captured["amount"] == Decimal("25.00")    # default FMLA_FEE_CENTS=2500
     assert "FMLA" in captured["description"]
+
+
+def test_fmla_get_when_not_started(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/fmla",
+                      headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == ""
+    assert body["fee_paid"] is False
+    assert body["fee_paid_at"] is None
+    assert body["fee_amount"] == "25.00"
+    assert body["blank_uploads"] == []
+    assert body["completed_uploads"] == []
+
+
+def test_fmla_get_returns_uploads_with_signed_urls(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import SurgeryDocument
+    s = _seed_surgery(db)
+    s.fmla_status = "submitted"
+    s.fmla_fee_paid = True
+    db.add(SurgeryDocument(
+        surgery_id=s.id, kind="fmla_blank",
+        filename="my_form.pdf",
+        gcs_path=f"surgery-uploads/{s.id}/fmla_blank/x.pdf",
+        uploaded_by="patient:portal",
+    ))
+    db.add(SurgeryDocument(
+        surgery_id=s.id, kind="fmla_completed",
+        filename="filled.pdf",
+        gcs_path=f"surgery-uploads/{s.id}/fmla_completed/y.pdf",
+        uploaded_by="staff:coordinator",
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.surgery_uploads.signed_download_url",
+                return_value="https://signed.example/x"):
+        r = client.get(f"/api/patient/portal/{s.id}/fmla",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "submitted"
+    assert body["fee_paid"] is True
+    assert len(body["blank_uploads"]) == 1
+    assert body["blank_uploads"][0]["download_url"] is None
+    assert len(body["completed_uploads"]) == 1
+    assert body["completed_uploads"][0]["download_url"].startswith("https://signed.example/")
+
+
+def test_fmla_get_honors_custom_fee_cents_env_var(client, db, monkeypatch):
+    """If FMLA_FEE_CENTS is set, GET /fmla reports the configured amount."""
+    from app.services.patient_portal_auth import issue_portal_token
+    monkeypatch.setenv("FMLA_FEE_CENTS", "4000")
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/fmla",
+                      headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.json()["fee_amount"] == "40.00"
