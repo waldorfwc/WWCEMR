@@ -5,8 +5,7 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api/r' })
 
-// TODO swap with real Google Business URL during smoke test (T10)
-const GOOGLE_REVIEW_URL = "https://search.google.com/local/writereview?placeid=YOUR_PLACE_ID"
+const GOOGLE_REVIEW_URL = "https://share.google/VWtKiIWD5JFWaZEV5"
 
 export default function ReviewForm() {
   const { token } = useParams()
