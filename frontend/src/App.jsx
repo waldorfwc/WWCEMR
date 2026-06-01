@@ -77,6 +77,9 @@ import PortalDocuments from './pages/portal/Documents'
 import Messages from './pages/portal/Messages'
 import ReviewForm from './pages/reputation/ReviewForm'
 import ReputationEmbed from './pages/reputation/Embed'
+import AdminReputationProfiles from './pages/AdminReputationProfiles'
+import AdminReputationLeaderboard from './pages/AdminReputationLeaderboard'
+import AdminReputationReviews from './pages/AdminReputationReviews'
 
 function ProtectedApp({ user, onLogout }) {
   const { isAdmin, isClinical, isLoading } = useCurrentUser()
@@ -159,6 +162,9 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/admin/training"          element={<PrivateRoute adminOnly><AdminTraining /></PrivateRoute>} />
             <Route path="/admin/training/cards"    element={<PrivateRoute adminOnly><AdminTrainingCards /></PrivateRoute>} />
             <Route path="/admin/google-sync"       element={<PrivateRoute adminOnly><AdminGoogleSync /></PrivateRoute>} />
+            <Route path="/admin/reputation/profiles"    element={<PrivateRoute adminOnly><AdminReputationProfiles /></PrivateRoute>} />
+            <Route path="/admin/reputation/leaderboard" element={<PrivateRoute adminOnly><AdminReputationLeaderboard /></PrivateRoute>} />
+            <Route path="/admin/reputation/reviews"     element={<PrivateRoute adminOnly><AdminReputationReviews /></PrivateRoute>} />
             <Route path="*"                    element={<Navigate to="/" />} />
           </Routes>
         </div>
