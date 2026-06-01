@@ -60,6 +60,12 @@ export default function SurgeryDetail() {
     },
   })
 
+  const gateOverride = useMutation({
+    mutationFn: (enabled) =>
+      api.patch(`/surgery/${id}/schedule-gate-override`, { enabled }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', id] }),
+  })
+
   if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
   if (error) return <div className="p-6 text-red-600">{error?.response?.data?.detail || error.message}</div>
   if (!data) return null
@@ -250,6 +256,22 @@ export default function SurgeryDetail() {
                   : 'Not opted in — SMS sends will skip'}
               </span>
             </label>
+          </Field>
+
+          <Field label="Schedule gate">
+            <label className="flex items-center gap-2 text-xs text-gray-700">
+              <input type="checkbox"
+                     checked={!!s.schedule_gate_override}
+                     onChange={e => gateOverride.mutate(e.target.checked)}
+                     disabled={gateOverride.isPending} />
+              Allow patient to self-schedule without payment
+            </label>
+            {s.schedule_gate_override && s.schedule_gate_override_by && (
+              <div className="text-[10px] text-gray-400 mt-0.5">
+                Set by {s.schedule_gate_override_by}
+                {s.schedule_gate_override_at ? ' on ' + s.schedule_gate_override_at.slice(0, 10) : ''}
+              </div>
+            )}
           </Field>
         </div>
       </div>

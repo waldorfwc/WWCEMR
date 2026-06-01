@@ -3163,3 +3163,32 @@ def run_reminders_now(
 ):
     from app.services.surgery_reminders import run_reminder_sweep
     return run_reminder_sweep(db)
+
+
+# ─── Coordinator: schedule-gate override ────────────────────────────
+
+class ScheduleGateOverridePayload(BaseModel):
+    enabled: bool
+
+
+@router.patch("/{surgery_id}/schedule-gate-override")
+def patch_schedule_gate_override(
+    surgery_id: str,
+    payload: ScheduleGateOverridePayload,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    """Flip schedule_gate_override so a patient can self-schedule without paying."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    s.schedule_gate_override = payload.enabled
+    s.schedule_gate_override_at = datetime.utcnow()
+    s.schedule_gate_override_by = current_user.get("email") or "system"
+    db.commit()
+    return {
+        "ok": True,
+        "schedule_gate_override": s.schedule_gate_override,
+        "schedule_gate_override_at": s.schedule_gate_override_at.isoformat(),
+        "schedule_gate_override_by": s.schedule_gate_override_by,
+    }
