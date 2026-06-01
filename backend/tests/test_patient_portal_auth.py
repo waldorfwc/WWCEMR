@@ -100,3 +100,16 @@ def test_verify_code_returns_none_when_expired(db):
     row.expires_at = datetime.utcnow() - timedelta(seconds=1)
     db.commit()
     assert verify_code(db, challenge_token, code) is None
+
+
+def test_issue_challenge_payment_purpose_uses_payment_copy(db):
+    s = _make_surgery(db)
+    with patch("app.services.patient_portal_auth.send_sms",
+                return_value=True) as mock_sms:
+        challenge_token, code = issue_challenge(db, s, purpose="payment")
+    args, _ = mock_sms.call_args
+    body = args[1]
+    assert "payment" in body.lower() or "charge" in body.lower()
+    assert code in body
+    # Sign-in copy should NOT appear in payment SMS
+    assert "sign-in" not in body.lower()

@@ -28,6 +28,12 @@ from app.services.checklist_notifications import send_sms
 PORTAL_TOKEN_AUDIENCE = "wwc:patient-portal"
 CODE_TTL_MINUTES = 5
 CODE_MAX_FAILS = 3
+PURPOSE_COPY = {
+    "login":   ("WWC: Your portal sign-in code is {code}. "
+                  "Expires in {ttl} minutes."),
+    "payment": ("WWC: Code to authorize your payment: {code}. "
+                  "Expires in {ttl} minutes. If you didn't request this, ignore."),
+}
 
 
 def _now() -> datetime:
@@ -39,16 +45,20 @@ def _generate_code() -> str:
     return f"{secrets.randbelow(10**6):06d}"
 
 
-def issue_challenge(db: Session, surgery: Surgery) -> tuple[str, str]:
-    """Generate a code, persist its hash, SMS the plaintext to the
-    surgery's cell_phone. Returns (challenge_token, plaintext_code).
+def issue_challenge(db: Session, surgery: Surgery,
+                      purpose: str = "login") -> tuple[str, str]:
+    """Generate a code, persist its hash, SMS the plaintext to the surgery's
+    cell_phone. Returns (challenge_token, plaintext_code).
 
-    The caller never persists the plaintext code — only logs the
-    challenge_token for the verify step.
+    `purpose` picks the SMS copy — "login" (default, sign-in) or "payment"
+    (step-up before charge). The lifecycle is identical; only the body
+    text changes. The PatientPortalAuthCode row does NOT store purpose —
+    the caller is responsible for invoking verify_code from the matching
+    endpoint context (and route-level checks prevent cross-purpose abuse).
 
     Precondition: surgery.cell_phone or surgery.phone must be non-empty.
     If both are blank, the SMS silently no-ops and the patient cannot
-    sign in. The /login endpoint must validate this before calling.
+    complete the action. Endpoints must validate before calling.
     """
     code = _generate_code()
     challenge_token = secrets.token_urlsafe(32)
@@ -61,8 +71,8 @@ def issue_challenge(db: Session, surgery: Surgery) -> tuple[str, str]:
     )
     db.add(row); db.commit()
     phone = row.sent_to_phone
-    body = (f"WWC: Your portal sign-in code is {code}. "
-            f"Expires in {CODE_TTL_MINUTES} minutes.")
+    template = PURPOSE_COPY.get(purpose, PURPOSE_COPY["login"])
+    body = template.format(code=code, ttl=CODE_TTL_MINUTES)
     send_sms(phone, body)
     return challenge_token, code
 
