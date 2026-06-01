@@ -176,6 +176,7 @@ app.include_router(surgery_messages.router)
 app.include_router(message_templates.router)
 # Reputation — public QR-gated review form endpoints (no auth; token is the boundary)
 app.include_router(reputation_public.router)
+app.include_router(reputation_public.embed_router)
 app.include_router(reputation_admin.router)
 
 

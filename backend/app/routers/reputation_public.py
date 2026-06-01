@@ -177,3 +177,40 @@ def google_clicked(token: str, payload: GoogleClicked,
     r.google_clicked_at = datetime.utcnow()
     db.commit()
     return {"ok": True}
+
+
+# ─── Public embed (for Webflow) — no PHI ───────────────────────────
+
+embed_router = APIRouter(prefix="/api/reviews", tags=["reputation-embed"])
+
+
+@embed_router.get("/public")
+def public_reviews(limit: int = 20, db: Session = Depends(get_db)):
+    """Reviews approved for the public embed. Strictly NO PHI:
+    no chart_number, no phone, no last name (only an initial). Only
+    `stars`, `body`, a display_name like "Jane D.", and submitted_at.
+    """
+    limit = min(max(1, limit), 100)
+    rows = (db.query(ReputationReview)
+                .filter(ReputationReview.consent_to_display.is_(True),
+                         ReputationReview.approved_for_embed.is_(True))
+                .order_by(ReputationReview.submitted_at.desc())
+                .limit(limit)
+                .all())
+    out = []
+    for r in rows:
+        last_initial = (r.patient_last_initial or "").strip().rstrip(".")
+        first = (r.patient_first_name or "").strip()
+        if first and last_initial:
+            display = f"{first} {last_initial}."
+        elif first:
+            display = first
+        else:
+            display = "Anonymous"
+        out.append({
+            "stars":        r.stars,
+            "body":         r.body,
+            "display_name": display,
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
+        })
+    return {"reviews": out}
