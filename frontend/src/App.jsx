@@ -53,6 +53,7 @@ import Recalls from './pages/Recalls'
 import Surgery from './pages/Surgery'
 import SurgeryDetail from './pages/SurgeryDetail'
 import StaffInbox from './pages/StaffInbox'
+import StaffMessageTemplates from './pages/StaffMessageTemplates'
 import SurgeryBlockSchedule from './pages/SurgeryBlockSchedule'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
 import SurgeryCalendar from './pages/SurgeryCalendar'
@@ -152,6 +153,7 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/admin/groups"            element={<PrivateRoute adminOnly><AdminGroups /></PrivateRoute>} />
             <Route path="/admin/templates"         element={<PrivateRoute adminOnly><AdminTemplates /></PrivateRoute>} />
             <Route path="/admin/consent-templates" element={<PrivateRoute adminOnly><AdminConsentTemplates /></PrivateRoute>} />
+            <Route path="/admin/message-templates" element={<PrivateRoute adminOnly><StaffMessageTemplates /></PrivateRoute>} />
             <Route path="/admin/training"          element={<PrivateRoute adminOnly><AdminTraining /></PrivateRoute>} />
             <Route path="/admin/training/cards"    element={<PrivateRoute adminOnly><AdminTrainingCards /></PrivateRoute>} />
             <Route path="/admin/google-sync"       element={<PrivateRoute adminOnly><AdminGoogleSync /></PrivateRoute>} />

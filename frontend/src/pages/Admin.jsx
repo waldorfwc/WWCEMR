@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CheckSquare, ChevronRight, Edit3, Eye, FileSignature, Phone, Plus, Settings, Shield, Trash2, Users, X } from 'lucide-react'
+import { CheckSquare, ChevronRight, Edit3, Eye, FileSignature, MessageSquare, Phone, Plus, Settings, Shield, Trash2, Users, X } from 'lucide-react'
 import api from '../utils/api'
 
 function Flash({ kind, text }) {
@@ -801,6 +801,10 @@ export default function Admin() {
           <Link to="/admin/consent-templates"
                 className="btn-secondary text-sm flex items-center gap-1">
             <FileSignature size={13} /> Consent Templates
+          </Link>
+          <Link to="/admin/message-templates"
+                className="btn-secondary text-sm flex items-center gap-1">
+            <MessageSquare size={13} /> Message Templates
           </Link>
           <Link to="/admin/training/cards"
                 className="btn-secondary text-sm flex items-center gap-1">
