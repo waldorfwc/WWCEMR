@@ -285,3 +285,36 @@ def dashboard(surgery_id: str, db: Session = Depends(get_db),
         "milestones": milestones,
         "next_action": _next_action(milestones),
     }
+
+
+# ─── /{surgery_id}/payments ─────────────────────────────────────
+
+from app.models.stripe_payment import SurgeryPayment
+
+
+@router.get("/{surgery_id}/payments")
+def portal_payments(surgery_id: str, db: Session = Depends(get_db),
+                      _: str = Depends(require_portal_token)):
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    due  = float(s.patient_responsibility or 0)
+    paid = float(s.amount_paid or 0)
+    balance = max(0.0, due - paid)
+    history = []
+    for p in (s.payments or []):
+        history.append({
+            "id":        str(p.id),
+            "status":    p.status,
+            "amount_requested": str(p.amount_requested or 0),
+            "amount_paid":      str(p.amount_paid or 0),
+            "requested_at":     p.requested_at.isoformat() if p.requested_at else None,
+            "paid_at":          p.paid_at.isoformat() if p.paid_at else None,
+            "checkout_url":     p.checkout_url,
+        })
+    return {
+        "due":     due,
+        "paid":    paid,
+        "balance": balance,
+        "history": history,
+    }

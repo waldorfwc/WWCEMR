@@ -282,3 +282,27 @@ def test_dashboard_hides_fmla_row_when_status_is_empty_string(client, db):
                      headers={"Authorization": f"Bearer {token}"})
     keys = [m["key"] for m in r.json()["milestones"]]
     assert "fmla" not in keys
+
+
+def test_payments_returns_balance_and_history(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.stripe_payment import SurgeryPayment
+    s = _seed_surgery(db)
+    s.patient_responsibility = 500
+    s.amount_paid = 100
+    db.add(SurgeryPayment(
+        surgery_id=s.id, status="paid",
+        amount_requested=100, amount_paid=100,
+        requested_by="staff",
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/payments",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert float(body["due"])     == 500
+    assert float(body["paid"])    == 100
+    assert float(body["balance"]) == 400
+    assert len(body["history"]) == 1
+    assert body["history"][0]["status"] == "paid"
