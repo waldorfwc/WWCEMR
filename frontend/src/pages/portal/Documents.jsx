@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
-import { portalApi } from '../../lib/portal-api'
+import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
 
 function fmtMoney(v) {
@@ -188,22 +188,24 @@ function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
           label="Download template" />
       </div>
 
-      <div>
-        <div className="text-xs text-gray-500 mb-1">
-          Step 2: Upload your completed form or EKG (PDF, JPEG, PNG, HEIC, max 10 MB)
+      {!isStaffPreview() && (
+        <div>
+          <div className="text-xs text-gray-500 mb-1">
+            Step 2: Upload your completed form or EKG (PDF, JPEG, PNG, HEIC, max 10 MB)
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/heic"
+                    onChange={e => setFile(e.target.files?.[0] || null)}
+                    className="text-xs" />
+            <button onClick={upload} disabled={!file || busy}
+                     className="btn-primary text-sm">
+              {busy ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
+          {err && <div className="text-xs text-red-600 mt-1">{err}</div>}
         </div>
-        <div className="flex items-center gap-2">
-          <input type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/heic"
-                  onChange={e => setFile(e.target.files?.[0] || null)}
-                  className="text-xs" />
-          <button onClick={upload} disabled={!file || busy}
-                   className="btn-primary text-sm">
-            {busy ? 'Uploading…' : 'Upload'}
-          </button>
-        </div>
-        {err && <div className="text-xs text-red-600 mt-1">{err}</div>}
-      </div>
+      )}
 
       {myClearanceUploads.length > 0 && (
         <div>
@@ -314,7 +316,7 @@ function FmlaCard({ sid, fmla, refetchFmla }) {
             blank form and pay the ${fmla.fee_amount} processing fee.
           </p>
 
-          {!hasBlank && (
+          {!hasBlank && !isStaffPreview() && (
             <div>
               <div className="text-xs text-gray-500 mb-1">
                 Step 1: Upload your employer's blank FMLA form
@@ -339,7 +341,7 @@ function FmlaCard({ sid, fmla, refetchFmla }) {
             </div>
           )}
 
-          {!feePaid && hasBlank && !showPay && (
+          {!feePaid && hasBlank && !showPay && !isStaffPreview() && (
             <div>
               <div className="text-xs text-gray-500 mb-1">
                 Step 2: Pay the ${fmla.fee_amount} processing fee
@@ -351,7 +353,7 @@ function FmlaCard({ sid, fmla, refetchFmla }) {
             </div>
           )}
 
-          {!feePaid && hasBlank && showPay && (
+          {!feePaid && hasBlank && showPay && !isStaffPreview() && (
             <StepUpPayFlow
               stepUpUrl={`/${sid}/fmla/step-up`}
               checkoutUrl={`/${sid}/fmla/checkout`}

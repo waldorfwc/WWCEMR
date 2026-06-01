@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
-import { portalApi } from '../../lib/portal-api'
+import { portalApi, isStaffPreview } from '../../lib/portal-api'
 
 const STATUS_BADGE = {
   done:         'bg-green-100 text-green-700',
@@ -18,6 +18,7 @@ const STATUS_LABEL = {
 }
 
 function SelfReportButton({ sid, kind, onDone }) {
+  if (isStaffPreview()) return null
   const [busy, setBusy] = useState(false)
   async function click() {
     setBusy(true)

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Outlet, Link, useNavigate, useParams } from 'react-router-dom'
 import { usePortalAuth } from '../../hooks/usePortalAuth'
 import { setPortalSession } from '../../lib/portal-api'
+import PreviewBanner from '../../components/portal/PreviewBanner'
 
 const NAV = [
   { to: '',          label: 'Dashboard' },
@@ -41,6 +42,7 @@ export default function PortalShell() {
   }
   return (
     <div className="min-h-screen bg-gray-50">
+      <PreviewBanner />
       <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <div className="text-lg font-semibold text-plum-700">WWC Apps</div>
         <button className="text-sm text-gray-600 underline"

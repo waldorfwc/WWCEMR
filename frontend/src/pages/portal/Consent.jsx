@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
-import { portalApi } from '../../lib/portal-api'
+import { portalApi, isStaffPreview } from '../../lib/portal-api'
 
 function EmptyState({ sid }) {
   return (
@@ -31,10 +31,12 @@ function ResendCard({ onResend, busy, err }) {
         them, click below to send them now.
       </p>
       {err && <p className="text-sm text-red-600 mt-2">{err}</p>}
-      <button onClick={onResend} disabled={busy}
-               className="btn-primary mt-3">
-        {busy ? 'Sending…' : 'Send consent forms'}
-      </button>
+      {!isStaffPreview() && (
+        <button onClick={onResend} disabled={busy}
+                 className="btn-primary mt-3">
+          {busy ? 'Sending…' : 'Send consent forms'}
+        </button>
+      )}
     </div>
   )
 }
@@ -102,7 +104,7 @@ function EnvelopeRow({ env, sid }) {
         {err && <div className="text-xs text-red-600 mt-1">{err}</div>}
       </div>
       <div className="flex gap-2">
-        {env.can_sign && (
+        {env.can_sign && !isStaffPreview() && (
           <button onClick={signNow} disabled={busy}
                    className="btn-primary text-sm">
             {busy ? 'Opening…' : 'Sign now'}

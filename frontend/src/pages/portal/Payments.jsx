@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useSearchParams } from 'react-router-dom'
-import { portalApi } from '../../lib/portal-api'
+import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
 
 function fmtMoney(n) {
@@ -36,9 +36,11 @@ function BalanceCard({ data, onPayClick }) {
       <div className="text-3xl font-semibold text-gray-900 mt-1">
         {fmtMoney(balance)}
       </div>
-      <button onClick={onPayClick} className="btn-primary mt-3">
-        Pay now
-      </button>
+      {!isStaffPreview() && (
+        <button onClick={onPayClick} className="btn-primary mt-3">
+          Pay now
+        </button>
+      )}
     </div>
   )
 }

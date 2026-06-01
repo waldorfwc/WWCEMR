@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
-import { portalApi } from '../../lib/portal-api'
+import { portalApi, isStaffPreview } from '../../lib/portal-api'
 
 function GateBanner({ gate, sid }) {
   return (
@@ -45,9 +45,11 @@ function BlockDayList({ days, onPick }) {
                 {d.cases_already_booked > 0 ? ` · ${d.cases_already_booked} other case(s) that day` : ''}
               </div>
             </div>
-            <button onClick={() => onPick(d)} className="btn-primary text-sm">
-              Pick this date
-            </button>
+            {!isStaffPreview() && (
+              <button onClick={() => onPick(d)} className="btn-primary text-sm">
+                Pick this date
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -67,9 +69,11 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
         </p>
         <div className="flex justify-end gap-2 pt-2">
           <button onClick={onCancel} className="btn-secondary">Cancel</button>
-          <button onClick={onConfirm} disabled={busy} className="btn-primary">
-            {busy ? 'Booking…' : 'Confirm'}
-          </button>
+          {!isStaffPreview() && (
+            <button onClick={onConfirm} disabled={busy} className="btn-primary">
+              {busy ? 'Booking…' : 'Confirm'}
+            </button>
+          )}
         </div>
       </div>
     </div>
