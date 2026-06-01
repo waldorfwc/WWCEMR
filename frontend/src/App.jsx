@@ -68,7 +68,7 @@ import PortalLogin from './pages/portal/PortalLogin'
 import PortalVerify from './pages/portal/PortalVerify'
 import PortalShell from './pages/portal/PortalShell'
 import PortalDashboard from './pages/portal/Dashboard'
-import PaymentsStub from './pages/portal/stubs/PaymentsStub'
+import Payments from './pages/portal/Payments'
 import ScheduleStub from './pages/portal/stubs/ScheduleStub'
 import ConsentStub from './pages/portal/stubs/ConsentStub'
 import DocumentsStub from './pages/portal/stubs/DocumentsStub'
@@ -195,7 +195,7 @@ export default function App() {
         <Route path="/portal/verify" element={<PortalVerify />} />
         <Route path="/portal/s/:sid" element={<PortalShell />}>
           <Route index element={<PortalDashboard />} />
-          <Route path="payments" element={<PaymentsStub />} />
+          <Route path="payments" element={<Payments />} />
           <Route path="schedule" element={<ScheduleStub />} />
           <Route path="consent" element={<ConsentStub />} />
           <Route path="documents" element={<DocumentsStub />} />
