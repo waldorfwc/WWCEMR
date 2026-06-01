@@ -492,3 +492,78 @@ def test_claim_blocks_when_gate_fails(client, db):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 409
+
+
+def test_consent_returns_empty_when_unscheduled(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.procedures = [{"cpt": "58558", "description": "Hysteroscopy with D&C"}]
+    s.selected_facility = "office"
+    # scheduled_date is None
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/consent",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["scheduled_date"] is None
+    assert body["envelopes"] == []
+    assert body["can_resend"] is False  # not scheduled yet
+
+
+def test_consent_returns_envelopes_when_present(client, db):
+    from datetime import date as _d
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    s = _seed_surgery(db)
+    s.scheduled_date = _d(2026, 7, 1)
+    s.procedures = [{"cpt": "58558", "description": "Hysteroscopy with D&C"}]
+    s.selected_facility = "office"
+    t = ConsentTemplate(name="Office — Hysteroscopy D&C Consent",
+                          boldsign_template_id="bs_t1",
+                          procedure_match=["hysteroscopy with d&c"],
+                          facility_match=["office"])
+    db.add(t); db.flush()
+    env = SurgeryConsentEnvelope(
+        surgery_id=s.id, template_id=t.id,
+        boldsign_envelope_id="bs_doc_1",
+        status="sent",
+    )
+    db.add(env); db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/consent",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["envelopes"]) == 1
+    assert body["envelopes"][0]["template_name"] == "Office — Hysteroscopy D&C Consent"
+    assert body["envelopes"][0]["status"] == "sent"
+    assert body["envelopes"][0]["can_sign"] is True   # status is "sent"
+    assert body["envelopes"][0]["can_download"] is False
+    assert body["all_complete"] is False
+    assert body["can_resend"] is True  # scheduled
+
+
+def test_consent_all_complete_when_every_envelope_signed(client, db):
+    from datetime import date as _d
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    s = _seed_surgery(db)
+    s.scheduled_date = _d(2026, 7, 1)
+    t = ConsentTemplate(name="X", boldsign_template_id="bs_x",
+                          procedure_match=[], facility_match=[])
+    db.add(t); db.flush()
+    db.add(SurgeryConsentEnvelope(
+        surgery_id=s.id, template_id=t.id,
+        boldsign_envelope_id="bs_doc_2",
+        status="signed",
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/consent",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["all_complete"] is True
+    assert body["envelopes"][0]["can_sign"] is False
+    assert body["envelopes"][0]["can_download"] is True

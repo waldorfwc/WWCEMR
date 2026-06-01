@@ -462,3 +462,40 @@ def portal_claim_slot(
     except SelfScheduleError as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
     return {"ok": True, **result}
+
+
+# ─── /{surgery_id}/consent ────────────────────────────────────────
+
+from app.models.surgery import SurgeryConsentEnvelope
+
+
+def _envelope_dict(env: SurgeryConsentEnvelope) -> dict:
+    status = env.status or ""
+    return {
+        "id":               str(env.id),
+        "template_name":    env.template.name if env.template else "",
+        "boldsign_envelope_id": env.boldsign_envelope_id,
+        "status":           status,
+        "sent_at":          env.sent_at.isoformat() if env.sent_at else None,
+        "signed_at":        env.signed_at.isoformat() if env.signed_at else None,
+        "can_sign":         status in ("sent", "delivered", "pending"),
+        "can_download":     status in ("signed", "completed"),
+    }
+
+
+@router.get("/{surgery_id}/consent")
+def portal_consent(surgery_id: str, db: Session = Depends(get_db),
+                     _: str = Depends(require_portal_token)):
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    envs = [_envelope_dict(e) for e in (s.consent_envelopes or [])]
+    all_complete = bool(envs) and all(
+        (e["status"] in ("signed", "completed")) for e in envs
+    )
+    return {
+        "scheduled_date": s.scheduled_date.isoformat() if s.scheduled_date else None,
+        "envelopes": envs,
+        "all_complete": all_complete,
+        "can_resend": s.scheduled_date is not None,
+    }
