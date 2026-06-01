@@ -223,3 +223,62 @@ def test_dashboard_payment_milestone_reflects_paid_amount(client, db):
     assert payment_m["paid"] == 150
     assert payment_m["due"] == 250
     assert payment_m["status"] == "in_progress"
+
+
+def test_dashboard_hides_fmla_row_when_status_is_null(client, db):
+    """Patient did not request FMLA — row should not appear."""
+    from app.services.patient_portal_auth import issue_portal_token
+    from datetime import date as _d
+    s = Surgery(
+        chart_number="X2", patient_name="Pat", first_name="Pat",
+        cell_phone="+12405551234", dob=_d(1990, 1, 1),
+        eligible_facilities=["office"], selected_facility="office",
+        status="new",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+    assert s.fmla_status is None       # baseline
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard",
+                     headers={"Authorization": f"Bearer {token}"})
+    keys = [m["key"] for m in r.json()["milestones"]]
+    assert "fmla" not in keys
+
+
+def test_dashboard_shows_fmla_row_when_status_is_set(client, db):
+    """Patient requested FMLA — row appears with whatever status the
+    coordinator has set."""
+    from app.services.patient_portal_auth import issue_portal_token
+    from datetime import date as _d
+    s = Surgery(
+        chart_number="X3", patient_name="Pat", first_name="Pat",
+        cell_phone="+12405551234", dob=_d(1990, 1, 1),
+        eligible_facilities=["office"], selected_facility="office",
+        fmla_status="requested",
+        status="new",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard",
+                     headers={"Authorization": f"Bearer {token}"})
+    fmla = next((m for m in r.json()["milestones"] if m["key"] == "fmla"), None)
+    assert fmla is not None
+    assert fmla["status"] == "requested"
+
+
+def test_dashboard_hides_fmla_row_when_status_is_empty_string(client, db):
+    """Whitespace-only status should be treated as 'not requested.'"""
+    from app.services.patient_portal_auth import issue_portal_token
+    from datetime import date as _d
+    s = Surgery(
+        chart_number="X4", patient_name="Pat", first_name="Pat",
+        cell_phone="+12405551234", dob=_d(1990, 1, 1),
+        eligible_facilities=["office"], selected_facility="office",
+        fmla_status="   ",
+        status="new",
+    )
+    db.add(s); db.commit(); db.refresh(s)
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard",
+                     headers={"Authorization": f"Bearer {token}"})
+    keys = [m["key"] for m in r.json()["milestones"]]
+    assert "fmla" not in keys

@@ -270,12 +270,15 @@ def dashboard(surgery_id: str, db: Session = Depends(get_db),
                                   label="Labs completed",
                                   key="labs"),
     ]
-    # FMLA row only when the column exists (P5+).
-    if hasattr(s, "fmla_status"):
+    # FMLA is opt-in for patients who need leave from work — only surface
+    # the row when fmla_status is populated. NULL means "patient did not
+    # request FMLA," which is the common case; showing the row would imply
+    # an unmet task that doesn't actually exist.
+    if (getattr(s, "fmla_status", None) or "").strip():
         milestones.append({
             "key": "fmla",
             "label": "FMLA submitted",
-            "status": getattr(s, "fmla_status", None) or "todo",
+            "status": s.fmla_status,
         })
     return {
         "surgery": summary,
