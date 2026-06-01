@@ -62,3 +62,35 @@ def test_claim_raises_on_blackout(db, monkeypatch):
         assert "Doctor away" in str(e) or "blocked" in str(e).lower()
         return
     raise AssertionError("expected SelfScheduleError")
+
+
+def test_gate_passes_when_pt_resp_is_zero(db):
+    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    s = _seed_s(db); s.patient_responsibility = 0; db.commit()
+    allowed, reason = schedule_gate_for_surgery(s)
+    assert allowed is True and reason is None
+
+
+def test_gate_blocks_when_unpaid(db):
+    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    s = _seed_s(db); s.patient_responsibility = 250; s.amount_paid = 0
+    db.commit()
+    allowed, reason = schedule_gate_for_surgery(s)
+    assert allowed is False
+    assert "$250.00" in reason
+
+
+def test_gate_passes_when_fully_paid(db):
+    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    s = _seed_s(db); s.patient_responsibility = 250; s.amount_paid = 250
+    db.commit()
+    allowed, reason = schedule_gate_for_surgery(s)
+    assert allowed is True and reason is None
+
+
+def test_gate_passes_when_coordinator_overrides(db):
+    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    s = _seed_s(db); s.patient_responsibility = 250; s.amount_paid = 0
+    s.schedule_gate_override = True; db.commit()
+    allowed, reason = schedule_gate_for_surgery(s)
+    assert allowed is True

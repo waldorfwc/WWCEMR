@@ -155,3 +155,28 @@ def claim_slot_for_patient(
         "start_time": start.strftime("%H:%M"),
         "duration_minutes": duration,
     }
+
+
+def schedule_gate_for_surgery(surgery: Surgery) -> tuple[bool, Optional[str]]:
+    """Decide whether a patient may self-schedule.
+
+    Returns (allowed, reason). 'reason' is a patient-facing string when
+    not allowed; None when allowed.
+
+    Rules:
+      pt_resp <= 0                        → allowed (no balance to pay)
+      Surgery.amount_paid >= pt_resp      → allowed (paid in full)
+      surgery.schedule_gate_override      → allowed (coordinator override)
+      otherwise                           → not allowed, show outstanding amount
+    """
+    pt_resp = float(surgery.patient_responsibility or 0)
+    if pt_resp <= 0:
+        return True, None
+    paid = float(surgery.amount_paid or 0)
+    if paid >= pt_resp:
+        return True, None
+    if surgery.schedule_gate_override:
+        return True, None
+    outstanding = pt_resp - paid
+    return False, (f"Please make your payment before booking a surgery date. "
+                    f"Outstanding balance: ${outstanding:.2f}")
