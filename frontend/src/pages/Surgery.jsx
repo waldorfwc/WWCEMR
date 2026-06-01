@@ -47,18 +47,18 @@ const BUCKET_DEFS = [
 
 const MILESTONE_TITLE = {
   benefits_determined:        'Benefits',
-  prior_auth:                 'Prior auth',
-  klara_scheduling:           'Klara scheduling',
-  patient_picks_date:         'Patient picks date',
-  post_op_appts_scheduled:    'Post-op appts',
+  prior_auth:                 'Prior Auth',
+  klara_scheduling:           'Klara Scheduling',
+  patient_picks_date:         'Patient Picks Date',
+  post_op_appts_scheduled:    'Post-Op Appts',
   device_assigned:            'Device',
-  assistant_surgeon:          'Assistant surgeon',
+  assistant_surgeon:          'Assistant Surgeon',
   consent:                    'Consent',
-  surgery_confirmed_hospital: 'Hospital confirm',
+  surgery_confirmed_hospital: 'Hospital Confirm',
   labs_to_hospital:           'Labs',
-  post_op_call:               'Post-op call',
-  op_notes:                   'Op notes',
-  path_report:                'Path report',
+  post_op_call:               'Post-Op Call',
+  op_notes:                   'Op Notes',
+  path_report:                'Path Report',
   surgery_billed:             'Billed',
 }
 

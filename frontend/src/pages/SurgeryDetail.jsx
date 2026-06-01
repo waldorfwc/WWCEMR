@@ -751,12 +751,12 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
           <div>
             <div className="text-[10px] uppercase text-gray-500">Kind</div>
             <select className="input text-xs" value={kind} onChange={e => setKind(e.target.value)}>
-              <option value="prior_auth">Prior auth response</option>
-              <option value="op_notes">Operative notes</option>
-              <option value="path_report">Pathology report</option>
+              <option value="prior_auth">Prior Auth Response</option>
+              <option value="op_notes">Operative Notes</option>
+              <option value="path_report">Pathology Report</option>
               <option value="clearance">Clearance</option>
               <option value="consent">Consent</option>
-              <option value="fmla">FMLA paperwork</option>
+              <option value="fmla">FMLA Paperwork</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -1853,9 +1853,9 @@ function milestoneInlineContent(m, surgery) {
     case 'surgery_confirmed_hospital':  return <SurgeryConfirmedBody surgery={surgery} />
     case 'labs_to_hospital':            return <LabsCardBody surgery={surgery} />
     case 'op_notes':                    return <FilesPanel surgery={surgery} kindFilter="op_notes"
-                                                            label="Operative report" />
+                                                            label="Operative Report" />
     case 'path_report':                 return <FilesPanel surgery={surgery} kindFilter="path_report"
-                                                            label="Pathology report" />
+                                                            label="Pathology Report" />
     case 'post_op_call':                return <PostOpCallCardBody surgery={surgery} milestone={m} />
     case 'surgery_billed':              return <SurgeryBilledCardBody surgery={surgery} />
     default:                            return null
@@ -2399,7 +2399,7 @@ function PriorAuthCardBody({ surgery }) {
         {patch.isPending ? 'Saving…' : 'Save auth info'}
       </button>
 
-      <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior auth response" />
+      <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior Auth Response" />
     </div>
   )
 }
@@ -2672,7 +2672,7 @@ function SurgeryBilledCardBody({ surgery }) {
               been auto-generated for the insurance company.
             </div>
             <FilesPanel surgery={surgery} kindFilter="modifier_22_letter"
-                         label="Modifier-22 justification letter" />
+                         label="Modifier-22 Justification Letter" />
           </div>
         )}
 
