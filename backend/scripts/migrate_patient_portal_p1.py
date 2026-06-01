@@ -24,10 +24,13 @@ DDL = [
        ADD COLUMN IF NOT EXISTS hospital_preop_self_reported BOOLEAN NOT NULL DEFAULT FALSE""",
     """ALTER TABLE surgeries
        ADD COLUMN IF NOT EXISTS hospital_preop_self_reported_at TIMESTAMP NULL""",
-    # patient_portal_auth_codes — new table
+    # patient_portal_auth_codes — new table.
+    # GUID columns use CHAR(36) in prod (matches existing surgeries.id and
+    # surgery_consent_envelopes.surgery_id — the GUID() custom type
+    # rendered as character on this Postgres deployment).
     """CREATE TABLE IF NOT EXISTS patient_portal_auth_codes (
-        id               UUID PRIMARY KEY,
-        surgery_id       UUID NOT NULL REFERENCES surgeries(id) ON DELETE CASCADE,
+        id               CHAR(36) PRIMARY KEY,
+        surgery_id       CHAR(36) NOT NULL REFERENCES surgeries(id) ON DELETE CASCADE,
         challenge_token  VARCHAR(64) NOT NULL UNIQUE,
         code_hash        VARCHAR(60) NOT NULL,
         fail_count       INTEGER NOT NULL DEFAULT 0,
