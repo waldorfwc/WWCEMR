@@ -3,8 +3,8 @@ import { usePortalAuth } from '../../hooks/usePortalAuth'
 
 const NAV = [
   { to: '',          label: 'Dashboard' },
-  { to: 'payments',  label: 'Payments',  comingSoon: true },
-  { to: 'schedule',  label: 'Schedule',  comingSoon: true },
+  { to: 'payments',  label: 'Payments' },
+  { to: 'schedule',  label: 'Schedule' },
   { to: 'consent',   label: 'Consent',   comingSoon: true },
   { to: 'documents', label: 'Documents', comingSoon: true },
   { to: 'messages',  label: 'Messages',  comingSoon: true },
