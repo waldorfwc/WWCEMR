@@ -1241,3 +1241,82 @@ def test_fmla_get_honors_custom_fee_cents_env_var(client, db, monkeypatch):
                       headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["fee_amount"] == "40.00"
+
+
+def test_portal_messages_get_empty(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/messages",
+                      headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.json() == {"messages": []}
+
+
+def test_portal_messages_get_marks_staff_as_read_for_patient(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery_message import SurgeryMessage
+    s = _seed_surgery(db)
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="staff",
+                              author_email="ocooke@example.com",
+                              body="Hi Jane, you can have liquids…"))
+    db.commit()
+    token = issue_portal_token(s)
+    client.get(f"/api/patient/portal/{s.id}/messages",
+                  headers={"Authorization": f"Bearer {token}"})
+    msgs = db.query(SurgeryMessage).filter(
+        SurgeryMessage.surgery_id == s.id).all()
+    staff_msgs = [m for m in msgs if m.author_kind == "staff"]
+    assert len(staff_msgs) == 1
+    assert all(m.read_by_patient_at is not None for m in staff_msgs)
+
+
+def test_portal_messages_get_in_staff_preview_skips_mark_read(client, db):
+    """Preview mode (#154) must NOT mutate patient's unread state."""
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery_message import SurgeryMessage
+    s = _seed_surgery(db)
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="staff",
+                              author_email="staff@x", body="hello"))
+    db.commit()
+    staff_tok = issue_portal_token(s, viewer="staff:ocooke@example.com",
+                                       ttl_minutes=60)
+    client.get(f"/api/patient/portal/{s.id}/messages",
+                  headers={"Authorization": f"Bearer {staff_tok}"})
+    msgs = db.query(SurgeryMessage).filter(
+        SurgeryMessage.surgery_id == s.id).all()
+    assert all(m.read_by_patient_at is None for m in msgs)
+
+
+def test_portal_messages_post_persists_with_patient_author(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery_message import SurgeryMessage
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(
+        f"/api/patient/portal/{s.id}/messages",
+        json={"body": "Can I have coffee?"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["author_kind"] == "patient"
+    rows = db.query(SurgeryMessage).filter(
+        SurgeryMessage.surgery_id == s.id).all()
+    assert len(rows) == 1
+    assert rows[0].body == "Can I have coffee?"
+    assert rows[0].author_email is None
+
+
+def test_portal_messages_post_rejects_empty(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(
+        f"/api/patient/portal/{s.id}/messages",
+        json={"body": "   "},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422

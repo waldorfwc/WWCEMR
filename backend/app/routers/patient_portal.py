@@ -1016,3 +1016,75 @@ def portal_fmla_checkout(
         log.exception("portal FMLA checkout create failed")
         raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
     return {"checkout_url": pay.checkout_url, "payment_id": str(pay.id)}
+
+
+# ─── /{surgery_id}/messages ────────────────────────────────────────
+
+from app.models.surgery_message import SurgeryMessage
+
+
+def _msg_dict(m: SurgeryMessage) -> dict:
+    return {
+        "id":           str(m.id),
+        "author_kind":  m.author_kind,
+        "author_label": "You" if m.author_kind == "patient" else "WWC",
+        "body":         m.body,
+        "sent_at":      m.sent_at.isoformat() if m.sent_at else None,
+    }
+
+
+class MessagePostPayload(BaseModel):
+    body: str
+
+
+@router.get("/{surgery_id}/messages")
+def portal_messages_get(
+    surgery_id: str,
+    request: Request,
+    authorization: str = Header(default=""),
+    db: Session = Depends(get_db),
+):
+    """Return the patient's full thread oldest->newest. Marks staff-authored
+    messages as read by the patient -- unless the JWT is a preview token
+    (#154), in which case the read-state mutation is skipped so the real
+    patient's unread state is preserved."""
+    # require_portal_token also validates the bearer + surgery match; we
+    # call it manually so we can also inspect the viewer claim for the
+    # preview-skip decision below.
+    require_portal_token(request, surgery_id, authorization)
+    token = authorization.split(" ", 1)[1].strip() if " " in authorization else ""
+    payload = auth.decode_portal_token(token) or {}
+    is_preview = (payload.get("viewer") or "").startswith("staff:")
+
+    msgs = (db.query(SurgeryMessage)
+              .filter(SurgeryMessage.surgery_id == surgery_id)
+              .order_by(SurgeryMessage.sent_at.asc())
+              .all())
+    if not is_preview:
+        for m in msgs:
+            if m.author_kind == "staff" and m.read_by_patient_at is None:
+                m.read_by_patient_at = datetime.utcnow()
+        db.commit()
+    return {"messages": [_msg_dict(m) for m in msgs]}
+
+
+@router.post("/{surgery_id}/messages")
+def portal_messages_post(
+    surgery_id: str,
+    payload: MessagePostPayload,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    body = (payload.body or "").strip()
+    if not body:
+        raise HTTPException(status_code=422, detail="Message cannot be empty.")
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    m = SurgeryMessage(
+        surgery_id=s.id,
+        author_kind="patient",
+        body=body,
+    )
+    db.add(m); db.commit(); db.refresh(m)
+    return _msg_dict(m)
