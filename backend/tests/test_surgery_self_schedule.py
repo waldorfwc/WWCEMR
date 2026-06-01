@@ -94,3 +94,37 @@ def test_gate_passes_when_coordinator_overrides(db):
     s.schedule_gate_override = True; db.commit()
     allowed, reason = schedule_gate_for_surgery(s)
     assert allowed is True
+
+
+def test_claim_triggers_boldsign_send(db):
+    from unittest.mock import patch
+    s = _seed_s(db); bd = _seed_bd(db)
+    with patch("app.services.surgery_self_schedule.upsert_event_for_surgery"), \
+         patch("app.services.surgery_self_schedule._send_surgery_confirmation_email"), \
+         patch("app.services.boldsign_envelopes.send_consent_envelopes") as mock_send:
+        claim_slot_for_patient(
+            db, s, block_day_id=str(bd.id),
+            start_time_str="08:00", sent_by="patient:portal",
+        )
+    mock_send.assert_called_once()
+    # Confirm sent_by is propagated so the audit trail captures who scheduled
+    _, kwargs = mock_send.call_args
+    assert kwargs.get("sent_by") == "patient:portal"
+
+
+def test_claim_succeeds_when_boldsign_send_fails(db):
+    """BoldSign outage must not block the booking."""
+    from unittest.mock import patch
+    s = _seed_s(db); bd = _seed_bd(db)
+    with patch("app.services.surgery_self_schedule.upsert_event_for_surgery"), \
+         patch("app.services.surgery_self_schedule._send_surgery_confirmation_email"), \
+         patch("app.services.boldsign_envelopes.send_consent_envelopes",
+                side_effect=Exception("BoldSign 503")):
+        result = claim_slot_for_patient(
+            db, s, block_day_id=str(bd.id),
+            start_time_str="08:00", sent_by="patient:portal",
+        )
+    # The slot was still claimed
+    assert result["start_time"] == "08:00"
+    db.refresh(s)
+    assert s.scheduled_date == bd.block_date

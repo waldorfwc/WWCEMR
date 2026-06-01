@@ -148,6 +148,13 @@ def claim_slot_for_patient(
         _send_surgery_confirmation_email(db, surgery, slot, sent_by=sent_by)
     except Exception as e:
         log.warning("confirmation email failed: %s", e)
+    try:
+        # Soft-fail: a BoldSign outage doesn't block the booking. Patient
+        # can retry from portal Consent page via POST /consent/resend.
+        from app.services.boldsign_envelopes import send_consent_envelopes
+        send_consent_envelopes(db, surgery, sent_by=sent_by)
+    except Exception as e:
+        log.warning("consent envelope send failed: %s", e)
 
     return {
         "slot_id": str(slot.id),
