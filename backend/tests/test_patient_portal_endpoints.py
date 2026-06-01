@@ -600,3 +600,51 @@ def test_resend_calls_send_consent_envelopes(client, db):
     mock.assert_called_once()
     _, kwargs = mock.call_args
     assert kwargs.get("sent_by") == "patient:portal:resend"
+
+
+def test_sign_link_returns_url_for_patient_email(client, db):
+    from datetime import date as _d
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    s = _seed_surgery(db); s.email = "patient@example.com"
+    s.scheduled_date = _d(2026, 7, 1)
+    t = ConsentTemplate(name="X", boldsign_template_id="bs_x",
+                          procedure_match=[], facility_match=[])
+    db.add(t); db.flush()
+    env = SurgeryConsentEnvelope(
+        surgery_id=s.id, template_id=t.id,
+        boldsign_envelope_id="bs_doc_999", status="sent",
+    )
+    db.add(env); db.commit(); db.refresh(env)
+    token = issue_portal_token(s)
+    with patch("app.services.boldsign_envelopes.get_embedded_sign_link",
+                return_value="https://app.boldsign.com/signing/abc"):
+        r = client.get(
+            f"/api/patient/portal/{s.id}/consent/sign-link/{env.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["sign_url"].startswith("https://app.boldsign.com/")
+
+
+def test_sign_link_rejects_envelope_from_different_surgery(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    s1 = _seed_surgery(db, cell="+12405551111", dob=date(1990, 1, 1))
+    s2 = _seed_surgery(db, cell="+12405552222", dob=date(1991, 2, 2))
+    t = ConsentTemplate(name="X", boldsign_template_id="bs_x",
+                          procedure_match=[], facility_match=[])
+    db.add(t); db.flush()
+    env = SurgeryConsentEnvelope(
+        surgery_id=s2.id, template_id=t.id,
+        boldsign_envelope_id="bs_other", status="sent",
+    )
+    db.add(env); db.commit(); db.refresh(env)
+    # Token is for s1; envelope belongs to s2.
+    token = issue_portal_token(s1)
+    r = client.get(
+        f"/api/patient/portal/{s1.id}/consent/sign-link/{env.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 404  # envelope not found for this surgery

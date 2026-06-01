@@ -527,3 +527,36 @@ def portal_consent_resend(surgery_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=409, detail=str(e))
     # Re-fetch the consent payload so the frontend has fresh state.
     return portal_consent(surgery_id, db=db, _="ignored")
+
+
+@router.get("/{surgery_id}/consent/sign-link/{envelope_id}")
+def portal_consent_sign_link(
+    surgery_id: str,
+    envelope_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Return a BoldSign embedded sign URL for the patient role on this
+    envelope. Hardcodes signer_email to surgery.email so the endpoint
+    cannot be tricked into returning the surgeon's or witness's link."""
+    env = (db.query(SurgeryConsentEnvelope)
+              .filter(SurgeryConsentEnvelope.id == envelope_id,
+                       SurgeryConsentEnvelope.surgery_id == surgery_id)
+              .first())
+    if env is None:
+        raise HTTPException(status_code=404, detail="envelope not found")
+    if not env.boldsign_envelope_id:
+        raise HTTPException(status_code=409,
+                              detail="Envelope was not sent via BoldSign.")
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not (s.email or "").strip():
+        raise HTTPException(status_code=409,
+                              detail="No email on file — call our office.")
+    from app.services.boldsign_envelopes import (
+        get_embedded_sign_link, BoldSignEnvelopeError,
+    )
+    try:
+        url = get_embedded_sign_link(env.boldsign_envelope_id, s.email)
+    except BoldSignEnvelopeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"sign_url": url}

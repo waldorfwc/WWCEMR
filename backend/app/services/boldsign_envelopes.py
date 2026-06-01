@@ -444,6 +444,36 @@ def sync_surgery_envelopes(db: Session, s: Surgery) -> dict:
     return {"envelopes": out, "consent_status": s.consent_status}
 
 
+def get_embedded_sign_link(envelope_id: str, signer_email: str) -> str:
+    """Fetch a BoldSign embedded sign URL for a specific signer email on
+    a document. Used by the patient portal — the calling endpoint MUST
+    pass the patient's email (surgery.email) and never the surgeon's or
+    witness's email.
+
+    BoldSign embedded sign URLs are short-lived (~5 min per their docs),
+    so callers should fetch on-demand when the patient clicks Sign now,
+    not at page load.
+    """
+    if not _is_configured():
+        raise BoldSignEnvelopeError("BoldSign API key not configured")
+    with _http() as c:
+        r = c.get(
+            "/v1/document/getEmbeddedSignLink",
+            params={"documentId": envelope_id, "signerEmail": signer_email},
+        )
+    if r.status_code >= 300:
+        raise BoldSignEnvelopeError(
+            f"BoldSign sign-link fetch failed: {r.status_code} {r.text[:200]}"
+        )
+    body = r.json()
+    url = body.get("signLink") or body.get("SignLink") or body.get("signUrl")
+    if not url:
+        raise BoldSignEnvelopeError(
+            f"BoldSign response missing signLink: {body!r}"
+        )
+    return url
+
+
 def void_envelope_row(
     db: Session,
     row: SurgeryConsentEnvelope,
