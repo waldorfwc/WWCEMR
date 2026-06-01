@@ -137,4 +137,8 @@ def save_blob(*, prefix: str, body: bytes,
 def is_legacy_local_path(path: Optional[str]) -> bool:
     """True if `path` looks like a pre-migration absolute filesystem path
     rather than a GCS object key. GCS keys never start with `/`."""
-    return bool(path) and path.startswith("/")
+    if not path:
+        return False
+    return (path.startswith("/")     # absolute (Mac Mini, mounted volume)
+              or path.startswith("./")   # relative — `./uploads/...`
+              or path.startswith("../"))

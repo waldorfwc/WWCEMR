@@ -58,7 +58,8 @@ def migrate_table(conn, bucket, table: str, col: str, prefix: str,
                      dry_run: bool) -> tuple[int, int, int]:
     """Migrate rows for one table. Returns (migrated, missing, skipped)."""
     rows = conn.execute(text(
-        f"SELECT id, {col} FROM {table} WHERE {col} LIKE '/%'"
+        f"SELECT id, {col} FROM {table} "
+        f"WHERE {col} LIKE '/%' OR {col} LIKE './%' OR {col} LIKE '../%'"
     )).fetchall()
     if not rows:
         print(f"  no legacy rows")
