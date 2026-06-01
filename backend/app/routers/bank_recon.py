@@ -25,6 +25,7 @@ from app.routers.auth import get_current_user, require_permission
 from app.services.bai2_generator import (
     FilterOptions, parse_csv, render_bai2, make_filename,
 )
+from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 
 router = APIRouter(prefix="/bank-recon", tags=["bank-recon"])
@@ -54,7 +55,7 @@ def _import_to_dict(imp: Bai2Import) -> dict:
         "notes": imp.notes,
         "generated_at": str(imp.generated_at) if imp.generated_at else None,
         "generated_by": imp.generated_by,
-        "downloadable": bool(imp.bai2_path and os.path.exists(imp.bai2_path)),
+        "downloadable": bool(imp.bai2_path) and not is_legacy_local_path(imp.bai2_path),
     }
 
 
@@ -242,25 +243,16 @@ def generate_bai2(payload: GenerateRequest,
                             payload.account_full, '')
     filename = make_filename(payload.bank_name, start, end)
 
-    out_dir = os.path.join(settings.upload_dir, 'bai2_files')
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, filename)
-    if os.path.exists(out_path):
-        base, ex = os.path.splitext(filename)
-        i = 2
-        while os.path.exists(out_path):
-            out_path = os.path.join(out_dir, f"{base} ({i}){ex}")
-            i += 1
-        filename = os.path.basename(out_path)
-    with open(out_path, 'w', encoding='utf-8') as f:
-        f.write(bai2_text)
+    key = save_blob(prefix="bank-recon",
+                    body=bai2_text.encode("utf-8"),
+                    filename=filename)
 
     total_amount = Decimal(str(sum(t.amount for t in new_txns)))
     imp = Bai2Import(
         csv_filename=payload.csv_filename, csv_path=csv_path,
         bank_name=payload.bank_name, account_last_4=None,
         account_full=payload.account_full,
-        bai2_filename=filename, bai2_path=out_path,
+        bai2_filename=filename, bai2_path=key,
         date_range_start=start, date_range_end=end,
         csv_row_count=parsed.csv_row_count,
         transactions_included=len(new_txns),
@@ -342,11 +334,16 @@ def download_bai2(
     current_user: dict = Depends(get_current_user),
 ):
     imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
-    if not imp or not imp.bai2_path or not os.path.exists(imp.bai2_path):
+    if not imp or not imp.bai2_path:
         raise HTTPException(status_code=404, detail="BAI2 file not available")
-    return FileResponse(
-        imp.bai2_path, media_type="text/plain",
-        filename=imp.bai2_filename or os.path.basename(imp.bai2_path),
+    if is_legacy_local_path(imp.bai2_path):
+        raise HTTPException(status_code=410,
+                            detail="This BAI2 file is from before the cloud migration and is no longer available.")
+    return serve_blob(
+        local_path=None,
+        gcs_object=imp.bai2_path,
+        media_type="text/plain",
+        filename=imp.bai2_filename or "bai2.txt",
     )
 
 
@@ -358,8 +355,5 @@ def delete_import(
     imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
     if not imp:
         raise HTTPException(status_code=404, detail="import not found")
-    if imp.bai2_path and os.path.exists(imp.bai2_path):
-        try: os.remove(imp.bai2_path)
-        except OSError: pass
     db.delete(imp); db.commit()
     return {"deleted": True}

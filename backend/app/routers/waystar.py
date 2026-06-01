@@ -13,6 +13,7 @@ from app.database import get_db
 from app.services.waystar_service import get_waystar_client, WaystarConnectionError
 from app.services.audit_service import log_action
 from app.config import settings
+from app.services.storage import serve_blob
 
 router = APIRouter(prefix="/waystar", tags=["waystar"])
 
@@ -181,21 +182,14 @@ def sync_eras_sftp(
 
 @router.get("/eob-report/{filename}")
 def download_eob_report(filename: str, db: Session = Depends(get_db)):
-    """Download a Waystar EOB/remittance report file."""
-    import os
-    from fastapi.responses import FileResponse
-
+    """Download a Waystar EOB/remittance report file from gs://wwc-app-docs/waystar-reports/."""
     safe_name = os.path.basename(filename)
-    report_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads", "waystar_reports")
-    file_path = os.path.join(report_dir, safe_name)
-
-    if not os.path.isfile(file_path):
-        raise HTTPException(status_code=404, detail="Report file not found")
-
-    log_action(db, "DOWNLOAD", "eob_report", description=f"Downloaded EOB report: {safe_name}")
-    return FileResponse(
-        path=file_path,
+    log_action(db, "DOWNLOAD", "eob_report",
+               description=f"Downloaded EOB report: {safe_name}")
+    return serve_blob(
+        local_path=None,
+        gcs_object=f"waystar-reports/{safe_name}",
         media_type="text/plain",
         filename=safe_name,
-        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+        disposition="inline",
     )
