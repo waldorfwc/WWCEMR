@@ -104,6 +104,8 @@ def create_checkout_session(
     amount: Decimal,
     description: str,
     actor: str,
+    *,
+    kind: str = "patient_balance",
 ) -> SurgeryPayment:
     """Create a Stripe Checkout Session + a matching SurgeryPayment row.
     Returns the SurgeryPayment with .checkout_url populated."""
@@ -150,6 +152,7 @@ def create_checkout_session(
         amount_requested=amount,
         currency="usd",
         status="requested",
+        kind=kind,
         description=description,
         requested_by=actor,
         checkout_url=session.url,

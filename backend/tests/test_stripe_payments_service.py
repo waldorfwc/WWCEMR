@@ -101,3 +101,62 @@ def test_parse_webhook_verifies_signature(monkeypatch):
         mock_cli.return_value.Webhook.construct_event.return_value = mock_event
         out = parse_webhook_event(b'{"x":1}', "t=123,v1=abc")
     assert out["type"] == "checkout.session.completed"
+
+
+def test_create_checkout_session_marks_kind_fmla_fee(db):
+    """When kind='fmla_fee' is passed, the SurgeryPayment row records it."""
+    from decimal import Decimal
+    from unittest.mock import patch, MagicMock
+    from app.models.surgery import Surgery
+    from app.services.stripe_payments import create_checkout_session
+
+    s = Surgery(chart_number="1", patient_name="Pat", status="new",
+                  email="p@example.com")
+    db.add(s); db.commit(); db.refresh(s)
+
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_kind_fmla"
+    fake_session.url = "https://stripe.test/cs_test_kind_fmla"
+    with patch("app.services.stripe_payments.get_or_create_customer",
+                return_value="cus_test"), \
+         patch("app.services.stripe_payments._client") as mock_client:
+        mock_client.return_value.checkout.Session.create.return_value = fake_session
+        pay = create_checkout_session(
+            db, s,
+            amount=Decimal("25.00"),
+            description="FMLA processing fee",
+            actor="patient:portal",
+            kind="fmla_fee",
+        )
+
+    db.refresh(pay)
+    assert pay.kind == "fmla_fee"
+
+
+def test_create_checkout_session_defaults_kind_patient_balance(db):
+    """Backward-compat: callers that don't pass kind get the default."""
+    from decimal import Decimal
+    from unittest.mock import patch, MagicMock
+    from app.models.surgery import Surgery
+    from app.services.stripe_payments import create_checkout_session
+
+    s = Surgery(chart_number="2", patient_name="Pat", status="new",
+                  email="p@example.com")
+    db.add(s); db.commit(); db.refresh(s)
+
+    fake_session = MagicMock()
+    fake_session.id = "cs_test_default_kind"
+    fake_session.url = "https://stripe.test/cs_test_default_kind"
+    with patch("app.services.stripe_payments.get_or_create_customer",
+                return_value="cus_test"), \
+         patch("app.services.stripe_payments._client") as mock_client:
+        mock_client.return_value.checkout.Session.create.return_value = fake_session
+        pay = create_checkout_session(
+            db, s,
+            amount=Decimal("250.00"),
+            description="Surgery balance",
+            actor="patient:portal",
+        )
+
+    db.refresh(pay)
+    assert pay.kind == "patient_balance"

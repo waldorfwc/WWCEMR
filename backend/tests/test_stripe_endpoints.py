@@ -262,3 +262,93 @@ def test_webhook_session_completed_sends_receipt(client, db, monkeypatch):
     assert len(emails) == 1
     assert emails[0].to_email == s.email
     assert "750.00" in emails[0].rendered_html
+
+
+def test_webhook_fmla_fee_sets_fmla_fee_paid_no_balance_bump(client, db):
+    """A paid SurgeryPayment with kind='fmla_fee' must:
+      - set Surgery.fmla_fee_paid = True + fmla_fee_paid_at + fmla_fee_stripe_session_id
+      - NOT bump Surgery.amount_paid
+      - auto-flip fmla_status to 'submitted' if blank upload exists
+      - NOT send the patient_balance receipt email
+    """
+    from decimal import Decimal
+    from unittest.mock import patch
+    from app.models.surgery import Surgery, SurgeryDocument
+    from app.models.stripe_payment import SurgeryPayment
+    from app.routers.stripe_payments import _handle_session_completed
+
+    s = Surgery(chart_number="FMLA-1", patient_name="Pat", status="new",
+                  patient_responsibility=Decimal("500.00"),
+                  amount_paid=Decimal("100.00"),
+                  email="p@example.com")
+    db.add(s); db.commit(); db.refresh(s)
+    db.add(SurgeryDocument(
+        surgery_id=s.id, kind="fmla_blank",
+        filename="my_fmla.pdf",
+        gcs_path=f"surgery-uploads/{s.id}/fmla_blank/x.pdf",
+        uploaded_by="patient:portal",
+    ))
+    pay = SurgeryPayment(
+        surgery_id=s.id, status="requested", kind="fmla_fee",
+        amount_requested=Decimal("25.00"),
+        amount_paid=Decimal("0.00"), amount_refunded=Decimal("0.00"),
+        currency="usd", requested_by="patient:portal:fmla",
+        stripe_checkout_session_id="cs_test_fmla_webhook",
+    )
+    db.add(pay); db.commit(); db.refresh(pay)
+
+    with patch("app.routers.stripe_payments.send_patient_email") as mock_email:
+        _handle_session_completed(db, "checkout.session.completed", {
+            "id": "cs_test_fmla_webhook",
+            "amount_total": 2500,
+            "payment_intent": "pi_test_fmla",
+        })
+
+    db.refresh(s); db.refresh(pay)
+    assert pay.status == "paid"
+    assert pay.amount_paid == Decimal("25.00")
+    assert s.fmla_fee_paid is True
+    assert s.fmla_fee_paid_at is not None
+    assert s.fmla_fee_stripe_session_id == "cs_test_fmla_webhook"
+    assert s.fmla_status == "submitted"
+    # amount_paid unchanged — FMLA fee doesn't touch it
+    assert s.amount_paid == Decimal("100.00")
+    # No surgery-balance receipt email for FMLA fees
+    mock_email.assert_not_called()
+
+
+def test_webhook_patient_balance_unchanged_behavior(client, db):
+    """Existing patient_balance path must still bump Surgery.amount_paid
+    and send the receipt email — T2 must not regress this."""
+    from decimal import Decimal
+    from unittest.mock import patch
+    from app.models.surgery import Surgery
+    from app.models.stripe_payment import SurgeryPayment
+    from app.routers.stripe_payments import _handle_session_completed
+
+    s = Surgery(chart_number="BAL-1", patient_name="Pat", status="new",
+                  patient_responsibility=Decimal("500.00"),
+                  amount_paid=Decimal("100.00"),
+                  email="p@example.com")
+    db.add(s); db.commit(); db.refresh(s)
+    pay = SurgeryPayment(
+        surgery_id=s.id, status="requested",  # kind defaults to patient_balance
+        amount_requested=Decimal("200.00"),
+        amount_paid=Decimal("0.00"), amount_refunded=Decimal("0.00"),
+        currency="usd", requested_by="patient:portal",
+        stripe_checkout_session_id="cs_test_balance",
+    )
+    db.add(pay); db.commit(); db.refresh(pay)
+
+    with patch("app.routers.stripe_payments.send_patient_email"):
+        _handle_session_completed(db, "checkout.session.completed", {
+            "id": "cs_test_balance",
+            "amount_total": 20000,
+            "payment_intent": "pi_test_balance",
+        })
+
+    db.refresh(s); db.refresh(pay)
+    assert pay.kind == "patient_balance"
+    assert s.amount_paid == Decimal("300.00")  # 100 + 200
+    # FMLA flags untouched
+    assert s.fmla_fee_paid is False
