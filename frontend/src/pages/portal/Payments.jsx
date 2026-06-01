@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { portalApi } from '../../lib/portal-api'
+import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
 
 function fmtMoney(n) {
   return `$${Number(n).toFixed(2)}`
@@ -39,95 +40,6 @@ function BalanceCard({ data, onPayClick }) {
         Pay now
       </button>
     </div>
-  )
-}
-
-function PayFlow({ sid, onDone, onCancel }) {
-  const [stage, setStage] = useState('sending')   // sending | code | redirecting | error
-  const [token, setToken] = useState(null)
-  const [digits, setDigits] = useState(['','','','','',''])
-  const [err, setErr] = useState('')
-  const refs = useRef([])
-
-  // Send code on mount
-  useEffect(() => {
-    let cancelled = false
-    portalApi.post(`/${sid}/payments/step-up`).then(r => {
-      if (cancelled) return
-      setToken(r.data.step_up_token)
-      setStage('code')
-    }).catch(e => {
-      if (cancelled) return
-      setErr(e?.response?.data?.detail || 'Could not start payment.')
-      setStage('error')
-    })
-    return () => { cancelled = true }
-  }, [sid])
-
-  function setDigit(i, v) {
-    const c = v.replace(/\D/g, '').slice(-1)
-    const next = [...digits]; next[i] = c; setDigits(next)
-    if (c && i < 5) refs.current[i+1]?.focus()
-  }
-
-  async function submit(e) {
-    e?.preventDefault?.()
-    const code = digits.join('')
-    if (code.length !== 6) return
-    setErr(''); setStage('redirecting')
-    try {
-      const { data } = await portalApi.post(`/${sid}/payments/checkout`, {
-        step_up_token: token, code,
-      })
-      window.location.assign(data.checkout_url)
-    } catch (e) {
-      setErr(e?.response?.data?.detail || 'Invalid code.')
-      setStage('code')
-    }
-  }
-
-  useEffect(() => {
-    if (stage === 'code' && digits.every(d => d !== '')) submit()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [digits, stage])
-
-  if (stage === 'sending') {
-    return <div className="text-sm text-gray-500 mt-4">Sending you a code…</div>
-  }
-  if (stage === 'redirecting') {
-    return <div className="text-sm text-gray-500 mt-4">Redirecting to Stripe…</div>
-  }
-  if (stage === 'error') {
-    return (
-      <div className="mt-4">
-        <div className="text-sm text-red-600">{err}</div>
-        <button onClick={onCancel} className="btn-secondary mt-2">Back</button>
-      </div>
-    )
-  }
-  return (
-    <form onSubmit={submit} className="mt-4 space-y-3">
-      <div className="text-sm text-gray-600">
-        Enter the 6-digit code we just texted you. (5 min expiry.)
-      </div>
-      <div className="flex gap-2">
-        {digits.map((d, i) => (
-          <input key={i}
-                  ref={el => refs.current[i] = el}
-                  type="text" inputMode="numeric"
-                  maxLength={1} value={d}
-                  onChange={e => setDigit(i, e.target.value)}
-                  className="w-10 h-12 text-center text-lg rounded border-gray-300" />
-        ))}
-      </div>
-      {err && <div className="text-sm text-red-600">{err}</div>}
-      <div className="flex gap-2">
-        <button type="submit" disabled={digits.join('').length !== 6}
-                 className="btn-primary">Continue</button>
-        <button type="button" onClick={onCancel}
-                 className="btn-secondary">Cancel</button>
-      </div>
-    </form>
   )
 }
 
@@ -178,7 +90,10 @@ export default function Payments() {
       <h1 className="text-2xl font-semibold text-gray-900">Payments</h1>
       <BalanceCard data={data} onPayClick={() => setShowFlow(true)} />
       {showFlow && (
-        <PayFlow sid={sid} onCancel={() => setShowFlow(false)} onDone={() => setShowFlow(false)} />
+        <StepUpPayFlow
+          stepUpUrl={`/${sid}/payments/step-up`}
+          checkoutUrl={`/${sid}/payments/checkout`}
+          onCancel={() => setShowFlow(false)} />
       )}
       <History rows={data.history} />
     </div>
