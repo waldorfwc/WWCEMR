@@ -116,13 +116,24 @@ def compute_token_exp(surgery: Surgery,
     return datetime.combine(exp_date, datetime.min.time())
 
 
-def issue_portal_token(surgery: Surgery) -> str:
-    exp = compute_token_exp(surgery)
+def issue_portal_token(surgery: Surgery, *,
+                          viewer: Optional[str] = None,
+                          ttl_minutes: Optional[int] = None) -> str:
+    """Sign a portal JWT. Default TTL is scheduled_date + 30 days. Pass
+    ttl_minutes for short-lived tokens (e.g. coordinator preview = 60).
+    Pass viewer='staff:<email>' so the read-only gate kicks in for non-GET
+    requests."""
+    if ttl_minutes is not None:
+        exp = datetime.utcnow() + timedelta(minutes=ttl_minutes)
+    else:
+        exp = compute_token_exp(surgery)
     payload = {
         "sub": str(surgery.id),
         "aud": PORTAL_TOKEN_AUDIENCE,
         "exp": exp,
     }
+    if viewer:
+        payload["viewer"] = viewer
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 
 
@@ -131,5 +142,16 @@ def verify_portal_token(token: str) -> Optional[str]:
         payload = jwt.decode(token, settings.secret_key, algorithms=["HS256"],
                               audience=PORTAL_TOKEN_AUDIENCE)
         return payload.get("sub")
+    except JWTError:
+        return None
+
+
+def decode_portal_token(token: str) -> Optional[dict]:
+    """Return the full JWT payload dict (or None if invalid). Use when you
+    need the viewer claim; otherwise prefer verify_portal_token (returns
+    just sub)."""
+    try:
+        return jwt.decode(token, settings.secret_key, algorithms=["HS256"],
+                            audience=PORTAL_TOKEN_AUDIENCE)
     except JWTError:
         return None

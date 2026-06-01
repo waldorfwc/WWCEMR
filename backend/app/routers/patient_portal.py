@@ -165,18 +165,26 @@ def verify(payload: VerifyPayload, db: Session = Depends(get_db)):
 # ─── Auth dependency ────────────────────────────────────────────
 
 def require_portal_token(
+    request: Request,
     surgery_id: str,
     authorization: str = Header(default=""),
 ) -> str:
-    """Validate Bearer token; ensure it's for THIS surgery_id."""
+    """Validate Bearer token; ensure it's for THIS surgery_id. When the
+    token's viewer claim is a staff impersonation (starts with 'staff:'),
+    reject non-GET requests — coordinators preview, they don't act."""
     if not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing token")
     token = authorization.split(" ", 1)[1].strip()
-    sub = auth.verify_portal_token(token)
-    if sub is None:
+    payload = auth.decode_portal_token(token)
+    if payload is None:
         raise HTTPException(status_code=401, detail="Invalid token")
+    sub = payload.get("sub")
     if sub != surgery_id:
         raise HTTPException(status_code=403, detail="Wrong surgery")
+    viewer = payload.get("viewer") or ""
+    if viewer.startswith("staff:") and request.method != "GET":
+        raise HTTPException(status_code=403,
+                              detail="Preview mode is read-only.")
     return sub
 
 
