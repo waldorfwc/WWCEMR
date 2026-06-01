@@ -893,3 +893,73 @@ def portal_uploads(surgery_id: str, db: Session = Depends(get_db),
             "download_url": url,
         })
     return {"uploads": docs}
+
+
+# ─── /{surgery_id}/fmla/step-up + /fmla/checkout ────────────────
+
+@router.post("/{surgery_id}/fmla/step-up")
+def portal_fmla_step_up(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Send a fresh SMS code so the patient can authorize the FMLA fee
+    charge. Caller must POST /fmla/checkout within 5 minutes."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if s.fmla_fee_paid:
+        raise HTTPException(status_code=422,
+                              detail="The FMLA fee has already been paid.")
+    if not (s.cell_phone or s.phone or "").strip():
+        raise HTTPException(status_code=409,
+                              detail="No phone on file — call our office at "
+                                     "240-252-2140.")
+    challenge_token, _code = auth.issue_challenge(db, s, purpose="payment")
+    return {"step_up_token": challenge_token}
+
+
+class FmlaCheckoutPayload(BaseModel):
+    step_up_token: str
+    code: str
+
+
+@router.post("/{surgery_id}/fmla/checkout")
+def portal_fmla_checkout(
+    surgery_id: str,
+    payload: FmlaCheckoutPayload,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Verify the SMS code; create a Stripe Checkout session for the
+    FMLA processing fee. Returns the URL the browser should visit."""
+    code = "".join(c for c in (payload.code or "") if c.isdigit())
+    if len(code) != 6:
+        raise HTTPException(status_code=401, detail="Invalid code")
+    matched_sid = auth.verify_code(db, payload.step_up_token, code)
+    if matched_sid is None or matched_sid != surgery_id:
+        raise HTTPException(status_code=401, detail="Invalid code")
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if s.fmla_fee_paid:
+        raise HTTPException(status_code=422,
+                              detail="The FMLA fee has already been paid.")
+    import os
+    fee_cents = int(os.environ.get("FMLA_FEE_CENTS", "2500") or "2500")
+    fee = Decimal(fee_cents) / Decimal(100)
+    if not stripe_svc.is_configured():
+        raise HTTPException(status_code=503,
+                              detail="Payments aren't available right now.")
+    try:
+        pay = stripe_svc.create_checkout_session(
+            db, s, amount=fee,
+            description="FMLA processing fee",
+            actor="patient:portal:fmla",
+            kind="fmla_fee",
+        )
+    except Exception as e:
+        log = logging.getLogger(__name__)
+        log.exception("portal FMLA checkout create failed")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {e}")
+    return {"checkout_url": pay.checkout_url, "payment_id": str(pay.id)}

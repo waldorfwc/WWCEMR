@@ -1082,3 +1082,97 @@ def test_fmla_upload_does_not_flip_status_when_fee_unpaid(client, db):
     assert r.status_code == 200
     db.refresh(s)
     assert (s.fmla_status or "") == ""
+
+
+def test_fmla_step_up_sends_payment_purpose_sms(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.patient_portal_auth.send_sms",
+                return_value=True) as mock_sms:
+        r = client.post(f"/api/patient/portal/{s.id}/fmla/step-up",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    assert "step_up_token" in r.json()
+    assert mock_sms.called
+
+
+def test_fmla_step_up_rejects_when_fee_already_paid(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.fmla_fee_paid = True
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(f"/api/patient/portal/{s.id}/fmla/step-up",
+                      headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 422
+    assert "already" in r.json()["detail"].lower()
+
+
+def test_fmla_checkout_rejects_invalid_code(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"), \
+         patch("app.services.patient_portal_auth.send_sms",
+                return_value=True):
+        step = client.post(
+            f"/api/patient/portal/{s.id}/fmla/step-up",
+            headers={"Authorization": f"Bearer {token}"}
+        ).json()
+    r = client.post(
+        f"/api/patient/portal/{s.id}/fmla/checkout",
+        json={"step_up_token": step["step_up_token"], "code": "000000"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 401
+
+
+def test_fmla_checkout_creates_session_with_kind_fmla_fee(client, db):
+    from unittest.mock import patch, MagicMock
+    from decimal import Decimal
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+
+    captured = {}
+    class FakePay:
+        id = "pay_fmla_test"
+        checkout_url = "https://stripe.test/cs_fmla"
+
+    def _capture(db_arg, surgery_arg, *, amount, description, actor,
+                   kind="patient_balance"):
+        captured["amount"]      = amount
+        captured["description"] = description
+        captured["kind"]        = kind
+        captured["actor"]       = actor
+        return FakePay()
+
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"), \
+         patch("app.services.patient_portal_auth.send_sms",
+                return_value=True), \
+         patch("app.services.stripe_payments.is_configured",
+                return_value=True), \
+         patch("app.services.stripe_payments.create_checkout_session",
+                side_effect=_capture):
+        step = client.post(
+            f"/api/patient/portal/{s.id}/fmla/step-up",
+            headers={"Authorization": f"Bearer {token}"}
+        ).json()
+        r = client.post(
+            f"/api/patient/portal/{s.id}/fmla/checkout",
+            json={"step_up_token": step["step_up_token"], "code": "111111"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["checkout_url"].startswith("https://stripe.test/")
+    assert captured["kind"] == "fmla_fee"
+    assert captured["amount"] == Decimal("25.00")    # default FMLA_FEE_CENTS=2500
+    assert "FMLA" in captured["description"]
