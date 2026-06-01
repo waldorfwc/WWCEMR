@@ -5,7 +5,7 @@ import {
   ArrowLeft, AlertTriangle, CheckCircle2, Circle, Clock, Hospital, FileText,
   Check, SkipForward, RotateCcw, X, Flag, Pause, Save, Edit3,
   MessageSquare, Download, Upload, Copy, ListPlus, Send, RefreshCw,
-  ChevronDown, ChevronUp, Package,
+  ChevronDown, ChevronUp, Package, Eye,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
@@ -60,6 +60,16 @@ export default function SurgeryDetail() {
     },
   })
 
+  async function viewAsPatient() {
+    try {
+      const { data } = await api.post(`/admin/surgeries/${id}/portal-preview-token`)
+      const url = `/portal/s/${data.surgery_id}?staff_token=${encodeURIComponent(data.token)}`
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      alert(e?.response?.data?.detail || 'Could not start preview.')
+    }
+  }
+
   const gateOverride = useMutation({
     mutationFn: (enabled) =>
       api.patch(`/surgery/${id}/schedule-gate-override`, { enabled }).then(r => r.data),
@@ -105,6 +115,14 @@ export default function SurgeryDetail() {
             <PickDateLink surgeryId={s.id} />
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={viewAsPatient}
+              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              title="Open this patient's portal in a new tab (read-only)"
+            >
+              <Eye size={11} /> View as patient
+            </button>
             <button
               type="button"
               onClick={() => patch.mutate({ urgency: s.urgency === "urgent" ? "routine" : "urgent" })}
