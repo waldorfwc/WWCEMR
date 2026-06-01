@@ -12,7 +12,10 @@ for it. Two backends are supported, selected via STORAGE_BACKEND env var:
 In production on Cloud Run, the backend's service account has
 storage.objectAdmin on the bucket, so credentials come from ADC.
 """
+import mimetypes
 import os
+import uuid
+from pathlib import Path
 from typing import Optional
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
@@ -100,3 +103,38 @@ def gcs_object_for_intake(relative_path: str) -> str:
 
 def using_gcs() -> bool:
     return _STORAGE_BACKEND == "gcs"
+
+
+def save_blob(*, prefix: str, body: bytes,
+              filename: str = "") -> str:
+    """Persist bytes to storage and return the storage key.
+    Caller stores the returned key in DB. Format: `{prefix}/{uuid}{.ext}`.
+
+    On GCS backend writes to `gs://<_GCS_BUCKET>/{key}`.
+    On local backend writes to `{DOCUMENTS_LOCAL_ROOT}/{key}` (default
+    /var/data/wwc-docs).
+    """
+    safe_ext = ""
+    if filename and "." in filename:
+        safe_ext = "." + filename.rsplit(".", 1)[-1].lower()[:10]
+    key = f"{prefix}/{uuid.uuid4().hex}{safe_ext}"
+
+    if _STORAGE_BACKEND == "gcs":
+        client = _gcs_client()
+        content_type = (mimetypes.guess_type(filename)[0]
+                        if filename else None) or "application/octet-stream"
+        blob = client.bucket(_GCS_BUCKET).blob(key)
+        blob.upload_from_string(body, content_type=content_type)
+        return key
+
+    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    out = root / key
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(body)
+    return key
+
+
+def is_legacy_local_path(path: Optional[str]) -> bool:
+    """True if `path` looks like a pre-migration absolute filesystem path
+    rather than a GCS object key. GCS keys never start with `/`."""
+    return bool(path) and path.startswith("/")
