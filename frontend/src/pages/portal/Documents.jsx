@@ -133,11 +133,114 @@ function ReceiptsCard({ receipts }) {
   )
 }
 
+function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  if (!clearance?.required) return null   // hide entirely
+
+  async function upload() {
+    if (!file) return
+    setBusy(true); setErr('')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('kind', 'clearance')
+      await portalApi.post(`/${sid}/clearance/upload`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setFile(null)
+      refetchUploads()
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Upload failed.')
+    } finally { setBusy(false) }
+  }
+
+  const statusBadge =
+    clearance.status === 'approved'
+      ? 'bg-green-100 text-green-700'
+      : clearance.status === 'uploaded'
+      ? 'bg-amber-100 text-amber-700'
+      : 'bg-gray-200 text-gray-700'
+
+  const myClearanceUploads = (uploads || []).filter(u =>
+    u.kind === 'clearance' || u.kind === 'ekg'
+  )
+
+  return (
+    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">Clearance</h2>
+        <span className={`text-xs px-2 py-1 rounded ${statusBadge}`}>
+          {clearance.status}
+        </span>
+      </div>
+
+      <div>
+        <div className="text-xs text-gray-500 mb-1">
+          Step 1: Download the blank template
+        </div>
+        <PdfDownloadButton
+          url={`/${sid}/clearance/template`}
+          filename="wwc_clearance_template.pdf"
+          label="Download template" />
+      </div>
+
+      <div>
+        <div className="text-xs text-gray-500 mb-1">
+          Step 2: Upload your completed form or EKG (PDF, JPEG, PNG, HEIC, max 10 MB)
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/heic"
+                  onChange={e => setFile(e.target.files?.[0] || null)}
+                  className="text-xs" />
+          <button onClick={upload} disabled={!file || busy}
+                   className="btn-primary text-sm">
+            {busy ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+        {err && <div className="text-xs text-red-600 mt-1">{err}</div>}
+      </div>
+
+      {myClearanceUploads.length > 0 && (
+        <div>
+          <div className="text-xs text-gray-500 mb-1">Your uploads:</div>
+          <ul className="text-sm">
+            {myClearanceUploads.map(u => (
+              <li key={u.id} className="flex items-center justify-between py-1">
+                <span className="truncate mr-2">
+                  {u.filename}
+                  <span className="text-xs text-gray-500 ml-2">
+                    {u.uploaded_at?.slice(0, 10)}
+                  </span>
+                </span>
+                {u.download_url && (
+                  <a href={u.download_url} target="_blank" rel="noreferrer"
+                      className="btn-secondary text-xs">
+                    Download
+                  </a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function Documents() {
   const { sid } = useParams()
   const { data, isLoading } = useQuery({
     queryKey: ['portal-documents', sid],
     queryFn: () => portalApi.get(`/${sid}/documents`).then(r => r.data),
+    staleTime: 30_000,
+  })
+  const { data: uploadsData, refetch: refetchUploads } = useQuery({
+    queryKey: ['portal-uploads', sid],
+    queryFn: () => portalApi.get(`/${sid}/uploads`).then(r => r.data),
     staleTime: 30_000,
   })
   if (isLoading) return <div className="text-sm text-gray-500">Loading…</div>
@@ -147,6 +250,10 @@ export default function Documents() {
       <InstructionsCard sid={sid} instructions={data.instructions} />
       <ConsentDocsCard sid={sid} consents={data.consents} />
       <ReceiptsCard receipts={data.receipts} />
+      <ClearanceCard sid={sid}
+                       clearance={data.clearance}
+                       uploads={uploadsData?.uploads}
+                       refetchUploads={refetchUploads} />
     </div>
   )
 }

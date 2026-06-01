@@ -655,6 +655,10 @@ def portal_documents(surgery_id: str, db: Session = Depends(get_db),
         "instructions": instructions,
         "consents":     consents,
         "receipts":     receipts,
+        "clearance": {
+            "required": bool(s.clearance_required),
+            "status":   s.clearance_status or "not_required",
+        },
     }
 
 
