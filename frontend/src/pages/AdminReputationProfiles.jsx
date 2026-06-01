@@ -19,11 +19,13 @@ export default function AdminReputationProfiles() {
                                        { display_name: t.display_name,
                                           role_label: t.role_label,
                                           user_email: t.user_email,
+                                          location: t.location,
                                           active: t.active }).then(r => r.data)
       return api.post('/admin/reputation/profiles', {
         display_name: t.display_name,
         role_label: t.role_label,
         user_email: t.user_email,
+        location: t.location,
       }).then(r => r.data)
     },
     onSuccess: (saved) => {
@@ -75,6 +77,14 @@ export default function AdminReputationProfiles() {
                 </div>
                 {p.role_label && (
                   <div className="text-xs text-muted">{p.role_label}</div>
+                )}
+                {p.location && (
+                  <div className="text-xs text-muted">
+                    📍 {p.location === 'white_plains' ? 'White Plains'
+                          : p.location === 'arlington' ? 'Arlington'
+                          : p.location === 'brandywine' ? 'Brandywine'
+                          : p.location}
+                  </div>
                 )}
                 {p.user_email && (
                   <div className="text-xs text-muted">{p.user_email}</div>
@@ -152,6 +162,18 @@ export default function AdminReputationProfiles() {
                     onChange={e => setEditing({...editing, role_label: e.target.value})}
                     placeholder="e.g. Surgical Coordinator"
                     className="w-full text-sm rounded border-gray-300 mb-3" />
+            <label className="text-sm font-medium block">Location</label>
+            <select value={editing.location || ''}
+                     onChange={e => setEditing({...editing, location: e.target.value || null})}
+                     className="w-full text-sm rounded border-gray-300 mb-3">
+              <option value="">— select —</option>
+              <option value="white_plains">White Plains</option>
+              <option value="arlington">Arlington</option>
+              <option value="brandywine">Brandywine</option>
+            </select>
+            <div className="text-xs text-muted mb-3">
+              Determines which Google review URL 5-star reviewers see.
+            </div>
             <label className="text-sm font-medium block">Email (optional)</label>
             <input value={editing.user_email || ''}
                     onChange={e => setEditing({...editing, user_email: e.target.value})}

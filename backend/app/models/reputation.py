@@ -16,6 +16,9 @@ class ReputationProfile(Base):
     user_email    = Column(String(200), nullable=True)
     display_name  = Column(String(120), nullable=False)
     role_label    = Column(String(80), nullable=True)
+    location      = Column(String(40), nullable=True)
+    # "white_plains" | "arlington" | "brandywine" — drives which Google
+    # review URL gets shown to 5-star reviewers.
     qr_token      = Column(String(40), nullable=False, unique=True, index=True)
     active        = Column(Boolean, default=True, nullable=False)
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -16,6 +16,8 @@ DDL = [
     )""",
     """CREATE INDEX IF NOT EXISTS ix_reputation_profiles_qr_token
        ON reputation_profiles (qr_token)""",
+    """ALTER TABLE reputation_profiles
+       ADD COLUMN IF NOT EXISTS location VARCHAR(40)""",
     """CREATE TABLE IF NOT EXISTS reputation_scans (
         id CHAR(36) PRIMARY KEY,
         profile_id CHAR(36) NOT NULL

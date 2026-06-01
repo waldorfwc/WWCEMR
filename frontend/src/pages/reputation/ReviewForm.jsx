@@ -5,8 +5,6 @@ import axios from 'axios'
 
 const api = axios.create({ baseURL: '/api/r' })
 
-const GOOGLE_REVIEW_URL = "https://share.google/VWtKiIWD5JFWaZEV5"
-
 export default function ReviewForm() {
   const { token } = useParams()
   const [profile, setProfile] = useState(null)
@@ -74,7 +72,8 @@ export default function ReviewForm() {
                   try {
                     await api.post(`/${token}/google-clicked`, { review_id: reviewId })
                   } catch {}
-                  window.location.assign(GOOGLE_REVIEW_URL)
+                  window.location.assign(profile?.google_review_url
+                                              || "https://share.google/VWtKiIWD5JFWaZEV5")
                 }}
                 className="btn-primary text-sm"
               >

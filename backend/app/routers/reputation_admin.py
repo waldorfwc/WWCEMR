@@ -24,6 +24,7 @@ def _profile_dict(p: ReputationProfile) -> dict:
         "user_email":   p.user_email,
         "display_name": p.display_name,
         "role_label":   p.role_label,
+        "location":     p.location,
         "qr_token":     p.qr_token,
         "active":       p.active,
         "created_at":   p.created_at.isoformat() if p.created_at else None,
@@ -34,12 +35,14 @@ class ProfileIn(BaseModel):
     display_name: str
     role_label: Optional[str] = None
     user_email: Optional[str] = None
+    location: Optional[str] = None
 
 
 class ProfilePatch(BaseModel):
     display_name: Optional[str] = None
     role_label: Optional[str] = None
     user_email: Optional[str] = None
+    location: Optional[str] = None
     active: Optional[bool] = None
 
 
@@ -61,6 +64,7 @@ def create_profile(payload: ProfileIn,
         display_name=payload.display_name.strip(),
         role_label=(payload.role_label or "").strip() or None,
         user_email=(payload.user_email or "").strip() or None,
+        location=(payload.location or "").strip() or None,
         qr_token=secrets.token_urlsafe(12),
     )
     db.add(p); db.commit(); db.refresh(p)
@@ -81,6 +85,8 @@ def update_profile(pid: str, payload: ProfilePatch,
         p.role_label = payload.role_label.strip() or None
     if payload.user_email is not None:
         p.user_email = payload.user_email.strip() or None
+    if payload.location is not None:
+        p.location = payload.location.strip() or None
     if payload.active is not None:
         p.active = payload.active
     db.commit(); db.refresh(p)

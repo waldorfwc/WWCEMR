@@ -63,10 +63,13 @@ def scan(token: str, request: Request, db: Session = Depends(get_db)):
         points_credited=0 if prior else POINTS["scan"],
     )
     db.add(s); db.commit(); db.refresh(s)
+    from app.services.google_review_urls import google_review_url_for
     return {
-        "scan_id":      str(s.id),
-        "display_name": p.display_name,
-        "role_label":   p.role_label,
+        "scan_id":          str(s.id),
+        "display_name":     p.display_name,
+        "role_label":       p.role_label,
+        "location":         p.location,
+        "google_review_url": google_review_url_for(p.location),
     }
 
 
