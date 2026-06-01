@@ -72,7 +72,7 @@ import Payments from './pages/portal/Payments'
 import Schedule from './pages/portal/Schedule'
 import Consent from './pages/portal/Consent'
 import PortalDocuments from './pages/portal/Documents'
-import MessagesStub from './pages/portal/stubs/MessagesStub'
+import Messages from './pages/portal/Messages'
 
 function ProtectedApp({ user, onLogout }) {
   const { isAdmin, isClinical, isLoading } = useCurrentUser()
@@ -199,7 +199,7 @@ export default function App() {
           <Route path="schedule" element={<Schedule />} />
           <Route path="consent" element={<Consent />} />
           <Route path="documents" element={<PortalDocuments />} />
-          <Route path="messages" element={<MessagesStub />} />
+          <Route path="messages" element={<Messages />} />
         </Route>
         <Route path="/*" element={
           user ? <ProtectedApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
