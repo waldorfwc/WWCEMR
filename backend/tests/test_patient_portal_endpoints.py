@@ -973,3 +973,44 @@ def test_clearance_upload_rejects_wrong_mime(client, db):
         files={"file": ("doc.txt", b"plain text", "text/plain")},
     )
     assert r.status_code == 415
+
+
+# ─── /{surgery_id}/uploads ──────────────────────────────────────────
+
+def test_uploads_returns_patient_documents_with_signed_urls(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import SurgeryDocument
+    s = _seed_surgery(db)
+    db.commit(); db.refresh(s)
+    db.add(SurgeryDocument(
+        surgery_id=s.id, kind="clearance",
+        filename="my_clearance.pdf",
+        gcs_path=f"surgery-uploads/{s.id}/clearance/x.pdf",
+        content_type="application/pdf",
+        uploaded_by="patient:portal",
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.surgery_uploads.signed_download_url",
+                return_value="https://signed.example/x"):
+        r = client.get(f"/api/patient/portal/{s.id}/uploads",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["uploads"]) == 1
+    u = body["uploads"][0]
+    assert u["filename"] == "my_clearance.pdf"
+    assert u["kind"] == "clearance"
+    assert u["download_url"].startswith("https://signed.example/")
+
+
+def test_uploads_empty_list(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/uploads",
+                      headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.json()["uploads"] == []

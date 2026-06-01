@@ -822,3 +822,32 @@ async def portal_clearance_upload(
         "uploaded_at":      doc.uploaded_at.isoformat(),
         "clearance_status": s.clearance_status,
     }
+
+
+# ─── /{surgery_id}/uploads ────────────────────────────────────────
+
+@router.get("/{surgery_id}/uploads")
+def portal_uploads(surgery_id: str, db: Session = Depends(get_db),
+                       _: str = Depends(require_portal_token)):
+    """Return the patient's uploaded documents with fresh 5-minute
+    signed-URL downloads."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    from app.services.surgery_uploads import signed_download_url
+    docs = []
+    for d in (s.documents or []):
+        try:
+            url = signed_download_url(d, ttl_minutes=5)
+        except Exception:
+            url = None
+        docs.append({
+            "id":           str(d.id),
+            "kind":         d.kind,
+            "filename":     d.filename,
+            "uploaded_at":  d.uploaded_at.isoformat() if d.uploaded_at else None,
+            "size_bytes":   d.size_bytes,
+            "content_type": d.content_type,
+            "download_url": url,
+        })
+    return {"uploads": docs}
