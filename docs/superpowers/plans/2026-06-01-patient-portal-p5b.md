@@ -47,7 +47,7 @@ def test_surgery_has_fmla_fee_columns(db):
     db.add(s); db.commit(); db.refresh(s)
     assert s.fmla_fee_paid is False
     assert s.fmla_fee_paid_at is None
-    assert s.fmla_fee_stripe_session is None
+    assert s.fmla_fee_stripe_session_id is None
 
 
 def test_surgery_payment_has_kind(db):
@@ -97,7 +97,7 @@ cd /Users/wwcclaudecode/Documents/wwc-era-project/backend && \
     # FMLA processing fee tracking (P5b — patient self-service flow)
     fmla_fee_paid           = Column(Boolean, default=False, nullable=False)
     fmla_fee_paid_at        = Column(DateTime, nullable=True)
-    fmla_fee_stripe_session = Column(String(100), nullable=True)
+    fmla_fee_stripe_session_id = Column(String(100), nullable=True)
 ```
 
 - [ ] **Step 4: Add `kind` to SurgeryPayment.** Open `backend/app/models/stripe_payment.py`. Find the `SurgeryPayment` class. Add a `kind` column near the top of the column block:
@@ -135,7 +135,7 @@ DDL = [
     """ALTER TABLE surgeries
        ADD COLUMN IF NOT EXISTS fmla_fee_paid_at TIMESTAMP NULL""",
     """ALTER TABLE surgeries
-       ADD COLUMN IF NOT EXISTS fmla_fee_stripe_session VARCHAR(100) NULL""",
+       ADD COLUMN IF NOT EXISTS fmla_fee_stripe_session_id VARCHAR(100) NULL""",
     """ALTER TABLE surgery_payments
        ADD COLUMN IF NOT EXISTS kind VARCHAR(40) NOT NULL DEFAULT 'patient_balance'""",
 ]
@@ -302,7 +302,7 @@ def _handle_checkout_completed(db, event_type, obj):
     if pay.kind == "fmla_fee":
         s.fmla_fee_paid = True
         s.fmla_fee_paid_at = datetime.utcnow()
-        s.fmla_fee_stripe_session = session_id
+        s.fmla_fee_stripe_session_id = session_id
         # Auto-flip status if blank upload already exists
         has_blank = any(d.kind == "fmla_blank" for d in (s.documents or []))
         if has_blank and (s.fmla_status or "") in ("", None):

@@ -66,7 +66,7 @@ P5b is a thin layer over the existing infrastructure: GCS uploads via `surgery_u
 ```python
 fmla_fee_paid             = Column(Boolean, default=False, nullable=False)
 fmla_fee_paid_at          = Column(DateTime, nullable=True)
-fmla_fee_stripe_session   = Column(String(100), nullable=True)
+fmla_fee_stripe_session_id   = Column(String(100), nullable=True)
 ```
 
 `Surgery.fmla_status` already exists (String(40), nullable). New status semantics:
@@ -159,7 +159,7 @@ def create_fmla_checkout_session(db, surgery, *, fee_cents: int,
 if pay.kind == "fmla_fee":
     s.fmla_fee_paid = True
     s.fmla_fee_paid_at = datetime.utcnow()
-    s.fmla_fee_stripe_session = session_id
+    s.fmla_fee_stripe_session_id = session_id
     # Auto-flip status if blank upload already there
     has_blank = any(d.kind == "fmla_blank" for d in s.documents)
     if has_blank and (s.fmla_status or "") in ("", None):

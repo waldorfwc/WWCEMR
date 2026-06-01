@@ -18,7 +18,7 @@ DDL = [
     """ALTER TABLE surgeries
        ADD COLUMN IF NOT EXISTS fmla_fee_paid_at TIMESTAMP NULL""",
     """ALTER TABLE surgeries
-       ADD COLUMN IF NOT EXISTS fmla_fee_stripe_session VARCHAR(100) NULL""",
+       ADD COLUMN IF NOT EXISTS fmla_fee_stripe_session_id VARCHAR(100) NULL""",
     """ALTER TABLE surgery_payments
        ADD COLUMN IF NOT EXISTS kind VARCHAR(40) NOT NULL DEFAULT 'patient_balance'""",
 ]
