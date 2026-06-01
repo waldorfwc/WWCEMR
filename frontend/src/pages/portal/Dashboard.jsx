@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { portalApi } from '../../lib/portal-api'
 
@@ -16,8 +17,29 @@ const STATUS_LABEL = {
   not_required: 'Not required',
 }
 
+function SelfReportButton({ sid, kind, onDone }) {
+  const [busy, setBusy] = useState(false)
+  async function click() {
+    setBusy(true)
+    try {
+      const path = kind === 'labs'
+        ? `/${sid}/self-report/labs`
+        : `/${sid}/self-report/hospital-preop`
+      await portalApi.post(path)
+      onDone?.()
+    } finally { setBusy(false) }
+  }
+  return (
+    <button onClick={click} disabled={busy}
+             className="btn-primary text-xs ml-2">
+      {busy ? 'Saving…' : 'Mark as done'}
+    </button>
+  )
+}
+
 export default function Dashboard() {
   const { sid } = useParams()
+  const qc = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: ['portal-dashboard', sid],
     queryFn: () => portalApi.get(`/${sid}/dashboard`).then(r => r.data),
@@ -67,9 +89,17 @@ export default function Dashboard() {
           {milestones.map(m => (
             <li key={m.key} className="flex items-center justify-between py-2">
               <span className="text-sm text-gray-800">{m.label}</span>
-              <span className={`text-xs px-2 py-1 rounded ${STATUS_BADGE[m.status] || STATUS_BADGE.todo}`}>
-                {STATUS_LABEL[m.status] || m.status}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-xs px-2 py-1 rounded ${STATUS_BADGE[m.status] || STATUS_BADGE.todo}`}>
+                  {STATUS_LABEL[m.status] || m.status}
+                </span>
+                {(m.key === 'labs' || m.key === 'hospital_preop') && m.status === 'todo' && (
+                  <SelfReportButton
+                    sid={sid}
+                    kind={m.key}
+                    onDone={() => qc.invalidateQueries({ queryKey: ['portal-dashboard', sid] })} />
+                )}
+              </div>
             </li>
           ))}
         </ul>
