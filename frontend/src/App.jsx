@@ -75,6 +75,7 @@ import Schedule from './pages/portal/Schedule'
 import Consent from './pages/portal/Consent'
 import PortalDocuments from './pages/portal/Documents'
 import Messages from './pages/portal/Messages'
+import ReviewForm from './pages/reputation/ReviewForm'
 
 function ProtectedApp({ user, onLogout }) {
   const { isAdmin, isClinical, isLoading } = useCurrentUser()
@@ -205,6 +206,8 @@ export default function App() {
           <Route path="documents" element={<PortalDocuments />} />
           <Route path="messages" element={<Messages />} />
         </Route>
+        {/* Reputation review form — public, no staff auth */}
+        <Route path="/r/:token" element={<ReviewForm />} />
         <Route path="/*" element={
           user ? <ProtectedApp user={user} onLogout={handleLogout} /> : <Navigate to="/login" />
         } />
