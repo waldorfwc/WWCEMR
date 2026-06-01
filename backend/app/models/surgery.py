@@ -260,6 +260,10 @@ class Surgery(Base):
 
     # FMLA (rare)
     fmla_status = Column(String(40), nullable=True)
+    # P5b self-service flow: patient pays $25 before office completes the form
+    fmla_fee_paid           = Column(Boolean, default=False, nullable=False)
+    fmla_fee_paid_at        = Column(DateTime, nullable=True)
+    fmla_fee_stripe_session = Column(String(100), nullable=True)
 
     # Workflow state
     status = Column(String(20), default="new", nullable=False)

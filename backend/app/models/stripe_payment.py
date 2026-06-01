@@ -67,6 +67,10 @@ class SurgeryPayment(Base):
     stripe_checkout_session_id  = Column(String(120), nullable=True, unique=True)
     stripe_payment_intent_id    = Column(String(120), nullable=True, unique=True)
     stripe_customer_id          = Column(String(80),  nullable=True)
+    # Discriminates payment purpose so the webhook can route correctly:
+    # "patient_balance" bumps Surgery.amount_paid;
+    # "fmla_fee" sets Surgery.fmla_fee_paid (never touches amount_paid).
+    kind = Column(String(40), default="patient_balance", nullable=False)
     # Money — stored in dollars, not cents, to match the existing Surgery
     # money columns (Numeric(10,2)).
     amount_requested            = Column(Numeric(10, 2), nullable=False)
