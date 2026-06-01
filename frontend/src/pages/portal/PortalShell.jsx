@@ -6,7 +6,7 @@ const NAV = [
   { to: 'payments',  label: 'Payments' },
   { to: 'schedule',  label: 'Schedule' },
   { to: 'consent',   label: 'Consent' },
-  { to: 'documents', label: 'Documents', comingSoon: true },
+  { to: 'documents', label: 'Documents' },
   { to: 'messages',  label: 'Messages',  comingSoon: true },
 ]
 
