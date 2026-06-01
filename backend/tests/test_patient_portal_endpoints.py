@@ -379,3 +379,43 @@ def test_checkout_creates_session_with_correct_code(client, db):
         )
     assert r.status_code == 200, r.text
     assert r.json()["checkout_url"].startswith("https://stripe.test/")
+
+
+def test_checkout_passes_decimal_amount_to_stripe(client, db):
+    """Regression: the checkout handler must pass a Decimal (not float) to
+    create_checkout_session, because that service calls .quantize() on the
+    value. A float would 502 every checkout in prod."""
+    from decimal import Decimal
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db); s.patient_responsibility = 250; db.commit()
+    token = issue_portal_token(s)
+
+    class FakePay:
+        id = "pay_test_id"
+        checkout_url = "https://stripe.test/cs_123"
+
+    captured = {}
+    def _capture(db, surgery, *, amount, description, actor):
+        captured["amount"] = amount
+        return FakePay()
+
+    with patch("app.services.patient_portal_auth._generate_code",
+                return_value="111111"), \
+         patch("app.services.patient_portal_auth.send_sms",
+                return_value=True), \
+         patch("app.services.stripe_payments.is_configured",
+                return_value=True), \
+         patch("app.services.stripe_payments.create_checkout_session",
+                side_effect=_capture):
+        step = client.post(
+            f"/api/patient/portal/{s.id}/payments/step-up",
+            headers={"Authorization": f"Bearer {token}"}
+        ).json()
+        client.post(
+            f"/api/patient/portal/{s.id}/payments/checkout",
+            json={"step_up_token": step["step_up_token"], "code": "111111"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert isinstance(captured["amount"], Decimal), \
+        f"expected Decimal, got {type(captured['amount']).__name__}"
+    assert captured["amount"] == Decimal("250")

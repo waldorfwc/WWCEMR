@@ -11,6 +11,7 @@ Auth flow (2-step):
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -337,8 +338,8 @@ def portal_payments_step_up(
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
-    due  = float(s.patient_responsibility or 0)
-    paid = float(s.amount_paid or 0)
+    due  = s.patient_responsibility or Decimal(0)
+    paid = s.amount_paid or Decimal(0)
     if due <= 0 or paid >= due:
         raise HTTPException(status_code=422,
                               detail="No outstanding balance to pay.")
@@ -373,9 +374,9 @@ def portal_payments_checkout(
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
-    due  = float(s.patient_responsibility or 0)
-    paid = float(s.amount_paid or 0)
-    amount = max(0.0, due - paid)
+    due  = s.patient_responsibility or Decimal(0)
+    paid = s.amount_paid or Decimal(0)
+    amount = max(Decimal(0), due - paid)
     if amount <= 0:
         raise HTTPException(status_code=422,
                               detail="No outstanding balance to pay.")
