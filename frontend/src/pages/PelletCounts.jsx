@@ -65,6 +65,16 @@ export default function PelletCounts() {
     onError: (e) => alert(e?.response?.data?.detail || 'Confirm failed'),
   })
 
+  const cancelVisit = useMutation({
+    mutationFn: ({ visitId, reason }) =>
+      api.post(`/pellets/visits/${visitId}/cancel`, { reason }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-counts-pre-check'] })
+      qc.invalidateQueries({ queryKey: ['pellet-dashboard'] })
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Cancel failed'),
+  })
+
   const startMut = useMutation({
     mutationFn: () => api.post('/pellets/counts/start', {
       location,
@@ -389,13 +399,13 @@ export default function PelletCounts() {
                     Cannot start count — {blockingVisits.length} visit{blockingVisits.length === 1 ? '' : 's'} still proposed
                   </div>
                   <div className="text-[11px] text-red-700">
-                    Confirm the dose card on each visit below, or click
-                    <strong> Confirm as planned</strong> to mark the proposed doses as
-                    inserted and decrement stock.
+                    For each visit pick one: <strong>Confirm as planned</strong> if it went exactly as planned,
+                    <strong> Edit dose</strong> if the lot/quantity changed, or <strong>Did not happen</strong>
+                    if the patient no-showed or cancelled. Stock adjusts automatically.
                   </div>
                   <ul className="text-[11px] divide-y divide-red-100">
                     {blockingVisits.map(v => (
-                      <li key={v.visit_id} className="py-1 flex items-center justify-between gap-2 flex-wrap">
+                      <li key={v.visit_id} className="py-1.5 flex items-center justify-between gap-2 flex-wrap">
                         <span className="flex-1 min-w-0">
                           <Link to={`/pellets/patients/${v.patient_id}`}
                                  className="text-plum-700 hover:underline font-medium"
@@ -406,15 +416,35 @@ export default function PelletCounts() {
                           <span className="text-gray-500"> · {fmt.date(v.scheduled_date)}
                           {' · '}{LOC_LABEL[v.location] || v.location || '—'}</span>
                         </span>
-                        <button className="btn-secondary text-[10px] py-0.5 shrink-0"
-                                onClick={() => {
-                                  if (confirm(`Mark ALL proposed doses on this visit as inserted? "${v.patient_name}" — ${fmt.date(v.scheduled_date)}`)) {
-                                    confirmAsPlanned.mutate(v.visit_id)
-                                  }
-                                }}
-                                disabled={confirmAsPlanned.isPending}>
-                          {confirmAsPlanned.isPending ? '…' : 'Confirm as planned'}
-                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button className="text-[10px] py-0.5 px-2 rounded border border-red-200 text-red-700 hover:bg-red-50"
+                                  onClick={() => {
+                                    const reason = prompt(
+                                      `Mark this visit as NOT done? Any pre-pulled pellets will return to stock.\n\n${v.patient_name} — ${fmt.date(v.scheduled_date)}\n\nReason (required for audit):`,
+                                      'No-show')
+                                    if (reason && reason.trim()) {
+                                      cancelVisit.mutate({ visitId: v.visit_id,
+                                                                reason: reason.trim() })
+                                    }
+                                  }}
+                                  disabled={cancelVisit.isPending || confirmAsPlanned.isPending}>
+                            Did not happen
+                          </button>
+                          <Link to={`/pellets/patients/${v.patient_id}`}
+                                 className="text-[10px] py-0.5 px-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                 onClick={() => setStarting(false)}>
+                            Edit dose
+                          </Link>
+                          <button className="btn-secondary text-[10px] py-0.5 px-2"
+                                  onClick={() => {
+                                    if (confirm(`Mark ALL proposed doses on this visit as inserted? "${v.patient_name}" — ${fmt.date(v.scheduled_date)}`)) {
+                                      confirmAsPlanned.mutate(v.visit_id)
+                                    }
+                                  }}
+                                  disabled={confirmAsPlanned.isPending || cancelVisit.isPending}>
+                            {confirmAsPlanned.isPending ? '…' : 'Confirm as planned'}
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
