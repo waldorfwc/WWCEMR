@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { portalApi } from '../../lib/portal-api'
+import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
 
 function fmtMoney(v) {
   return `$${Number(v).toFixed(2)}`
@@ -231,6 +232,143 @@ function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
   )
 }
 
+function FmlaCard({ sid, fmla, refetchFmla }) {
+  const [file, setFile] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [showPay, setShowPay] = useState(false)
+
+  if (!fmla) return null
+
+  async function upload() {
+    if (!file) return
+    setBusy(true); setErr('')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      await portalApi.post(`/${sid}/fmla/upload`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setFile(null)
+      refetchFmla()
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Upload failed.')
+    } finally { setBusy(false) }
+  }
+
+  const hasBlank = (fmla.blank_uploads || []).length > 0
+  const feePaid  = !!fmla.fee_paid
+  const status   = fmla.status || ''
+
+  const badge =
+    status === 'completed'   ? 'bg-green-100 text-green-700' :
+    status === 'in_review'   ? 'bg-amber-100 text-amber-700' :
+    status === 'submitted'   ? 'bg-amber-100 text-amber-700' :
+                                 'bg-gray-200 text-gray-700'
+
+  return (
+    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">FMLA paperwork</h2>
+        <span className={`text-xs px-2 py-1 rounded ${badge}`}>
+          {status || 'not started'}
+        </span>
+      </div>
+
+      {status === 'completed' && fmla.completed_uploads?.length > 0 && (
+        <div>
+          <p className="text-sm text-gray-700">
+            Your completed FMLA paperwork is ready.
+          </p>
+          <ul className="text-sm mt-2">
+            {fmla.completed_uploads.map(u => (
+              <li key={u.id} className="flex items-center justify-between py-1">
+                <span className="truncate mr-2">{u.filename}</span>
+                {u.download_url && (
+                  <a href={u.download_url} target="_blank" rel="noreferrer"
+                      className="btn-primary text-xs">Download</a>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {status === 'in_review' && (
+        <p className="text-sm text-gray-700">
+          Your FMLA paperwork is in review.
+        </p>
+      )}
+
+      {status === 'submitted' && (
+        <p className="text-sm text-gray-700">
+          ✓ Submitted. We're filling out your form and will have it ready
+          within 5 business days.
+        </p>
+      )}
+
+      {!status && (
+        <>
+          <p className="text-sm text-gray-600">
+            If you need FMLA documentation for work, upload your employer's
+            blank form and pay the ${fmla.fee_amount} processing fee.
+          </p>
+
+          {!hasBlank && (
+            <div>
+              <div className="text-xs text-gray-500 mb-1">
+                Step 1: Upload your employer's blank FMLA form
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="file"
+                        accept="application/pdf,image/jpeg,image/png,image/heic"
+                        onChange={e => setFile(e.target.files?.[0] || null)}
+                        className="text-xs" />
+                <button onClick={upload} disabled={!file || busy}
+                         className="btn-primary text-sm">
+                  {busy ? 'Uploading…' : 'Upload'}
+                </button>
+              </div>
+              {err && <div className="text-xs text-red-600 mt-1">{err}</div>}
+            </div>
+          )}
+
+          {hasBlank && (
+            <div className="text-xs text-gray-600">
+              ✓ Form received: {fmla.blank_uploads[0].filename}
+            </div>
+          )}
+
+          {!feePaid && hasBlank && !showPay && (
+            <div>
+              <div className="text-xs text-gray-500 mb-1">
+                Step 2: Pay the ${fmla.fee_amount} processing fee
+              </div>
+              <button onClick={() => setShowPay(true)}
+                       className="btn-primary text-sm">
+                Pay ${fmla.fee_amount}
+              </button>
+            </div>
+          )}
+
+          {!feePaid && hasBlank && showPay && (
+            <StepUpPayFlow
+              stepUpUrl={`/${sid}/fmla/step-up`}
+              checkoutUrl={`/${sid}/fmla/checkout`}
+              onCancel={() => setShowPay(false)} />
+          )}
+
+          {feePaid && !hasBlank && (
+            <div className="text-sm text-amber-700">
+              Payment received — please upload your form to complete your request.
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 export default function Documents() {
   const { sid } = useParams()
   const { data, isLoading } = useQuery({
@@ -241,6 +379,11 @@ export default function Documents() {
   const { data: uploadsData, refetch: refetchUploads } = useQuery({
     queryKey: ['portal-uploads', sid],
     queryFn: () => portalApi.get(`/${sid}/uploads`).then(r => r.data),
+    staleTime: 30_000,
+  })
+  const { data: fmlaData, refetch: refetchFmla } = useQuery({
+    queryKey: ['portal-fmla', sid],
+    queryFn: () => portalApi.get(`/${sid}/fmla`).then(r => r.data),
     staleTime: 30_000,
   })
   if (isLoading) return <div className="text-sm text-gray-500">Loading…</div>
@@ -254,6 +397,7 @@ export default function Documents() {
                        clearance={data.clearance}
                        uploads={uploadsData?.uploads}
                        refetchUploads={refetchUploads} />
+      <FmlaCard sid={sid} fmla={fmlaData} refetchFmla={refetchFmla} />
     </div>
   )
 }
