@@ -255,16 +255,13 @@ def _handle_session_completed(db, event_type, obj):
     pay.paid_at = datetime.utcnow()
     pay.stripe_payment_intent_id = obj.get("payment_intent")
     pay.last_event_payload = obj
-    # Route by payment kind: surgery-balance payments bump amount_paid +
-    # send a receipt; FMLA processing fees set the FMLA flags instead.
     s = db.query(Surgery).filter(Surgery.id == pay.surgery_id).first()
     if s and pay.kind == "fmla_fee":
         s.fmla_fee_paid = True
         s.fmla_fee_paid_at = datetime.utcnow()
         s.fmla_fee_stripe_session_id = session_id
-        # Auto-flip status if the patient already uploaded the blank form.
-        has_blank = any(d.kind == "fmla_blank" for d in (s.documents or []))
-        if has_blank and (s.fmla_status or "") in ("", None):
+        has_blank = any(d.kind == "fmla_blank" for d in s.documents)
+        if has_blank and not s.fmla_status:
             s.fmla_status = "submitted"
     elif s:
         s.amount_paid = (s.amount_paid or 0) + amount_paid
@@ -275,8 +272,7 @@ def _handle_session_completed(db, event_type, obj):
     ))
     db.commit()
 
-    # Auto-send a receipt email — only for patient-balance payments.
-    # FMLA fees skip this since the template is balance-specific.
+    # Receipt template is balance-specific; FMLA fees get no email here.
     if s and s.email and pay.kind == "patient_balance":
         from datetime import date as _date
         surgery_date = (s.scheduled_date.isoformat()
