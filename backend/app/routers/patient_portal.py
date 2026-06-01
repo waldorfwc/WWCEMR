@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -780,3 +780,45 @@ def portal_clearance_template(
                 'attachment; filename="wwc_clearance_template.pdf"',
         },
     )
+
+
+@router.post("/{surgery_id}/clearance/upload")
+async def portal_clearance_upload(
+    surgery_id: str,
+    file: UploadFile = File(...),
+    kind: str = Form("clearance"),
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Accept a multipart upload of the patient's completed clearance form
+    or EKG. kind defaults to 'clearance'; pass 'ekg' for EKG uploads."""
+    if kind not in ("clearance", "ekg"):
+        raise HTTPException(status_code=422,
+                              detail="kind must be 'clearance' or 'ekg'")
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    contents = await file.read()
+    from app.services.surgery_uploads import store_upload, UploadError
+    try:
+        doc = store_upload(
+            db, s, kind=kind,
+            filename=file.filename or "upload",
+            file_bytes=contents,
+            content_type=file.content_type or "application/octet-stream",
+            uploaded_by="patient:portal",
+        )
+    except UploadError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    # Move clearance_status forward if it was "required"; don't downgrade
+    # "approved" rows.
+    if (s.clearance_status or "") in ("required", "not_required", ""):
+        s.clearance_status = "uploaded"
+        db.commit()
+    return {
+        "id":               str(doc.id),
+        "kind":             doc.kind,
+        "filename":         doc.filename,
+        "uploaded_at":      doc.uploaded_at.isoformat(),
+        "clearance_status": s.clearance_status,
+    }

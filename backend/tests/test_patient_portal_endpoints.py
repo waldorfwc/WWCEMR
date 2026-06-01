@@ -918,3 +918,58 @@ def test_clearance_template_404_when_object_missing(client, db):
                           headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 404
     assert "online" in r.text.lower() or "available" in r.text.lower()
+
+
+# ─── /{surgery_id}/clearance/upload ──────────────────────────────
+
+def test_clearance_upload_writes_and_marks_status(client, db):
+    from unittest.mock import patch, MagicMock
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.clearance_required = True
+    db.commit()
+    token = issue_portal_token(s)
+    pdf_bytes = b"%PDF-1.4\nfake-clearance"
+    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+        blob = MagicMock()
+        MockClient.return_value.bucket.return_value.blob.return_value = blob
+        r = client.post(
+            f"/api/patient/portal/{s.id}/clearance/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("clearance.pdf", pdf_bytes, "application/pdf")},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["filename"] == "clearance.pdf"
+    assert body["kind"] == "clearance"
+    db.refresh(s)
+    assert s.clearance_status == "uploaded"
+
+
+def test_clearance_upload_rejects_oversize(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.clearance_required = True
+    db.commit()
+    token = issue_portal_token(s)
+    huge = b"%PDF-1.4\n" + b"x" * (10 * 1024 * 1024 + 1)
+    r = client.post(
+        f"/api/patient/portal/{s.id}/clearance/upload",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("big.pdf", huge, "application/pdf")},
+    )
+    assert r.status_code == 413
+
+
+def test_clearance_upload_rejects_wrong_mime(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.clearance_required = True
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(
+        f"/api/patient/portal/{s.id}/clearance/upload",
+        headers={"Authorization": f"Bearer {token}"},
+        files={"file": ("doc.txt", b"plain text", "text/plain")},
+    )
+    assert r.status_code == 415
