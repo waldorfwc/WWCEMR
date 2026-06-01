@@ -71,7 +71,7 @@ import PortalDashboard from './pages/portal/Dashboard'
 import Payments from './pages/portal/Payments'
 import Schedule from './pages/portal/Schedule'
 import Consent from './pages/portal/Consent'
-import DocumentsStub from './pages/portal/stubs/DocumentsStub'
+import PortalDocuments from './pages/portal/Documents'
 import MessagesStub from './pages/portal/stubs/MessagesStub'
 
 function ProtectedApp({ user, onLogout }) {
@@ -198,7 +198,7 @@ export default function App() {
           <Route path="payments" element={<Payments />} />
           <Route path="schedule" element={<Schedule />} />
           <Route path="consent" element={<Consent />} />
-          <Route path="documents" element={<DocumentsStub />} />
+          <Route path="documents" element={<PortalDocuments />} />
           <Route path="messages" element={<MessagesStub />} />
         </Route>
         <Route path="/*" element={
