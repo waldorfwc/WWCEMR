@@ -27,6 +27,7 @@ _TEST_USER_PERMS = [
     "bankrecon:read", "bankrecon:generate",
     "report:financial",
     "surgery:read", "surgery:work",
+    "pellet:read", "pellet:work", "pellet:manage",
 ]
 
 

@@ -39,6 +39,7 @@ from app.services.pellet_workflow import (
 )
 from app.services import pellet_appt_import as appt_import
 from app.services import pellet_dose_suggest as dose_suggest
+from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 
 router = APIRouter(prefix="/pellets", tags=["pellets"])
@@ -718,10 +719,6 @@ def patch_lot(lot_id: str, payload: LotPatchIn,
 
 # ─── Orders (Qualgen purchase orders, placed BEFORE shipment) ──────
 
-PELLET_ORDER_UPLOADS = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/pellet_orders"
-PELLET_RECEIPT_UPLOADS = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/pellet_receipts"
-PELLET_COUNT_UPLOADS = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/pellet_counts"
-
 
 def _order_dict(o: PelletOrder, *, include_lines: bool = True,
                   include_attachments: bool = True) -> dict:
@@ -1111,7 +1108,6 @@ async def upload_order_attachment(order_id: str,
                                     db: Session = Depends(get_db),
                                     current_user: dict = Depends(require_permission("pellet:work"))):
     """Upload a PDF invoice / receipt for this order."""
-    import os
     o = db.query(PelletOrder).filter(PelletOrder.id == order_id).first()
     if not o:
         raise HTTPException(status_code=404, detail="order not found")
@@ -1124,11 +1120,8 @@ async def upload_order_attachment(order_id: str,
     if len(contents) > 25 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="file too large (25MB max)")
 
-    os.makedirs(PELLET_ORDER_UPLOADS, exist_ok=True)
-    safe_name = f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{file.filename}"
-    save_path = os.path.join(PELLET_ORDER_UPLOADS, safe_name)
-    with open(save_path, "wb") as f:
-        f.write(contents)
+    key = save_blob(prefix="pellet-attachments", body=contents,
+                    filename=file.filename or "upload.pdf")
 
     by = current_user.get("email") or "system"
     att = PelletOrderAttachment(
@@ -1136,7 +1129,7 @@ async def upload_order_attachment(order_id: str,
         filename=file.filename,
         content_type=file.content_type or "application/pdf",
         size_bytes=len(contents),
-        storage_path=save_path,
+        storage_path=key,
         uploaded_by=by,
     )
     db.add(att); db.flush()
@@ -1159,34 +1152,36 @@ async def upload_order_attachment(order_id: str,
 def download_order_attachment(order_id: str, att_id: str,
                                 db: Session = Depends(get_db),
                                 current_user: dict = Depends(require_permission("pellet:read"))):
-    from fastapi.responses import FileResponse
     att = (db.query(PelletOrderAttachment)
              .filter(PelletOrderAttachment.id == att_id,
                      PelletOrderAttachment.order_id == order_id).first())
     if not att:
         raise HTTPException(status_code=404, detail="attachment not found")
-    return FileResponse(att.storage_path,
-                          media_type=att.content_type or "application/pdf",
-                          filename=att.filename)
+    if is_legacy_local_path(att.storage_path):
+        raise HTTPException(status_code=410,
+                              detail="This file is from before the cloud migration and is no longer available.")
+    return serve_blob(
+        local_path=None,
+        gcs_object=att.storage_path,
+        media_type=att.content_type or "application/pdf",
+        filename=att.filename,
+        disposition="attachment",
+    )
 
 
 @router.delete("/orders/{order_id}/attachments/{att_id}")
 def delete_order_attachment(order_id: str, att_id: str,
                               db: Session = Depends(get_db),
                               current_user: dict = Depends(require_permission("pellet:work"))):
-    import os
     att = (db.query(PelletOrderAttachment)
              .filter(PelletOrderAttachment.id == att_id,
                      PelletOrderAttachment.order_id == order_id).first())
     if not att:
         raise HTTPException(status_code=404, detail="attachment not found")
+    # NB: we do not delete the underlying blob — orphans are cheap and
+    # the audit trail is preserved.
     by = current_user.get("email") or "system"
     fname = att.filename
-    try:
-        if att.storage_path and os.path.exists(att.storage_path):
-            os.remove(att.storage_path)
-    except Exception:
-        pass
     db.delete(att)
     _audit(db, actor=by, action="order_attachment_deleted",
            summary=f"Deleted attachment {fname} from order {order_id}",
@@ -1419,7 +1414,6 @@ async def upload_receipt_attachment(receipt_id: str,
                                       db: Session = Depends(get_db),
                                       current_user: dict = Depends(require_permission("pellet:work"))):
     """Upload a PDF of the packing slip / shipping manifest for this receipt."""
-    import os
     r = db.query(PelletReceipt).filter(PelletReceipt.id == receipt_id).first()
     if not r:
         raise HTTPException(status_code=404, detail="receipt not found")
@@ -1432,11 +1426,8 @@ async def upload_receipt_attachment(receipt_id: str,
     if len(contents) > 25 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="file too large (25MB max)")
 
-    os.makedirs(PELLET_RECEIPT_UPLOADS, exist_ok=True)
-    safe_name = f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{file.filename}"
-    save_path = os.path.join(PELLET_RECEIPT_UPLOADS, safe_name)
-    with open(save_path, "wb") as f:
-        f.write(contents)
+    key = save_blob(prefix="pellet-attachments", body=contents,
+                    filename=file.filename or "upload.pdf")
 
     by = current_user.get("email") or "system"
     att = PelletReceiptAttachment(
@@ -1444,7 +1435,7 @@ async def upload_receipt_attachment(receipt_id: str,
         filename=file.filename,
         content_type=file.content_type or "application/pdf",
         size_bytes=len(contents),
-        storage_path=save_path,
+        storage_path=key,
         uploaded_by=by,
     )
     db.add(att); db.flush()
@@ -1468,34 +1459,36 @@ async def upload_receipt_attachment(receipt_id: str,
 def download_receipt_attachment(receipt_id: str, att_id: str,
                                   db: Session = Depends(get_db),
                                   current_user: dict = Depends(require_permission("pellet:read"))):
-    from fastapi.responses import FileResponse
     att = (db.query(PelletReceiptAttachment)
              .filter(PelletReceiptAttachment.id == att_id,
                      PelletReceiptAttachment.receipt_id == receipt_id).first())
     if not att:
         raise HTTPException(status_code=404, detail="attachment not found")
-    return FileResponse(att.storage_path,
-                          media_type=att.content_type or "application/pdf",
-                          filename=att.filename)
+    if is_legacy_local_path(att.storage_path):
+        raise HTTPException(status_code=410,
+                              detail="This file is from before the cloud migration and is no longer available.")
+    return serve_blob(
+        local_path=None,
+        gcs_object=att.storage_path,
+        media_type=att.content_type or "application/pdf",
+        filename=att.filename,
+        disposition="attachment",
+    )
 
 
 @router.delete("/receipts/{receipt_id}/attachments/{att_id}")
 def delete_receipt_attachment(receipt_id: str, att_id: str,
                                 db: Session = Depends(get_db),
                                 current_user: dict = Depends(require_permission("pellet:work"))):
-    import os
     att = (db.query(PelletReceiptAttachment)
              .filter(PelletReceiptAttachment.id == att_id,
                      PelletReceiptAttachment.receipt_id == receipt_id).first())
     if not att:
         raise HTTPException(status_code=404, detail="attachment not found")
+    # NB: we do not delete the underlying blob — orphans are cheap and
+    # the audit trail is preserved.
     by = current_user.get("email") or "system"
     fname = att.filename
-    try:
-        if att.storage_path and os.path.exists(att.storage_path):
-            os.remove(att.storage_path)
-    except Exception:
-        pass
     db.delete(att)
     _audit(db, actor=by, action="receipt_attachment_deleted",
            receipt_id=receipt_id,
@@ -2172,10 +2165,11 @@ def finish_count(count_id: str, payload: CountFinishIn,
     pdf_id = None
     try:
         from app.services.pellet_count_pdf import generate_count_pdf
-        path, fname, size_bytes = generate_count_pdf(db, c)
+        body, fname = generate_count_pdf(db, c)
+        key = save_blob(prefix="pellet-attachments", body=body, filename=fname)
         att = PelletCountAttachment(
-            count_id=c.id, filename=fname, storage_path=path,
-            size_bytes=size_bytes, generated_by=by,
+            count_id=c.id, filename=fname, storage_path=key,
+            size_bytes=len(body), generated_by=by,
         )
         db.add(att); db.commit(); db.refresh(att)
         pdf_id = str(att.id)
@@ -2229,10 +2223,11 @@ def regenerate_count_pdf(count_id: str,
                             detail="PDF is only available for finished counts")
     from app.services.pellet_count_pdf import generate_count_pdf
     by = current_user.get("email") or "system"
-    path, fname, size_bytes = generate_count_pdf(db, c)
+    body, fname = generate_count_pdf(db, c)
+    key = save_blob(prefix="pellet-attachments", body=body, filename=fname)
     att = PelletCountAttachment(
-        count_id=c.id, filename=fname, storage_path=path,
-        size_bytes=size_bytes, generated_by=by,
+        count_id=c.id, filename=fname, storage_path=key,
+        size_bytes=len(body), generated_by=by,
     )
     db.add(att); db.commit(); db.refresh(att)
     return {
@@ -2248,15 +2243,21 @@ def download_count_pdf(count_id: str,
                           db: Session = Depends(get_db),
                           current_user: dict = Depends(require_permission("pellet:read"))):
     """Download the most-recent PDF attachment for this count."""
-    from fastapi.responses import FileResponse
     att = (db.query(PelletCountAttachment)
              .filter(PelletCountAttachment.count_id == count_id)
              .order_by(desc(PelletCountAttachment.generated_at)).first())
     if not att:
         raise HTTPException(status_code=404, detail="no PDF generated for this count")
-    return FileResponse(att.storage_path,
-                          media_type="application/pdf",
-                          filename=att.filename)
+    if is_legacy_local_path(att.storage_path):
+        raise HTTPException(status_code=410,
+                              detail="This file is from before the cloud migration and is no longer available.")
+    return serve_blob(
+        local_path=None,
+        gcs_object=att.storage_path,
+        media_type="application/pdf",
+        filename=att.filename,
+        disposition="attachment",
+    )
 
 
 @router.get("/counts/{count_id}")

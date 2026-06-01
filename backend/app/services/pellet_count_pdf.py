@@ -11,8 +11,8 @@ Saved under uploads/pellet_counts/ and registered as a PelletCountAttachment.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime
+from io import BytesIO
 from typing import Tuple
 
 from reportlab.lib.colors import HexColor
@@ -31,12 +31,10 @@ from app.services.pellet_pdf_common import (
 )
 
 
-UPLOADS_DIR = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/pellet_counts"
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-
-
-def generate_count_pdf(db: Session, count: PelletCount) -> Tuple[str, str, int]:
-    """Render the PDF for `count`. Returns (path, filename, size_bytes)."""
+def generate_count_pdf(db: Session, count: PelletCount) -> Tuple[bytes, str]:
+    """Render the PDF for `count`. Returns (bytes, filename). The caller
+    is responsible for persisting via storage.save_blob and registering
+    a PelletCountAttachment row."""
     # Re-fetch with joined lot+dose_type so labels render even if caller
     # forgot to eagerly load.
     count = (db.query(PelletCount)
@@ -49,9 +47,9 @@ def generate_count_pdf(db: Session, count: PelletCount) -> Tuple[str, str, int]:
     loc_slug = count.location or "loc"
     fname = (f"pellet-count_{loc_slug}_{started_date}_"
              f"{datetime.utcnow().strftime('%H%M%S')}.pdf")
-    out_path = os.path.join(UPLOADS_DIR, fname)
+    buf = BytesIO()
 
-    doc = SimpleDocTemplate(out_path, pagesize=letter,
+    doc = SimpleDocTemplate(buf, pagesize=letter,
                              leftMargin=0.55 * inch, rightMargin=0.55 * inch,
                              topMargin=0.5 * inch, bottomMargin=0.5 * inch)
 
@@ -201,5 +199,4 @@ def generate_count_pdf(db: Session, count: PelletCount) -> Tuple[str, str, int]:
     story.append(footer_line(f"count_id {count.id}", styles))
 
     doc.build(story)
-    size_bytes = os.path.getsize(out_path)
-    return out_path, fname, size_bytes
+    return buf.getvalue(), fname
