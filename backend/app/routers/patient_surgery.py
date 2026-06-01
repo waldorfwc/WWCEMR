@@ -509,68 +509,24 @@ def patient_select_slot(
     db: Session = Depends(get_db),
     _token: str = Depends(require_patient_token),
 ):
-    """Patient self-schedules into a specific block-day slot by start time."""
+    """Patient self-schedules into a specific block-day slot by start time.
+    Magic-link flow. Portal flow uses /api/patient/portal/{sid}/slots/.../claim."""
+    from app.services.surgery_self_schedule import (
+        claim_slot_for_patient, SelfScheduleError,
+    )
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
-
-    bd = db.query(BlockDay).filter(BlockDay.id == payload.block_day_id).first()
-    if not bd:
-        raise HTTPException(status_code=404, detail="block day not found")
-
-    blackout = is_date_blacked_out(db, bd.block_date, bd.facility, s.surgeon_email)
-    if blackout:
-        raise HTTPException(
-            status_code=409,
-            detail=f"that date is blocked: {blackout.label or blackout.reason} "
-                   f"({blackout.scope})",
-        )
-
-    start = _parse_hhmm(payload.start_time)
-    duration = _default_duration_for(db, s, bd)
-
-    # Conflict check: reject if the new slot's time window overlaps any existing slot.
-    conflict = overlapping_slot(db, bd.id, start, duration)
-    if conflict:
-        raise HTTPException(
-            status_code=409,
-            detail=f"that time overlaps an existing slot at "
-                   f"{conflict.start_time.strftime('%H:%M')} "
-                   f"({conflict.duration_minutes} min)",
-        )
-    slot = SurgerySlot(
-        block_day_id=bd.id, surgery_id=s.id,
-        start_time=start, duration_minutes=duration,
-        procedure_kind=bd.block_kind,
-    )
-    db.add(slot)
-    s.scheduled_date = bd.block_date
-    s.selected_facility = bd.facility
-    db.add(SurgeryNote(
-        surgery_id=s.id,
-        created_by="patient:self-service",
-        content=(f"Patient self-scheduled {bd.block_date} {start.strftime('%H:%M')} "
-                 f"({duration} min) at {bd.facility}."),
-    ))
-    db.commit()
     try:
-        from app.services.google_calendar_sync import upsert_event_for_surgery
-        upsert_event_for_surgery(db, s)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
-    try:
-        _send_surgery_confirmation_email(db, s, slot, sent_by="patient:self-service")
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("confirmation email failed: %s", e)
-    return {
-        "ok": True,
-        "slot_id": str(slot.id),
-        "block_day_id": str(bd.id),
-        "start_time": start.strftime("%H:%M"),
-        "duration_minutes": duration,
-    }
+        result = claim_slot_for_patient(
+            db, s,
+            block_day_id=payload.block_day_id,
+            start_time_str=payload.start_time,
+            sent_by="patient:self-service",
+        )
+    except SelfScheduleError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    return {"ok": True, **result}
 
 
 class CancelPayload(BaseModel):
