@@ -64,37 +64,51 @@ P3 is essentially: expose the same machinery on the patient side, gated by `requ
 └────────────────────────────────────────────────────────────────────┘
 ```
 
-## Trigger model — patient-initiated or coordinator-initiated?
+## Trigger model — consent is downstream of scheduling
 
-Both are supported. The coordinator's "Send via BoldSign" button on `SurgeryDetail.jsx` (already shipped) and the new patient-facing "Send for signing" button BOTH call the same `boldsign_envelopes.send_consent_envelopes()`. The difference is the **gate**: patient-initiated sends are blocked until the patient has paid AND picked a surgery date; coordinator-initiated sends bypass this gate (the coordinator may need to send forms early for special cases — FMLA prep, insurance pre-auth, etc.).
+Consent envelopes are created **automatically when a patient claims a slot.** No separate "Send for signing" button needed; the patient never has to think about it.
 
-### Consent-send gate (patient side only)
+Since the slot-claim endpoint (`POST /api/patient/portal/{sid}/slots/{block_day_id}/claim`) is already gated on payment via the P2 schedule gate, consent send inherits the gate transitively:
+- Patient owes $0 (paid, or pt-resp was 0) → can schedule → consent sends.
+- Patient owes balance → can't schedule → consent doesn't send.
 
-Mirroring the schedule gate, a new helper:
+### Implementation: side-effect in `claim_slot_for_patient`
+
+`backend/app/services/surgery_self_schedule.py` already does these soft-fail side effects after a successful slot booking:
 
 ```python
-def consent_send_gate_for_surgery(surgery) -> (allowed: bool, reason: str | None)
+upsert_event_for_surgery(db, surgery)         # Google Calendar
+_send_surgery_confirmation_email(db, surgery, slot, sent_by)
 ```
 
-Rules:
-1. `patient_responsibility > 0 AND amount_paid < patient_responsibility` → blocked, reason: "Please make your payment first."
-2. `scheduled_date IS NULL` → blocked, reason: "Please pick your surgery date first."
-3. Both conditions met → allowed.
-4. `patient_responsibility == 0 AND scheduled_date IS NOT NULL` → allowed (no balance to pay).
+P3 adds one more, after the email:
 
-This gate is enforced **only** on `POST /api/patient/portal/{sid}/consent/send`. The coordinator endpoint (`POST /surgery/{id}/consent/boldsign-send`) is unchanged. **Critical detail:** if the coordinator already sent envelopes, the patient should still be able to sign them through the portal — the gate is only for *triggering new sends*, not for the "Sign now" action on existing envelopes.
+```python
+try:
+    from app.services.boldsign_envelopes import send_consent_envelopes
+    send_consent_envelopes(db, surgery, sent_by=sent_by)
+except Exception as e:
+    log.warning("consent envelope send failed: %s", e)
+```
+
+Soft-fail per the existing pattern: a BoldSign outage doesn't block the booking. The patient can retry from the portal Consent page (see below).
+
+### Both magic-link AND portal paths get this for free
+
+Because `claim_slot_for_patient` is the shared service (extracted in P2 T3), both `POST /select-slot` (magic-link) and `POST /portal/.../claim` (portal) automatically inherit the consent-send side effect. No special-casing.
+
+### Coordinator-side trigger remains independent
+
+The existing coordinator "Send via BoldSign" button (`POST /surgery/{id}/consent/boldsign-send`) is unchanged. Coordinator can still send forms manually if needed (e.g., for a scheduled-but-not-paid patient under a payment plan, or to re-send after voiding).
 
 ### Portal UI logic
 
-- **No matching templates** → "We don't have consent forms for this surgery on file. Call us." No send button.
-- **Templates match, no envelopes, gate blocks** → State-aware empty card:
-  - Unpaid + unscheduled → "Pay your balance and pick a date before signing." Links to /payments and /schedule.
-  - Paid, unscheduled → "Pick your surgery date before signing." Link to /schedule.
-  - Unpaid, scheduled → "Pay your balance before signing." Link to /payments.
-- **Templates match, no envelopes, gate passes** → Show templates list with a single "Send for signing" CTA.
-- **Envelopes exist** → Show per-envelope status with "Sign now" / "Already signed ✓" / "Download" actions — **regardless of gate state**, because the coordinator may have sent these early.
+- **No matching templates** → "We don't have consent forms for this surgery on file. Call us."
+- **No scheduled_date** → "Once you've paid and picked a date, your consent forms will appear here." (Patient sees this when they navigate to /consent before scheduling.)
+- **Scheduled but no envelopes** (auto-send failed, or coordinator voided) → "Your consent forms are being prepared. If this persists, click Resend." Single fallback CTA: "Resend forms" → calls `POST /api/patient/portal/{sid}/consent/resend` (the only patient-side send endpoint; it's a manual retry, not the primary trigger).
+- **Envelopes exist** → Show per-envelope status with "Sign now" / "Already signed ✓" / "Download" actions.
 
-If the coordinator sends first, the patient sees status as "sent" and the "Sign now" link on each row even before they've paid or scheduled. If the patient sends first (gate must pass), the coordinator's UI updates immediately (since the data is the same `SurgeryConsentEnvelope` rows).
+The "Resend" path means we still need a portal POST endpoint, but its UX role is "retry after failure" not "primary trigger." A successful auto-send at scheduling time means most patients never see the button.
 
 ## Sign-link endpoint security
 
@@ -122,9 +136,15 @@ The frontend polls `GET /consent` every 5 seconds while any envelope is in `sent
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | GET  | `/api/patient/portal/{sid}/consent` | portal | List templates + envelopes + status |
-| POST | `/api/patient/portal/{sid}/consent/send` | portal | Send envelopes via existing service |
+| POST | `/api/patient/portal/{sid}/consent/resend` | portal | Manual retry — only when scheduled but envelopes failed |
 | GET  | `/api/patient/portal/{sid}/consent/sign-link/{envelope_id}` | portal | BoldSign embedded sign URL for patient role |
 | GET  | `/api/patient/portal/{sid}/consent/signed-pdf/{envelope_id}` | portal | Streamed PDF download |
+
+The `/resend` endpoint requires `surgery.scheduled_date IS NOT NULL` (returns 409 otherwise, with reason). No payment check needed — by the time scheduling succeeded, the schedule gate already passed.
+
+### Also modified
+
+- `backend/app/services/surgery_self_schedule.py` — `claim_slot_for_patient` adds the consent send as a soft-fail side effect after the confirmation email.
 
 ## New frontend page
 
@@ -153,7 +173,7 @@ frontend/src/pages/portal/Consent.jsx
 
 ### Resolved
 
-- **Hide consent-send CTA pre-pay/pre-schedule?** YES. New `consent_send_gate_for_surgery` helper enforces paid + scheduled before patient can trigger a send. Coordinator sends are not gated. Existing envelopes (sent by coordinator or earlier) remain signable regardless of gate state.
+- **When does consent get sent?** Automatically on slot claim, as a soft-fail side effect of `claim_slot_for_patient`. No separate gate or button — payment → schedule → consent is one continuous downstream chain. Patient-side `/resend` exists only as a manual retry when auto-send failed (e.g., BoldSign outage at scheduling time).
 
 ## Risks
 
