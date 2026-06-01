@@ -743,3 +743,40 @@ def portal_self_report_hospital_preop(
             s.hospital_preop_self_reported_at.isoformat()
             if s.hospital_preop_self_reported_at else None,
     }
+
+
+# ─── /{surgery_id}/clearance/* ─────────────────────────────────────
+
+@router.get("/{surgery_id}/clearance/template")
+def portal_clearance_template(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Stream the blank clearance template PDF from GCS. Gated on
+    clearance_required."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if not s.clearance_required:
+        raise HTTPException(
+            status_code=409,
+            detail="Clearance isn't required for this surgery.",
+        )
+    from app.services.surgery_uploads import stream_static_pdf
+    pdf_bytes = stream_static_pdf("clearance/template.pdf")
+    if pdf_bytes is None:
+        raise HTTPException(
+            status_code=404,
+            detail="The clearance template isn't online yet — please call "
+                   "our office at 240-252-2140.",
+        )
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition":
+                'attachment; filename="wwc_clearance_template.pdf"',
+        },
+    )

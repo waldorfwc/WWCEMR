@@ -873,3 +873,48 @@ def test_self_report_rejects_unknown_kind_via_url(client, db):
     r = client.post(f"/api/patient/portal/{s.id}/self-report/bogus",
                        headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 404
+
+
+# ─── /{surgery_id}/clearance/template ────────────────────────────────
+
+def test_clearance_template_404_when_not_required(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.clearance_required = False
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/clearance/template",
+                      headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 409
+    assert "clearance" in r.text.lower()
+
+
+def test_clearance_template_streams_when_present(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.clearance_required = True
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.surgery_uploads.stream_static_pdf",
+                return_value=b"%PDF-clearance-blank"):
+        r = client.get(f"/api/patient/portal/{s.id}/clearance/template",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.content.startswith(b"%PDF")
+    assert "pdf" in r.headers["content-type"].lower()
+
+
+def test_clearance_template_404_when_object_missing(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.clearance_required = True
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.surgery_uploads.stream_static_pdf",
+                return_value=None):
+        r = client.get(f"/api/patient/portal/{s.id}/clearance/template",
+                          headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 404
+    assert "online" in r.text.lower() or "available" in r.text.lower()
