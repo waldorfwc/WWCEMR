@@ -121,14 +121,30 @@ def store_upload(db: Session, surgery: Surgery, *, kind: str,
 
 def signed_download_url(doc: SurgeryDocument,
                           ttl_minutes: int = 5) -> str:
-    """V4 signed URL good for the requested TTL. Default is 5 min."""
-    client = storage.Client()
+    """V4 signed URL good for the requested TTL. Default is 5 min.
+
+    On Cloud Run, the default credentials come from the metadata server
+    and have no private key — they can't sign directly. We delegate
+    signing to the IAM signBlob API via the service account itself
+    (requires roles/iam.serviceAccountTokenCreator on the SA → SA).
+    """
+    import google.auth
+    from google.auth.transport import requests as auth_requests
+
+    credentials, _ = google.auth.default()
+    auth_request = auth_requests.Request()
+    credentials.refresh(auth_request)
+    sa_email = getattr(credentials, "service_account_email", None)
+
+    client = storage.Client(credentials=credentials)
     bucket = client.bucket(BUCKET)
     blob   = bucket.blob(doc.gcs_path)
     return blob.generate_signed_url(
         version="v4",
         expiration=timedelta(minutes=ttl_minutes),
         method="GET",
+        service_account_email=sa_email,
+        access_token=credentials.token,
     )
 
 

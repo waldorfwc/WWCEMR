@@ -87,16 +87,28 @@ def test_signed_download_url_calls_blob_v4(db):
                             gcs_path=f"surgery-uploads/{s.id}/x.pdf",
                             uploaded_by="patient:portal")
     db.add(doc); db.commit(); db.refresh(doc)
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+
+    # On Cloud Run, signing requires google.auth.default() to resolve the
+    # SA email + access token (then IAM signBlob does the signing). Mock
+    # both that and the GCS client.
+    fake_creds = MagicMock()
+    fake_creds.service_account_email = "backend@wwc-solutions.iam.gserviceaccount.com"
+    fake_creds.token = "fake-access-token"
+
+    with patch("app.services.surgery_uploads.storage.Client") as MockClient, \
+         patch("google.auth.default",
+                return_value=(fake_creds, "wwc-solutions")):
         blob = MagicMock()
         blob.generate_signed_url.return_value = "https://signed.example/x.pdf"
         MockClient.return_value.bucket.return_value.blob.return_value = blob
 
         url = signed_download_url(doc, ttl_minutes=5)
         assert url == "https://signed.example/x.pdf"
-        # Verify v4 + TTL
+        # Verify v4 + IAM-based signing args threaded through
         _, kwargs = blob.generate_signed_url.call_args
         assert kwargs.get("version") == "v4"
+        assert kwargs.get("service_account_email") == fake_creds.service_account_email
+        assert kwargs.get("access_token") == fake_creds.token
 
 
 def test_stream_static_pdf_returns_bytes():
