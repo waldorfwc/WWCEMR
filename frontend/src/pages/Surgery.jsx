@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import {
   Activity, AlertTriangle, BookOpen, Calendar, CheckCircle2, Clock, Hospital,
   Search, Stethoscope, TrendingUp, Users, Building2, Upload, X, FileText, Settings,
-  Check, Phone, Save, Star, ChevronDown, ChevronUp, Trash2,
+  Check, Phone, Save, Star, ChevronDown, ChevronUp, Trash2, MessageSquare,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
@@ -233,6 +233,7 @@ export default function Surgery() {
                 className="btn-secondary text-sm flex items-center gap-1">
             <Users size={13} /> Waitlist
           </Link>
+          <MessagesLink />
           <ManualCreateButton />
           <UploadOrderButton />
         </div>
@@ -1026,6 +1027,29 @@ function ReleasePanel({ title, subtitle, tone, rows }) {
         ))}
       </ul>
     </div>
+  )
+}
+
+
+function MessagesLink() {
+  const { data } = useQuery({
+    queryKey: ['staff-inbox'],
+    queryFn: () => api.get('/staff/messages/inbox').then(r => r.data),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const count = data?.count || 0
+  return (
+    <Link to="/surgery/messages"
+           className="btn-secondary text-sm flex items-center gap-1">
+      <MessageSquare size={13} /> Messages
+      {count > 0 && (
+        <span className="bg-red-500 text-white text-[10px] rounded-full
+                            px-1.5 py-0.5 font-semibold">
+          {count}
+        </span>
+      )}
+    </Link>
   )
 }
 

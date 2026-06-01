@@ -122,7 +122,7 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/surgery/waitlist"        element={<SurgeryWaitlist />} />
             <Route path="/surgery/calendar"        element={<SurgeryCalendar />} />
             <Route path="/surgery/:id"         element={<SurgeryDetail />} />
-            <Route path="/messages"            element={<StaffInbox />} />
+            <Route path="/surgery/messages"    element={<StaffInbox />} />
             <Route path="/larc"                element={<Larc />} />
             <Route path="/larc/assignments/:id" element={<LarcAssignment />} />
             <Route path="/larc/checkouts"      element={<LarcCheckouts />} />

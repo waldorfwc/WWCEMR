@@ -83,42 +83,12 @@ export default function TopNav({ user, onLogout }) {
             {label}
           </NavLink>
         ))}
-        {canSurgery && <MessagesNavLink />}
       </nav>
 
       <div className="ml-auto flex items-center gap-3">
         {user && <UserMenu user={user} isAdmin={isAdmin} canSeeAudit={canSeeAudit} onLogout={onLogout} />}
       </div>
     </header>
-  )
-}
-
-function MessagesNavLink() {
-  const { data } = useQuery({
-    queryKey: ['staff-inbox'],
-    queryFn: () => api.get('/staff/messages/inbox').then(r => r.data),
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  })
-  const count = data?.count || 0
-  return (
-    <NavLink
-      to="/messages"
-      className={({ isActive }) =>
-        `px-3 py-2 -mb-px border-b-2 transition-colors flex items-center gap-1 ${
-          isActive
-            ? 'text-plum-700 border-plum-700 font-medium'
-            : 'text-muted border-transparent hover:text-plum-700'
-        }`
-      }
-    >
-      Messages
-      {count > 0 && (
-        <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-semibold">
-          {count}
-        </span>
-      )}
-    </NavLink>
   )
 }
 
