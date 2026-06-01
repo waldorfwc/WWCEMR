@@ -461,6 +461,13 @@ def test_slots_returns_block_days_when_gate_passes(client, db):
     body = r.json()
     assert body["gate"]["allowed"] is True
     assert len(body["block_days"]) >= 1
+    bd0 = body["block_days"][0]
+    # T9 (frontend) consumes these — assert they're present so a future
+    # regression doesn't quietly drop them.
+    for key in ("block_day_id", "facility", "block_date", "weekday",
+                  "proposed_start_time", "duration_minutes",
+                  "block_window", "cases_already_booked"):
+        assert key in bd0, f"missing {key} in block_days[0]: {bd0}"
 
 
 def test_claim_blocks_when_gate_fails(client, db):

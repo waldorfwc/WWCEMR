@@ -263,7 +263,7 @@ def can_fit(db: Session, block_day: BlockDay, procedure_kind: str) -> tuple[bool
     if block_day.facility == "office":
         # Office Thursdays use a fixed 7-slot schedule (7:30, 8:30, 9:30,
         # 10:30, 11:30, 2:30, 3:30 — lunch break 12:30–2:30).
-        if procedure_kind != "office":
+        if not procedure_kind.startswith("office"):
             return False, f"Office block doesn't accept {procedure_kind} cases."
         booked = len(block_day.slots or [])
         if booked >= len(OFFICE_SLOT_TIMES_MIN):

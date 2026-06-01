@@ -411,16 +411,8 @@ def portal_slots(surgery_id: str, days_ahead: int = 180,
     blocked, returns an empty days list with the reason; the frontend
     renders a payment-prompt banner instead of the picker.
 
-    Block-day matching uses block_kind == surgery.procedure_classification so
-    that portal-specific procedure types (e.g. office_d_and_c) are matched
-    exactly, rather than the facility-level capacity rules in can_fit which
-    only know coarser categories like 'office'."""
-    from datetime import date as _date, timedelta as _td
-    from sqlalchemy.orm import joinedload as _joinedload
-    from app.models.surgery import BlockDay as _BD
-    from app.services.surgery_block_schedule import DURATIONS as _DURATIONS
-    from app.services.surgery_date_picker import patient_min_pickable_date
-
+    Delegates to patient_surgery.patient_slots for the actual block-day
+    enumeration so the portal and magic-link flows can't drift."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -430,66 +422,15 @@ def portal_slots(surgery_id: str, days_ahead: int = 180,
             "gate": {"allowed": False, "reason": reason},
             "block_days": [],
         }
-
-    proc_kind = s.procedure_classification
-    if not proc_kind:
-        raise HTTPException(status_code=409,
-                             detail="Surgery is missing a procedure classification — "
-                                    "please call our office.")
-    duration = _DURATIONS.get(proc_kind, s.estimated_minutes or 60)
-    eligibles = s.eligible_facilities or []
-    if not eligibles:
-        return {
-            "gate": {"allowed": True, "reason": None},
-            "block_days": [],
-            "procedure_kind": proc_kind,
-            "duration_minutes": duration,
-        }
-
-    today = _date.today()
-    min_date = patient_min_pickable_date(db, today=today)
-    end = today + _td(days=days_ahead)
-
-    # Match block days by block_kind == procedure_classification so that
-    # procedure types like 'office_d_and_c' are matched exactly.
-    block_days = (db.query(_BD)
-                    .options(_joinedload(_BD.slots))
-                    .filter(_BD.facility.in_(eligibles),
-                            _BD.block_kind == proc_kind,
-                            _BD.block_date >= min_date,
-                            _BD.block_date <= end)
-                    .order_by(_BD.block_date).all())
-
-    out = []
-    for bd in block_days:
-        block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
-        used_minutes = sum(sl.duration_minutes for sl in (bd.slots or []))
-        if used_minutes + duration > (block_end_min -
-                                       (bd.start_time.hour * 60 + bd.start_time.minute)):
-            continue
-        existing = sorted((bd.slots or []), key=lambda x: x.start_time)
-        # Compute next proposed start using the shared helper
-        from app.services.surgery_date_picker import _proposed_start_minutes
-        cursor = _proposed_start_minutes(bd)
-        if cursor is None or cursor + duration > block_end_min:
-            continue
-        proposed_h, proposed_m = divmod(cursor, 60)
-        out.append({
-            "block_day_id": str(bd.id),
-            "facility": bd.facility,
-            "block_date": str(bd.block_date),
-            "weekday": bd.block_date.strftime("%A"),
-            "proposed_start_time": f"{proposed_h:02d}:{proposed_m:02d}",
-            "duration_minutes": duration,
-            "block_window": f"{bd.start_time.strftime('%H:%M')}–{bd.end_time.strftime('%H:%M')}",
-            "cases_already_booked": len(existing),
-        })
-
+    # Direct function call (not via FastAPI deps) to share the magic-link
+    # slot logic exactly. _token is unused by the function body.
+    from app.routers.patient_surgery import patient_slots as _ms_slots
+    raw = _ms_slots(surgery_id, days_ahead=days_ahead, db=db, _token="")
     return {
         "gate": {"allowed": True, "reason": None},
-        "block_days": out,
-        "procedure_kind": proc_kind,
-        "duration_minutes": duration,
+        "block_days": raw.get("days", []),
+        "procedure_kind": raw.get("procedure_kind"),
+        "duration_minutes": raw.get("duration_minutes"),
     }
 
 
