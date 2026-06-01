@@ -70,7 +70,7 @@ import PortalShell from './pages/portal/PortalShell'
 import PortalDashboard from './pages/portal/Dashboard'
 import Payments from './pages/portal/Payments'
 import Schedule from './pages/portal/Schedule'
-import ConsentStub from './pages/portal/stubs/ConsentStub'
+import Consent from './pages/portal/Consent'
 import DocumentsStub from './pages/portal/stubs/DocumentsStub'
 import MessagesStub from './pages/portal/stubs/MessagesStub'
 
@@ -197,7 +197,7 @@ export default function App() {
           <Route index element={<PortalDashboard />} />
           <Route path="payments" element={<Payments />} />
           <Route path="schedule" element={<Schedule />} />
-          <Route path="consent" element={<ConsentStub />} />
+          <Route path="consent" element={<Consent />} />
           <Route path="documents" element={<DocumentsStub />} />
           <Route path="messages" element={<MessagesStub />} />
         </Route>
