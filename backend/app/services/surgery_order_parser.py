@@ -97,10 +97,11 @@ JSON_SHAPE_HINT = """Return JSON with this exact shape (use null for any missing
 """
 
 
-def extract_pdf_text(path: str) -> str:
-    """Extract text from a ModMed surgery-order PDF."""
+def extract_pdf_text_from_bytes(body: bytes) -> str:
+    """Extract text from a ModMed surgery-order PDF given its raw bytes."""
+    import io
     out = []
-    with pdfplumber.open(path) as pdf:
+    with pdfplumber.open(io.BytesIO(body)) as pdf:
         for page in pdf.pages:
             t = page.extract_text() or ""
             if t.strip():
@@ -108,25 +109,23 @@ def extract_pdf_text(path: str) -> str:
     return "\n\n".join(out)
 
 
-def parse_order_pdf(path: str) -> dict:
-    """Parse a single PDF order. Returns the structured dict (or raises)."""
-    text = extract_pdf_text(path)
-    if not text or len(text) < 100:
-        raise ValueError("PDF appears empty or unreadable")
-    return parse_order_text(text)
+def extract_pdf_text(path: str) -> str:
+    """Path-based wrapper around extract_pdf_text_from_bytes. Kept for any
+    callers that still have a filesystem path; new code should pass bytes."""
+    with open(path, "rb") as f:
+        return extract_pdf_text_from_bytes(f.read())
 
 
-def parse_order_pdf_direct(pdf_path: str) -> dict:
-    """Send the PDF directly to Claude (no pdfplumber text extraction). Used
-    for scanned image-only PDFs where text extraction returns nothing.
-    Claude's document content block accepts PDFs natively (≤32 MB / ≤100 pages)
-    and OCRs scanned content visually."""
+def parse_order_pdf_bytes_direct(body: bytes) -> dict:
+    """Send the PDF directly to Claude (no pdfplumber text extraction) for
+    scanned image-only PDFs where text extraction returns nothing. Claude's
+    document content block accepts PDFs natively (≤32 MB / ≤100 pages) and
+    OCRs scanned content visually."""
     import base64
     if not settings.anthropic_api_key:
         raise RuntimeError("ANTHROPIC_API_KEY not configured")
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-    with open(pdf_path, "rb") as f:
-        pdf_b64 = base64.standard_b64encode(f.read()).decode("utf-8")
+    pdf_b64 = base64.standard_b64encode(body).decode("utf-8")
     user_prompt = (
         "Parse this surgery order PDF. Return JSON exactly matching the shape below.\n\n"
         f"{JSON_SHAPE_HINT}\n"
@@ -157,6 +156,20 @@ def parse_order_pdf_direct(pdf_path: str) -> dict:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Claude returned non-JSON: {exc}\n\nRaw: {raw[:500]}")
     return _validate_and_coerce(data)
+
+
+def parse_order_pdf_direct(pdf_path: str) -> dict:
+    """Path-based wrapper around parse_order_pdf_bytes_direct."""
+    with open(pdf_path, "rb") as f:
+        return parse_order_pdf_bytes_direct(f.read())
+
+
+def parse_order_pdf(path: str) -> dict:
+    """Parse a single PDF order. Returns the structured dict (or raises)."""
+    text = extract_pdf_text(path)
+    if not text or len(text) < 100:
+        raise ValueError("PDF appears empty or unreadable")
+    return parse_order_text(text)
 
 
 def parse_order_text(text: str) -> dict:

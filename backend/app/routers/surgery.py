@@ -717,22 +717,13 @@ async def upload_order(
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=422, detail="Expected a PDF file")
 
-    import os
-    from app.services.surgery_order_parser import parse_order_text, build_surgery_kwargs, extract_pdf_text
+    from app.services.surgery_order_parser import (
+        parse_order_text, build_surgery_kwargs, extract_pdf_text_from_bytes,
+    )
 
-    # Save the upload to disk so we can reference it later
-    uploads_dir = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/surgery_orders"
-    os.makedirs(uploads_dir, exist_ok=True)
     contents = await file.read()
-    safe_name = f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{file.filename}"
-    save_path = os.path.join(uploads_dir, safe_name)
-    with open(save_path, "wb") as f:
-        f.write(contents)
-
-    # Parse with Claude
     try:
-        # Re-extract from disk so future re-parses can hit the same content
-        text = extract_pdf_text(save_path)
+        text = extract_pdf_text_from_bytes(contents)
         if len(text) < 50:
             raise ValueError("PDF text content is empty — is this a scanned image?")
         parsed = parse_order_text(text)
@@ -741,6 +732,9 @@ async def upload_order(
         raise HTTPException(status_code=422,
                             detail=f"Could not parse this PDF: {exc}. "
                                    "Try manually creating the surgery instead.")
+
+    pdf_key = save_blob(prefix="surgery-orders", body=contents,
+                            filename=file.filename or "order.pdf")
 
     # Sanity-check minimum required fields
     if not kwargs.get("chart_number") or not kwargs.get("patient_name"):
@@ -767,7 +761,7 @@ async def upload_order(
 
     s = Surgery(
         **kwargs,
-        order_pdf_path=save_path,
+        order_pdf_path=pdf_key,
         created_by=current_user.get("email"),
     )
     db.add(s); db.commit(); db.refresh(s)
