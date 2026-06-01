@@ -6,24 +6,89 @@ Intake document management:
 - Browse, download, override matches
 """
 
+import functools
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse
 from app.services.storage import serve_blob, using_gcs
 
-# Map a local intake archive path to its GCS object key. Mirrors the
-# `gcloud storage rsync /Volumes/OWC External/IntakeArchive gs://wwc-app-docs/intake`
-# layout.
 _INTAKE_LOCAL_ROOT = "/Volumes/OWC External/IntakeArchive/"
+_INTAKE_GCS_BUCKET = os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
+
+
+@functools.lru_cache(maxsize=200)
+def _intake_archives_for_year(year: str) -> Tuple[str, ...]:
+    """Return the archive folder names (e.g. '1975-20260417T074958Z-3-001')
+    matching a DOB-year prefix. One GCS list call per year; cached because
+    the intake archive set is import-once-then-stable.
+
+    Returns empty tuple if no archives match (e.g. invalid year).
+    """
+    try:
+        from google.cloud import storage  # type: ignore
+        client = storage.Client()
+        bucket = client.bucket(_INTAKE_GCS_BUCKET)
+        prefix = f"intake/{year}-"
+        iterator = client.list_blobs(bucket, prefix=prefix, delimiter="/")
+        list(iterator)  # populate iterator.prefixes
+        out = [p[len("intake/"):].rstrip("/") for p in iterator.prefixes]
+        return tuple(sorted(out))
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Failed to list intake archives for year=%s", year)
+        return ()
+
 
 def _intake_gcs_object(file_path: str) -> str:
+    """Map a local intake file path to its GCS object key.
+
+    Three path shapes are supported:
+      1. Mac Mini Downloads (current): `…/wwc_intake_docs/YYYY/MM/DD/…`
+         → resolved to `intake/{archive}/YYYY/MM/DD/…` where {archive}
+         is found by listing archives whose name starts with the file's
+         DOB year. If multiple archives share a year, we probe each to
+         find the one containing this file.
+      2. Legacy external drive: `/Volumes/OWC External/IntakeArchive/…`
+         → `intake/…`
+      3. Anything containing `IntakeArchive/` → strip prefix.
+    """
     if not file_path:
         return ""
+
+    # Shape 1: wwc_intake_docs/YYYY/MM/DD/…
+    marker = "wwc_intake_docs/"
+    idx = file_path.find(marker)
+    if idx >= 0:
+        relative = file_path[idx + len(marker):]
+        parts = relative.split("/", 1)
+        if len(parts) >= 1 and parts[0].isdigit() and len(parts[0]) == 4:
+            year = parts[0]
+            archives = _intake_archives_for_year(year)
+            if not archives:
+                return ""
+            if len(archives) == 1:
+                return f"intake/{archives[0]}/{relative}"
+            # Multiple archives for the same year — probe each.
+            try:
+                from google.cloud import storage  # type: ignore
+                client = storage.Client()
+                bucket = client.bucket(_INTAKE_GCS_BUCKET)
+                for archive in archives:
+                    candidate = f"intake/{archive}/{relative}"
+                    if bucket.blob(candidate).exists():
+                        return candidate
+            except Exception:
+                logging.getLogger(__name__).exception(
+                    "Failed probing intake archives for %s", file_path)
+            return ""
+        # No year segment — last-resort try direct under intake/
+        return f"intake/{relative}"
+
+    # Shape 2 + 3: legacy external drive paths
     if file_path.startswith(_INTAKE_LOCAL_ROOT):
         return f"intake/{file_path[len(_INTAKE_LOCAL_ROOT):]}"
-    # Fallback: take whatever's after 'IntakeArchive/' if present
     idx = file_path.find("IntakeArchive/")
     if idx >= 0:
         return f"intake/{file_path[idx + len('IntakeArchive/'):]}"
