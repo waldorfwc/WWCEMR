@@ -66,14 +66,35 @@ P3 is essentially: expose the same machinery on the patient side, gated by `requ
 
 ## Trigger model — patient-initiated or coordinator-initiated?
 
-Both are supported with no special-casing. The coordinator's "Send via BoldSign" button on `SurgeryDetail.jsx` (already shipped) and the new patient-facing "Send for signing" button BOTH call the same `boldsign_envelopes.send_consent_envelopes()`. The portal endpoint just wraps that with patient auth.
+Both are supported. The coordinator's "Send via BoldSign" button on `SurgeryDetail.jsx` (already shipped) and the new patient-facing "Send for signing" button BOTH call the same `boldsign_envelopes.send_consent_envelopes()`. The difference is the **gate**: patient-initiated sends are blocked until the patient has paid AND picked a surgery date; coordinator-initiated sends bypass this gate (the coordinator may need to send forms early for special cases — FMLA prep, insurance pre-auth, etc.).
 
-The portal UI logic:
-- **No matching templates** → "We don't have consent forms for this surgery on file. Call us." Hide the send button.
-- **Templates match, no envelopes sent yet** → Show templates list with a single "Send for signing" CTA.
-- **Envelopes exist** → Show per-envelope status with "Sign now" / "Already signed ✓" / "Download" actions.
+### Consent-send gate (patient side only)
 
-If the coordinator sends first, the patient sees status as "sent" and the "Sign now" link on each row. If the patient sends first, the coordinator's UI updates immediately (since the data is the same `SurgeryConsentEnvelope` rows).
+Mirroring the schedule gate, a new helper:
+
+```python
+def consent_send_gate_for_surgery(surgery) -> (allowed: bool, reason: str | None)
+```
+
+Rules:
+1. `patient_responsibility > 0 AND amount_paid < patient_responsibility` → blocked, reason: "Please make your payment first."
+2. `scheduled_date IS NULL` → blocked, reason: "Please pick your surgery date first."
+3. Both conditions met → allowed.
+4. `patient_responsibility == 0 AND scheduled_date IS NOT NULL` → allowed (no balance to pay).
+
+This gate is enforced **only** on `POST /api/patient/portal/{sid}/consent/send`. The coordinator endpoint (`POST /surgery/{id}/consent/boldsign-send`) is unchanged. **Critical detail:** if the coordinator already sent envelopes, the patient should still be able to sign them through the portal — the gate is only for *triggering new sends*, not for the "Sign now" action on existing envelopes.
+
+### Portal UI logic
+
+- **No matching templates** → "We don't have consent forms for this surgery on file. Call us." No send button.
+- **Templates match, no envelopes, gate blocks** → State-aware empty card:
+  - Unpaid + unscheduled → "Pay your balance and pick a date before signing." Links to /payments and /schedule.
+  - Paid, unscheduled → "Pick your surgery date before signing." Link to /schedule.
+  - Unpaid, scheduled → "Pay your balance before signing." Link to /payments.
+- **Templates match, no envelopes, gate passes** → Show templates list with a single "Send for signing" CTA.
+- **Envelopes exist** → Show per-envelope status with "Sign now" / "Already signed ✓" / "Download" actions — **regardless of gate state**, because the coordinator may have sent these early.
+
+If the coordinator sends first, the patient sees status as "sent" and the "Sign now" link on each row even before they've paid or scheduled. If the patient sends first (gate must pass), the coordinator's UI updates immediately (since the data is the same `SurgeryConsentEnvelope` rows).
 
 ## Sign-link endpoint security
 
@@ -126,11 +147,13 @@ frontend/src/pages/portal/Consent.jsx
 
 ## Open questions
 
-1. **Should we hide the "Send for signing" CTA in the portal if `surgery.scheduled_date` isn't set yet?** Argument for: don't generate paperwork before the date is confirmed. Argument against: patient might want to pre-sign so they don't have to scramble. Default: **show always**. Coordinator can still void if needed.
+1. **What if BoldSign's `getEmbeddedSignLink` rate-limits?** We hit it on every "Sign now" click. Should be fine for current volume; if it becomes an issue, cache the URL for 5 minutes per envelope.
 
-2. **What if BoldSign's `getEmbeddedSignLink` rate-limits?** We hit it on every "Sign now" click. Should be fine for current volume; if it becomes an issue, cache the URL for 5 minutes per envelope.
+2. **Where do we host the signed PDF?** P3 streams it from BoldSign on every download. If BoldSign archives stop being available (free tier expiry etc.), the signed PDFs become unavailable. Worth fetching + storing to GCS at signing-completion time — but that's a P3b improvement.
 
-3. **Where do we host the signed PDF?** P3 streams it from BoldSign on every download. If BoldSign archives stop being available (free tier expiry etc.), the signed PDFs become unavailable. Worth fetching + storing to GCS at signing-completion time — but that's a P3b improvement.
+### Resolved
+
+- **Hide consent-send CTA pre-pay/pre-schedule?** YES. New `consent_send_gate_for_surgery` helper enforces paid + scheduled before patient can trigger a send. Coordinator sends are not gated. Existing envelopes (sent by coordinator or earlier) remain signable regardless of gate state.
 
 ## Risks
 
