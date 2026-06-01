@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronUp, Package, Eye,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import MessagesSection from '../components/MessagesSection'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MatchesDrawer } from './SurgeryWaitlist'
 import { useFacilities } from '../hooks/useFacilities'
@@ -307,6 +308,8 @@ export default function SurgeryDetail() {
       <LarcDevicePickerCard surgery={s} />
 
       {s && <PaymentsSection surgery={s} />}
+
+      {s && <MessagesSection sid={s.id} />}
 
       {s && <PatientEmailsSection surgery={s} />}
 
