@@ -14,11 +14,30 @@ storage.objectAdmin on the bucket, so credentials come from ADC.
 """
 import mimetypes
 import os
+import unicodedata
+import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Optional
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
+
+
+def _content_disposition(disposition: str, filename: str) -> str:
+    """Build a Content-Disposition header value that is safe to encode as
+    latin-1. Non-ASCII filenames get an RFC 5987 `filename*` parameter so
+    modern browsers see the original name; the ASCII fallback strips
+    diacritics and replaces any remaining non-latin-1 byte with `_`."""
+    ascii_fallback = (
+        unicodedata.normalize("NFKD", filename or "")
+        .encode("ascii", "ignore").decode("ascii")
+    ) or "download"
+    needs_utf8 = any(ord(c) > 127 for c in (filename or ""))
+    if not needs_utf8:
+        return f'{disposition}; filename="{ascii_fallback}"'
+    encoded = urllib.parse.quote(filename, safe="")
+    return (f'{disposition}; filename="{ascii_fallback}"; '
+              f"filename*=UTF-8''{encoded}")
 
 _STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "local").lower()
 _GCS_BUCKET = os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
@@ -73,7 +92,8 @@ def serve_blob(
         return StreamingResponse(
             iter_blob(),
             media_type=media_type,
-            headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+            headers={"Content-Disposition":
+                       _content_disposition(disposition, filename)},
         )
 
     # default: local filesystem

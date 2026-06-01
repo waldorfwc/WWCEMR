@@ -67,3 +67,31 @@ def test_is_legacy_local_path():
     assert not s.is_legacy_local_path("surgery-files/uuid.pdf")
     assert not s.is_legacy_local_path("")
     assert not s.is_legacy_local_path(None)
+
+
+def test_content_disposition_ascii_uses_plain_filename():
+    from app.services.storage import _content_disposition
+    out = _content_disposition("attachment", "hello.pdf")
+    assert out == 'attachment; filename="hello.pdf"'
+    # Must be encodable as latin-1 (HTTP header constraint)
+    out.encode("latin-1")
+
+
+def test_content_disposition_non_ascii_uses_rfc5987(monkeypatch):
+    """Filenames containing non-ASCII (e.g. \\u202f) must not crash header
+    encoding. Browsers see the original via filename*; older clients get
+    the ASCII fallback."""
+    from app.services.storage import _content_disposition
+    # U+202F (NARROW NO-BREAK SPACE) appears in real EOB filenames
+    out = _content_disposition("attachment", "KENNEDY, MELISSA EOB.pdf")
+    assert "filename=" in out
+    assert "filename*=UTF-8''" in out
+    assert "%E2%80%AF" in out   # the encoded U+202F
+    # Crucially: the whole header is latin-1 safe
+    out.encode("latin-1")
+
+
+def test_content_disposition_empty_filename_uses_download():
+    from app.services.storage import _content_disposition
+    assert 'filename="download"' in _content_disposition("inline", "")
+    assert 'filename="download"' in _content_disposition("inline", None or "")
