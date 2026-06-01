@@ -14,6 +14,7 @@ from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashbo
 from app.routers import google_sync as google_sync_router
 from app.routers import portal_preview
 from app.routers import stripe_payments
+from app.routers import surgery_messages
 from app.models import patient_email as _patient_email_models  # noqa: F401
 from app.models import patient_sms as _patient_sms_models  # noqa: F401
 
@@ -167,6 +168,8 @@ app.include_router(code_helper.router, prefix="/api")
 app.include_router(google_sync_router.router, prefix="/api", dependencies=USER_MANAGE)
 # Stripe payments — coordinator endpoints + patient self-service + webhook
 app.include_router(stripe_payments.router, prefix="/api")
+# Staff messaging — per-surgery thread + unread inbox; router carries /api/staff prefix
+app.include_router(surgery_messages.router)
 
 
 @app.get("/api/health")
