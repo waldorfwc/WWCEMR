@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { Outlet, Link, useNavigate, useParams } from 'react-router-dom'
 import { usePortalAuth } from '../../hooks/usePortalAuth'
+import { setPortalSession } from '../../lib/portal-api'
 
 const NAV = [
   { to: '',          label: 'Dashboard' },
@@ -14,6 +16,25 @@ export default function PortalShell() {
   const { sid } = useParams()
   const { session, signOut } = usePortalAuth()
   const nav = useNavigate()
+
+  // Coordinator preview entry: if URL has ?staff_token=..., bake it into
+  // localStorage as the active session, then strip from the URL so it
+  // doesn't show up in copy/paste or browser history. Runs once on mount.
+  useEffect(() => {
+    const url = new URL(window.location.href)
+    const tok = url.searchParams.get('staff_token')
+    if (tok && sid) {
+      setPortalSession({ token: tok, surgery_id: sid })
+      url.searchParams.delete('staff_token')
+      window.history.replaceState({}, '', url.toString())
+      // Force a re-render so the session check below sees the new token.
+      // Easiest path: reload. The page is fresh anyway since this is the
+      // staff member's first visit.
+      window.location.reload()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   if (!session.token) {
     nav('/portal/login', { replace: true })
     return null

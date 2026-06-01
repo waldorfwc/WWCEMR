@@ -41,3 +41,26 @@ export function getPortalSession() {
     surgery_id: localStorage.getItem(SID_KEY),
   }
 }
+
+export function decodePortalToken(token) {
+  if (!token) return null
+  try {
+    const [, b64] = token.split('.')
+    // Base64URL → Base64 + padding
+    const padded = b64.replace(/-/g, '+').replace(/_/g, '/')
+      .padEnd(b64.length + (4 - b64.length % 4) % 4, '=')
+    const json = atob(padded)
+    return JSON.parse(json)
+  } catch {
+    return null
+  }
+}
+
+export function getPortalViewer() {
+  const payload = decodePortalToken(localStorage.getItem(TOKEN_KEY))
+  return payload?.viewer || null
+}
+
+export function isStaffPreview() {
+  return (getPortalViewer() || '').startsWith('staff:')
+}
