@@ -778,3 +778,43 @@ def test_documents_no_instructions_when_classification_blank(client, db):
     assert r.status_code == 200
     # When classification is blank, instructions section is null
     assert r.json()["instructions"] is None
+
+
+def test_instructions_pdf_returns_404_when_classification_blank(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/documents/instructions/preop",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 404
+
+
+def test_instructions_pdf_rejects_invalid_kind(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.procedure_classification = "office_d_and_c"
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/documents/instructions/bogus",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 422
+
+
+def test_instructions_pdf_streams_when_present(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.procedure_classification = "office_d_and_c"
+    db.commit()
+    token = issue_portal_token(s)
+    with patch("app.services.surgery_documents.fetch_instructions_pdf",
+                return_value=b"%PDF-test-bytes"):
+        r = client.get(
+            f"/api/patient/portal/{s.id}/documents/instructions/preop",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200
+    assert r.content.startswith(b"%PDF")
+    assert "pdf" in r.headers["content-type"].lower()
+    assert "preop" in r.headers["content-disposition"].lower()

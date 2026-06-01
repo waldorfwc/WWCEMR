@@ -656,3 +656,44 @@ def portal_documents(surgery_id: str, db: Session = Depends(get_db),
         "consents":     consents,
         "receipts":     receipts,
     }
+
+
+# ─── /{surgery_id}/documents/instructions/{kind} ────────────────
+
+@router.get("/{surgery_id}/documents/instructions/{kind}")
+def portal_documents_instructions(
+    surgery_id: str,
+    kind: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Stream a procedure-specific instructions PDF from GCS.
+    kind ∈ {"preop", "postop"}. Returns 404 when the patient's
+    procedure_classification has no doc in the library."""
+    if kind not in ("preop", "postop"):
+        raise HTTPException(status_code=422,
+                              detail="kind must be 'preop' or 'postop'")
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if not s.procedure_classification:
+        raise HTTPException(
+            status_code=404,
+            detail="Instructions for this procedure aren't online yet — "
+                   "please call our office at 240-252-2140.",
+        )
+    from app.services.surgery_documents import fetch_instructions_pdf
+    pdf_bytes = fetch_instructions_pdf(s.procedure_classification, kind)
+    if pdf_bytes is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Instructions for this procedure aren't online yet — "
+                   "please call our office at 240-252-2140.",
+        )
+    filename = f"{s.procedure_classification}_{kind}_instructions.pdf"
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
