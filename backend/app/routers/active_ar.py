@@ -23,11 +23,14 @@ from app.models.active_ar import (
     ActiveClaim, ActiveClaimNote, InsurancePayment, PaymentAllocation,
     ActiveClaimDocument,
 )
+from app.models.appeal_letters import AppealLetter
 from app.models.patient import Patient
 from app.models.patient_directory import IntakeDocument
 from app.models.user import User
 from app.routers.auth import get_current_user, require_permission
 from app.services.active_ar_importer import import_unpaid_claims
+from app.services.appeal_letter_pdf import render_pdf
+from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 from app.services.timely_filing import timely_filing_info
 
 router = APIRouter(prefix="/active-ar", tags=["active-ar"])
@@ -763,14 +766,8 @@ async def upload_document(
             detail=f"file exceeds {MAX_DOC_SIZE_BYTES // 1024 // 1024} MB limit",
         )
 
-    # Store under uploads/active_ar_docs/{claim_id}/{uuid}_{filename}
-    subdir = os.path.join(settings.upload_dir, "active_ar_docs", str(c.id))
-    os.makedirs(subdir, exist_ok=True)
     safe_name = (file.filename or "upload").replace("/", "_").replace("\\", "_")
-    stored_filename = f"{uuid.uuid4().hex[:12]}_{safe_name}"
-    file_path = os.path.join(subdir, stored_filename)
-    with open(file_path, "wb") as fh:
-        fh.write(content)
+    key = save_blob(prefix="active-ar-docs", body=content, filename=safe_name)
 
     doc = ActiveClaimDocument(
         active_claim_id=c.id,
@@ -778,7 +775,7 @@ async def upload_document(
         filename=safe_name,
         content_type=file.content_type,
         file_size=len(content),
-        file_path=file_path,
+        file_path=key,
         description=description,
         uploaded_by=current_user.get("email"),
     )
@@ -857,17 +854,18 @@ def list_id_insurance_cards(claim_id: str,
 def download_document(claim_id: str, doc_id: str,
                       db: Session = Depends(get_db),
                       current_user: dict = Depends(get_current_user)):
-    from fastapi.responses import FileResponse
     doc = db.query(ActiveClaimDocument).filter(
         ActiveClaimDocument.id == doc_id,
         ActiveClaimDocument.active_claim_id == claim_id,
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="document not found")
-    if not os.path.exists(doc.file_path):
-        raise HTTPException(status_code=410, detail="file missing on disk")
-    return FileResponse(
-        doc.file_path,
+    if is_legacy_local_path(doc.file_path):
+        raise HTTPException(status_code=410,
+                            detail="This file is from before the cloud migration and is no longer available.")
+    return serve_blob(
+        local_path=None,
+        gcs_object=doc.file_path,
         media_type=doc.content_type or "application/octet-stream",
         filename=doc.filename,
     )
@@ -883,11 +881,8 @@ def delete_document(claim_id: str, doc_id: str,
     ).first()
     if not doc:
         raise HTTPException(status_code=404, detail="document not found")
-    try:
-        if os.path.exists(doc.file_path):
-            os.remove(doc.file_path)
-    except OSError:
-        pass
+    # No filesystem cleanup — GCS orphans are cheap and the audit trail
+    # is preserved.
     fname = doc.filename
     db.delete(doc)
     db.add(ActiveClaimNote(
@@ -1433,32 +1428,26 @@ def update_appeal(appeal_id: str, payload: AppealUpdate,
 def generate_appeal_pdf(appeal_id: str,
                         db: Session = Depends(get_db),
                         current_user: dict = Depends(get_current_user)):
-    """Render the appeal letter to PDF, save to disk, attach to claim docs."""
-    from app.models.appeal_letters import AppealLetter
-    from app.models.active_ar import ActiveClaimDocument
-    from app.services.appeal_letter_pdf import render_pdf
-
+    """Render the appeal letter to PDF and save to GCS. Auto-attaches to claim."""
     a = db.query(AppealLetter).filter(AppealLetter.id == appeal_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="appeal not found")
 
-    subdir = os.path.join(settings.upload_dir, "appeal_letters", str(a.active_claim_id))
-    os.makedirs(subdir, exist_ok=True)
-    safe_name = f"appeal_{a.template_type}_L{a.level}_{a.id.hex[:8]}.pdf"
-    out_path = os.path.join(subdir, safe_name)
-
-    pdf_bytes = render_pdf(a.subject, a.body, output_path=out_path)
-    a.pdf_path = out_path
+    id_slug = str(a.id).replace("-", "")[:8]
+    safe_name = f"appeal_{a.template_type}_L{a.level}_{id_slug}.pdf"
+    pdf_bytes = render_pdf(a.subject, a.body)   # no output_path → just bytes
+    key = save_blob(prefix="appeal-letters", body=pdf_bytes, filename=safe_name)
+    a.pdf_path = key
     a.status = "generated"
 
-    # Auto-attach as a Document on the claim
+    # Auto-attach as a Document on the claim — same GCS key
     doc = ActiveClaimDocument(
         active_claim_id=a.active_claim_id,
         document_type="Appeal",
         filename=safe_name,
         content_type="application/pdf",
         file_size=len(pdf_bytes),
-        file_path=out_path,
+        file_path=key,
         description=f"Generated appeal letter — {a.subject}",
         uploaded_by=current_user.get("email"),
     )
@@ -1477,14 +1466,17 @@ def generate_appeal_pdf(appeal_id: str,
 def download_appeal_pdf(appeal_id: str,
                         db: Session = Depends(get_db),
                         current_user: dict = Depends(get_current_user)):
-    from fastapi.responses import FileResponse
-    from app.models.appeal_letters import AppealLetter
     a = db.query(AppealLetter).filter(AppealLetter.id == appeal_id).first()
-    if not a or not a.pdf_path or not os.path.exists(a.pdf_path):
+    if not a or not a.pdf_path:
         raise HTTPException(status_code=404, detail="PDF not generated yet")
-    return FileResponse(
-        a.pdf_path, media_type="application/pdf",
-        filename=os.path.basename(a.pdf_path),
+    if is_legacy_local_path(a.pdf_path):
+        raise HTTPException(status_code=410,
+                            detail="This file is from before the cloud migration and is no longer available.")
+    return serve_blob(
+        local_path=None,
+        gcs_object=a.pdf_path,
+        media_type="application/pdf",
+        filename=os.path.basename(a.pdf_path) if "/" in a.pdf_path else a.pdf_path,
     )
 
 
