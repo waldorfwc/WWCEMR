@@ -23,9 +23,11 @@ from app.database import get_db
 from app.models.bai2 import Bai2Import, Bai2Transaction
 from app.routers.auth import get_current_user, require_permission
 from app.services.bai2_generator import (
-    FilterOptions, parse_csv, render_bai2, make_filename,
+    FilterOptions, parse_csv_from_bytes, render_bai2, make_filename,
 )
-from app.services.storage import save_blob, serve_blob, is_legacy_local_path
+from app.services.storage import (
+    save_blob, save_blob_with_key, serve_blob, read_blob, is_legacy_local_path,
+)
 
 
 router = APIRouter(prefix="/bank-recon", tags=["bank-recon"])
@@ -81,13 +83,10 @@ async def preview_csv(
     if ext not in ('.csv', '.txt'):
         raise HTTPException(status_code=422, detail="file must be .csv or .txt")
 
-    subdir = os.path.join(settings.upload_dir, 'bai2_csv')
-    os.makedirs(subdir, exist_ok=True)
-    preview_id = str(uuid.uuid4())
-    saved_path = os.path.join(subdir, f"{preview_id}{ext}")
+    preview_id = uuid.uuid4().hex
     content = await file.read()
-    with open(saved_path, 'wb') as fh:
-        fh.write(content)
+    save_blob_with_key(key=f"bank-recon-csv/{preview_id}{ext}",
+                          body=content, content_type="text/csv")
 
     filters = FilterOptions(
         skip_withdrawals=skip_withdrawals,
@@ -95,7 +94,7 @@ async def preview_csv(
         skip_stripe=skip_stripe,
         skip_zero=skip_zero,
     )
-    parsed = parse_csv(saved_path, filters)
+    parsed = parse_csv_from_bytes(content, filters)
 
     # Mark each transaction with whether its dedup_key already exists in DB
     keys = [t.dedup_key for t in parsed.transactions]
@@ -179,8 +178,10 @@ def generate_bai2(payload: GenerateRequest,
                   _perm: dict = Depends(require_permission("bankrecon:generate"))):
     """Build the BAI2 file from the CSV cached at preview_id, excluding any
     transactions whose dedup_key is in `excluded_keys`."""
-    csv_path = os.path.join(settings.upload_dir, 'bai2_csv', f"{payload.preview_id}{payload.ext}")
-    if not os.path.exists(csv_path):
+    csv_key = f"bank-recon-csv/{payload.preview_id}{payload.ext}"
+    try:
+        csv_bytes = read_blob(csv_key)
+    except FileNotFoundError:
         raise HTTPException(status_code=404, detail="preview CSV not found — re-upload")
 
     filters = FilterOptions(
@@ -189,7 +190,7 @@ def generate_bai2(payload: GenerateRequest,
         skip_stripe=payload.skip_stripe,
         skip_zero=payload.skip_zero,
     )
-    parsed = parse_csv(csv_path, filters)
+    parsed = parse_csv_from_bytes(csv_bytes, filters)
 
     excluded = set(payload.excluded_keys or [])
 
@@ -215,7 +216,7 @@ def generate_bai2(payload: GenerateRequest,
 
     if not new_txns:
         imp = Bai2Import(
-            csv_filename=payload.csv_filename, csv_path=csv_path,
+            csv_filename=payload.csv_filename, csv_path=csv_key,
             bank_name=payload.bank_name, account_last_4=None,
             account_full=payload.account_full,
             csv_row_count=parsed.csv_row_count,
@@ -249,7 +250,7 @@ def generate_bai2(payload: GenerateRequest,
 
     total_amount = Decimal(str(sum(t.amount for t in new_txns)))
     imp = Bai2Import(
-        csv_filename=payload.csv_filename, csv_path=csv_path,
+        csv_filename=payload.csv_filename, csv_path=csv_key,
         bank_name=payload.bank_name, account_last_4=None,
         account_full=payload.account_full,
         bai2_filename=filename, bai2_path=key,

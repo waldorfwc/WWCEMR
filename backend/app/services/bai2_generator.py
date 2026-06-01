@@ -174,14 +174,30 @@ class ParseResult:
     skipped_always_drop: int = 0
 
 
-def parse_csv(file_path: str, filters: FilterOptions) -> ParseResult:
-    """Read a bank CSV, apply filters, dedupe within the file. No DB writes."""
+def parse_csv_from_bytes(body: bytes, filters: FilterOptions) -> ParseResult:
+    """Parse a bank CSV from raw bytes. Apply filters + within-file dedup.
+    No DB writes. Same semantics as parse_csv(path, …) but doesn't touch
+    the filesystem."""
+    import io
     result = ParseResult()
-    with open(file_path, 'r', newline='', encoding='utf-8-sig') as f:
-        reader = _csv.DictReader(f)
-        rows = list(reader)
+    text = body.decode("utf-8-sig", errors="replace")
+    reader = _csv.DictReader(io.StringIO(text))
+    rows = list(reader)
     result.csv_row_count = len(rows)
+    return _filter_rows(rows, filters, result)
 
+
+def parse_csv(file_path: str, filters: FilterOptions) -> ParseResult:
+    """Path-based wrapper around parse_csv_from_bytes. Kept for any
+    callers that still have a filesystem path; new code should pass
+    bytes via parse_csv_from_bytes."""
+    with open(file_path, 'rb') as f:
+        return parse_csv_from_bytes(f.read(), filters)
+
+
+def _filter_rows(rows, filters: FilterOptions,
+                    result: ParseResult) -> ParseResult:
+    """Shared per-row loop used by parse_csv_from_bytes / parse_csv."""
     seen_keys: set[str] = set()
     today = date.today()
     for r in rows:

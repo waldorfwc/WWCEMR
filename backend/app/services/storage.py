@@ -154,6 +154,42 @@ def save_blob(*, prefix: str, body: bytes,
     return key
 
 
+def save_blob_with_key(*, key: str, body: bytes,
+                          content_type: Optional[str] = None) -> str:
+    """Like save_blob, but the caller picks the key. Used when the key is
+    meaningful (e.g. preview-cache lookups keyed by a stable id rather than
+    a random uuid)."""
+    if _STORAGE_BACKEND == "gcs":
+        client = _gcs_client()
+        blob = client.bucket(_GCS_BUCKET).blob(key)
+        blob.upload_from_string(body,
+                                  content_type=content_type or "application/octet-stream")
+        return key
+
+    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    out = root / key
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(body)
+    return key
+
+
+def read_blob(key: str) -> bytes:
+    """Download bytes for a stored key. Raises FileNotFoundError if the
+    object/file doesn't exist."""
+    if _STORAGE_BACKEND == "gcs":
+        client = _gcs_client()
+        blob = client.bucket(_GCS_BUCKET).blob(key)
+        if not blob.exists():
+            raise FileNotFoundError(f"gs://{_GCS_BUCKET}/{key}")
+        return blob.download_as_bytes()
+
+    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    p = root / key
+    if not p.is_file():
+        raise FileNotFoundError(str(p))
+    return p.read_bytes()
+
+
 def is_legacy_local_path(path: Optional[str]) -> bool:
     """True if `path` looks like a pre-migration absolute filesystem path
     rather than a GCS object key. GCS keys never start with `/`."""
