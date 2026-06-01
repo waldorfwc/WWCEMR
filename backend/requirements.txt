@@ -29,5 +29,5 @@ email-validator
 google-api-python-client
 google-auth
 pyjwt
-qrcode
+qrcode[pil]>=7.4
 stripe==12.0.0
