@@ -26,6 +26,7 @@ from app.models.surgery import (
 from app.routers.auth import get_current_user, require_permission
 from app.services.surgery_slot_conflict import overlapping_slot
 from app.services.surgery_blackout_conflict import is_date_blacked_out
+from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
 
@@ -1687,19 +1688,15 @@ async def upload_file(
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
 
-    uploads_dir = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/surgery_files"
-    os.makedirs(uploads_dir, exist_ok=True)
     contents = await file.read()
-    safe_name = f"{s.chart_number}_{kind}_{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{file.filename}"
-    save_path = os.path.join(uploads_dir, safe_name)
-    with open(save_path, "wb") as f:
-        f.write(contents)
+    key = save_blob(prefix="surgery-files", body=contents,
+                    filename=file.filename or "upload")
 
     f_row = SurgeryFile(
         surgery_id=s.id,
         kind=kind,
         filename=file.filename,
-        path=save_path,
+        path=key,
         mime_type=file.content_type,
         size_bytes=len(contents),
         notes=notes,
@@ -1763,16 +1760,22 @@ def list_files(surgery_id: str, db: Session = Depends(get_db),
 def download_file(surgery_id: str, file_id: str,
                    db: Session = Depends(get_db),
                    current_user: dict = Depends(require_permission("surgery:read"))):
-    from fastapi.responses import FileResponse
     f = db.query(SurgeryFile).filter(
         SurgeryFile.id == file_id,
         SurgeryFile.surgery_id == surgery_id,
     ).first()
     if not f:
         raise HTTPException(status_code=404, detail="file not found")
-    if not os.path.exists(f.path):
-        raise HTTPException(status_code=404, detail="file path missing on disk")
-    return FileResponse(f.path, filename=f.filename, media_type=f.mime_type or "application/octet-stream")
+    if is_legacy_local_path(f.path):
+        raise HTTPException(status_code=410,
+                              detail="This file is from before the cloud migration and is no longer available.")
+    return serve_blob(
+        local_path=None,
+        gcs_object=f.path,
+        media_type=f.mime_type or "application/octet-stream",
+        filename=f.filename,
+        disposition="attachment",
+    )
 
 
 @router.get("/admin/block-days")
