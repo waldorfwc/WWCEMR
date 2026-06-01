@@ -33,6 +33,8 @@ PURPOSE_COPY = {
                   "Expires in {ttl} minutes."),
     "payment": ("WWC: Code to authorize your payment: {code}. "
                   "Expires in {ttl} minutes. If you didn't request this, ignore."),
+    "review":  ("WWC: Code to confirm you're a patient for your review: "
+                  "{code}. Expires in {ttl} minutes."),
 }
 
 
