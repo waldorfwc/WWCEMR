@@ -16,7 +16,7 @@ from app.routers import portal_preview
 from app.routers import stripe_payments
 from app.routers import surgery_messages
 from app.routers import message_templates
-from app.routers import reputation_public
+from app.routers import reputation_public, reputation_admin
 from app.models import patient_email as _patient_email_models  # noqa: F401
 from app.models import patient_sms as _patient_sms_models  # noqa: F401
 
@@ -176,6 +176,7 @@ app.include_router(surgery_messages.router)
 app.include_router(message_templates.router)
 # Reputation — public QR-gated review form endpoints (no auth; token is the boundary)
 app.include_router(reputation_public.router)
+app.include_router(reputation_admin.router)
 
 
 @app.get("/api/health")
