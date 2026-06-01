@@ -697,3 +697,49 @@ def portal_documents_instructions(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ─── /{surgery_id}/self-report/* ──────────────────────────────────
+
+def _flip_if_unset(surgery: Surgery, flag_attr: str, ts_attr: str) -> None:
+    """Idempotent flip: only stamps the first time the flag goes True."""
+    if not getattr(surgery, flag_attr, False):
+        setattr(surgery, flag_attr, True)
+        setattr(surgery, ts_attr, datetime.utcnow())
+
+
+@router.post("/{surgery_id}/self-report/labs")
+def portal_self_report_labs(surgery_id: str,
+                                db: Session = Depends(get_db),
+                                _: str = Depends(require_portal_token)):
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    _flip_if_unset(s, "labs_self_reported", "labs_self_reported_at")
+    db.commit()
+    return {
+        "labs_self_reported": s.labs_self_reported,
+        "labs_self_reported_at":
+            s.labs_self_reported_at.isoformat()
+            if s.labs_self_reported_at else None,
+    }
+
+
+@router.post("/{surgery_id}/self-report/hospital-preop")
+def portal_self_report_hospital_preop(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    _flip_if_unset(s, "hospital_preop_self_reported",
+                       "hospital_preop_self_reported_at")
+    db.commit()
+    return {
+        "hospital_preop_self_reported": s.hospital_preop_self_reported,
+        "hospital_preop_self_reported_at":
+            s.hospital_preop_self_reported_at.isoformat()
+            if s.hospital_preop_self_reported_at else None,
+    }

@@ -818,3 +818,58 @@ def test_instructions_pdf_streams_when_present(client, db):
     assert r.content.startswith(b"%PDF")
     assert "pdf" in r.headers["content-type"].lower()
     assert "preop" in r.headers["content-disposition"].lower()
+
+
+def test_self_report_labs_flips_flag(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(f"/api/patient/portal/{s.id}/self-report/labs",
+                       headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    db.refresh(s)
+    assert s.labs_self_reported is True
+    assert s.labs_self_reported_at is not None
+
+
+def test_self_report_labs_is_idempotent(client, db):
+    """Second click doesn't restamp _at."""
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r1 = client.post(f"/api/patient/portal/{s.id}/self-report/labs",
+                         headers={"Authorization": f"Bearer {token}"})
+    db.refresh(s)
+    first_ts = s.labs_self_reported_at
+    r2 = client.post(f"/api/patient/portal/{s.id}/self-report/labs",
+                         headers={"Authorization": f"Bearer {token}"})
+    db.refresh(s)
+    assert r2.status_code == 200
+    assert s.labs_self_reported_at == first_ts  # not bumped
+
+
+def test_self_report_hospital_preop_flips_flag(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(f"/api/patient/portal/{s.id}/self-report/hospital-preop",
+                       headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    db.refresh(s)
+    assert s.hospital_preop_self_reported is True
+    assert s.hospital_preop_self_reported_at is not None
+
+
+def test_self_report_rejects_unknown_kind_via_url(client, db):
+    """The router only accepts the two paths above — anything else 404s
+    via FastAPI routing."""
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.post(f"/api/patient/portal/{s.id}/self-report/bogus",
+                       headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 404
