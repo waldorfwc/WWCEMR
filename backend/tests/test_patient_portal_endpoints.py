@@ -419,3 +419,69 @@ def test_checkout_passes_decimal_amount_to_stripe(client, db):
     assert isinstance(captured["amount"], Decimal), \
         f"expected Decimal, got {type(captured['amount']).__name__}"
     assert captured["amount"] == Decimal("250")
+
+
+def test_slots_returns_gate_state_when_unpaid(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.patient_responsibility = 250
+    s.amount_paid = 0
+    s.procedure_classification = "office_d_and_c"
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/slots",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["gate"]["allowed"] is False
+    assert "$250" in body["gate"]["reason"]
+    assert body["block_days"] == []  # hidden when gate blocks
+
+
+def test_slots_returns_block_days_when_gate_passes(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import BlockDay
+    from datetime import date as _d, time as _t, timedelta as _td
+    s = _seed_surgery(db)
+    s.patient_responsibility = 0
+    s.eligible_facilities = ["office"]
+    s.procedure_classification = "office_d_and_c"
+    s.estimated_minutes = 60
+    db.add(BlockDay(
+        block_date=_d.today() + _td(days=14),
+        facility="office",
+        start_time=_t(8, 0), end_time=_t(15, 0),
+        block_kind="office_d_and_c",
+    ))
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/slots",
+                     headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["gate"]["allowed"] is True
+    assert len(body["block_days"]) >= 1
+
+
+def test_claim_blocks_when_gate_fails(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import BlockDay
+    from datetime import date as _d, time as _t, timedelta as _td
+    s = _seed_surgery(db)
+    s.patient_responsibility = 250  # gate blocks
+    s.eligible_facilities = ["office"]
+    s.procedure_classification = "office_d_and_c"
+    bd = BlockDay(
+        block_date=_d.today() + _td(days=14),
+        facility="office",
+        start_time=_t(8, 0), end_time=_t(15, 0),
+        block_kind="office_d_and_c",
+    )
+    db.add(bd); db.commit(); db.refresh(bd)
+    token = issue_portal_token(s)
+    r = client.post(
+        f"/api/patient/portal/{s.id}/slots/{bd.id}/claim",
+        json={"start_time": "08:00"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409
