@@ -318,6 +318,12 @@ class Surgery(Base):
         cascade="all, delete-orphan",
         order_by="SurgeryPayment.requested_at.desc()",
     )
+    documents = relationship(
+        "SurgeryDocument",
+        backref="surgery",
+        cascade="all, delete-orphan",
+        order_by="SurgeryDocument.uploaded_at.desc()",
+    )
 
 
 # ─── Milestones ──────────────────────────────────────────────────────
@@ -731,3 +737,25 @@ class SurgeryConsentEnvelope(Base):
 
     surgery = relationship("Surgery", back_populates="consent_envelopes")
     template = relationship("ConsentTemplate")
+
+
+# ─── Patient-uploaded documents (P5 patient portal) ────────────────────
+
+class SurgeryDocument(Base):
+    """Patient-uploaded documents (clearance, EKG, FMLA, …)."""
+    __tablename__ = "surgery_documents"
+    __table_args__ = (
+        Index("ix_surgery_documents_surgery_id", "surgery_id"),
+    )
+
+    id           = Column(GUID(), primary_key=True, default=new_uuid)
+    surgery_id   = Column(GUID(),
+                            ForeignKey("surgeries.id", ondelete="CASCADE"),
+                            nullable=False)
+    kind         = Column(String(40), nullable=False)
+    filename     = Column(String(255), nullable=False)
+    gcs_path     = Column(String(500), nullable=False)
+    content_type = Column(String(100), nullable=True)
+    size_bytes   = Column(Integer, nullable=True)
+    uploaded_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_by  = Column(String(120), nullable=False)
