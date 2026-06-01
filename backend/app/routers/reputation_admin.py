@@ -99,6 +99,22 @@ def rotate_token(pid: str, db: Session = Depends(get_db),
     return _profile_dict(p)
 
 
+@router.get("/profiles/{pid}/qr.png")
+def profile_qr_png(pid: str, db: Session = Depends(get_db),
+                       user: dict = Depends(get_current_user)):
+    from fastapi.responses import Response
+    from app.services.qr_generator import render_profile_qr_png as _render
+    p = (db.query(ReputationProfile)
+              .filter(ReputationProfile.id == pid).first())
+    if p is None:
+        raise HTTPException(status_code=404, detail="profile not found")
+    safe_name = "".join(ch if ch.isalnum() else "_" for ch in p.display_name)[:30]
+    return Response(content=_render(p.qr_token),
+                       media_type="image/png",
+                       headers={"Content-Disposition":
+                                  f'inline; filename="qr_{safe_name}.png"'})
+
+
 @router.get("/leaderboard")
 def leaderboard(db: Session = Depends(get_db),
                    user: dict = Depends(get_current_user)):
