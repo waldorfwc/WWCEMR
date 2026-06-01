@@ -648,3 +648,49 @@ def test_sign_link_rejects_envelope_from_different_surgery(client, db):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 404  # envelope not found for this surgery
+
+
+def test_signed_pdf_rejects_unsigned_envelope(client, db):
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    s = _seed_surgery(db)
+    t = ConsentTemplate(name="X", boldsign_template_id="bs_x",
+                          procedure_match=[], facility_match=[])
+    db.add(t); db.flush()
+    env = SurgeryConsentEnvelope(
+        surgery_id=s.id, template_id=t.id,
+        boldsign_envelope_id="bs_doc_x", status="sent",   # not signed yet
+    )
+    db.add(env); db.commit(); db.refresh(env)
+    token = issue_portal_token(s)
+    r = client.get(
+        f"/api/patient/portal/{s.id}/consent/signed-pdf/{env.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 409
+    assert "not yet" in r.text.lower() or "not signed" in r.text.lower()
+
+
+def test_signed_pdf_streams_when_signed(client, db):
+    from unittest.mock import patch
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
+    s = _seed_surgery(db)
+    t = ConsentTemplate(name="X", boldsign_template_id="bs_x",
+                          procedure_match=[], facility_match=[])
+    db.add(t); db.flush()
+    env = SurgeryConsentEnvelope(
+        surgery_id=s.id, template_id=t.id,
+        boldsign_envelope_id="bs_doc_y", status="signed",
+    )
+    db.add(env); db.commit(); db.refresh(env)
+    token = issue_portal_token(s)
+    with patch("app.services.boldsign_envelopes.download_signed_pdf",
+                return_value=b"%PDF-fake-bytes"):
+        r = client.get(
+            f"/api/patient/portal/{s.id}/consent/signed-pdf/{env.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200
+    assert r.content.startswith(b"%PDF")
+    assert "pdf" in r.headers["content-type"].lower()

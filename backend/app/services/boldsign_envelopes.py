@@ -474,6 +474,24 @@ def get_embedded_sign_link(envelope_id: str, signer_email: str) -> str:
     return url
 
 
+def download_signed_pdf(envelope_id: str) -> bytes:
+    """Fetch the signed PDF for an envelope from BoldSign. Returns raw
+    bytes. Should only be called for envelopes with status=signed or
+    completed; BoldSign returns 404/422 for unsigned documents."""
+    if not _is_configured():
+        raise BoldSignEnvelopeError("BoldSign API key not configured")
+    with _http() as c:
+        r = c.get(
+            "/v1/document/download",
+            params={"documentId": envelope_id},
+        )
+    if r.status_code >= 300:
+        raise BoldSignEnvelopeError(
+            f"BoldSign PDF download failed: {r.status_code} {r.text[:200]}"
+        )
+    return r.content
+
+
 def void_envelope_row(
     db: Session,
     row: SurgeryConsentEnvelope,

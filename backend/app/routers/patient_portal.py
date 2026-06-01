@@ -560,3 +560,47 @@ def portal_consent_sign_link(
     except BoldSignEnvelopeError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return {"sign_url": url}
+
+
+@router.get("/{surgery_id}/consent/signed-pdf/{envelope_id}")
+def portal_consent_signed_pdf(
+    surgery_id: str,
+    envelope_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Stream the signed PDF from BoldSign for download.
+    Only available when envelope.status is signed or completed."""
+    from fastapi import Response
+    env = (db.query(SurgeryConsentEnvelope)
+              .filter(SurgeryConsentEnvelope.id == envelope_id,
+                       SurgeryConsentEnvelope.surgery_id == surgery_id)
+              .first())
+    if env is None:
+        raise HTTPException(status_code=404, detail="envelope not found")
+    if (env.status or "") not in ("signed", "completed"):
+        raise HTTPException(
+            status_code=409,
+            detail="Document is not yet signed by all parties.",
+        )
+    if not env.boldsign_envelope_id:
+        raise HTTPException(status_code=409,
+                              detail="Envelope was not sent via BoldSign.")
+    from app.services.boldsign_envelopes import (
+        download_signed_pdf, BoldSignEnvelopeError,
+    )
+    try:
+        pdf_bytes = download_signed_pdf(env.boldsign_envelope_id)
+    except BoldSignEnvelopeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    # Use a friendly filename based on the template name.
+    label = "consent"
+    if env.template and env.template.name:
+        # Strip non-alphanum to keep filename safe.
+        label = "".join(c if c.isalnum() else "_"
+                          for c in env.template.name)[:60].strip("_") or "consent"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{label}.pdf"'},
+    )
