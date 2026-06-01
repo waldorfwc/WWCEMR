@@ -218,6 +218,12 @@ class Surgery(Base):
     hospital_preop_self_reported    = Column(Boolean, default=False, nullable=False)
     hospital_preop_self_reported_at = Column(DateTime, nullable=True)
 
+    # Patient portal — coordinator can let patient self-schedule even when
+    # balance is unpaid (e.g. payment plan in flight, insurance under appeal).
+    schedule_gate_override    = Column(Boolean, default=False, nullable=False)
+    schedule_gate_override_at = Column(DateTime, nullable=True)
+    schedule_gate_override_by = Column(String(120), nullable=True)
+
     # Post-op
     post_op_appt_date = Column(Date, nullable=True)
     post_op_appt_2nd_date = Column(Date, nullable=True)
