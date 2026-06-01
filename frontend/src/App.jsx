@@ -52,6 +52,7 @@ import MyProfile from './pages/MyProfile'
 import Recalls from './pages/Recalls'
 import Surgery from './pages/Surgery'
 import SurgeryDetail from './pages/SurgeryDetail'
+import StaffInbox from './pages/StaffInbox'
 import SurgeryBlockSchedule from './pages/SurgeryBlockSchedule'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
 import SurgeryCalendar from './pages/SurgeryCalendar'
@@ -115,6 +116,7 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/surgery/waitlist"        element={<SurgeryWaitlist />} />
             <Route path="/surgery/calendar"        element={<SurgeryCalendar />} />
             <Route path="/surgery/:id"         element={<SurgeryDetail />} />
+            <Route path="/messages"            element={<StaffInbox />} />
             <Route path="/larc"                element={<Larc />} />
             <Route path="/larc/assignments/:id" element={<LarcAssignment />} />
             <Route path="/larc/checkouts"      element={<LarcCheckouts />} />
