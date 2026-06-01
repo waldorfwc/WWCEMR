@@ -13,7 +13,7 @@ from app.database import get_db
 from app.services.waystar_service import get_waystar_client, WaystarConnectionError
 from app.services.audit_service import log_action
 from app.config import settings
-from app.services.storage import serve_blob
+from app.services.storage import save_blob_with_key, serve_blob
 
 router = APIRouter(prefix="/waystar", tags=["waystar"])
 
@@ -147,28 +147,30 @@ def sync_eras_sftp(
         client = get_waystar_client()
         downloaded = client.download_eras_sftp(remote_dir=remote_dir)
 
-        # Parse + post each downloaded file through the Phase 2c ERA pipeline.
         from app.services.era_poster import process_era_file
 
         results = []
-        for fpath in downloaded:
+        for filename, body in downloaded:
             try:
-                with open(fpath, "r") as f:
-                    content = f.read()
+                # Persist to GCS first so download_eob_report can serve it
+                # later, even if the ERA poster errors out below.
+                save_blob_with_key(key=f"waystar-reports/{filename}",
+                                      body=body, content_type="text/plain")
+                content = body.decode("utf-8", errors="replace")
                 result = process_era_file(
                     db, content,
-                    filename=os.path.basename(fpath),
+                    filename=filename,
                     user_email="waystar-sftp-sync",
                 )
                 results.append({
-                    "file": os.path.basename(fpath),
+                    "file": filename,
                     "claims_posted": result.claims_posted,
                     "claims_unmatched": result.claims_unmatched,
                     "status": "imported" if result.claims_posted else "no_matches",
                 })
             except Exception as e:
                 results.append({
-                    "file": os.path.basename(fpath),
+                    "file": filename,
                     "status": "error",
                     "error": str(e),
                 })

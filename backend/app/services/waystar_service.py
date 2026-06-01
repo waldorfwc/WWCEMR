@@ -175,8 +175,12 @@ class WaystarClient:
         ssh.close()
         return True
 
-    def download_eras_sftp(self, remote_dir: str = "Out/835", local_dir: str = "./uploads/waystar_835") -> List[str]:
-        """Download ERA files from Waystar SFTP."""
+    def download_eras_sftp(self, remote_dir: str = "Out/835"):
+        """Download ERA files from Waystar SFTP, returning a list of
+        (filename, bytes) tuples. The caller decides where to persist —
+        on Cloud Run we upload each one to gs://wwc-app-docs/waystar-reports/
+        so the download_eob_report endpoint can serve them later."""
+        import io
         import paramiko
         downloaded = []
         ssh = paramiko.SSHClient()
@@ -188,16 +192,14 @@ class WaystarClient:
             password=self._sftp_password(),
         )
         sftp = ssh.open_sftp()
-        os.makedirs(local_dir, exist_ok=True)
-
         try:
             files = sftp.listdir(remote_dir)
-            era_files = [f for f in files if f.lower().endswith((".835", ".era", ".x12", ".txt"))]
+            era_files = [f for f in files
+                            if f.lower().endswith((".835", ".era", ".x12", ".txt"))]
             for filename in era_files:
-                remote_path = f"{remote_dir}/{filename}"
-                local_path = os.path.join(local_dir, filename)
-                sftp.get(remote_path, local_path)
-                downloaded.append(local_path)
+                buf = io.BytesIO()
+                sftp.getfo(f"{remote_dir}/{filename}", buf)
+                downloaded.append((filename, buf.getvalue()))
         finally:
             sftp.close()
             ssh.close()
