@@ -828,6 +828,44 @@ async def portal_clearance_upload(
     }
 
 
+# ─── /{surgery_id}/fmla/upload ────────────────────────────────────
+
+@router.post("/{surgery_id}/fmla/upload")
+async def portal_fmla_upload(
+    surgery_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Patient uploads their employer-provided blank FMLA form."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    contents = await file.read()
+    from app.services.surgery_uploads import store_upload, UploadError
+    try:
+        doc = store_upload(
+            db, s, kind="fmla_blank",
+            filename=file.filename or "fmla.pdf",
+            file_bytes=contents,
+            content_type=file.content_type or "application/octet-stream",
+            uploaded_by="patient:portal",
+        )
+    except UploadError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    # Both payment and upload are required; paid-first path completes here.
+    if s.fmla_fee_paid and not s.fmla_status:
+        s.fmla_status = "submitted"
+        db.commit()
+    return {
+        "id":          str(doc.id),
+        "kind":        doc.kind,
+        "filename":    doc.filename,
+        "uploaded_at": doc.uploaded_at.isoformat(),
+        "fmla_status": s.fmla_status or "",
+    }
+
+
 # ─── /{surgery_id}/uploads ────────────────────────────────────────
 
 @router.get("/{surgery_id}/uploads")

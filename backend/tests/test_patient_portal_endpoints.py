@@ -1014,3 +1014,71 @@ def test_uploads_empty_list(client, db):
                       headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["uploads"] == []
+
+
+def test_fmla_upload_creates_fmla_blank_document(client, db):
+    from unittest.mock import patch, MagicMock
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    pdf_bytes = b"%PDF-1.4\nfmla blank form\n"
+    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+        blob = MagicMock()
+        MockClient.return_value.bucket.return_value.blob.return_value = blob
+        r = client.post(
+            f"/api/patient/portal/{s.id}/fmla/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("my_fmla.pdf", pdf_bytes, "application/pdf")},
+        )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["kind"] == "fmla_blank"
+    assert body["filename"] == "my_fmla.pdf"
+
+
+def test_fmla_upload_flips_status_when_fee_already_paid(client, db):
+    """If patient paid the fee BEFORE uploading (corner case), upload
+    auto-flips fmla_status to 'submitted'."""
+    from unittest.mock import patch, MagicMock
+    from datetime import datetime
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    s.fmla_fee_paid = True
+    s.fmla_fee_paid_at = datetime.utcnow()
+    db.commit()
+    token = issue_portal_token(s)
+    pdf_bytes = b"%PDF-1.4\nfmla\n"
+    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+        blob = MagicMock()
+        MockClient.return_value.bucket.return_value.blob.return_value = blob
+        r = client.post(
+            f"/api/patient/portal/{s.id}/fmla/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("fmla.pdf", pdf_bytes, "application/pdf")},
+        )
+    assert r.status_code == 200
+    db.refresh(s)
+    assert s.fmla_status == "submitted"
+    assert r.json().get("fmla_status", "") == "submitted"
+
+
+def test_fmla_upload_does_not_flip_status_when_fee_unpaid(client, db):
+    """Upload alone (no fee paid) leaves status unchanged."""
+    from unittest.mock import patch, MagicMock
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _seed_surgery(db)
+    db.commit()
+    token = issue_portal_token(s)
+    pdf_bytes = b"%PDF-1.4\nfmla\n"
+    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+        blob = MagicMock()
+        MockClient.return_value.bucket.return_value.blob.return_value = blob
+        r = client.post(
+            f"/api/patient/portal/{s.id}/fmla/upload",
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": ("fmla.pdf", pdf_bytes, "application/pdf")},
+        )
+    assert r.status_code == 200
+    db.refresh(s)
+    assert (s.fmla_status or "") == ""
