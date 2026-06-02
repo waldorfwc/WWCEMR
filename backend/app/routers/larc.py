@@ -753,6 +753,24 @@ def change_device_ownership(device_id: str,
               detail={"from":   old,
                       "to":     payload.new_ownership,
                       "reason": payload.reason.strip()})
+
+    # When flipping patient_owned → wwc_claimed, the patient whose device
+    # was taken is owed a replacement. Push the active assignment's
+    # patient onto the Owed list (idempotent — _push_to_owed dedupes by
+    # chart + original assignment).
+    if old == "patient_owned" and payload.new_ownership == "wwc_claimed":
+        active = next((x for x in (d.assignments or [])
+                       if x.is_active and x.chart_number), None)
+        if active and active.device:
+            from app.services.larc_sweeps import _push_to_owed
+            _push_to_owed(
+                db, active,
+                expires_at=d.expiration_date,
+                actor=by,
+                summary=(f"Added to Owed list: original device claimed by WWC. "
+                         f"Reason: {payload.reason.strip()[:160]}"),
+            )
+
     db.commit(); db.refresh(d)
     return _device_dict(d)
 
