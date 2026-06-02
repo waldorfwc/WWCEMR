@@ -22,9 +22,17 @@ const MOCK = {
   unreadMessages: 0,
 }
 
-// Soft-focus botanical hero (Unsplash; white peony on neutral)
-const HERO_IMG =
-  'https://images.unsplash.com/photo-1487530811176-3780de880c2d?auto=format&fit=crop&w=1800&q=80'
+// Subtle film-grain texture (small SVG noise, plum-tinted). Sits over the
+// gradient hero to give it a soft, premium feel without using photography.
+const GRAIN_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'>
+     <filter id='n'>
+       <feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/>
+       <feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .35 0'/>
+     </filter>
+     <rect width='100%' height='100%' filter='url(%23n)'/>
+   </svg>`
+)}`
 
 const JOURNEY_STEPS = [
   { k: 'benefits', label: 'Benefits', state: 'done' },
@@ -148,11 +156,22 @@ function Sidebar() {
 function DashboardPreview() {
   return (
     <div>
-      {/* Hero */}
-      <section className="relative h-72 overflow-hidden">
-        <div className="absolute inset-0 bg-cover bg-center"
-             style={{ backgroundImage: `url(${HERO_IMG})` }} />
-        <div className="absolute inset-0 bg-gradient-to-r from-plum-900/85 via-plum-700/55 to-plum-400/20" />
+      {/* Hero — soft plum gradient with film-grain texture, no photography */}
+      <section className="relative h-72 overflow-hidden bg-plum-ink">
+        {/* Diagonal plum gradient */}
+        <div className="absolute inset-0 bg-gradient-to-br from-plum-900 via-plum-700 to-plum-400" />
+        {/* Subtle radial highlight in top-right for soft depth */}
+        <div className="absolute inset-0 opacity-60"
+             style={{
+               background: 'radial-gradient(60% 80% at 80% 20%, rgba(255,255,255,0.18), transparent 60%)',
+             }} />
+        {/* Film-grain texture overlay */}
+        <div className="absolute inset-0 opacity-40 mix-blend-overlay pointer-events-none"
+             style={{ backgroundImage: `url("${GRAIN_SVG}")`, backgroundSize: '180px 180px' }} />
+        {/* Decorative monogram in the corner */}
+        <div className="absolute top-8 right-10 font-serif italic text-white/15 text-[140px] leading-none select-none pointer-events-none">
+          W
+        </div>
         <div className="relative h-full flex flex-col justify-end px-10 pb-10">
           <div className="text-[11px] uppercase tracking-[0.22em] text-white/80 font-medium mb-2">
             Saturday · June 2
