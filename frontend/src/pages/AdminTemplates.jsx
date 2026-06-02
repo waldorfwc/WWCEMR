@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Trash2, X, Eye, AlertTriangle, ExternalLink, GraduationCap, ArrowUp, ArrowDown, ArrowUpDown, Search } from 'lucide-react'
-import api from '../utils/api'
+import api, { fmt } from '../utils/api'
 import { useConfirm } from '../components/ui/ConfirmDialog'
 
 
@@ -43,7 +43,7 @@ function LastUpdatedCell({ template }) {
   const who = template.updated_by || template.created_by
   if (!iso) return <span className="text-muted">—</span>
   const d = new Date(iso)
-  const dateStr = d.toLocaleDateString('en-US')
+  const dateStr = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
   const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   return (
     <span title={who ? `${dateStr} ${timeStr} · ${who}` : `${dateStr} ${timeStr}`}>
@@ -1148,7 +1148,7 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
               <li key={t.id} className="flex items-center gap-2 text-[12px]">
                 <span className="font-mono">{t.user_email}</span>
                 <span className="text-[10px] text-muted">
-                  authorized {t.authorized_at?.slice(0, 10)}
+                  authorized {fmt.date(t.authorized_at?.slice(0, 10))}
                   {t.authorized_by && ` by ${t.authorized_by.split('@')[0]}`}
                 </span>
                 <button type="button"
@@ -1220,8 +1220,8 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
                 )}
                 <span className="text-[10px] text-muted">
                   by {c.trainer_email?.split('@')[0] || '—'}
-                  {c.trainer_signed_at && ` · ${c.trainer_signed_at.slice(0, 10)}`}
-                  {c.expires_on && ` · expires ${c.expires_on}`}
+                  {c.trainer_signed_at && ` · ${fmt.date(c.trainer_signed_at.slice(0, 10))}`}
+                  {c.expires_on && ` · expires ${fmt.date(c.expires_on)}`}
                 </span>
                 {pending && (
                   <button type="button"

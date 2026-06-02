@@ -831,7 +831,7 @@ function PainPointOwnerRow({ pp, qc }) {
       {pp.response && !editing && (
         <div className="bg-plum-50/50 border-l-2 border-plum-300 pl-2 py-1 mb-2">
           <div className="text-[10px] text-plum-700 font-semibold mb-0.5">
-            Your response{pp.reviewed_at && ` · ${pp.reviewed_at.slice(0, 10)}`}
+            Your response{pp.reviewed_at && ` · ${fmt.date(pp.reviewed_at.slice(0, 10))}`}
           </div>
           <div className="text-gray-800 whitespace-pre-wrap">{pp.response}</div>
           <button type="button"
@@ -921,7 +921,7 @@ function PainPointResponsesCard() {
             <div className="bg-plum-50/70 border-l-2 border-plum-400 pl-2 py-1">
               <div className="text-[10px] text-plum-700 font-semibold">
                 Response from {pp.reviewed_by?.split('@')[0] || 'owner'}
-                {pp.reviewed_at && ` · ${pp.reviewed_at.slice(0, 10)}`}
+                {pp.reviewed_at && ` · ${fmt.date(pp.reviewed_at.slice(0, 10))}`}
               </div>
               <div className="text-gray-800 whitespace-pre-wrap">{pp.response}</div>
             </div>

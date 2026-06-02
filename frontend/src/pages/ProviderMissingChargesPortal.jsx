@@ -72,7 +72,7 @@ export default function ProviderMissingChargesPortal() {
 
   const charges = data?.charges || []
   const expiresAt = data?.expires_at
-    ? new Date(data.expires_at * 1000).toLocaleDateString()
+    ? new Date(data.expires_at * 1000).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
     : null
 
   return (

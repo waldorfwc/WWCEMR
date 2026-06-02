@@ -25,10 +25,18 @@ api.interceptors.response.use(
   }
 )
 
+// MM/DD/YYYY everywhere — explicit two-digit options so locale defaults
+// don't strip the leading zeros.
+const _MMDDYYYY = { month: '2-digit', day: '2-digit', year: 'numeric' }
+const _MMDDYYYY_HM = {
+  month: '2-digit', day: '2-digit', year: 'numeric',
+  hour: 'numeric', minute: '2-digit',
+}
+
 export const fmt = {
   currency: (val) => `$${parseFloat(val || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-  date: (val) => val ? new Date(val + 'T00:00:00').toLocaleDateString('en-US') : '—',
-  dateTime: (val) => val ? new Date(val).toLocaleString('en-US') : '—',
+  date: (val) => val ? new Date(val + 'T00:00:00').toLocaleDateString('en-US', _MMDDYYYY) : '—',
+  dateTime: (val) => val ? new Date(val).toLocaleString('en-US', _MMDDYYYY_HM) : '—',
   pct: (val) => `${parseFloat(val || 0).toFixed(1)}%`,
   faxStatus: (status) => {
     switch (status) {

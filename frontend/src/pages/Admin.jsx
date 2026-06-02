@@ -94,7 +94,7 @@ function UserRow({ u, allGroups, onFlash, onViewPerms, flashKind, flashText }) {
         <RingCentralCell user={u} />
       </td>
       <td className="table-td text-[11px] text-muted">
-        {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
+        {u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '—'}
       </td>
       <td className="table-td">
         <div className="flex items-center gap-2">
