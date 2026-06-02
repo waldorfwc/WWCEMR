@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Package, User, FileText, Printer, Trash2 } from 'lucide-react'
+import { ArrowLeft, Package, User, FileText, Printer, Trash2, X } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
@@ -29,6 +30,8 @@ export default function LarcDevice() {
     },
     onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
   })
+
+  const [changingOwnership, setChangingOwnership] = useState(false)
 
   if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
   if (error) return <div className="p-6 text-red-600">{error?.response?.data?.detail || error.message}</div>
@@ -79,6 +82,14 @@ export default function LarcDevice() {
                       : 'WWC paid. Billable to insurance.'}>
               {OWNERSHIP_LABELS[d.ownership] || d.ownership_label || d.ownership}
             </span>
+            {canManage && (
+              <button
+                type="button"
+                onClick={() => setChangingOwnership(true)}
+                className="text-[10px] text-plum-700 hover:underline">
+                change
+              </button>
+            )}
             <span className="text-[10px] uppercase tracking-wide bg-plum-100 text-plum-700 px-2 py-1 rounded">
               {d.status.replace(/_/g, ' ')}
             </span>
@@ -187,6 +198,128 @@ export default function LarcDevice() {
             ))}
           </ul>
         )}
+      </div>
+
+      {changingOwnership && (
+        <ChangeOwnershipModal
+          device={d}
+          onClose={() => setChangingOwnership(false)}
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['larc-device', id] })
+            qc.invalidateQueries({ queryKey: ['larc-audit-for-device', id] })
+            qc.invalidateQueries({ queryKey: ['larc-devices'] })
+            setChangingOwnership(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+
+function ChangeOwnershipModal({ device, onClose, onSaved }) {
+  const [newOwn, setNewOwn] = useState(
+    device.ownership === 'patient_owned' ? 'wwc_claimed'
+      : device.ownership === 'wwc_claimed' ? 'patient_owned'
+      : 'wwc_claimed'
+  )
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState(null)
+
+  const save = useMutation({
+    mutationFn: () => api.post(`/larc/devices/${device.id}/change-ownership`,
+                                { new_ownership: newOwn, reason: reason.trim() })
+                          .then(r => r.data),
+    onSuccess: () => onSaved?.(),
+    onError: (e) => setError(e?.response?.data?.detail || 'Save failed.'),
+  })
+
+  const OWN_OPTIONS = [
+    { v: 'patient_owned', l: 'Patient Owned',
+      hint: 'Patient or their insurance paid. WWC does NOT bill insurance.' },
+    { v: 'wwc_claimed',   l: 'WWC Claimed',
+      hint: 'Originally patient-purchased; claimed by WWC (year-of-receipt rule, or patient declined). Billable to insurance.' },
+    { v: 'wwc_owned',     l: 'WWC Owned',
+      hint: 'WWC purchased outright. Billable to insurance.' },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
+          <h2 className="font-serif font-semibold text-ink text-[16px]">
+            Change device ownership
+          </h2>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+        </div>
+
+        <div className="p-5 space-y-4 text-sm">
+          <div className="bg-gray-50 border border-gray-200 rounded p-2 text-[11px]">
+            <div className="text-gray-500 uppercase tracking-wide text-[10px]">Currently</div>
+            <div className="font-medium">
+              {(device.ownership_label || device.ownership || '—')}
+            </div>
+            <div className="text-gray-500 mt-1">
+              Device <span className="font-mono">{device.our_id}</span>
+              {device.device_type_name && <> · {device.device_type_name}</>}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              Change to
+            </div>
+            <div className="space-y-1.5">
+              {OWN_OPTIONS.map(o => (
+                <label key={o.v}
+                  className={`flex gap-2 p-2 rounded border cursor-pointer ${
+                    newOwn === o.v
+                      ? 'border-plum-500 bg-plum-50'
+                      : 'border-gray-200 hover:bg-gray-50'
+                  } ${o.v === device.ownership ? 'opacity-50' : ''}`}>
+                  <input type="radio" name="own" value={o.v}
+                         checked={newOwn === o.v}
+                         disabled={o.v === device.ownership}
+                         onChange={() => setNewOwn(o.v)}
+                         className="mt-0.5" />
+                  <div>
+                    <div className="font-medium">{o.l}</div>
+                    <div className="text-[10px] text-gray-600">{o.hint}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              Reason <span className="text-red-600">*</span>
+            </div>
+            <textarea
+              className="input text-[12px] w-full"
+              rows={3}
+              placeholder="e.g., Patient confirmed she does not want the device (called 2026-05-15)."
+              value={reason}
+              onChange={e => setReason(e.target.value)} />
+            <div className="text-[10px] text-gray-500 mt-1">
+              Recorded in the device's audit trail. Required.
+            </div>
+          </div>
+
+          {error && <div className="text-red-600 text-xs">{error}</div>}
+        </div>
+
+        <div className="sticky bottom-0 bg-white border-t border-border-subtle px-5 py-3 flex justify-end gap-2">
+          <button onClick={onClose}
+                  className="text-sm text-muted hover:underline">Cancel</button>
+          <button onClick={() => save.mutate()}
+                  disabled={save.isPending || !reason.trim() || newOwn === device.ownership}
+                  className="btn-primary text-sm">
+            {save.isPending ? 'Saving…' : 'Save change'}
+          </button>
+        </div>
       </div>
     </div>
   )

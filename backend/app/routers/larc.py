@@ -707,6 +707,50 @@ class DevicePatch(BaseModel):
     notes: Optional[str] = None
 
 
+class ChangeOwnershipIn(BaseModel):
+    new_ownership: str           # 'patient_owned' | 'wwc_owned' | 'wwc_claimed'
+    reason: str
+
+
+@router.post("/devices/{device_id}/change-ownership")
+def change_device_ownership(device_id: str,
+                            payload: ChangeOwnershipIn,
+                            db: Session = Depends(get_db),
+                            current_user: dict = Depends(require_permission("larc:manage"))):
+    """Re-classify the ownership of a device — e.g. flip a patient-owned
+    device to 'WWC Claimed' after the patient declined / didn't use it
+    within the year-of-receipt window. Reason is required and the
+    transition is recorded in the LARC audit log."""
+    from app.models.larc import LARC_OWNERSHIP_VALUES
+    if payload.new_ownership not in LARC_OWNERSHIP_VALUES:
+        raise HTTPException(status_code=422,
+                            detail=f"new_ownership must be one of {list(LARC_OWNERSHIP_VALUES)}")
+    if not (payload.reason or "").strip():
+        raise HTTPException(status_code=422, detail="reason is required")
+
+    d = db.query(LarcDevice).options(joinedload(LarcDevice.device_type))\
+          .filter(LarcDevice.id == device_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="device not found")
+    old = d.ownership or "wwc_owned"
+    if old == payload.new_ownership:
+        raise HTTPException(status_code=409,
+                            detail=f"Device is already classified as '{old}'.")
+    d.ownership = payload.new_ownership
+    by = current_user.get("email") or "system"
+    log_audit(db, actor=by, action="ownership_changed",
+              device=d,
+              summary=(f"Ownership changed: "
+                       f"{old.replace('_', ' ')} → "
+                       f"{payload.new_ownership.replace('_', ' ')}. "
+                       f"Reason: {payload.reason.strip()[:200]}"),
+              detail={"from":   old,
+                      "to":     payload.new_ownership,
+                      "reason": payload.reason.strip()})
+    db.commit(); db.refresh(d)
+    return _device_dict(d)
+
+
 @router.delete("/devices/{device_id}", status_code=204)
 def delete_device(device_id: str,
                   db: Session = Depends(get_db),
