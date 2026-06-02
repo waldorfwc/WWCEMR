@@ -227,6 +227,9 @@ class Surgery(Base):
     # Post-op
     post_op_appt_date = Column(Date, nullable=True)
     post_op_appt_2nd_date = Column(Date, nullable=True)
+    # Visit location: "office" | "telehealth" | None
+    post_op_appt_location = Column(String(20), nullable=True)
+    post_op_appt_2nd_location = Column(String(20), nullable=True)
     post_op_call_status = Column(String(40), nullable=True)
     operative_report_status = Column(String(20), default="not_received", nullable=False)
     # values: not_received | received | not_required | completed

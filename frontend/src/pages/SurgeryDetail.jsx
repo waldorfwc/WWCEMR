@@ -292,6 +292,22 @@ export default function SurgeryDetail() {
               </div>
             )}
           </Field>
+
+          <Field label="Device">
+            <DeviceCell surgery={s} />
+          </Field>
+
+          <Field label="Consent">
+            <ConsentStatusCell surgery={s} />
+          </Field>
+
+          <Field label="Pathology">
+            <PathologyStatusCell surgery={s} />
+          </Field>
+
+          <Field label="Billed">
+            <BilledStatusCell surgery={s} />
+          </Field>
         </div>
       </div>
 
@@ -816,6 +832,143 @@ function Field({ label, children }) {
 }
 
 
+function jumpTo(kind) {
+  const el = document.getElementById(`milestone-${kind}`)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+
+function DeviceCell({ surgery }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const { data } = useQuery({
+    queryKey: ['larc-assignments-by-surgery', surgery.id],
+    queryFn: () => api.get('/larc/assignments', {
+      params: { linked_surgery_id: surgery.id, include_completed: true },
+    }).then(r => r.data),
+    staleTime: 30_000,
+  })
+  const assignments = data?.assignments || []
+  const active = assignments.find(a => !['cancelled', 'billed'].includes(a.status))
+  const completed = !active && assignments.length > 0 ? assignments[0] : null
+
+  if (active) {
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link to={`/larc/assignments/${active.id}`}
+              className="text-plum-700 hover:underline text-sm font-medium">
+          {active.device_type_name} #{active.device_our_id || '—'}
+        </Link>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+          active.status === 'inserted' ? 'bg-blue-100 text-blue-700'
+            : 'bg-amber-100 text-amber-700'
+        }`}>
+          {active.status.replace(/_/g, ' ')}
+        </span>
+        <button className="text-[10px] text-plum-700 hover:underline"
+                onClick={() => setPickerOpen(true)}>change</button>
+        {pickerOpen && <LarcDevicePickerDrawer surgery={surgery}
+                                                  preferred={inferOpDeviceHint(surgery)}
+                                                  onClose={() => setPickerOpen(false)} />}
+      </div>
+    )
+  }
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {completed && (
+        <Link to={`/larc/assignments/${completed.id}`}
+              className="text-gray-500 hover:underline text-xs">
+          {completed.device_type_name} (billed)
+        </Link>
+      )}
+      <button className="text-[11px] text-plum-700 hover:underline"
+              onClick={() => setPickerOpen(true)}>
+        {completed ? '+ Add another' : '+ Pick Device'}
+      </button>
+      {pickerOpen && <LarcDevicePickerDrawer surgery={surgery}
+                                                preferred={inferOpDeviceHint(surgery)}
+                                                onClose={() => setPickerOpen(false)} />}
+    </div>
+  )
+}
+
+
+const CONSENT_LABELS = {
+  not_required: 'Not required',
+  required:     'Required',
+  sent:         'Sent',
+  signed:       'Signed',
+  declined:     'Declined',
+  voided:       'Voided',
+  completed:    'Completed',
+}
+
+function ConsentStatusCell({ surgery }) {
+  const status = surgery.consent_status || 'not_required'
+  const envelopes = surgery.consent_envelopes || []
+  const isSigned = status === 'signed' || status === 'completed'
+    || (envelopes.length > 0 && envelopes.every(e => e.status === 'signed'))
+  const isSent = envelopes.length > 0 && !isSigned
+  const tone = isSigned ? 'bg-green-100 text-green-700'
+    : isSent ? 'bg-blue-100 text-blue-700'
+    : status === 'declined' || status === 'voided' ? 'bg-red-100 text-red-700'
+    : status === 'required' ? 'bg-amber-100 text-amber-700'
+    : 'bg-gray-100 text-gray-600'
+  const label = isSigned ? 'Signed' : isSent ? 'Sent' : (CONSENT_LABELS[status] || status)
+  return (
+    <button onClick={() => jumpTo('consent')}
+            className="flex items-center gap-1 text-left group">
+      <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+        {label}
+      </span>
+      <span className="text-[10px] text-plum-700 group-hover:underline">jump ↓</span>
+    </button>
+  )
+}
+
+
+const PATHOLOGY_LABELS = {
+  none_expected: 'None expected',
+  expected:      'Expected',
+  received:      'Received',
+  not_required:  'Not required',
+  completed:     'Completed',
+}
+
+function PathologyStatusCell({ surgery }) {
+  const status = surgery.pathology_status || 'none_expected'
+  const tone = status === 'received' || status === 'completed' ? 'bg-green-100 text-green-700'
+    : status === 'expected' ? 'bg-amber-100 text-amber-700'
+    : 'bg-gray-100 text-gray-600'
+  return (
+    <button onClick={() => jumpTo('path_report')}
+            className="flex items-center gap-1 text-left group">
+      <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+        {PATHOLOGY_LABELS[status] || status}
+      </span>
+      <span className="text-[10px] text-plum-700 group-hover:underline">jump ↓</span>
+    </button>
+  )
+}
+
+
+function BilledStatusCell({ surgery }) {
+  const billed = !!surgery.billed_at
+  const tone = billed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+  const label = billed
+    ? (surgery.modmed_claim_number ? `Billed · #${surgery.modmed_claim_number}` : 'Billed')
+    : 'Not billed'
+  return (
+    <button onClick={() => jumpTo('surgery_billed')}
+            className="flex items-center gap-1 text-left group">
+      <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+        {label}
+      </span>
+      <span className="text-[10px] text-plum-700 group-hover:underline">jump ↓</span>
+    </button>
+  )
+}
+
+
 const FACILITY_SHORT = {
   medstar: 'MedStar',
   crmc:    'Charles Regional',
@@ -960,20 +1113,31 @@ function ProcedureListEditor({ s, onPatch }) {
   const [picked, setPicked] = useState('')
 
   if (!editing) {
+    const hasProcs = (s.procedures || []).length > 0
     return (
       <div className="flex items-start gap-2">
         <div className="flex-1">
           {s.is_robotic && <span className="text-blue-700">🤖 </span>}
-          {(s.procedures || []).length > 0
+          {hasProcs
             ? (s.procedures || []).map((p, i) => (
                 <div key={i}>
                   {p.description}
                   {p.cpt && <span className="text-gray-500 ml-1">[{p.cpt}]</span>}
                 </div>
               ))
-            : <span className="text-gray-400">—</span>}
+            : (
+                <button className="text-[11px] text-plum-700 hover:underline"
+                        onClick={() => setEditing(true)}>
+                  + Add Procedure
+                </button>
+              )}
         </div>
-        <button className="text-[10px] text-plum-700 hover:underline shrink-0" onClick={() => setEditing(true)}>edit</button>
+        {hasProcs && (
+          <button className="text-[11px] text-plum-700 hover:underline shrink-0 flex items-center gap-0.5"
+                  onClick={() => setEditing(true)} title="Edit procedures">
+            <Edit3 size={10} /> Edit
+          </button>
+        )}
       </div>
     )
   }
@@ -1037,19 +1201,30 @@ function DiagnosisListEditor({ s, onPatch }) {
   const [picked, setPicked] = useState('')
 
   if (!editing) {
+    const hasDx = (s.diagnoses || []).length > 0
     return (
       <div className="flex items-start gap-2">
         <div className="flex-1">
-          {(s.diagnoses || []).length > 0
+          {hasDx
             ? (s.diagnoses || []).map((d, i) => (
                 <div key={i}>
                   {d.description}
                   {d.icd && <span className="text-gray-500 ml-1">{d.icd}</span>}
                 </div>
               ))
-            : <span className="text-gray-400">—</span>}
+            : (
+                <button className="text-[11px] text-plum-700 hover:underline"
+                        onClick={() => setEditing(true)}>
+                  + Add Diagnosis
+                </button>
+              )}
         </div>
-        <button className="text-[10px] text-plum-700 hover:underline shrink-0" onClick={() => setEditing(true)}>edit</button>
+        {hasDx && (
+          <button className="text-[11px] text-plum-700 hover:underline shrink-0 flex items-center gap-0.5"
+                  onClick={() => setEditing(true)} title="Edit diagnoses (multiple OK)">
+            <Edit3 size={10} /> Edit
+          </button>
+        )}
       </div>
     )
   }
@@ -1819,7 +1994,7 @@ function MilestoneCard({ m, surgery }) {
   const isResolved = ['done', 'skipped', 'not_applicable'].includes(m.status)
   const [open, setOpen] = useState(!isResolved)
   return (
-    <div className="card !p-3">
+    <div id={`milestone-${m.kind}`} className="card !p-3 scroll-mt-16">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           {/* Header (status icon, title, action buttons) — reuses MilestoneRow */}
@@ -2057,9 +2232,25 @@ function SurgeryConfirmedBody({ surgery }) {
 
 function PostOpApptsCardBody({ surgery }) {
   const qc = useQueryClient()
-  const visits = surgery.post_op_schedule_required || []
+  // Default to at least 2 visit slots; if the procedure rules say more, use those.
+  // If only 1 rule matched, still allow staff to add a second appt.
+  const ruleVisits = surgery.post_op_schedule_required || []
+  const visits = ruleVisits.length >= 2
+    ? ruleVisits
+    : ruleVisits.length === 1
+        ? [...ruleVisits, { label: 'Additional follow-up', days_post_op: null,
+                            suggested_location: 'telehealth' }]
+        : [{ label: 'Follow-up appointment', days_post_op: null,
+             suggested_location: 'office' },
+           { label: 'Additional follow-up', days_post_op: null,
+             suggested_location: 'telehealth' }]
+
   const [first, setFirst] = useState(surgery.post_op_appt_date || '')
   const [second, setSecond] = useState(surgery.post_op_appt_2nd_date || '')
+  const [firstLoc, setFirstLoc] = useState(
+    surgery.post_op_appt_location || visits[0]?.suggested_location || 'office')
+  const [secondLoc, setSecondLoc] = useState(
+    surgery.post_op_appt_2nd_location || visits[1]?.suggested_location || 'telehealth')
 
   // Suggested dates = surgery date + days_post_op
   const suggested = useMemo(() => {
@@ -2067,10 +2258,10 @@ function PostOpApptsCardBody({ surgery }) {
     const base = new Date(surgery.scheduled_date + 'T00:00:00')
     const out = {}
     visits.forEach((v, i) => {
+      if (v.days_post_op == null) return
       const d = new Date(base)
       d.setDate(d.getDate() + v.days_post_op)
-      const iso = d.toISOString().slice(0, 10)
-      out[i] = iso
+      out[i] = d.toISOString().slice(0, 10)
     })
     return out
   }, [surgery.scheduled_date, visits])
@@ -2078,7 +2269,9 @@ function PostOpApptsCardBody({ surgery }) {
   const save = useMutation({
     mutationFn: () => api.post(`/surgery/${surgery.id}/post-op-appts`,
                                 { first_date: first || null,
-                                  second_date: second || null })
+                                  second_date: second || null,
+                                  first_location: first ? firstLoc : null,
+                                  second_location: second ? secondLoc : null })
                           .then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
@@ -2096,70 +2289,110 @@ function PostOpApptsCardBody({ surgery }) {
     )
   }
 
-  if (visits.length === 0) {
-    return (
-      <div className="space-y-2 text-[12px] text-gray-700">
-        <div className="text-amber-700">
-          No specific post-op schedule rule matched this surgery's procedures.
-          Enter the follow-up date manually:
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">
-            Follow-up appointment
-          </div>
-          <input type="date" className="input text-[12px]"
-                 value={first}
-                 onChange={e => setFirst(e.target.value)} />
-        </div>
-        <button className="btn-primary text-[11px]"
-                onClick={() => save.mutate()}
-                disabled={save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save'}
-        </button>
-      </div>
-    )
-  }
+  const savedRows = []
+  if (surgery.post_op_appt_date) savedRows.push({
+    label: visits[0]?.label || 'Follow-up appointment',
+    date: surgery.post_op_appt_date,
+    location: surgery.post_op_appt_location })
+  if (surgery.post_op_appt_2nd_date) savedRows.push({
+    label: visits[1]?.label || 'Additional follow-up',
+    date: surgery.post_op_appt_2nd_date,
+    location: surgery.post_op_appt_2nd_location })
 
   const allFilled = visits.length === 1
     ? !!first
     : !!first && !!second
 
   function applySuggested() {
-    if (visits[0]) setFirst(suggested[0] || '')
-    if (visits[1]) setSecond(suggested[1] || '')
+    if (visits[0] && suggested[0]) setFirst(suggested[0])
+    if (visits[1] && suggested[1]) setSecond(suggested[1])
+  }
+
+  function LocationToggle({ value, onChange, suggestedLoc }) {
+    return (
+      <div className="flex items-center gap-1 text-[11px]">
+        <button type="button"
+                onClick={() => onChange('office')}
+                className={`px-1.5 py-0.5 rounded border ${
+                  value === 'office'
+                    ? 'bg-plum-100 border-plum-300 text-plum-800'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
+                }`}
+                title={suggestedLoc === 'office' ? 'Suggested' : ''}>
+          Office{suggestedLoc === 'office' && <span className="text-[9px]"> ★</span>}
+        </button>
+        <button type="button"
+                onClick={() => onChange('telehealth')}
+                className={`px-1.5 py-0.5 rounded border ${
+                  value === 'telehealth'
+                    ? 'bg-plum-100 border-plum-300 text-plum-800'
+                    : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
+                }`}
+                title={suggestedLoc === 'telehealth' ? 'Suggested' : ''}>
+          Telehealth{suggestedLoc === 'telehealth' && <span className="text-[9px]"> ★</span>}
+        </button>
+      </div>
+    )
   }
 
   return (
-    <div className="space-y-2 text-[12px] text-gray-700">
+    <div className="space-y-3 text-[12px] text-gray-700">
+      {/* Saved summary */}
+      {savedRows.length > 0 && (
+        <div className="bg-gray-50 border border-gray-200 rounded p-2 space-y-1">
+          <div className="text-[10px] uppercase tracking-wide text-gray-500">Scheduled</div>
+          {savedRows.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <span className="text-[11px] text-gray-700 w-32 shrink-0">{r.label}:</span>
+              <span className="text-[12px] font-medium">{fmt.date(r.date)}</span>
+              {r.location && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                  r.location === 'telehealth'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'bg-amber-50 text-amber-800'
+                }`}>
+                  {r.location === 'telehealth' ? 'Telehealth' : 'Office'}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="text-[11px] text-gray-600">
-        Schedule the patient's post-op appointment{visits.length > 1 ? 's' : ''} per practice
-        rules. Both dates must be entered to mark this milestone done.
+        {ruleVisits.length === 0
+          ? <>No specific schedule rule matched. Add up to 2 follow-up appointments below.</>
+          : <>Practice rule: {ruleVisits.map(v => v.label).join(' + ')}.
+              {' '}Both dates must be entered to mark this milestone done.</>}
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         {visits.map((v, i) => {
           const value = i === 0 ? first : second
           const setValue = i === 0 ? setFirst : setSecond
+          const loc = i === 0 ? firstLoc : secondLoc
+          const setLoc = i === 0 ? setFirstLoc : setSecondLoc
           return (
-            <div key={i} className="flex items-center gap-2">
-              <span className="text-[11px] text-gray-700 w-32 shrink-0">{v.label}:</span>
-              <input type="date" className="input text-[12px]"
-                     value={value}
-                     onChange={e => setValue(e.target.value)} />
-              {suggested[i] && (
-                <button type="button"
-                        className="text-[10px] text-plum-700 hover:underline"
-                        onClick={() => setValue(suggested[i])}
-                        title={`Suggested: surgery date + ${v.days_post_op} days`}>
-                  use {fmt.date(suggested[i])}
-                </button>
-              )}
-              {value && i === 0 && surgery.post_op_appt_date === value && (
-                <span className="text-[10px] text-green-700">saved</span>
-              )}
-              {value && i === 1 && surgery.post_op_appt_2nd_date === value && (
-                <span className="text-[10px] text-green-700">saved</span>
-              )}
+            <div key={i} className="border border-gray-100 rounded p-1.5 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] text-gray-700 w-32 shrink-0">{v.label}:</span>
+                <input type="date" className="input text-[12px]"
+                       value={value}
+                       onChange={e => setValue(e.target.value)} />
+                {suggested[i] && (
+                  <button type="button"
+                          className="text-[10px] text-plum-700 hover:underline"
+                          onClick={() => setValue(suggested[i])}
+                          title={`Suggested: surgery date + ${v.days_post_op} days`}>
+                    use {fmt.date(suggested[i])}
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2 pl-32">
+                <span className="text-[10px] text-gray-500">Visit type:</span>
+                <LocationToggle value={loc} onChange={setLoc}
+                                suggestedLoc={v.suggested_location} />
+              </div>
             </div>
           )
         })}
@@ -2173,7 +2406,7 @@ function PostOpApptsCardBody({ surgery }) {
             ? 'Saving…'
             : allFilled ? 'Save & mark done' : 'Save'}
         </button>
-        {visits.length > 0 && Object.keys(suggested).length > 0 && (
+        {Object.keys(suggested).length > 0 && (
           <button type="button"
                   className="btn-secondary text-[11px]"
                   onClick={applySuggested}>

@@ -29,39 +29,44 @@ from app.models.surgery import Surgery
 
 @dataclass
 class PostOpVisit:
-    label: str           # human label, e.g. "1 week post-op"
-    days_post_op: int    # expected days after surgery
+    label: str               # human label, e.g. "1 week post-op"
+    days_post_op: int        # expected days after surgery
+    suggested_location: str = "office"   # "office" | "telehealth"
 
 
 # Ordered most-demanding → least. First match in this list wins for each
 # procedure name. A surgery's overall schedule = union of all matches,
 # de-duplicated by label.
+#
+# Default location convention: the first/early visit is in-office
+# (wound + suture check, vitals, sometimes labs). Later visits are
+# typically a general check-in and run fine over telehealth.
 PROCEDURE_RULES: list[tuple[list[str], list[PostOpVisit]]] = [
     # Hysterectomy variants (TAH, TLH, LAVH, robotic, supracervical, etc.)
     (["hysterectomy"], [
-        PostOpVisit("1 week post-op", 7),
-        PostOpVisit("6 weeks post-op", 42),
+        PostOpVisit("1 week post-op", 7, "office"),
+        PostOpVisit("6 weeks post-op", 42, "telehealth"),
     ]),
     # Myomectomy
     (["myomectomy"], [
-        PostOpVisit("1 week post-op", 7),
-        PostOpVisit("4 weeks post-op", 28),
+        PostOpVisit("1 week post-op", 7, "office"),
+        PostOpVisit("4 weeks post-op", 28, "telehealth"),
     ]),
     # Endometrial ablation (NovaSure, ThermaChoice, etc.)
     (["ablation"], [
-        PostOpVisit("2 months post-op", 60),
+        PostOpVisit("2 months post-op", 60, "telehealth"),
     ]),
     # LEEP
     (["leep"], [
-        PostOpVisit("2 weeks post-op", 14),
+        PostOpVisit("2 weeks post-op", 14, "office"),
     ]),
     # D&C / Hysteroscopy
     (["d&c", "dilation", "dilatation", "hysteroscopy"], [
-        PostOpVisit("2 weeks post-op", 14),
+        PostOpVisit("2 weeks post-op", 14, "office"),
     ]),
     # Bare laparoscopy (when no more-specific match above caught it)
     (["laparoscopy", "laparoscopic"], [
-        PostOpVisit("1 week post-op", 7),
+        PostOpVisit("1 week post-op", 7, "office"),
     ]),
 ]
 

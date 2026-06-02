@@ -244,6 +244,9 @@ def _apply_lightweight_migrations():
         ("surgeries", "reschedule_count", "INTEGER DEFAULT 0"),
         ("surgeries", "last_rescheduled_at", "DATETIME"),
         ("surgeries", "last_rescheduled_by", "VARCHAR(80)"),
+        # Post-op visit location ("office" | "telehealth")
+        ("surgeries", "post_op_appt_location",     "VARCHAR(20)"),
+        ("surgeries", "post_op_appt_2nd_location", "VARCHAR(20)"),
         # Billing (Phase 3)
         ("surgeries", "modmed_claim_number", "VARCHAR(80)"),
         ("surgeries", "billed_icd10_codes", "JSON"),

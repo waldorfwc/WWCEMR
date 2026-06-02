@@ -111,6 +111,8 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "post_op_appt_date": str(s.post_op_appt_date) if s.post_op_appt_date else None,
         "post_op_appt_2nd_date": (
             str(s.post_op_appt_2nd_date) if s.post_op_appt_2nd_date else None),
+        "post_op_appt_location":     s.post_op_appt_location,
+        "post_op_appt_2nd_location": s.post_op_appt_2nd_location,
         "post_op_schedule_required": _post_op_visits_serialized(s),
         "auth_status": s.auth_status,
         "auth_number": s.auth_number,
@@ -168,6 +170,7 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "status": s.status,
         "sub_flag": s.sub_flag,
         "is_urgent": s.urgency == "urgent",
+        "urgency":   s.urgency,
         "complexity":       s.complexity,
         "duration_minutes": s.duration_minutes,
         "duration_source":  s.duration_source,
@@ -386,7 +389,8 @@ def _post_op_visits_serialized(s: Surgery) -> list[dict]:
     inputs on the post-op-appts milestone card."""
     from app.services.post_op_schedule import determine_post_op_schedule
     return [
-        {"label": v.label, "days_post_op": v.days_post_op}
+        {"label": v.label, "days_post_op": v.days_post_op,
+         "suggested_location": v.suggested_location}
         for v in determine_post_op_schedule(s)
     ]
 
@@ -2267,6 +2271,8 @@ def resolve_blocked_conflict(
 class PostOpApptsPayload(BaseModel):
     first_date: Optional[str] = None       # YYYY-MM-DD or null/blank to clear
     second_date: Optional[str] = None
+    first_location: Optional[str] = None   # "office" | "telehealth" | null
+    second_location: Optional[str] = None
 
 
 @router.get("/{surgery_id}/post-op-schedule")
@@ -2325,6 +2331,17 @@ def save_post_op_appts(
 
     s.post_op_appt_date = _parse_date(payload.first_date)
     s.post_op_appt_2nd_date = _parse_date(payload.second_date)
+
+    def _normalize_location(v):
+        if v is None or v == "":
+            return None
+        v = v.strip().lower()
+        if v not in ("office", "telehealth"):
+            raise HTTPException(status_code=422,
+                                detail=f"invalid location: {v}")
+        return v
+    s.post_op_appt_location = _normalize_location(payload.first_location)
+    s.post_op_appt_2nd_location = _normalize_location(payload.second_location)
 
     # Auto-close the milestone when all required appts are filled
     m = next((mm for mm in s.milestones if mm.kind == "post_op_appts_scheduled"), None)
