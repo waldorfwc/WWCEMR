@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import MessagesSection from '../components/MessagesSection'
+import PdfPreviewDrawer from '../components/PdfPreviewDrawer'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MatchesDrawer } from './SurgeryWaitlist'
 import { useFacilities } from '../hooks/useFacilities'
@@ -554,6 +555,7 @@ function BoardingSlipPanel({ surgery }) {
   const { labelOf } = useFacilities()
   const [error, setError] = useState(null)
   const [generated, setGenerated] = useState(null)
+  const [previewing, setPreviewing] = useState(false)
 
   const generate = useMutation({
     mutationFn: () => api.post(`/surgery/${surgery.id}/boarding-slip`).then(r => r.data),
@@ -591,14 +593,28 @@ function BoardingSlipPanel({ surgery }) {
           </button>
           {error && <div className="text-xs text-red-600">{error}</div>}
           {generated && (
-            <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between">
-              <span>✓ Generated <code>{generated.filename}</code></span>
-              <a href={`/api${generated.download_url.replace(/^\/api/, '')}`}
-                 download
-                 className="text-plum-700 hover:underline flex items-center gap-1">
-                <Download size={11} /> Download
-              </a>
+            <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between gap-2">
+              <span className="truncate">✓ Generated <code>{generated.filename}</code></span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button onClick={() => setPreviewing(true)}
+                        className="text-plum-700 hover:underline flex items-center gap-1">
+                  <Eye size={11} /> Preview
+                </button>
+                <a href={`/api${generated.download_url.replace(/^\/api/, '')}`}
+                   download
+                   className="text-plum-700 hover:underline flex items-center gap-1">
+                  <Download size={11} /> Download
+                </a>
+              </div>
             </div>
+          )}
+          {previewing && generated && (
+            <PdfPreviewDrawer
+              apiPath={generated.download_url.replace(/^\/api/, '')}
+              filename={generated.filename}
+              title={`Preview · ${generated.filename}`}
+              onClose={() => setPreviewing(false)}
+            />
           )}
           <FilesPanel surgery={surgery} kindFilter="boarding_slip_confirmation"
                        label="Hospital Posting Confirmation" />
@@ -740,6 +756,7 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
   const [notes, setNotes] = useState('')
   const [file, setFile] = useState(null)
   const [error, setError] = useState(null)
+  const [previewFile, setPreviewFile] = useState(null)
 
   const upload = useMutation({
     mutationFn: () => {
@@ -801,24 +818,42 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
         <div className="text-[11px] text-gray-400 italic">No files uploaded yet.</div>
       ) : (
         <ul className="text-xs divide-y divide-gray-100">
-          {files.map(f => (
-            <li key={f.id} className="py-1.5 flex items-baseline gap-3">
-              {!kindFilter && (
-                <span className="text-[10px] uppercase text-gray-500 w-20 shrink-0">
-                  {f.kind.replace(/_/g, ' ')}
+          {files.map(f => {
+            const isPdf = (f.mime_type || '').includes('pdf')
+              || (f.filename || '').toLowerCase().endsWith('.pdf')
+            return (
+              <li key={f.id} className="py-1.5 flex items-baseline gap-3">
+                {!kindFilter && (
+                  <span className="text-[10px] uppercase text-gray-500 w-20 shrink-0">
+                    {f.kind.replace(/_/g, ' ')}
+                  </span>
+                )}
+                <a href={`/api${f.download_url.replace(/^\/api/, '')}`}
+                   download
+                   className="text-plum-700 hover:underline flex-1 truncate">
+                  {f.filename}
+                </a>
+                {isPdf && (
+                  <button onClick={() => setPreviewFile(f)}
+                          className="text-[10px] text-plum-700 hover:underline shrink-0 flex items-center gap-0.5">
+                    <Eye size={10} /> Preview
+                  </button>
+                )}
+                <span className="text-[10px] text-gray-500 shrink-0">
+                  {fmt.date(f.uploaded_at?.slice(0, 10))} · {f.uploaded_by?.split('@')[0] || '—'}
                 </span>
-              )}
-              <a href={`/api${f.download_url.replace(/^\/api/, '')}`}
-                 download
-                 className="text-plum-700 hover:underline flex-1 truncate">
-                {f.filename}
-              </a>
-              <span className="text-[10px] text-gray-500 shrink-0">
-                {fmt.date(f.uploaded_at?.slice(0, 10))} · {f.uploaded_by?.split('@')[0] || '—'}
-              </span>
-            </li>
-          ))}
+              </li>
+            )
+          })}
         </ul>
+      )}
+      {previewFile && (
+        <PdfPreviewDrawer
+          apiPath={previewFile.download_url.replace(/^\/api/, '')}
+          filename={previewFile.filename}
+          title={`Preview · ${previewFile.filename}`}
+          onClose={() => setPreviewFile(null)}
+        />
       )}
     </div>
   )
@@ -2634,6 +2669,7 @@ function ClearanceFormGenerator({ surgery }) {
   const qc = useQueryClient()
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [previewing, setPreviewing] = useState(false)
 
   const generate = useMutation({
     mutationFn: () => api.post(`/surgery/${surgery.id}/clearance/generate-form`).then(r => r.data),
@@ -2665,13 +2701,19 @@ function ClearanceFormGenerator({ surgery }) {
       {error && <div className="text-xs text-red-600">{error}</div>}
       {result && (
         <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 space-y-0.5">
-          <div className="flex items-baseline justify-between">
-            <span>✓ Generated <code>{result.filename}</code></span>
-            <a href={`/api${result.download_url.replace(/^\/api/, '')}`}
-               download
-               className="text-plum-700 hover:underline flex items-center gap-1">
-              <Download size={11} /> Download
-            </a>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="truncate">✓ Generated <code>{result.filename}</code></span>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => setPreviewing(true)}
+                      className="text-plum-700 hover:underline flex items-center gap-1">
+                <Eye size={11} /> Preview
+              </button>
+              <a href={`/api${result.download_url.replace(/^\/api/, '')}`}
+                 download
+                 className="text-plum-700 hover:underline flex items-center gap-1">
+                <Download size={11} /> Download
+              </a>
+            </div>
           </div>
           <div className="text-[10px] text-gray-600">
             {result.email_sent
@@ -2679,6 +2721,14 @@ function ClearanceFormGenerator({ surgery }) {
               : <>⚠ Patient email not sent (no email on file or send failed). Share the download manually.</>}
           </div>
         </div>
+      )}
+      {previewing && result && (
+        <PdfPreviewDrawer
+          apiPath={result.download_url.replace(/^\/api/, '')}
+          filename={result.filename}
+          title={`Preview · ${result.filename}`}
+          onClose={() => setPreviewing(false)}
+        />
       )}
     </div>
   )
