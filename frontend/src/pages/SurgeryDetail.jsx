@@ -2131,7 +2131,7 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Devices" anchor="group-devices" tone="teal">
-        {ms('device_assigned')}
+        <RequestDevicePanel surgery={surgery} />
         <LarcDevicePickerCard surgery={surgery} flat />
       </SurgerySection>
     </>
@@ -4089,6 +4089,127 @@ function inferOpDeviceHint(surgery) {
     if (all.includes(h.needle)) return h.device
   }
   return null
+}
+
+
+function RequestDevicePanel({ surgery }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [typeId, setTypeId] = useState('')
+  const [notes, setNotes] = useState('')
+
+  const { data: types } = useQuery({
+    queryKey: ['larc-device-types'],
+    queryFn: () => api.get('/larc/device-types').then(r => r.data),
+    staleTime: 60_000,
+  })
+
+  // Existing pharmacy_order assignments already attached to this surgery
+  const { data: existing } = useQuery({
+    queryKey: ['larc-assignments-by-surgery', surgery.id],
+    queryFn: () => api.get('/larc/assignments', {
+      params: { linked_surgery_id: surgery.id, include_completed: true },
+    }).then(r => r.data),
+    staleTime: 30_000,
+  })
+  const pendingOrders = (existing?.assignments || []).filter(
+    a => a.source_flow === 'pharmacy_order' && a.device_id == null
+  )
+
+  const create = useMutation({
+    mutationFn: () => api.post('/larc/assignments', {
+      chart_number:       surgery.chart_number || '',
+      patient_name:       surgery.patient_name || '',
+      patient_dob:        surgery.dob || null,
+      patient_email:      surgery.email || null,
+      patient_phone:      surgery.cell_phone || surgery.phone || null,
+      primary_insurance:  surgery.primary_insurance || null,
+      source_flow:        'pharmacy_order',
+      device_type_id:     typeId,
+      linked_surgery_id:  surgery.id,
+      notes:              notes || null,
+    }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['larc-assignments-by-surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['larc-assignments'] })
+      setOpen(false); setTypeId(''); setNotes('')
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Request failed'),
+  })
+
+  return (
+    <div className="space-y-2 text-[12px]">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <Package size={14} className="text-teal-700" />
+          Device Request
+        </h3>
+      </div>
+
+      {pendingOrders.length > 0 && (
+        <div className="space-y-1">
+          {pendingOrders.map(a => (
+            <div key={a.id}
+                 className="flex items-baseline justify-between border-l-2 border-teal-300 pl-2 py-1 bg-teal-50/50 rounded">
+              <div>
+                <Link to={`/larc/assignments/${a.id}`}
+                      className="text-plum-700 hover:underline font-medium">
+                  {a.device_type_name || 'Device requested'}
+                </Link>
+                <div className="text-[10px] text-gray-500">
+                  Pharmacy order · status: {a.status.replace(/_/g, ' ')}
+                </div>
+              </div>
+              <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+                pending
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!open ? (
+        <button type="button"
+                className="btn-secondary text-xs flex items-center gap-1"
+                onClick={() => setOpen(true)}>
+          <Package size={11} /> Request Device
+        </button>
+      ) : (
+        <div className="border border-teal-200 bg-white rounded p-2 space-y-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Device type</div>
+            <select className="input text-[12px] w-full"
+                    value={typeId}
+                    onChange={e => setTypeId(e.target.value)}>
+              <option value="">— pick a device type —</option>
+              {(types || []).map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Notes (optional)</div>
+            <textarea className="input text-[12px] w-full" rows={2}
+                      value={notes}
+                      onChange={e => setNotes(e.target.value)}
+                      placeholder="Anything the pharmacy / rep needs to know" />
+          </div>
+          <div className="flex gap-1">
+            <button className="btn-primary text-[11px]"
+                    onClick={() => create.mutate()}
+                    disabled={!typeId || create.isPending}>
+              {create.isPending ? 'Requesting…' : 'Submit request'}
+            </button>
+            <button className="text-[11px] text-muted hover:underline"
+                    onClick={() => { setOpen(false); setTypeId(''); setNotes('') }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 
