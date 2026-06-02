@@ -2650,12 +2650,7 @@ function AssistantSurgeonCardBody({ surgery }) {
   if (!required) {
     return (
       <div className="space-y-2 text-[12px]">
-        <div className="flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-gray-800">Assistant Surgeon</h3>
-          <span className="text-[10px] uppercase tracking-wide bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-            not required
-          </span>
-        </div>
+        <h3 className="text-sm font-semibold text-gray-800">Assistant Surgeon</h3>
         <p className="text-gray-700">
           Most surgeries don't need an assistant surgeon. Toggle this on
           when the primary surgeon has requested one (usually Dr. Gillespie).
