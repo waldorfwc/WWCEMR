@@ -2172,6 +2172,13 @@ function PatientPicksDateBody({ surgery }) {
   const modmedDone = !!surgery.scheduled_in_modmed_at
   const medsDone = !!surgery.office_meds_pickup_confirmed_at
   const isOffice = surgery.selected_facility === 'office'
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+
+  const { data: tpl } = useQuery({
+    queryKey: ['surgery-templates'],
+    queryFn: () => api.get('/surgery/picklists/procedure-templates').then(r => r.data.templates),
+    staleTime: 60_000,
+  })
 
   const toggleModmed = useMutation({
     mutationFn: (confirmed) => api.post(`/surgery/${surgery.id}/modmed-scheduled`,
@@ -2186,9 +2193,32 @@ function PatientPicksDateBody({ surgery }) {
 
   if (!surgery.scheduled_date) {
     return (
-      <div className="text-[12px] text-amber-700">
-        Date not yet picked. Patient can pick via Klara link, or use the
-        "pick" link next to Surgery date above.
+      <div className="space-y-2 text-[12px]">
+        <div className="text-amber-700">
+          Date not yet picked. Patient can pick via the Klara link, or schedule
+          here on the patient's behalf.
+        </div>
+        {canEditSchedule && (
+          <button
+            type="button"
+            className="btn-primary text-[11px] flex items-center gap-1"
+            onClick={() => setShowScheduleModal(true)}>
+            Schedule for patient
+          </button>
+        )}
+        {showScheduleModal && (
+          <ScheduleForPatientModal
+            surgery={surgery}
+            templates={tpl || []}
+            onClose={() => setShowScheduleModal(false)}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+              qc.invalidateQueries({ queryKey: ['surgery-list'] })
+              qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+              setShowScheduleModal(false)
+            }}
+          />
+        )}
       </div>
     )
   }
@@ -2282,15 +2312,10 @@ function PostOpApptsCardBody({ surgery }) {
            { label: 'Additional follow-up', days_post_op: null,
              suggested_location: 'telehealth' }]
 
-  const [first, setFirst] = useState(surgery.post_op_appt_date || '')
-  const [second, setSecond] = useState(surgery.post_op_appt_2nd_date || '')
-  const [firstLoc, setFirstLoc] = useState(
-    surgery.post_op_appt_location || visits[0]?.suggested_location || 'office')
-  const [secondLoc, setSecondLoc] = useState(
-    surgery.post_op_appt_2nd_location || visits[1]?.suggested_location || 'telehealth')
-
-  // Suggested dates = surgery date + days_post_op
-  const suggested = useMemo(() => {
+  // Suggested dates = surgery date + days_post_op. Computed up-front so we
+  // can pre-populate the date inputs with the suggested value when nothing
+  // has been saved yet — coordinator just clicks Save.
+  const suggested = (() => {
     if (!surgery.scheduled_date) return {}
     const base = new Date(surgery.scheduled_date + 'T00:00:00')
     const out = {}
@@ -2301,7 +2326,16 @@ function PostOpApptsCardBody({ surgery }) {
       out[i] = d.toISOString().slice(0, 10)
     })
     return out
-  }, [surgery.scheduled_date, visits])
+  })()
+
+  const [first, setFirst] = useState(
+    surgery.post_op_appt_date || suggested[0] || '')
+  const [second, setSecond] = useState(
+    surgery.post_op_appt_2nd_date || suggested[1] || '')
+  const [firstLoc, setFirstLoc] = useState(
+    surgery.post_op_appt_location || visits[0]?.suggested_location || 'office')
+  const [secondLoc, setSecondLoc] = useState(
+    surgery.post_op_appt_2nd_location || visits[1]?.suggested_location || 'telehealth')
 
   const save = useMutation({
     mutationFn: () => {
