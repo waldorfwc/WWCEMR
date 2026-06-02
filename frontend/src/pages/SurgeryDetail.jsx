@@ -1904,7 +1904,7 @@ function MilestoneRow({ m, surgery }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className={`text-sm font-medium ${m.status === 'not_applicable' ? 'line-through' : ''}`}>
-              {m.title}
+              {m.kind === 'consent' ? 'Consent' : m.title}
             </span>
             <span className="text-[10px] text-gray-500 capitalize">{m.status.replace(/_/g, ' ')}</span>
             {m.expected_duration_days && (
@@ -2486,9 +2486,11 @@ function ClearanceCardBody({ surgery }) {
     <div id="milestone-clearance" className="scroll-mt-16 space-y-3 text-[12px]">
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-semibold text-gray-800">Cardiac / Anesthesia Clearance</h3>
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
-          {status.replace(/_/g, ' ')}
-        </span>
+        {required && (
+          <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+            {status.replace(/_/g, ' ')}
+          </span>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
