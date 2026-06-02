@@ -557,7 +557,10 @@ function BoardingSlipPanel({ surgery }) {
   const qc = useQueryClient()
   const { labelOf } = useFacilities()
   const [error, setError] = useState(null)
-  const [generated, setGenerated] = useState(null)
+  // Seed `generated` from the latest saved boarding slip so the success
+  // block survives page reloads. Local state still wins after a fresh
+  // regeneration (onSuccess overwrites it).
+  const [generated, setGenerated] = useState(surgery.latest_boarding_slip || null)
   const [previewing, setPreviewing] = useState(false)
   const [editing, setEditing] = useState(false)
 

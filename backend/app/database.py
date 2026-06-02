@@ -251,6 +251,9 @@ def _apply_lightweight_migrations():
         ("surgeries", "lab_appointment_date",         "DATE"),
         ("surgeries", "lab_appointment_reported_at",  "DATETIME"),
         ("surgeries", "lab_appointment_reported_by",  "VARCHAR(40)"),
+        # Hospital Posting (boarding slip) editor overrides — persist
+        # field-by-field corrections the coordinator made on the form.
+        ("surgeries", "boarding_slip_overrides",      "JSON"),
         # Billing (Phase 3)
         ("surgeries", "modmed_claim_number", "VARCHAR(80)"),
         ("surgeries", "billed_icd10_codes", "JSON"),

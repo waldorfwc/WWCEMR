@@ -67,6 +67,21 @@ def _is_behind(s: Surgery, hours: int = 0) -> tuple[bool, int]:
 
 # ─── Serializer ─────────────────────────────────────────────────────
 
+def _latest_file(s: Surgery, *, kind: str) -> Optional[dict]:
+    """Return a {id, filename, download_url, uploaded_at} dict for the most
+    recently uploaded SurgeryFile of the given kind, or None."""
+    files = [f for f in (s.files or []) if f.kind == kind]
+    if not files:
+        return None
+    latest = max(files, key=lambda f: f.uploaded_at)
+    return {
+        "id":           str(latest.id),
+        "filename":     latest.filename,
+        "uploaded_at":  latest.uploaded_at.isoformat() if latest.uploaded_at else None,
+        "download_url": f"/api/surgery/{s.id}/files/{latest.id}/download",
+    }
+
+
 def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
                    today: Optional[_date] = None) -> dict:
     behind, hours_overdue = _is_behind(s)
@@ -150,6 +165,7 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "billed_cpt_codes": s.billed_cpt_codes or [],
         "billed_at": s.billed_at.isoformat() if s.billed_at else None,
         "billed_by": s.billed_by,
+        "latest_boarding_slip": _latest_file(s, kind="boarding_slip"),
         "billing_ai_notes": s.billing_ai_notes,
         "consent_envelopes": [
             {
@@ -1761,6 +1777,12 @@ def generate_boarding_slip(surgery_id: str,
                             detail=f"Boarding slip not needed for facility {s.selected_facility}")
     user_overrides = (payload.overrides if payload else None) or {}
     overrides = _translate_overrides(s.selected_facility, user_overrides)
+    # Persist the user-friendly overrides on the surgery so the editor
+    # remembers them next time it opens.
+    if user_overrides:
+        # Strip falsy values so cleared fields don't ghost the next render.
+        clean = {k: v for k, v in user_overrides.items() if v not in (None, "")}
+        s.boarding_slip_overrides = clean or None
     from app.services.surgery_boarding_slip import generate_for_surgery
     try:
         f = generate_for_surgery(db, s,
@@ -1796,26 +1818,35 @@ def boarding_slip_prefill(surgery_id: str,
     secondary = procs[1] if len(procs) > 1 else {}
     primary_dx = diags[0] if diags else {}
 
+    fields = {
+        "surgery_date":      str(s.scheduled_date) if s.scheduled_date else "",
+        "start_time":        (str(s.scheduled_start_time)[:5]
+                                if s.scheduled_start_time else ""),
+        "estimated_minutes": s.estimated_minutes or 0,
+        "primary_surgeon":   s.surgeon_primary or "",
+        "secondary_surgeon": s.surgeon_secondary or "",
+        "primary_cpt":       primary.get("cpt") or "",
+        "primary_description": primary.get("description") or "",
+        "secondary_cpt":     secondary.get("cpt") or "",
+        "secondary_description": secondary.get("description") or "",
+        "icd":               primary_dx.get("icd") or "",
+        "diagnosis_description": primary_dx.get("description") or "",
+        "anesthesia":        s.anesthesia or "",
+        "special_request":   s.special_equipment_notes or "",
+        "auth_number":       s.auth_number or "",
+        "additional_notes":  s.notes or "",
+    }
+    # Persisted overrides win — coordinator's last-saved edits seed the
+    # form so they don't have to re-enter them every regeneration.
+    saved = s.boarding_slip_overrides or {}
+    for k, v in saved.items():
+        if v not in (None, ""):
+            fields[k] = v
+
     return {
         "facility": s.selected_facility,
-        "fields": {
-            "surgery_date":      str(s.scheduled_date) if s.scheduled_date else "",
-            "start_time":        (str(s.scheduled_start_time)[:5]
-                                    if s.scheduled_start_time else ""),
-            "estimated_minutes": s.estimated_minutes or 0,
-            "primary_surgeon":   s.surgeon_primary or "",
-            "secondary_surgeon": s.surgeon_secondary or "",
-            "primary_cpt":       primary.get("cpt") or "",
-            "primary_description": primary.get("description") or "",
-            "secondary_cpt":     secondary.get("cpt") or "",
-            "secondary_description": secondary.get("description") or "",
-            "icd":               primary_dx.get("icd") or "",
-            "diagnosis_description": primary_dx.get("description") or "",
-            "anesthesia":        s.anesthesia or "",
-            "special_request":   s.special_equipment_notes or "",
-            "auth_number":       s.auth_number or "",
-            "additional_notes":  s.notes or "",
-        },
+        "fields": fields,
+        "has_saved_overrides": bool(saved),
     }
 
 

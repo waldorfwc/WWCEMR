@@ -224,6 +224,11 @@ class Surgery(Base):
     schedule_gate_override_at = Column(DateTime, nullable=True)
     schedule_gate_override_by = Column(String(120), nullable=True)
 
+    # Persisted overrides for the Hospital Posting (boarding slip)
+    # field editor — coordinator's tweaks survive page reloads and seed
+    # the editor next time it's opened.
+    boarding_slip_overrides = Column(JSON, nullable=True)
+
     # Pre-op labs — patient self-reports the date they got labs drawn
     # (4–7 days before surgery is the practice rule).
     lab_appointment_date = Column(Date, nullable=True)
