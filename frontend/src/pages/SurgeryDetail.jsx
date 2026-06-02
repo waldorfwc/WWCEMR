@@ -1853,6 +1853,21 @@ function FacilityCell({ s, onPatch }) {
 }
 
 
+function Tip({ text, children }) {
+  return (
+    <span className="relative group inline-flex">
+      {children}
+      <span className="pointer-events-none absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-1.5
+                       opacity-0 group-hover:opacity-100 transition-opacity duration-100
+                       bg-gray-900 text-white text-[10px] px-2 py-1 rounded shadow-lg
+                       w-44 whitespace-normal text-center leading-snug">
+        {text}
+      </span>
+    </span>
+  )
+}
+
+
 function MilestoneRow({ m, surgery }) {
   const qc = useQueryClient()
   const [showNotes, setShowNotes] = useState(false)
@@ -1930,47 +1945,59 @@ function MilestoneRow({ m, surgery }) {
         {!showNotes && (
           <div className="shrink-0 flex items-center gap-1">
             {isOpen && !isInProgress && (
-              <button title="Mark in progress"
-                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-amber-300 text-gray-600"
-                      onClick={() => action.mutate({ act: 'start' })}
-                      disabled={action.isPending}>
-                <Clock size={11} />
-              </button>
+              <Tip text="Start working on this — mark in progress">
+                <button aria-label="Mark in progress"
+                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-amber-300 text-gray-600"
+                        onClick={() => action.mutate({ act: 'start' })}
+                        disabled={action.isPending}>
+                  <Clock size={11} />
+                </button>
+              </Tip>
             )}
             {isOpen && (
               <>
-                <button title="Mark done"
-                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-green-300 hover:bg-green-50 text-green-700 flex items-center gap-1"
-                        onClick={() => action.mutate({ act: 'done' })}
-                        disabled={action.isPending}>
-                  <Check size={11} /> Done
-                </button>
-                <button title="Add notes & mark done"
-                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600"
-                        onClick={() => setShowNotes(true)}>
-                  <Edit3 size={11} />
-                </button>
-                <button title="Skip (with reason in notes)"
-                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
-                        onClick={() => action.mutate({ act: 'skip' })}
-                        disabled={action.isPending}>
-                  <SkipForward size={11} />
-                </button>
-                <button title="Mark not applicable for this patient"
-                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
-                        onClick={() => action.mutate({ act: 'not_applicable' })}
-                        disabled={action.isPending}>
-                  N/A
-                </button>
+                <Tip text="Mark this milestone complete">
+                  <button aria-label="Mark done"
+                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-green-300 hover:bg-green-50 text-green-700 flex items-center gap-1"
+                          onClick={() => action.mutate({ act: 'done' })}
+                          disabled={action.isPending}>
+                    <Check size={11} /> Done
+                  </button>
+                </Tip>
+                <Tip text="Add a note, then mark this milestone done">
+                  <button aria-label="Add notes & mark done"
+                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600"
+                          onClick={() => setShowNotes(true)}>
+                    <Edit3 size={11} />
+                  </button>
+                </Tip>
+                <Tip text="Skip this step — won't be done (provide reason in notes)">
+                  <button aria-label="Skip"
+                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
+                          onClick={() => action.mutate({ act: 'skip' })}
+                          disabled={action.isPending}>
+                    <SkipForward size={11} />
+                  </button>
+                </Tip>
+                <Tip text="Not applicable for this patient (e.g. no clearance needed, no device)">
+                  <button aria-label="Not applicable"
+                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
+                          onClick={() => action.mutate({ act: 'not_applicable' })}
+                          disabled={action.isPending}>
+                    N/A
+                  </button>
+                </Tip>
               </>
             )}
             {!isOpen && (
-              <button title="Reopen"
-                      className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500 flex items-center gap-1"
-                      onClick={() => action.mutate({ act: 'reopen' })}
-                      disabled={action.isPending}>
-                <RotateCcw size={11} /> Reopen
-              </button>
+              <Tip text="Reopen this milestone — moves it back to in-progress">
+                <button aria-label="Reopen"
+                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500 flex items-center gap-1"
+                        onClick={() => action.mutate({ act: 'reopen' })}
+                        disabled={action.isPending}>
+                  <RotateCcw size={11} /> Reopen
+                </button>
+              </Tip>
             )}
           </div>
         )}
