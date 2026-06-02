@@ -556,15 +556,10 @@ function BoardingSlipPanel({ surgery }) {
   const [error, setError] = useState(null)
   const [generated, setGenerated] = useState(null)
   const [previewing, setPreviewing] = useState(false)
-  const [editing, setEditing] = useState(false)
 
   const generate = useMutation({
-    mutationFn: (overrides) => api.post(`/surgery/${surgery.id}/boarding-slip`,
-                                        { overrides: overrides || null }).then(r => r.data),
-    onSuccess: (d) => {
-      setGenerated(d); setError(null); setEditing(false)
-      qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
-    },
+    mutationFn: () => api.post(`/surgery/${surgery.id}/boarding-slip`).then(r => r.data),
+    onSuccess: (d) => { setGenerated(d); setError(null); qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] }) },
     onError: (e) => setError(e?.response?.data?.detail || e.message),
   })
 
@@ -591,27 +586,12 @@ function BoardingSlipPanel({ surgery }) {
             prefilled with this patient's details. After the hospital confirms the booking,
             upload the confirmation below.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <button className="btn-primary text-xs flex items-center gap-1"
-                    onClick={() => generate.mutate()}
-                    disabled={generate.isPending}>
-              <FileText size={11} /> {generate.isPending ? 'Generating…' : `Generate ${facilityLabel} slip`}
-            </button>
-            <button className="btn-secondary text-xs flex items-center gap-1"
-                    onClick={() => setEditing(true)}
-                    disabled={generate.isPending}>
-              <Edit3 size={11} /> Edit Fields
-            </button>
-          </div>
+          <button className="btn-primary text-xs flex items-center gap-1"
+                  onClick={() => generate.mutate()}
+                  disabled={generate.isPending}>
+            <FileText size={11} /> {generate.isPending ? 'Generating…' : `Generate ${facilityLabel} slip`}
+          </button>
           {error && <div className="text-xs text-red-600">{error}</div>}
-          {editing && (
-            <BoardingSlipFieldsEditor
-              surgery={surgery}
-              onClose={() => setEditing(false)}
-              onRegenerate={(overrides) => generate.mutate(overrides)}
-              isPending={generate.isPending}
-            />
-          )}
           {generated && (
             <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between gap-2">
               <span className="truncate">✓ Generated <code>{generated.filename}</code></span>
@@ -619,10 +599,6 @@ function BoardingSlipPanel({ surgery }) {
                 <button onClick={() => setPreviewing(true)}
                         className="text-plum-700 hover:underline flex items-center gap-1">
                   <Eye size={11} /> Preview
-                </button>
-                <button onClick={() => setEditing(true)}
-                        className="text-plum-700 hover:underline flex items-center gap-1">
-                  <Edit3 size={11} /> Edit fields
                 </button>
                 <a href={`/api${generated.download_url.replace(/^\/api/, '')}`}
                    download
@@ -643,138 +619,6 @@ function BoardingSlipPanel({ surgery }) {
           <FilesPanel surgery={surgery} kindFilter="boarding_slip_confirmation"
                        label="Hospital Posting Confirmation" />
         </>
-      )}
-    </div>
-  )
-}
-
-
-function BoardingSlipFieldsEditor({ surgery, onClose, onRegenerate, isPending }) {
-  const { data: prefill, isLoading } = useQuery({
-    queryKey: ['boarding-slip-prefill', surgery.id],
-    queryFn: () => api.get(`/surgery/${surgery.id}/boarding-slip/prefill`)
-                       .then(r => r.data),
-  })
-
-  const [form, setForm] = useState({})
-
-  // Seed the form with the prefill values once they arrive
-  useEffect(() => {
-    if (prefill?.fields) setForm(prefill.fields)
-  }, [prefill])
-
-  const update = (k, v) => setForm(f => ({ ...f, [k]: v }))
-
-  const facility = prefill?.facility
-  const isMedstar = facility === 'medstar'
-  const isCrmc = facility === 'crmc'
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="relative w-full max-w-xl bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between z-10">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">
-            Edit posting form fields
-          </h2>
-          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
-        </div>
-
-        <div className="p-5 space-y-3 text-sm">
-          {isLoading && <div className="text-gray-400 italic">Loading…</div>}
-          {prefill && (
-            <>
-              <div className="text-[11px] text-gray-500">
-                Edit any prefilled value below. Click <strong>Regenerate</strong> and a fresh PDF
-                will replace the old one. The surgery record itself is not modified — these are
-                overrides for the posting form only.
-              </div>
-
-              <FE label="Surgery date" value={form.surgery_date}
-                  type="date"
-                  onChange={v => update('surgery_date', v)} />
-              <FE label="Start time" value={form.start_time}
-                  type="time"
-                  onChange={v => update('start_time', v)} />
-              <FE label="Estimated minutes" value={form.estimated_minutes}
-                  type="number"
-                  onChange={v => update('estimated_minutes', v)} />
-
-              <FE label="Primary surgeon" value={form.primary_surgeon}
-                  onChange={v => update('primary_surgeon', v)} />
-              <FE label="Secondary surgeon" value={form.secondary_surgeon}
-                  onChange={v => update('secondary_surgeon', v)} />
-
-              <div className="grid grid-cols-2 gap-2">
-                <FE label="Primary CPT" mono value={form.primary_cpt}
-                    onChange={v => update('primary_cpt', v)} />
-                <FE label="Primary procedure" value={form.primary_description}
-                    onChange={v => update('primary_description', v)} />
-                <FE label="Secondary CPT" mono value={form.secondary_cpt}
-                    onChange={v => update('secondary_cpt', v)} />
-                <FE label="Secondary procedure" value={form.secondary_description}
-                    onChange={v => update('secondary_description', v)} />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <FE label="ICD-10" mono value={form.icd}
-                    onChange={v => update('icd', v)} />
-                <FE label="Diagnosis description" value={form.diagnosis_description}
-                    onChange={v => update('diagnosis_description', v)} />
-              </div>
-
-              {isCrmc && (
-                <FE label="Anesthesia" value={form.anesthesia}
-                    onChange={v => update('anesthesia', v)} />
-              )}
-
-              <FE label="Special equipment / request" textarea
-                  value={form.special_request}
-                  onChange={v => update('special_request', v)} />
-
-              <FE label="Auth number" mono value={form.auth_number}
-                  onChange={v => update('auth_number', v)} />
-
-              {isMedstar && (
-                <FE label="Additional notes" textarea
-                    value={form.additional_notes}
-                    onChange={v => update('additional_notes', v)} />
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="sticky bottom-0 bg-white border-t border-border-subtle px-5 py-3 flex justify-end gap-2">
-          <button className="text-sm text-muted hover:underline" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn-primary text-sm flex items-center gap-1"
-                  onClick={() => onRegenerate(form)}
-                  disabled={isPending || isLoading}>
-            <Save size={12} /> {isPending ? 'Regenerating…' : 'Save & Regenerate'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
-function FE({ label, value, onChange, type = 'text', mono = false, textarea = false }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">{label}</div>
-      {textarea ? (
-        <textarea className={`input text-[12px] w-full ${mono ? 'font-mono' : ''}`}
-                  rows={2}
-                  value={value || ''}
-                  onChange={e => onChange(e.target.value)} />
-      ) : (
-        <input className={`input text-[12px] w-full ${mono ? 'font-mono' : ''}`}
-               type={type}
-               value={value ?? ''}
-               onChange={e => onChange(e.target.value)} />
       )}
     </div>
   )

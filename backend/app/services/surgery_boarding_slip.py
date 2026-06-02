@@ -68,11 +68,8 @@ def _hours_minutes(total_min: Optional[int]) -> tuple[str, str]:
 
 # ─── MedStar (fillable PDF form) ──────────────────────────────────
 
-def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
-    """Fill the MedStar Posting Form. Returns the new PDF bytes.
-
-    `overrides` is an optional dict of {field_name: value} that wins over
-    the surgery-derived defaults — used by the staff PDF editor."""
+def generate_medstar(s: Surgery) -> bytes:
+    """Fill the MedStar Posting Form. Returns the new PDF bytes."""
     if not os.path.exists(MEDSTAR_TEMPLATE):
         raise RuntimeError(f"MedStar template missing: {MEDSTAR_TEMPLATE}")
 
@@ -116,13 +113,6 @@ def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
         "Reps Name":                  s.rep_name or "",
         "Additional Notes":           (s.notes or "")[:200],
     }
-
-    # Apply caller overrides on top so staff can correct prefilled values.
-    if overrides:
-        for k, v in overrides.items():
-            if v is None:
-                continue
-            fields[k] = str(v)
 
     reader = PdfReader(MEDSTAR_TEMPLATE)
     writer = PdfWriter(clone_from=reader)
@@ -184,12 +174,9 @@ CRMC_COORDS = {
 }
 
 
-def generate_crmc(s: Surgery, overrides: Optional[dict] = None) -> bytes:
+def generate_crmc(s: Surgery) -> bytes:
     """Overlay surgery info onto the CRMC scanned template. Returns the
-    new PDF bytes.
-
-    `overrides` is an optional dict of {coord_key: value} that wins over
-    the surgery-derived defaults — used by the staff PDF editor."""
+    new PDF bytes."""
     if not os.path.exists(CRMC_TEMPLATE):
         raise RuntimeError(f"CRMC template missing: {CRMC_TEMPLATE}")
 
@@ -204,39 +191,6 @@ def generate_crmc(s: Surgery, overrides: Optional[dict] = None) -> bytes:
 
     auth_text = s.auth_number or ("Not Required" if s.auth_status == "not_required" else "")
 
-    # Build the data map first, then apply overrides, then draw.
-    data = {
-        "requested_date":    str(s.scheduled_date) if s.scheduled_date else "",
-        "requested_time":    str(s.scheduled_start_time)[:5] if s.scheduled_start_time else "",
-        "outpatient":        "X",
-        "procedure":         (descr or "")[:60],
-        "diagnosis":         (diag_text or "")[:60],
-        "anesthesia":        s.anesthesia or "",
-        "icd":               icd,
-        "cpt":               cpt,
-        "special_request":   (s.special_equipment_notes or "")[:60],
-        "last_name":         last,
-        "first_name":        first,
-        "dob":               str(s.dob) if s.dob else "",
-        "address":           s.address_street or "",
-        "city":              s.address_city or "",
-        "zip":               s.address_zip or "",
-        "home_phone":        s.phone or "",
-        "cell_phone":        s.cell_phone or "",
-        "primary_ins":       s.primary_insurance or "",
-        "policy_holder_p":   s.patient_name or "",
-        "ins_id_p":          s.primary_member_id or "",
-        "group_p":           s.primary_group or "",
-        "secondary_ins":     s.secondary_insurance or "No Secondary",
-        "ins_id_s":          s.secondary_member_id or "",
-        "auth_number":       auth_text,
-    }
-    if overrides:
-        for k, v in overrides.items():
-            if v is None:
-                continue
-            data[k] = str(v)
-
     # Build the overlay PDF
     overlay = io.BytesIO()
     c = canvas.Canvas(overlay, pagesize=letter)
@@ -248,8 +202,32 @@ def generate_crmc(s: Surgery, overrides: Optional[dict] = None) -> bytes:
             return
         c.drawString(x, y, str(val)[:60])
 
-    for k, v in data.items():
-        write(k, v)
+    write("requested_date",  str(s.scheduled_date) if s.scheduled_date else "")
+    write("requested_time",  str(s.scheduled_start_time)[:5] if s.scheduled_start_time else "")
+    write("outpatient",      "X")    # default to outpatient
+    write("procedure",       descr[:60])
+    write("diagnosis",       diag_text[:60])
+    write("anesthesia",      s.anesthesia or "")
+    write("icd",             icd)
+    write("cpt",             cpt)
+    write("special_request", (s.special_equipment_notes or "")[:60])
+
+    write("last_name",       last)
+    write("first_name",      first)
+    write("dob",             str(s.dob) if s.dob else "")
+    write("address",         s.address_street or "")
+    write("city",            s.address_city or "")
+    write("zip",             s.address_zip or "")
+    write("home_phone",      s.phone or "")
+    write("cell_phone",      s.cell_phone or "")
+
+    write("primary_ins",     s.primary_insurance or "")
+    write("policy_holder_p", s.patient_name or "")
+    write("ins_id_p",        s.primary_member_id or "")
+    write("group_p",         s.primary_group or "")
+    write("secondary_ins",   s.secondary_insurance or "No Secondary")
+    write("ins_id_s",        s.secondary_member_id or "")
+    write("auth_number",     auth_text)
 
     c.showPage()
     c.save()
@@ -273,18 +251,14 @@ def generate_crmc(s: Surgery, overrides: Optional[dict] = None) -> bytes:
 
 # ─── Public API ──────────────────────────────────────────────────
 
-def generate_for_surgery(db: Session, s: Surgery, *, by_email: str,
-                          overrides: Optional[dict] = None) -> SurgeryFile:
+def generate_for_surgery(db: Session, s: Surgery, *, by_email: str) -> SurgeryFile:
     """Pick the right generator based on facility, persist via storage
-    adapter, and write a SurgeryFile row pointing at the storage key.
-
-    `overrides` is forwarded to the underlying generator so staff can
-    correct prefilled fields before regenerating."""
+    adapter, and write a SurgeryFile row pointing at the storage key."""
     if s.selected_facility == "medstar":
-        pdf_bytes = generate_medstar(s, overrides=overrides)
+        pdf_bytes = generate_medstar(s)
         slug = "medstar"
     elif s.selected_facility == "crmc":
-        pdf_bytes = generate_crmc(s, overrides=overrides)
+        pdf_bytes = generate_crmc(s)
         slug = "crmc"
     else:
         raise ValueError(f"No boarding slip needed for facility={s.selected_facility}")
@@ -297,11 +271,6 @@ def generate_for_surgery(db: Session, s: Surgery, *, by_email: str,
     key = save_blob(prefix="surgery_boarding_slips",
                     body=pdf_bytes, filename=fname)
 
-    note_parts = [f"Generated for {s.selected_facility}"]
-    if overrides:
-        import json as _json
-        note_parts.append("overrides=" + _json.dumps(overrides))
-
     f = SurgeryFile(
         surgery_id=s.id,
         kind="boarding_slip",
@@ -309,7 +278,7 @@ def generate_for_surgery(db: Session, s: Surgery, *, by_email: str,
         path=key,
         mime_type="application/pdf",
         size_bytes=len(pdf_bytes),
-        notes=" | ".join(note_parts),
+        notes=f"Generated for {s.selected_facility}",
         uploaded_by=by_email,
     )
     db.add(f)
