@@ -1871,7 +1871,7 @@ function Tip({ text, children }) {
 }
 
 
-function MilestoneRow({ m, surgery, hideTitle = false }) {
+function MilestoneRow({ m, surgery }) {
   const qc = useQueryClient()
   const [showNotes, setShowNotes] = useState(false)
   const [notes, setNotes] = useState(m.notes || '')
@@ -1899,16 +1899,15 @@ function MilestoneRow({ m, surgery, hideTitle = false }) {
       : 'bg-white border-gray-100'
     }`}>
       <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0 w-6 text-right text-xs text-gray-400">{m.position}.</div>
         <div className="mt-0.5 shrink-0">{MILESTONE_ICON[m.status] || MILESTONE_ICON.pending}</div>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
-            {!hideTitle && (
-              <span className={`text-sm font-medium ${m.status === 'not_applicable' ? 'line-through' : ''}`}>
-                {m.title}
-              </span>
-            )}
+            <span className={`text-sm font-medium ${m.status === 'not_applicable' ? 'line-through' : ''}`}>
+              {m.title}
+            </span>
             <span className="text-[10px] text-gray-500 capitalize">{m.status.replace(/_/g, ' ')}</span>
-            {!hideTitle && m.expected_duration_days && (
+            {m.expected_duration_days && (
               <span className="text-[10px] text-gray-400">expected within {m.expected_duration_days}d</span>
             )}
           </div>
@@ -2014,13 +2013,12 @@ function MilestoneRow({ m, surgery, hideTitle = false }) {
 /* MilestoneCard wraps the per-milestone status row in its own card and
    renders the milestone-specific tool inline (calculator, drafter,
    uploader, etc.). Returns null content for milestones that need no tool. */
-function MilestoneCard({ m, surgery, flat = false, hideTitle = false }) {
+function MilestoneCard({ m, surgery, flat = false }) {
   const body = milestoneInlineContent(m, surgery)
-  // When the inline body has its own header (hideTitle), keep the card
-  // open by default so the body + action buttons are always visible.
-  // Otherwise, collapse done/skipped/n.a. milestones by default.
+  // Completed (done / skipped / not_applicable) milestones collapse by default;
+  // open milestones stay expanded. User can override with the chevron.
   const isResolved = ['done', 'skipped', 'not_applicable'].includes(m.status)
-  const [open, setOpen] = useState(hideTitle || !isResolved)
+  const [open, setOpen] = useState(!isResolved)
   const wrapClass = flat
     ? 'scroll-mt-16'
     : 'card !p-3 scroll-mt-16'
@@ -2029,9 +2027,9 @@ function MilestoneCard({ m, surgery, flat = false, hideTitle = false }) {
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           {/* Header (status icon, title, action buttons) — reuses MilestoneRow */}
-          <ol className="space-y-2"><MilestoneRow m={m} surgery={surgery} hideTitle={hideTitle} /></ol>
+          <ol className="space-y-2"><MilestoneRow m={m} surgery={surgery} /></ol>
         </div>
-        {body && !hideTitle && (
+        {body && (
           <button type="button"
                   onClick={() => setOpen(v => !v)}
                   className="shrink-0 text-gray-400 hover:text-plum-700 p-1 -mt-1"
@@ -2082,15 +2080,9 @@ function SurgerySection({ title, anchor, tone = 'slate', children }) {
 
 function GroupedSurgeryBody({ surgery, milestones }) {
   const byKind = Object.fromEntries(milestones.map(m => [m.kind, m]))
-  const ms = (kind, opts = {}) => byKind[kind]
-    ? <MilestoneCard m={byKind[kind]} surgery={surgery} flat {...opts} />
+  const ms = (kind) => byKind[kind]
+    ? <MilestoneCard m={byKind[kind]} surgery={surgery} flat />
     : null
-
-  // Assistant Surgeon should always be visible in Pre-Surgery (office surgeries
-  // don't seed the milestone, but staff might still need to opt in).
-  const assistantSection = byKind['assistant_surgeon']
-    ? <MilestoneCard m={byKind['assistant_surgeon']} surgery={surgery} flat hideTitle />
-    : <AssistantSurgeonCardBody surgery={surgery} />
 
   return (
     <>
@@ -2106,11 +2098,11 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery" tone="amber">
-        {ms('consent', { hideTitle: true })}
+        {ms('consent')}
         <ClearanceCardBody surgery={surgery} />
-        {assistantSection}
-        {ms('surgery_confirmed_hospital', { hideTitle: true })}
-        {ms('labs_to_hospital', { hideTitle: true })}
+        {ms('assistant_surgeon')}
+        {ms('surgery_confirmed_hospital')}
+        {ms('labs_to_hospital')}
       </SurgerySection>
 
       <SurgerySection title="Communication & Messaging" anchor="group-communication" tone="plum">
@@ -2493,14 +2485,10 @@ function ClearanceCardBody({ surgery }) {
   return (
     <div id="milestone-clearance" className="scroll-mt-16 space-y-3 text-[12px]">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-gray-800">
-          Cardiac / Anesthesia Clearance <span className="text-gray-500 font-normal">(if required)</span>
-        </h3>
-        {required && (
-          <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
-            {status.replace(/_/g, ' ')}
-          </span>
-        )}
+        <h3 className="text-sm font-semibold text-gray-800">Cardiac / Anesthesia Clearance</h3>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+          {status.replace(/_/g, ' ')}
+        </span>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
