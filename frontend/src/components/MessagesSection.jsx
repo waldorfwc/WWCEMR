@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 
-export default function MessagesSection({ sid }) {
+export default function MessagesSection({ sid, flat = false }) {
   const qc = useQueryClient()
   const [draft, setDraft] = useState('')
   const [picked, setPicked] = useState('')
@@ -43,9 +43,12 @@ export default function MessagesSection({ sid }) {
   })
 
   const messages = thread?.messages || []
+  const wrapClass = flat ? '' : 'card mt-4'
+  const Wrapper = flat ? 'div' : 'section'
+  const titleClass = flat ? 'text-sm font-semibold mb-3 text-gray-800' : 'text-lg font-semibold mb-3'
   return (
-    <section id="messages" className="card mt-4">
-      <h2 className="text-lg font-semibold mb-3">Messages</h2>
+    <Wrapper id="messages" className={wrapClass}>
+      <h3 className={titleClass}>Messages</h3>
       <div className="max-h-80 overflow-y-auto space-y-2 mb-3 pr-1">
         {messages.length === 0 && (
           <div className="text-sm text-muted text-center py-4">
@@ -87,6 +90,6 @@ export default function MessagesSection({ sid }) {
           {send.isPending ? 'Sending…' : 'Send'}
         </button>
       </div>
-    </section>
+    </Wrapper>
   )
 }

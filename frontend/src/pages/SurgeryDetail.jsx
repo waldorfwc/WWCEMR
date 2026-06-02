@@ -311,25 +311,14 @@ export default function SurgeryDetail() {
         </div>
       </div>
 
-      {/* Milestone cards (each milestone is its own card with embedded tools) */}
-      <div className="space-y-3">
-        {milestones.map(m => <MilestoneCard key={m.id} m={m} surgery={s} />)}
-        {milestones.length === 0 && (
-          <div className="card text-xs text-gray-500 italic bg-amber-50 border border-amber-200">
-            No milestones yet — surgery is in <code>{s.status}</code> status. Click <strong>Mark as new</strong> above to generate milestones.
-          </div>
-        )}
-      </div>
-
-      <LarcDevicePickerCard surgery={s} />
-
-      {s && <PaymentsSection surgery={s} />}
-
-      {s && <MessagesSection sid={s.id} />}
-
-      {s && <PatientEmailsSection surgery={s} />}
-
-      {s && <PatientSmsSection surgery={s} />}
+      {/* Grouped surgery sections (Phase L1) */}
+      {milestones.length === 0 ? (
+        <div className="card text-xs text-gray-500 italic bg-amber-50 border border-amber-200">
+          No milestones yet — surgery is in <code>{s.status}</code> status. Click <strong>Mark as new</strong> above to generate milestones.
+        </div>
+      ) : (
+        <GroupedSurgeryBody surgery={s} milestones={milestones} />
+      )}
 
       <NotesPanel surgery={s} />
 
@@ -367,7 +356,7 @@ export default function SurgeryDetail() {
 
 // ─── Payments section ─────────────────────────────────────────────
 
-function PaymentsSection({ surgery }) {
+function PaymentsSection({ surgery, flat = false }) {
   const qc = useQueryClient()
   const { data, refetch } = useQuery({
     queryKey: ['surgery-payments', surgery.id],
@@ -391,10 +380,10 @@ function PaymentsSection({ surgery }) {
     if (navigator.clipboard) navigator.clipboard.writeText(url)
   }
 
-  return (
-    <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4 mt-4">
+  const inner = (
+    <>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">Payments</h2>
+        <h3 className={flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}>Payments</h3>
         {outstanding > 0 && (
           <button className="btn-primary text-sm"
                   onClick={() => requestMut.mutate({})}
@@ -467,6 +456,13 @@ function PaymentsSection({ surgery }) {
           </tbody>
         </table>
       )}
+    </>
+  )
+
+  if (flat) return inner
+  return (
+    <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4 mt-4">
+      {inner}
     </div>
   )
 }
@@ -1987,14 +1983,17 @@ function MilestoneRow({ m, surgery }) {
 /* MilestoneCard wraps the per-milestone status row in its own card and
    renders the milestone-specific tool inline (calculator, drafter,
    uploader, etc.). Returns null content for milestones that need no tool. */
-function MilestoneCard({ m, surgery }) {
+function MilestoneCard({ m, surgery, flat = false }) {
   const body = milestoneInlineContent(m, surgery)
   // Completed (done / skipped / not_applicable) milestones collapse by default;
   // open milestones stay expanded. User can override with the chevron.
   const isResolved = ['done', 'skipped', 'not_applicable'].includes(m.status)
   const [open, setOpen] = useState(!isResolved)
+  const wrapClass = flat
+    ? 'scroll-mt-16'
+    : 'card !p-3 scroll-mt-16'
   return (
-    <div id={`milestone-${m.kind}`} className="card !p-3 scroll-mt-16">
+    <div id={`milestone-${m.kind}`} className={wrapClass}>
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
           {/* Header (status icon, title, action buttons) — reuses MilestoneRow */}
@@ -2013,6 +2012,74 @@ function MilestoneCard({ m, surgery }) {
         <div className="mt-3 border-t border-gray-100 pt-3">{body}</div>
       )}
     </div>
+  )
+}
+
+
+function SurgerySection({ title, anchor, children }) {
+  const kids = (Array.isArray(children) ? children : [children]).filter(Boolean)
+  if (kids.length === 0) return null
+  return (
+    <section id={anchor} className="card mb-4 scroll-mt-16">
+      <h2 className="text-base font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
+        {title}
+      </h2>
+      {kids.map((child, i) => (
+        <div key={i} className={i === 0 ? '' : 'border-t border-gray-200 mt-3 pt-3'}>
+          {child}
+        </div>
+      ))}
+    </section>
+  )
+}
+
+
+function GroupedSurgeryBody({ surgery, milestones }) {
+  const byKind = Object.fromEntries(milestones.map(m => [m.kind, m]))
+  const ms = (kind) => byKind[kind]
+    ? <MilestoneCard m={byKind[kind]} surgery={surgery} flat />
+    : null
+
+  return (
+    <>
+      <SurgerySection title="Benefits & Payments" anchor="group-benefits-payments">
+        {ms('benefits_determined')}
+        {ms('prior_auth')}
+        <PaymentsSection surgery={surgery} flat />
+      </SurgerySection>
+
+      <SurgerySection title="Appointments" anchor="group-appointments">
+        {ms('patient_picks_date')}
+        {ms('post_op_appts_scheduled')}
+      </SurgerySection>
+
+      <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery">
+        <ClearanceCardBody surgery={surgery} />
+        {ms('consent')}
+        {ms('assistant_surgeon')}
+        {ms('surgery_confirmed_hospital')}
+        {ms('labs_to_hospital')}
+      </SurgerySection>
+
+      <SurgerySection title="Communication & Messaging" anchor="group-communication">
+        {ms('klara_scheduling')}
+        <MessagesSection sid={surgery.id} flat />
+        <PatientEmailsSection surgery={surgery} flat />
+        <PatientSmsSection surgery={surgery} flat />
+      </SurgerySection>
+
+      <SurgerySection title="Post Surgery" anchor="group-post-surgery">
+        {ms('post_op_call')}
+        {ms('op_notes')}
+        {ms('path_report')}
+        {ms('surgery_billed')}
+      </SurgerySection>
+
+      <SurgerySection title="Devices" anchor="group-devices">
+        {ms('device_assigned')}
+        <LarcDevicePickerCard surgery={surgery} flat />
+      </SurgerySection>
+    </>
   )
 }
 
@@ -2426,6 +2493,100 @@ function PostOpApptsCardBody({ surgery }) {
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+
+function ClearanceCardBody({ surgery }) {
+  const qc = useQueryClient()
+  const [required, setRequired] = useState(!!surgery.clearance_required)
+  const [status, setStatus] = useState(surgery.clearance_status || 'not_required')
+  const [cardioName, setCardioName] = useState(surgery.cardiologist_name || '')
+  const [cardioPhone, setCardioPhone] = useState(surgery.cardiologist_phone || '')
+  const [cardioFax, setCardioFax] = useState(surgery.cardiologist_fax || '')
+
+  const patch = useMutation({
+    mutationFn: (body) => api.patch(`/surgery/${surgery.id}`, body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+    },
+  })
+
+  const STATUS_TONE = {
+    not_required: 'bg-gray-100 text-gray-600',
+    required:     'bg-amber-100 text-amber-700',
+    request_sent: 'bg-blue-100 text-blue-700',
+    received:     'bg-green-100 text-green-700',
+    sent_to_hospital: 'bg-green-100 text-green-700',
+    completed:    'bg-green-100 text-green-700',
+  }
+  const tone = STATUS_TONE[status] || 'bg-gray-100 text-gray-600'
+
+  return (
+    <div id="milestone-clearance" className="scroll-mt-16 space-y-3 text-[12px]">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800">Cardiac / Anesthesia Clearance</h3>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+          {status.replace(/_/g, ' ')}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex items-center gap-2 text-[11px]">
+          <input type="checkbox" checked={required}
+                 onChange={e => setRequired(e.target.checked)} />
+          Clearance required
+        </label>
+        {required && (
+          <select className="input text-[12px]"
+                  value={status} onChange={e => setStatus(e.target.value)}>
+            <option value="required">required</option>
+            <option value="request_sent">request sent</option>
+            <option value="received">received</option>
+            <option value="sent_to_hospital">sent to hospital</option>
+            <option value="completed">completed</option>
+          </select>
+        )}
+      </div>
+
+      {required && (
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Cardiologist</div>
+            <input className="input text-[12px] w-full" value={cardioName}
+                   onChange={e => setCardioName(e.target.value)} />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Phone</div>
+            <input className="input text-[12px] w-full font-mono" value={cardioPhone}
+                   onChange={e => setCardioPhone(e.target.value)}
+                   placeholder="240-xxx-xxxx" />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500">Fax</div>
+            <input className="input text-[12px] w-full font-mono" value={cardioFax}
+                   onChange={e => setCardioFax(e.target.value)}
+                   placeholder="240-xxx-xxxx" />
+          </div>
+        </div>
+      )}
+
+      <button className="btn-primary text-[11px]"
+              onClick={() => patch.mutate({
+                clearance_required: required,
+                clearance_status:   required ? status : 'not_required',
+                cardiologist_name:  cardioName  || null,
+                cardiologist_phone: cardioPhone || null,
+                cardiologist_fax:   cardioFax   || null,
+              })}
+              disabled={patch.isPending}>
+        {patch.isPending ? 'Saving…' : 'Save'}
+      </button>
+
+      <FilesPanel surgery={surgery} kindFilter="clearance" label="Clearance Letter" />
     </div>
   )
 }
@@ -3664,7 +3825,7 @@ function inferOpDeviceHint(surgery) {
 }
 
 
-function LarcDevicePickerCard({ surgery }) {
+function LarcDevicePickerCard({ surgery, flat = false }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const inferred = inferOpDeviceHint(surgery)
 
@@ -3682,11 +3843,13 @@ function LarcDevicePickerCard({ surgery }) {
   // be noise on every surgery page.
   if (assignments.length === 0 && !inferred) return null
 
+  const Wrap = flat ? 'div' : 'div'
+  const wrapClass = flat ? '' : 'card mt-3'
   return (
-    <div className="card mt-3">
+    <Wrap className={wrapClass}>
       <div className="flex items-center gap-2 mb-2">
         <Package size={14} className="text-teal-700" />
-        <h2 className="text-sm font-semibold text-gray-800">Office-procedure device</h2>
+        <h3 className="text-sm font-semibold text-gray-800">Office-procedure device</h3>
         <span className="text-[10px] uppercase tracking-wide bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
           LARC inventory
         </span>
@@ -3741,7 +3904,7 @@ function LarcDevicePickerCard({ surgery }) {
         <LarcDevicePickerDrawer surgery={surgery} preferred={inferred}
                                  onClose={() => setPickerOpen(false)} />
       )}
-    </div>
+    </Wrap>
   )
 }
 
@@ -4035,7 +4198,7 @@ function ScheduleForPatientModal({ surgery, templates, onClose, onSaved }) {
 
 // ─── I7: Ad-hoc patient email composer + audit history ──────────────
 
-function PatientEmailsSection({ surgery }) {
+function PatientEmailsSection({ surgery, flat = false }) {
   const qc = useQueryClient()
   const [composing, setComposing] = useState(false)
   const [subject, setSubject] = useState('')
@@ -4060,10 +4223,13 @@ function PatientEmailsSection({ surgery }) {
   const emails = data?.emails || []
   const fmtDate = (iso) => (iso || '').slice(0, 16).replace('T', ' ')
 
+  const Outer = ({ children }) => flat
+    ? <>{children}</>
+    : <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4">{children}</div>
   return (
-    <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4">
+    <Outer>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">Patient emails</h2>
+        <h3 className={flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}>Patient emails</h3>
         {!composing && (
           <button className="btn-secondary text-sm" onClick={() => setComposing(true)}>
             Compose email
@@ -4151,14 +4317,14 @@ function PatientEmailsSection({ surgery }) {
           </tbody>
         </table>
       )}
-    </div>
+    </Outer>
   )
 }
 
 
 // ─── J5: Per-surgery SMS audit history ──────────────────────────────
 
-function PatientSmsSection({ surgery }) {
+function PatientSmsSection({ surgery, flat = false }) {
   const { data } = useQuery({
     queryKey: ['patient-sms', surgery.id],
     queryFn: () => api.get(`/surgery/${surgery.id}/patient-sms`).then(r => r.data),
@@ -4166,9 +4332,12 @@ function PatientSmsSection({ surgery }) {
   const messages = data?.messages || []
   const fmtDate = (iso) => (iso || '').slice(0, 16).replace('T', ' ')
 
+  const Outer = ({ children }) => flat
+    ? <>{children}</>
+    : <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4">{children}</div>
   return (
-    <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4">
-      <h2 className="text-lg font-semibold mb-3">Patient SMS history</h2>
+    <Outer>
+      <h3 className={flat ? "text-sm font-semibold text-gray-800 mb-3" : "text-lg font-semibold mb-3"}>Patient SMS history</h3>
       {messages.length === 0 ? (
         <div className="text-[12px] text-gray-400 italic">No SMS activity.</div>
       ) : (
@@ -4206,7 +4375,7 @@ function PatientSmsSection({ surgery }) {
           </tbody>
         </table>
       )}
-    </div>
+    </Outer>
   )
 }
 
