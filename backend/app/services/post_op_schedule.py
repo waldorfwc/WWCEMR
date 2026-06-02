@@ -112,6 +112,13 @@ def determine_post_op_schedule(s: Surgery) -> list[PostOpVisit]:
         if "laparoscopy" in keywords or "laparoscopic" in keywords:
             if "hysterectomy" in proc_text or "myomectomy" in proc_text:
                 continue
+        # Hysteroscopy-with-IUD-insertion gets no auto post-op (one-and-done).
+        # Only excludes the hysteroscopy-side trigger — D&C with IUD still gets
+        # the 2-week visit on the D&C side.
+        if "hysteroscopy" in keywords and "iud" in proc_text:
+            has_dc = any(k in proc_text for k in ("d&c", "dilation", "dilatation"))
+            if not has_dc:
+                continue
         if any(kw in proc_text for kw in keywords):
             for v in vlist:
                 visits.setdefault(v.label, v)
