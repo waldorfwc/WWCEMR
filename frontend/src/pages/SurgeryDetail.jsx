@@ -2099,9 +2099,13 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery" tone="amber">
         <ConsentPanel surgery={surgery} />
         <ClearanceCardBody surgery={surgery} />
-        {ms('assistant_surgeon')}
+        {byKind['assistant_surgeon']
+          ? <MilestoneCard m={byKind['assistant_surgeon']} surgery={surgery} flat />
+          : <AssistantSurgeonCardBody surgery={surgery} />}
         {ms('surgery_confirmed_hospital')}
-        {ms('labs_to_hospital')}
+        {byKind['labs_to_hospital']
+          ? <MilestoneCard m={byKind['labs_to_hospital']} surgery={surgery} flat />
+          : <LabsCardBody surgery={surgery} />}
       </SurgerySection>
 
       <SurgerySection title="Communication & Messaging" anchor="group-communication" tone="plum">
