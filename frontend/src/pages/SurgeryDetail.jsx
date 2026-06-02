@@ -659,7 +659,8 @@ function BoardingSlipPanel({ surgery }) {
                   </a>
                 </div>
               </div>
-              <SendBoardingSlipPanel surgery={surgery} fileId={generated.id} />
+              <SendBoardingSlipPanel surgery={surgery} fileId={generated.id}
+                                       sendHistory={generated.send_history} />
             </>
           )}
           {previewing && generated && (
@@ -679,20 +680,26 @@ function BoardingSlipPanel({ surgery }) {
 }
 
 
-function SendBoardingSlipPanel({ surgery, fileId }) {
+function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
+  const qc = useQueryClient()
   const [mode, setMode] = useState(null)  // null | 'fax' | 'email'
   const [to, setTo] = useState('')
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
   const [result, setResult] = useState(null)
   const [error, setError] = useState(null)
+  const [history, setHistory] = useState(sendHistory || [])
+
+  // Keep local history in sync with surgery dict updates from parent
+  useEffect(() => { setHistory(sendHistory || []) }, [sendHistory])
 
   const send = useMutation({
     mutationFn: (body) => api.post(`/surgery/${surgery.id}/boarding-slip/send`, body)
                               .then(r => r.data),
     onSuccess: (d) => {
       setResult(d); setError(null)
-      // Keep the form open so the user sees confirmation; reset destination only.
+      if (Array.isArray(d.send_history)) setHistory(d.send_history)
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
       setTo(''); setMessage('')
       setTimeout(() => { setMode(null); setResult(null) }, 2500)
     },
@@ -709,18 +716,48 @@ function SendBoardingSlipPanel({ surgery, fileId }) {
     send.mutate(body)
   }
 
+  const SendHistoryList = () => history.length === 0 ? null : (
+    <div className="border border-gray-200 rounded p-2 bg-gray-50 space-y-1">
+      <div className="text-[10px] uppercase tracking-wide text-gray-500">
+        Send history ({history.length})
+      </div>
+      <ul className="text-[11px] space-y-0.5">
+        {[...history].reverse().map((h, i) => (
+          <li key={i} className="flex items-center gap-2">
+            {h.status === 'sent'
+              ? <span className="text-green-700">✓</span>
+              : <span className="text-red-700">✗</span>}
+            <span className="capitalize w-10">{h.kind}</span>
+            <span className="font-mono text-gray-700">{h.to}</span>
+            <span className="text-gray-500 ml-auto">
+              {h.at ? new Date(h.at).toLocaleString(undefined, {
+                month: '2-digit', day: '2-digit', year: 'numeric',
+                hour: 'numeric', minute: '2-digit',
+              }) : ''}
+            </span>
+            {h.by && <span className="text-gray-400">· {h.by.split('@')[0]}</span>}
+            {h.error && <span className="text-red-600 text-[10px]">· {h.error}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+
   if (!mode) {
     return (
-      <div className="flex items-center gap-2 text-[11px]">
-        <span className="text-gray-500">Send to hospital:</span>
-        <button className="btn-secondary text-xs flex items-center gap-1"
-                onClick={() => setMode('fax')}>
-          <Send size={11} /> Fax
-        </button>
-        <button className="btn-secondary text-xs flex items-center gap-1"
-                onClick={() => setMode('email')}>
-          <Mail size={11} /> Email
-        </button>
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="text-gray-500">Send to hospital:</span>
+          <button className="btn-secondary text-xs flex items-center gap-1"
+                  onClick={() => setMode('fax')}>
+            <Send size={11} /> Fax
+          </button>
+          <button className="btn-secondary text-xs flex items-center gap-1"
+                  onClick={() => setMode('email')}>
+            <Mail size={11} /> Email
+          </button>
+        </div>
+        <SendHistoryList />
       </div>
     )
   }
@@ -792,6 +829,8 @@ function SendBoardingSlipPanel({ surgery, fileId }) {
           Cancel
         </button>
       </div>
+
+      <SendHistoryList />
     </div>
   )
 }

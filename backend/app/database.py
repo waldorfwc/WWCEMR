@@ -254,6 +254,10 @@ def _apply_lightweight_migrations():
         # Hospital Posting (boarding slip) editor overrides — persist
         # field-by-field corrections the coordinator made on the form.
         ("surgeries", "boarding_slip_overrides",      "JSON"),
+        # Per-file send log (fax/email events) for any SurgeryFile that
+        # gets shipped externally — boarding slips, modifier-22 letters,
+        # clearance forms, etc.
+        ("surgery_files", "send_history",             "JSON"),
         # Billing (Phase 3)
         ("surgeries", "modmed_claim_number", "VARCHAR(80)"),
         ("surgeries", "billed_icd10_codes", "JSON"),

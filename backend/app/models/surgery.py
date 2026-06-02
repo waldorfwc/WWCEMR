@@ -418,6 +418,9 @@ class SurgeryFile(Base):
     notes = Column(Text, nullable=True)
     uploaded_by = Column(String(200), nullable=True)
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Send log — list of {at, by, kind: fax|email, to, status, message_id?, error?}
+    # appended each time this file is faxed or emailed.
+    send_history = Column(JSON, nullable=True)
 
     surgery = relationship("Surgery", back_populates="files")
 

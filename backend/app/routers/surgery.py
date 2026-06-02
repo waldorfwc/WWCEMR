@@ -68,8 +68,9 @@ def _is_behind(s: Surgery, hours: int = 0) -> tuple[bool, int]:
 # ─── Serializer ─────────────────────────────────────────────────────
 
 def _latest_file(s: Surgery, *, kind: str) -> Optional[dict]:
-    """Return a {id, filename, download_url, uploaded_at} dict for the most
-    recently uploaded SurgeryFile of the given kind, or None."""
+    """Return a {id, filename, download_url, uploaded_at, send_history}
+    dict for the most recently uploaded SurgeryFile of the given kind,
+    or None."""
     files = [f for f in (s.files or []) if f.kind == kind]
     if not files:
         return None
@@ -79,6 +80,7 @@ def _latest_file(s: Surgery, *, kind: str) -> Optional[dict]:
         "filename":     latest.filename,
         "uploaded_at":  latest.uploaded_at.isoformat() if latest.uploaded_at else None,
         "download_url": f"/api/surgery/{s.id}/files/{latest.id}/download",
+        "send_history": latest.send_history or [],
     }
 
 
@@ -1920,6 +1922,16 @@ def send_boarding_slip(surgery_id: str,
                      .get(s.selected_facility or "", s.selected_facility or "")
     actor = current_user.get("email") or "system"
 
+    def _record_send(entry: dict):
+        """Append the send event to SurgeryFile.send_history."""
+        hist = list(f.send_history or [])
+        hist.append(entry)
+        f.send_history = hist
+        # SQLAlchemy treats JSON columns as opaque blobs — explicitly mark
+        # the attribute as modified so the change actually persists.
+        from sqlalchemy.orm.attributes import flag_modified as _fm
+        _fm(f, "send_history")
+
     if payload.kind == "fax":
         import tempfile, os as _os
         from app.services.fax_service import send_fax
@@ -1942,9 +1954,25 @@ def send_boarding_slip(surgery_id: str,
             try: _os.unlink(tmp.name)
             except OSError: pass
         if result.get("error"):
+            _record_send({
+                "at":     datetime.utcnow().isoformat(),
+                "by":     actor,
+                "kind":   "fax",
+                "to":     payload.to.strip(),
+                "status": "failed",
+                "error":  result["error"],
+            })
+            db.commit()
             raise HTTPException(status_code=502,
                                 detail=f"Fax send failed: {result['error']}")
-        # Audit on the file row + as a Surgery note for visibility
+        _record_send({
+            "at":         datetime.utcnow().isoformat(),
+            "by":         actor,
+            "kind":       "fax",
+            "to":         payload.to.strip(),
+            "status":     "sent",
+            "message_id": result.get("message_id"),
+        })
         from app.models.surgery import SurgeryNote
         db.add(SurgeryNote(
             surgery_id=s.id, created_by=actor,
@@ -1956,6 +1984,7 @@ def send_boarding_slip(surgery_id: str,
             "ok": True, "kind": "fax",
             "to": payload.to.strip(),
             "message_id": result.get("message_id"),
+            "send_history": f.send_history or [],
         }
 
     # --- email path ---
@@ -1996,16 +2025,33 @@ def send_boarding_slip(surgery_id: str,
                 smtp.login(cfg["user"], cfg["password"])
             smtp.sendmail(cfg["from"], [payload.to.strip()], msg.as_string())
     except Exception as exc:
+        _record_send({
+            "at":     datetime.utcnow().isoformat(),
+            "by":     actor,
+            "kind":   "email",
+            "to":     payload.to.strip(),
+            "status": "failed",
+            "error":  str(exc),
+        })
+        db.commit()
         raise HTTPException(status_code=502,
                             detail=f"Email send failed: {exc}")
 
+    _record_send({
+        "at":     datetime.utcnow().isoformat(),
+        "by":     actor,
+        "kind":   "email",
+        "to":     payload.to.strip(),
+        "status": "sent",
+    })
     from app.models.surgery import SurgeryNote
     db.add(SurgeryNote(
         surgery_id=s.id, created_by=actor,
         content=f"Emailed boarding slip to {payload.to.strip()}.",
     ))
     db.commit()
-    return {"ok": True, "kind": "email", "to": payload.to.strip()}
+    return {"ok": True, "kind": "email", "to": payload.to.strip(),
+            "send_history": f.send_history or []}
 
 
 # ─── Klara message drafter ──────────────────────────────────────────
