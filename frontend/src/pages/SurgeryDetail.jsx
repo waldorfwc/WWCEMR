@@ -383,7 +383,7 @@ function PaymentsSection({ surgery, flat = false }) {
   const inner = (
     <>
       <div className="flex items-center justify-between mb-3">
-        <h3 className={flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}>Payments</h3>
+        <h3 className={flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}>Payment Status</h3>
         {outstanding > 0 && (
           <button className="btn-primary text-sm"
                   onClick={() => requestMut.mutate({})}
