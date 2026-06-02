@@ -26,6 +26,11 @@ from app.models.guid import GUID, new_uuid
 
 # ─── Device-type catalog (Liletta, Mirena, Skyla, etc.) ─────────────
 
+LARC_OWNERSHIP_VALUES = ("patient_owned", "wwc_owned", "wwc_claimed")
+# Devices in these ownership buckets get billed to insurance.
+LARC_BILLABLE_OWNERSHIPS = ("wwc_owned", "wwc_claimed")
+
+
 class LarcDeviceType(Base):
     """Catalog of LARC device types the practice handles. Stays editable
     so new manufacturers / brands can be added without code changes."""
@@ -120,10 +125,24 @@ class LarcDevice(Base):
     location = Column(String(40), nullable=False, default="white_plains")
 
     status = Column(String(20), default="unassigned", nullable=False)
+    # Ownership: who paid for the device and who can be billed for it.
+    #   patient_owned — patient (or their insurance) purchased through their
+    #                   own pharmacy benefit. WWC does NOT bill insurance.
+    #   wwc_owned     — WWC bought the device. WWC bills insurance.
+    #   wwc_claimed   — originally patient-owned but unused within a year /
+    #                   declined; WWC claimed it. Treated like wwc_owned for
+    #                   billing purposes.
+    ownership = Column(String(20), default="wwc_owned", nullable=False)
     # If status='defective' or 'returned', this points to the new replacement device
     replacement_device_id = Column(GUID(), ForeignKey("larc_devices.id"), nullable=True)
     # If this device IS a replacement, point back to the original
     replaces_device_id = Column(GUID(), ForeignKey("larc_devices.id"), nullable=True)
+
+    # Purchasing patient (when patient_owned or wwc_claimed) — the patient
+    # whose insurance/wallet paid for the device. Can differ from the
+    # patient the device is later assigned to.
+    purchasing_patient_chart = Column(String(40), nullable=True)
+    purchasing_patient_name  = Column(String(200), nullable=True)
 
     notes = Column(Text, nullable=True)
 

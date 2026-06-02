@@ -56,6 +56,14 @@ def _device_dict(d: LarcDevice) -> dict:
         "location": d.location,
         "location_label": LOCATION_LABELS.get(d.location, d.location),
         "status": d.status,
+        "ownership": d.ownership or "wwc_owned",
+        "ownership_label": {
+            "patient_owned": "Patient Owned",
+            "wwc_owned":     "WWC Owned",
+            "wwc_claimed":   "WWC Claimed",
+        }.get(d.ownership or "wwc_owned"),
+        "purchasing_patient_chart": d.purchasing_patient_chart,
+        "purchasing_patient_name":  d.purchasing_patient_name,
         "replacement_device_id": str(d.replacement_device_id) if d.replacement_device_id else None,
         "replaces_device_id": str(d.replaces_device_id) if d.replaces_device_id else None,
         "notes": d.notes,
@@ -1726,6 +1734,13 @@ def mark_billed(assignment_id: str, payload: BilledIn,
     if a.status != "inserted":
         raise HTTPException(status_code=409,
                             detail=f"Can only bill an inserted assignment (current status: {a.status})")
+    # Don't bill insurance for devices the patient already paid for.
+    if a.device and (a.device.ownership or "wwc_owned") == "patient_owned":
+        raise HTTPException(
+            status_code=409,
+            detail="This is a Patient-Owned device — WWC does not bill "
+                   "insurance for it. Close out the assignment without a "
+                   "claim number or change the device's ownership first.")
     by = current_user.get("email") or "system"
     a.claim_number = payload.claim_number.strip()
     a.billed_at = datetime.utcnow()

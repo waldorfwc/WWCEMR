@@ -258,6 +258,11 @@ def _apply_lightweight_migrations():
         # gets shipped externally — boarding slips, modifier-22 letters,
         # clearance forms, etc.
         ("surgery_files", "send_history",             "JSON"),
+        # LARC device ownership — patient_owned / wwc_owned / wwc_claimed.
+        # Drives whether WWC bills insurance for the device.
+        ("larc_devices", "ownership",                  "VARCHAR(20) DEFAULT 'wwc_owned'"),
+        ("larc_devices", "purchasing_patient_chart",   "VARCHAR(40)"),
+        ("larc_devices", "purchasing_patient_name",    "VARCHAR(200)"),
         # Billing (Phase 3)
         ("surgeries", "modmed_claim_number", "VARCHAR(80)"),
         ("surgeries", "billed_icd10_codes", "JSON"),
