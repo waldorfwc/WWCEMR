@@ -693,6 +693,50 @@ class DevicePatch(BaseModel):
     notes: Optional[str] = None
 
 
+@router.delete("/devices/{device_id}", status_code=204)
+def delete_device(device_id: str,
+                  db: Session = Depends(get_db),
+                  current_user: dict = Depends(require_permission("larc:manage"))):
+    """Hard-delete a LarcDevice row. Intended for pre-go-live inventory
+    cleanup. Refuses if the device has ever been assigned to a patient —
+    once a real assignment exists the row must stay for audit purposes;
+    use 'return to manufacturer' instead."""
+    d = db.query(LarcDevice).options(joinedload(LarcDevice.device_type))\
+          .filter(LarcDevice.id == device_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="device not found")
+    has_assignments = db.query(LarcAssignment).filter(
+        LarcAssignment.device_id == d.id).count() > 0
+    if has_assignments:
+        raise HTTPException(
+            status_code=409,
+            detail=("This device has assignment history and can't be "
+                    "deleted. Use 'return to manufacturer' or edit its "
+                    "status instead."))
+    # Audit BEFORE removing the row so the event has a persistent record.
+    type_name = d.device_type.name if d.device_type else None
+    log_audit(db,
+              actor=current_user.get("email") or "system",
+              action="device_deleted",
+              device=d,
+              summary=f"Deleted device #{d.our_id}"
+                      + (f" ({type_name})" if type_name else ""),
+              detail={
+                  "our_id":              d.our_id,
+                  "device_type_id":      str(d.device_type_id) if d.device_type_id else None,
+                  "device_type_name":    type_name,
+                  "manufacturer_lot":    d.manufacturer_lot,
+                  "manufacturer_serial": d.manufacturer_serial,
+                  "expiration_date":     str(d.expiration_date) if d.expiration_date else None,
+                  "purchase_date":       str(d.purchase_date) if d.purchase_date else None,
+                  "status":              d.status,
+                  "location":            d.location,
+              })
+    db.delete(d)
+    db.commit()
+    return None
+
+
 @router.patch("/devices/{device_id}")
 def patch_device(device_id: str, payload: DevicePatch,
                   db: Session = Depends(get_db),

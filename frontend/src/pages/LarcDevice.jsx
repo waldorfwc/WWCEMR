@@ -1,12 +1,16 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Package, User, FileText, Printer } from 'lucide-react'
+import { ArrowLeft, Package, User, FileText, Printer, Trash2 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import { useCurrentUser } from '../hooks/useCurrentUser'
 
 
 export default function LarcDevice() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const qc = useQueryClient()
+  const { has } = useCurrentUser()
+  const canManage = has?.('larc:manage')
   const { data: d, isLoading, error } = useQuery({
     queryKey: ['larc-device', id],
     queryFn: () => api.get(`/larc/devices/${id}`).then(r => r.data),
@@ -14,6 +18,15 @@ export default function LarcDevice() {
   const { data: audit } = useQuery({
     queryKey: ['larc-audit-for-device', id],
     queryFn: () => api.get('/larc/audit', { params: { device_id: id, per_page: 100 } }).then(r => r.data),
+  })
+
+  const del = useMutation({
+    mutationFn: () => api.delete(`/larc/devices/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['larc-devices'] })
+      navigate('/larc/devices')
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
   })
 
   if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
@@ -43,6 +56,20 @@ export default function LarcDevice() {
                title={`Print 2.25" x 1.25" cabinet label with QR`}>
               <Printer size={12} /> Label
             </a>
+            {canManage && (d.assignments || []).length === 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`Delete device #${d.our_id}? This is for pre-go-live inventory cleanup only — once a device has an assignment it can't be deleted.`)) {
+                    del.mutate()
+                  }
+                }}
+                disabled={del.isPending}
+                className="text-xs px-2 py-1 rounded border border-red-300 bg-white text-red-700 hover:bg-red-50 flex items-center gap-1"
+                title="Delete this device (no assignment history)">
+                <Trash2 size={12} /> {del.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+            )}
             <span className="text-[10px] uppercase tracking-wide bg-plum-100 text-plum-700 px-2 py-1 rounded">
               {d.status.replace(/_/g, ' ')}
             </span>
