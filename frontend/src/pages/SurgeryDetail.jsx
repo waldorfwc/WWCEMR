@@ -2195,8 +2195,7 @@ function PatientPicksDateBody({ surgery }) {
     return (
       <div className="space-y-2 text-[12px]">
         <div className="text-amber-700">
-          Date not yet picked. Patient can pick via the Klara link, or schedule
-          here on the patient's behalf.
+          Patient can pick a surgery date and time via Surgery Portal.
         </div>
         {canEditSchedule && (
           <button
