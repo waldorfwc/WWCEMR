@@ -6,6 +6,7 @@ import {
   Check, SkipForward, RotateCcw, X, Flag, Pause, Save, Edit3,
   MessageSquare, Download, Upload, Copy, ListPlus, Send, RefreshCw,
   ChevronDown, ChevronUp, Package, Eye,
+  DollarSign, HeartPulse, UserPlus, FlaskConical, Mail, Phone, Calculator,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import MessagesSection from '../components/MessagesSection'
@@ -383,7 +384,9 @@ function PaymentsSection({ surgery, flat = false }) {
   const inner = (
     <>
       <div className="flex items-center justify-between mb-3">
-        <h3 className={flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}>Payment Status</h3>
+        <h3 className={`flex items-center gap-1.5 ${flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}`}>
+          <DollarSign size={14} className="text-emerald-700" /> Payment Status
+        </h3>
         {outstanding > 0 && (
           <button className="btn-primary text-sm"
                   onClick={() => requestMut.mutate({})}
@@ -2488,7 +2491,10 @@ function ClearanceCardBody({ surgery }) {
   return (
     <div id="milestone-clearance" className="scroll-mt-16 space-y-3 text-[12px]">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-gray-800">Cardiac / Anesthesia Clearance</h3>
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <HeartPulse size={14} className="text-rose-600" />
+          Cardiac / Anesthesia Clearance
+        </h3>
         {required && (
           <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
             {status.replace(/_/g, ' ')}
@@ -2650,7 +2656,10 @@ function AssistantSurgeonCardBody({ surgery }) {
   if (!required) {
     return (
       <div className="space-y-2 text-[12px]">
-        <h3 className="text-sm font-semibold text-gray-800">Assistant Surgeon</h3>
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <UserPlus size={14} className="text-plum-700" />
+          Assistant Surgeon
+        </h3>
         <p className="text-gray-700">
           Most surgeries don't need an assistant surgeon. Toggle this on
           when the primary surgeon has requested one (usually Dr. Gillespie).
@@ -2677,7 +2686,10 @@ function AssistantSurgeonCardBody({ surgery }) {
   return (
     <div className="space-y-3 text-[12px]">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-gray-800">Assistant Surgeon</h3>
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <UserPlus size={14} className="text-plum-700" />
+          Assistant Surgeon
+        </h3>
         <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${headerTone}`}>
           {headerLabel}
         </span>
@@ -2876,7 +2888,10 @@ function LabsCardBody({ surgery }) {
   return (
     <div className="space-y-2 text-[12px]">
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-gray-800">Pre-Op Labs</h3>
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <FlaskConical size={14} className="text-amber-700" />
+          Pre-Op Labs
+        </h3>
         <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
           surgery.lab_appointment_date
             ? 'bg-green-100 text-green-700'
@@ -3763,7 +3778,7 @@ function BenefitsPanel({ surgery }) {
   return (
     <div className="card !p-3 mt-3">
       <div className="flex items-center gap-1.5 mb-2">
-        <span className="text-plum-700 text-base">$</span>
+        <Calculator size={14} className="text-emerald-700" />
         <h3 className="text-sm font-semibold text-gray-800">Benefits calculator</h3>
         <span className="text-[11px] text-gray-500">Patient responsibility for this surgery</span>
       </div>
@@ -4353,7 +4368,9 @@ function PatientEmailsSection({ surgery, flat = false }) {
   return (
     <Outer>
       <div className="flex items-center justify-between mb-3">
-        <h3 className={flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}>Patient emails</h3>
+        <h3 className={`flex items-center gap-1.5 ${flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}`}>
+          <Mail size={14} className="text-plum-700" /> Patient emails
+        </h3>
         {!composing && (
           <button className="btn-secondary text-sm" onClick={() => setComposing(true)}>
             Compose email
@@ -4461,7 +4478,9 @@ function PatientSmsSection({ surgery, flat = false }) {
     : <div className="bg-white border border-border-subtle rounded-lg p-5 mb-4">{children}</div>
   return (
     <Outer>
-      <h3 className={flat ? "text-sm font-semibold text-gray-800 mb-3" : "text-lg font-semibold mb-3"}>Patient SMS history</h3>
+      <h3 className={`flex items-center gap-1.5 mb-3 ${flat ? "text-sm font-semibold text-gray-800" : "text-lg font-semibold"}`}>
+        <Phone size={14} className="text-plum-700" /> Patient SMS history
+      </h3>
       {messages.length === 0 ? (
         <div className="text-[12px] text-gray-400 italic">No SMS activity.</div>
       ) : (

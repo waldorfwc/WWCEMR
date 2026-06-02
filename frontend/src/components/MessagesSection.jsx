@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { MessageSquare } from 'lucide-react'
 import api from '../utils/api'
 
 export default function MessagesSection({ sid, flat = false }) {
@@ -48,7 +49,9 @@ export default function MessagesSection({ sid, flat = false }) {
   const titleClass = flat ? 'text-sm font-semibold mb-3 text-gray-800' : 'text-lg font-semibold mb-3'
   return (
     <Wrapper id="messages" className={wrapClass}>
-      <h3 className={titleClass}>Messages</h3>
+      <h3 className={`flex items-center gap-1.5 ${titleClass}`}>
+        <MessageSquare size={14} className="text-plum-700" /> Messages
+      </h3>
       <div className="max-h-80 overflow-y-auto space-y-2 mb-3 pr-1">
         {messages.length === 0 && (
           <div className="text-sm text-muted text-center py-4">
