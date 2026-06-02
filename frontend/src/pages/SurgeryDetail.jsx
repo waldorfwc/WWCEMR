@@ -2102,8 +2102,8 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Appointments" anchor="group-appointments" tone="sky">
-        {ms('patient_picks_date')}
-        {ms('post_op_appts_scheduled')}
+        <PatientPicksDateBody surgery={surgery} />
+        <PostOpApptsCardBody surgery={surgery} />
       </SurgerySection>
 
       <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery" tone="amber">
