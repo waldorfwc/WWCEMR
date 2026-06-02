@@ -2358,8 +2358,38 @@ function PostOpApptsCardBody({ surgery }) {
 
   if (!surgery.scheduled_date) {
     return (
-      <div className="text-[12px] text-amber-700">
-        Pick a surgery date first — post-op appointments are calculated from it.
+      <div className="space-y-2 text-[12px] text-gray-700">
+        <div className="text-amber-700">
+          Pick a surgery date first — post-op appointment dates will auto-fill
+          from it once it's set.
+        </div>
+        {ruleVisits.length > 0 ? (
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              Practice rule for this procedure
+            </div>
+            <ul className="space-y-0.5">
+              {ruleVisits.map((v, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span className="font-medium">{v.label}</span>
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    v.suggested_location === 'telehealth'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'bg-amber-50 text-amber-800'
+                  }`}>
+                    {v.suggested_location === 'telehealth' ? 'Telehealth' : 'Office'}
+                    {v.location_locked && ' (required)'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="text-[11px] text-gray-500 italic">
+            No specific schedule rule matched this surgery's procedures. Up to 2
+            follow-up appointments can be added manually once the surgery date is set.
+          </div>
+        )}
       </div>
     )
   }
