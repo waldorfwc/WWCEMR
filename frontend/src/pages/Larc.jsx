@@ -522,7 +522,7 @@ function NewRequestDrawer({ onClose, onCreated }) {
                   : 'border-gray-200 text-gray-700'}`}>
                 <input type="radio" className="mr-1" checked={form.source_flow === 'in_stock'}
                        onChange={() => update('source_flow', 'in_stock')} />
-                In-stock (Liletta)
+                In-stock (pick from cabinet)
               </label>
               <label className={`text-[12px] px-2 py-1 rounded border cursor-pointer ${
                 form.source_flow === 'pharmacy_order'
@@ -530,7 +530,7 @@ function NewRequestDrawer({ onClose, onCreated }) {
                   : 'border-gray-200 text-gray-700'}`}>
                 <input type="radio" className="mr-1" checked={form.source_flow === 'pharmacy_order'}
                        onChange={() => update('source_flow', 'pharmacy_order')} />
-                Pharmacy order (Mirena/Skyla/Kyleena/Paragard/Nexplanon)
+                Pharmacy order (patient's pharmacy ships it)
               </label>
             </div>
           </div>
