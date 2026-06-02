@@ -570,6 +570,11 @@ function BoardingSlipPanel({ surgery }) {
     onSuccess: (d) => {
       setGenerated(d); setError(null); setEditing(false)
       qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
+      // So the editor reopens with the freshly-saved overrides applied
+      // on top of the surgery defaults (and so the main surgery dict
+      // picks up the new latest_boarding_slip).
+      qc.invalidateQueries({ queryKey: ['boarding-slip-prefill', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
     },
     onError: (e) => {
       // Defensive: a 422 from FastAPI returns detail as an array of
@@ -679,11 +684,16 @@ function BoardingSlipFieldsEditor({ surgery, onClose, onRegenerate, isPending })
   })
 
   const [form, setForm] = useState({})
+  const [seeded, setSeeded] = useState(false)
 
-  // Seed the form with the prefill values once they arrive
+  // Seed the form with the prefill values once they arrive. Guarded so
+  // background refetches don't clobber the user's in-progress edits.
   useEffect(() => {
-    if (prefill?.fields) setForm(prefill.fields)
-  }, [prefill])
+    if (prefill?.fields && !seeded) {
+      setForm(prefill.fields)
+      setSeeded(true)
+    }
+  }, [prefill, seeded])
 
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
