@@ -2122,10 +2122,12 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Post Surgery" anchor="group-post-surgery" tone="slate">
-        {ms('post_op_call')}
-        {ms('op_notes')}
-        {ms('path_report')}
-        {ms('surgery_billed')}
+        {byKind['post_op_call'] && (
+          <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
+        )}
+        <FilesPanel surgery={surgery} kindFilter="op_notes" label="Operative Report" />
+        <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
+        <SurgeryBilledCardBody surgery={surgery} />
       </SurgerySection>
 
       <SurgerySection title="Devices" anchor="group-devices" tone="teal">
@@ -3118,6 +3120,17 @@ function PostOpCallCardBody({ surgery, milestone }) {
 
   return (
     <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <Phone size={14} className="text-plum-700" />
+          Spoke to Patient Post-Op
+        </h3>
+        {isDone && (
+          <span className="text-[10px] uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+            done
+          </span>
+        )}
+      </div>
       <div className="text-[11px] text-gray-600">
         Ask each question and record the answer. Save → marks the milestone done with
         all answers captured.
@@ -3213,9 +3226,21 @@ function SurgeryBilledCardBody({ surgery }) {
 
   const icd10 = surgery.billed_icd10_codes || []
   const cpts = surgery.billed_cpt_codes || []
+  const billed = !!surgery.billed_at
 
   return (
     <div className="space-y-2 text-[12px]">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <DollarSign size={14} className="text-emerald-700" />
+          Surgery Billed
+        </h3>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+          billed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+        }`}>
+          {billed ? 'billed' : 'not billed'}
+        </span>
+      </div>
       <div>
         <div className="text-[10px] uppercase tracking-wide text-gray-500">ModMed claim #</div>
         <div className="flex gap-1">
