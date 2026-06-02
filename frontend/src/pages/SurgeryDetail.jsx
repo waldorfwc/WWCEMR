@@ -2112,7 +2112,7 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Communication & Messaging" anchor="group-communication" tone="plum">
-        {ms('klara_scheduling')}
+        <KlaraPanel surgery={surgery} />
         <MessagesSection sid={surgery.id} flat />
         <PatientEmailsSection surgery={surgery} flat />
         <PatientSmsSection surgery={surgery} flat />
