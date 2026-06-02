@@ -149,6 +149,34 @@ def main(apply: bool):
     rows = [_row_to_dict(r, cols) for r in sheet.get("rows", [])]
     print(f"Smartsheet rows fetched: {len(rows)}")
 
+    # Dedupe by Asset Tag # — the sheet sometimes has multiple rows
+    # for the same device (reassignment history). Keep the row with the
+    # most recent Modified timestamp.
+    by_tag: dict[str, dict] = {}
+    dup_drops: list[str] = []
+    for r in rows:
+        tag = (r.get("Asset Tag #") or "").strip()
+        if not tag:
+            continue
+        prev = by_tag.get(tag)
+        if prev is None:
+            by_tag[tag] = r
+            continue
+        # Compare Modified timestamps; keep the newer
+        def _ts(x):
+            return x.get("Modified") or ""
+        if _ts(r) > _ts(prev):
+            dup_drops.append(f"{tag} row {prev['_row_id']} (kept row {r['_row_id']})")
+            by_tag[tag] = r
+        else:
+            dup_drops.append(f"{tag} row {r['_row_id']} (kept row {prev['_row_id']})")
+    if dup_drops:
+        print(f"Dropped {len(dup_drops)} duplicate rows:")
+        for d in dup_drops:
+            print(f"   - {d}")
+    rows = list(by_tag.values()) + [r for r in rows if not (r.get('Asset Tag #') or '').strip()]
+    print(f"Unique rows after dedupe: {len(rows)}")
+
     # Validate device types up front
     type_by_name = {t.name: t for t in db.query(LarcDeviceType).all()}
     missing_types: Counter = Counter()
@@ -244,16 +272,18 @@ def main(apply: bool):
             print(f"   - {k!r}: {n}")
 
     # --- Wipe + insert ------------------------------------------------
-    existing_devices = db.query(LarcDevice).count()
-    existing_assns   = db.query(LarcAssignment).count()
-    existing_milestones = db.query(LarcMilestone).count()
-    existing_audit   = db.query(LarcAuditEvent).count()
+    from sqlalchemy import text as _text
+    counts = {
+        t: db.execute(_text(f"SELECT count(*) FROM {t}")).scalar()
+        for t in ("larc_owed_patients", "larc_audit_events",
+                  "larc_checkouts", "larc_milestones",
+                  "larc_assignments", "larc_devices",
+                  "larc_inventory_counts")
+    }
     print()
     print("Existing rows that will be wiped:")
-    print(f"   LarcDevice:      {existing_devices}")
-    print(f"   LarcAssignment:  {existing_assns}")
-    print(f"   LarcMilestone:   {existing_milestones}")
-    print(f"   LarcAuditEvent:  {existing_audit}")
+    for t, n in counts.items():
+        print(f"   {t:<22} {n}")
 
     if not apply:
         print("\nDRY-RUN — no changes committed.")
@@ -263,10 +293,24 @@ def main(apply: bool):
 
     # APPLY
     print("\nAPPLYING — wiping existing data...")
-    db.query(LarcAuditEvent).delete()
-    db.query(LarcMilestone).delete()
-    db.query(LarcAssignment).delete()
-    db.query(LarcDevice).delete()
+    # Order: children first to satisfy FK constraints.
+    for t in ("larc_owed_patients",
+              "larc_audit_events",
+              "larc_checkouts",
+              "larc_milestones",
+              "larc_inventory_counts"):
+        db.execute(_text(f"DELETE FROM {t}"))
+    # larc_assignments has self-referencing FKs (replaces, replacement) —
+    # null them out before deleting to dodge the constraint.
+    db.execute(_text("UPDATE larc_assignments SET "
+                      "replaces_assignment_id = NULL, "
+                      "replacement_assignment_id = NULL"))
+    db.execute(_text("DELETE FROM larc_assignments"))
+    # Same for larc_devices self-references.
+    db.execute(_text("UPDATE larc_devices SET "
+                      "replaces_device_id = NULL, "
+                      "replacement_device_id = NULL"))
+    db.execute(_text("DELETE FROM larc_devices"))
     db.flush()
 
     inserted_devices = 0
