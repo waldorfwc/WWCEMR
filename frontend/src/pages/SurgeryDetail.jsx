@@ -4468,11 +4468,12 @@ const OP_PROCEDURE_HINTS = [
   { needle: 'ablation',   device: 'NovaSure' },
   { needle: 'novasure',   device: 'NovaSure' },
   { needle: 'endometrial', device: 'NovaSure' },
-  { needle: 'polyp',      device: 'Bensta'   },
-  { needle: 'polypectomy', device: 'Bensta'  },
-  { needle: 'bensta',     device: 'Bensta'   },
-  { needle: 'd&c',        device: 'Bensta'   },
-  { needle: 'hysteroscopy', device: 'Bensta' },
+  { needle: 'polyp',      device: 'Benesta'   },
+  { needle: 'polypectomy', device: 'Benesta'  },
+  { needle: 'benesta',    device: 'Benesta'   },
+  { needle: 'bensta',     device: 'Benesta'   },
+  { needle: 'd&c',        device: 'Benesta'   },
+  { needle: 'hysteroscopy', device: 'Benesta' },
 ]
 
 function inferOpDeviceHint(surgery) {

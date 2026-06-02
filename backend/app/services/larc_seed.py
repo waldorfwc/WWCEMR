@@ -35,7 +35,7 @@ SEED_DEVICE_TYPES = [
     ("NovaSure",  "Hologic",         "office_procedure", "in_stock",
      1300.00, 2, 3,
      "Endometrial ablation handpiece — single-use. Assigned at surgery scheduling."),
-    ("Bensta",    "Caldera Medical", "office_procedure", "in_stock",
+    ("Benesta",   "Caldera Medical", "office_procedure", "in_stock",
      800.00, 2, 3,
      "Tissue resector for polyp removal during D&C — single-use."),
 ]

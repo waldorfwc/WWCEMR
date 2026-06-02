@@ -36,9 +36,9 @@ SHEET_ID = "1710608391032708"
 
 # Smartsheet device-type label → our seed-table name
 DEVICE_TYPE_MAP = {
-    "benesta pro (caldera)": "Bensta",
-    "benesta pro":           "Bensta",
-    "benesta":               "Bensta",
+    "benesta pro (caldera)": "Benesta",
+    "benesta pro":           "Benesta",
+    "benesta":               "Benesta",
     "novasure (hologic)":    "NovaSure",
     "novasure":              "NovaSure",
 }
