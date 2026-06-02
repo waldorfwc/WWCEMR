@@ -1870,6 +1870,144 @@ def boarding_slip_prefill(surgery_id: str,
     }
 
 
+class BoardingSlipSendPayload(BaseModel):
+    kind: str                                  # "fax" | "email"
+    to: str                                    # fax number OR email address
+    subject: Optional[str] = None              # email-only
+    message: Optional[str] = None              # cover sheet text / email body
+    file_id: Optional[str] = None              # default: latest boarding slip
+
+
+@router.post("/{surgery_id}/boarding-slip/send")
+def send_boarding_slip(surgery_id: str,
+                       payload: BoardingSlipSendPayload,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(require_permission("surgery:work"))):
+    """Fax or email the latest boarding slip PDF to a hospital scheduler."""
+    if payload.kind not in ("fax", "email"):
+        raise HTTPException(status_code=422, detail="kind must be 'fax' or 'email'")
+    if not (payload.to or "").strip():
+        raise HTTPException(status_code=422, detail="destination ('to') is required")
+
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+
+    # Resolve which boarding slip to send
+    q = db.query(SurgeryFile).filter(SurgeryFile.surgery_id == s.id,
+                                      SurgeryFile.kind == "boarding_slip")
+    f = (q.filter(SurgeryFile.id == payload.file_id).first()
+         if payload.file_id else
+         q.order_by(SurgeryFile.uploaded_at.desc()).first())
+    if not f:
+        raise HTTPException(status_code=404,
+                            detail="No boarding slip has been generated yet. "
+                                   "Click 'Generate' first.")
+
+    # Pull bytes via the storage adapter (works on local + GCS)
+    from app.services.storage import read_blob, is_legacy_local_path
+    if is_legacy_local_path(f.path):
+        raise HTTPException(status_code=410,
+                            detail="This file is from before the cloud migration "
+                                   "and is no longer available.")
+    try:
+        pdf_bytes = read_blob(f.path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Boarding slip file is missing.")
+
+    facility_label = {"medstar": "MedStar Southern Maryland Hospital Center",
+                       "crmc":    "University of Maryland Charles Regional Medical Center"}\
+                     .get(s.selected_facility or "", s.selected_facility or "")
+    actor = current_user.get("email") or "system"
+
+    if payload.kind == "fax":
+        import tempfile, os as _os
+        from app.services.fax_service import send_fax
+        cover = (
+            payload.message
+            or f"Boarding slip for {s.patient_name or '—'} "
+               f"(chart #{s.chart_number or '—'})."
+        )
+        tmp = tempfile.NamedTemporaryFile(prefix="boarding_slip_",
+                                            suffix=".pdf", delete=False)
+        try:
+            tmp.write(pdf_bytes); tmp.flush(); tmp.close()
+            result = send_fax(
+                to_number=payload.to.strip(),
+                file_path=tmp.name,
+                cover_page_text=cover,
+                patient_name=s.patient_name or "",
+            )
+        finally:
+            try: _os.unlink(tmp.name)
+            except OSError: pass
+        if result.get("error"):
+            raise HTTPException(status_code=502,
+                                detail=f"Fax send failed: {result['error']}")
+        # Audit on the file row + as a Surgery note for visibility
+        from app.models.surgery import SurgeryNote
+        db.add(SurgeryNote(
+            surgery_id=s.id, created_by=actor,
+            content=f"Faxed boarding slip to {payload.to.strip()} "
+                    f"(msg id {result.get('message_id') or '—'}).",
+        ))
+        db.commit()
+        return {
+            "ok": True, "kind": "fax",
+            "to": payload.to.strip(),
+            "message_id": result.get("message_id"),
+        }
+
+    # --- email path ---
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.application import MIMEApplication
+    from app.services.checklist_notifications import _smtp_settings
+    cfg = _smtp_settings()
+    if not (cfg["host"] and cfg["from"]):
+        raise HTTPException(status_code=503,
+                            detail="SMTP isn't configured on this server.")
+    subject = (payload.subject or
+               f"Boarding slip — {s.patient_name or 'patient'} — {facility_label}")
+    body_text = (
+        payload.message
+        or f"Attached is the boarding slip for {s.patient_name or 'this patient'}"
+           f" (chart #{s.chart_number or '—'}) at {facility_label}."
+    )
+    body_html = (
+        f"<p>{body_text}</p>"
+        f"<p style='color:#888;font-size:11px'>"
+        f"Sent from Waldorf Women's Care · {actor.split('@')[0]}</p>"
+    )
+    msg = MIMEMultipart()
+    msg["Subject"] = subject
+    msg["From"] = cfg["from"]
+    msg["To"] = payload.to.strip()
+    msg.attach(MIMEText(body_html, "html"))
+    attach = MIMEApplication(pdf_bytes, _subtype="pdf")
+    attach.add_header("Content-Disposition", "attachment",
+                        filename=f.filename or "boarding_slip.pdf")
+    msg.attach(attach)
+    try:
+        with smtplib.SMTP(cfg["host"], cfg["port"]) as smtp:
+            smtp.starttls()
+            if cfg["user"] and cfg["password"]:
+                smtp.login(cfg["user"], cfg["password"])
+            smtp.sendmail(cfg["from"], [payload.to.strip()], msg.as_string())
+    except Exception as exc:
+        raise HTTPException(status_code=502,
+                            detail=f"Email send failed: {exc}")
+
+    from app.models.surgery import SurgeryNote
+    db.add(SurgeryNote(
+        surgery_id=s.id, created_by=actor,
+        content=f"Emailed boarding slip to {payload.to.strip()}.",
+    ))
+    db.commit()
+    return {"ok": True, "kind": "email", "to": payload.to.strip()}
+
+
 # ─── Klara message drafter ──────────────────────────────────────────
 
 @router.get("/{surgery_id}/klara-draft/{kind}")

@@ -640,24 +640,27 @@ function BoardingSlipPanel({ surgery }) {
             />
           )}
           {generated && (
-            <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between gap-2">
-              <span className="truncate">✓ Generated <code>{generated.filename}</code></span>
-              <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => setPreviewing(true)}
-                        className="text-plum-700 hover:underline flex items-center gap-1">
-                  <Eye size={11} /> Preview
-                </button>
-                <button onClick={() => setEditing(true)}
-                        className="text-plum-700 hover:underline flex items-center gap-1">
-                  <Edit3 size={11} /> Edit fields
-                </button>
-                <a href={`/api${generated.download_url.replace(/^\/api/, '')}`}
-                   download
-                   className="text-plum-700 hover:underline flex items-center gap-1">
-                  <Download size={11} /> Download
-                </a>
+            <>
+              <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between gap-2">
+                <span className="truncate">✓ Generated <code>{generated.filename}</code></span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => setPreviewing(true)}
+                          className="text-plum-700 hover:underline flex items-center gap-1">
+                    <Eye size={11} /> Preview
+                  </button>
+                  <button onClick={() => setEditing(true)}
+                          className="text-plum-700 hover:underline flex items-center gap-1">
+                    <Edit3 size={11} /> Edit fields
+                  </button>
+                  <a href={`/api${generated.download_url.replace(/^\/api/, '')}`}
+                     download
+                     className="text-plum-700 hover:underline flex items-center gap-1">
+                    <Download size={11} /> Download
+                  </a>
+                </div>
               </div>
-            </div>
+              <SendBoardingSlipPanel surgery={surgery} fileId={generated.id} />
+            </>
           )}
           {previewing && generated && (
             <PdfPreviewDrawer
@@ -671,6 +674,124 @@ function BoardingSlipPanel({ surgery }) {
                        label="Hospital Posting Confirmation" />
         </>
       )}
+    </div>
+  )
+}
+
+
+function SendBoardingSlipPanel({ surgery, fileId }) {
+  const [mode, setMode] = useState(null)  // null | 'fax' | 'email'
+  const [to, setTo] = useState('')
+  const [subject, setSubject] = useState('')
+  const [message, setMessage] = useState('')
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  const send = useMutation({
+    mutationFn: (body) => api.post(`/surgery/${surgery.id}/boarding-slip/send`, body)
+                              .then(r => r.data),
+    onSuccess: (d) => {
+      setResult(d); setError(null)
+      // Keep the form open so the user sees confirmation; reset destination only.
+      setTo(''); setMessage('')
+      setTimeout(() => { setMode(null); setResult(null) }, 2500)
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Send failed.'))
+    },
+  })
+
+  function submit() {
+    setError(null); setResult(null)
+    const body = { kind: mode, to: to.trim(), file_id: fileId, message: message || null }
+    if (mode === 'email') body.subject = subject || null
+    send.mutate(body)
+  }
+
+  if (!mode) {
+    return (
+      <div className="flex items-center gap-2 text-[11px]">
+        <span className="text-gray-500">Send to hospital:</span>
+        <button className="btn-secondary text-xs flex items-center gap-1"
+                onClick={() => setMode('fax')}>
+          <Send size={11} /> Fax
+        </button>
+        <button className="btn-secondary text-xs flex items-center gap-1"
+                onClick={() => setMode('email')}>
+          <Mail size={11} /> Email
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="border border-plum-200 bg-plum-50/40 rounded p-2 space-y-2 text-[11px]">
+      <div className="flex items-center gap-2">
+        <span className="font-medium text-gray-800">
+          {mode === 'fax' ? 'Fax' : 'Email'} boarding slip
+        </span>
+        <button className="ml-auto text-muted hover:text-ink"
+                onClick={() => { setMode(null); setResult(null); setError(null) }}>
+          <X size={12} />
+        </button>
+      </div>
+
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">
+          {mode === 'fax' ? 'Fax number' : 'Email address'}
+        </div>
+        <input className={`input text-[12px] w-full ${mode === 'fax' ? 'font-mono' : ''}`}
+               type={mode === 'email' ? 'email' : 'tel'}
+               value={to}
+               onChange={e => setTo(e.target.value)}
+               placeholder={mode === 'fax' ? '240-555-0100' : 'scheduling@hospital.com'} />
+      </div>
+
+      {mode === 'email' && (
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">
+            Subject (optional)
+          </div>
+          <input className="input text-[12px] w-full"
+                 value={subject}
+                 onChange={e => setSubject(e.target.value)}
+                 placeholder="Boarding slip — patient name" />
+        </div>
+      )}
+
+      <div>
+        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">
+          {mode === 'fax' ? 'Cover sheet message' : 'Message'} (optional)
+        </div>
+        <textarea className="input text-[12px] w-full" rows={2}
+                  value={message}
+                  onChange={e => setMessage(e.target.value)}
+                  placeholder="Anything the recipient needs to know" />
+      </div>
+
+      {error && <div className="text-red-600">{error}</div>}
+      {result && (
+        <div className="text-green-700">
+          ✓ {mode === 'fax' ? 'Fax queued' : 'Email sent'} to <strong>{result.to}</strong>
+          {result.message_id && <> · <span className="font-mono text-[10px]">{result.message_id}</span></>}
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <button className="btn-primary text-xs flex items-center gap-1"
+                onClick={submit}
+                disabled={!to.trim() || send.isPending}>
+          {mode === 'fax' ? <Send size={11} /> : <Mail size={11} />}
+          {send.isPending
+            ? (mode === 'fax' ? 'Sending fax…' : 'Sending email…')
+            : (mode === 'fax' ? 'Send fax' : 'Send email')}
+        </button>
+        <button className="text-[11px] text-muted hover:underline"
+                onClick={() => { setMode(null); setResult(null); setError(null) }}>
+          Cancel
+        </button>
+      </div>
     </div>
   )
 }
