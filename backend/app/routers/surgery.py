@@ -1686,8 +1686,68 @@ def generate_clearance_form(surgery_id: str,
     }
 
 
+class BoardingSlipPayload(BaseModel):
+    overrides: Optional[dict[str, str]] = None
+
+
+# User-friendly field keys → MedStar PDF field names.
+_USER_TO_MEDSTAR = {
+    "surgery_date":          "Surgery Date Requested",
+    "start_time":            "Start Time",
+    "primary_surgeon":       "AUTO_PhysicianName",
+    "secondary_surgeon":     "Secondary Surgeon",
+    "primary_cpt":           "Min Primary CPT Code",
+    "secondary_cpt":         "Secondary CPT",
+    "primary_description":   "AUTO_VisitPlans",
+    "icd":                   "AUTO_VisitICD10",
+    "diagnosis_description": "AUTO_VisitImpressions",
+    "special_request":       "Other Special Equipment",
+    "additional_notes":      "Additional Notes",
+}
+
+# User-friendly field keys → CRMC coord-map keys.
+_USER_TO_CRMC = {
+    "surgery_date":          "requested_date",
+    "start_time":            "requested_time",
+    "primary_description":   "procedure",
+    "diagnosis_description": "diagnosis",
+    "anesthesia":            "anesthesia",
+    "icd":                   "icd",
+    "primary_cpt":           "cpt",
+    "special_request":       "special_request",
+    "auth_number":           "auth_number",
+}
+
+
+def _translate_overrides(facility: str, user_overrides: dict) -> dict:
+    """Translate user-friendly keys to the field names the generators
+    expect. Unknown keys pass through unchanged so power users can also
+    target raw PDF field names directly. estimated_minutes is split into
+    Hrs / Est Time Needed for MedStar."""
+    if not user_overrides:
+        return {}
+    mapping = _USER_TO_MEDSTAR if facility == "medstar" else _USER_TO_CRMC
+    out: dict[str, str] = {}
+    for k, v in user_overrides.items():
+        if v is None or v == "":
+            continue
+        # Special: estimated_minutes → MedStar splits into Hrs + Est Time
+        if k == "estimated_minutes" and facility == "medstar":
+            try:
+                total = int(v)
+                out["Hrs"] = str(total // 60)
+                out["Est Time Needed"] = f"{total // 60}:{total % 60:02d}"
+            except (TypeError, ValueError):
+                pass
+            continue
+        pdf_key = mapping.get(k, k)
+        out[pdf_key] = str(v)
+    return out
+
+
 @router.post("/{surgery_id}/boarding-slip")
 def generate_boarding_slip(surgery_id: str,
+                            payload: Optional[BoardingSlipPayload] = None,
                             db: Session = Depends(get_db),
                             current_user: dict = Depends(require_permission("surgery:work"))):
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -1696,9 +1756,13 @@ def generate_boarding_slip(surgery_id: str,
     if s.selected_facility not in ("medstar", "crmc"):
         raise HTTPException(status_code=409,
                             detail=f"Boarding slip not needed for facility {s.selected_facility}")
+    user_overrides = (payload.overrides if payload else None) or {}
+    overrides = _translate_overrides(s.selected_facility, user_overrides)
     from app.services.surgery_boarding_slip import generate_for_surgery
     try:
-        f = generate_for_surgery(db, s, by_email=current_user.get("email") or "system")
+        f = generate_for_surgery(db, s,
+                                  by_email=current_user.get("email") or "system",
+                                  overrides=overrides)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Boarding slip generation failed: {exc}")
     return {
@@ -1706,6 +1770,49 @@ def generate_boarding_slip(surgery_id: str,
         "filename": f.filename,
         "size_bytes": f.size_bytes,
         "download_url": f"/api/surgery/{surgery_id}/files/{f.id}/download",
+    }
+
+
+@router.get("/{surgery_id}/boarding-slip/prefill")
+def boarding_slip_prefill(surgery_id: str,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(require_permission("surgery:work"))):
+    """Returns the prefill values that would land on each field of the
+    boarding slip, so the staff PDF editor can show them as initial
+    values."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if s.selected_facility not in ("medstar", "crmc"):
+        raise HTTPException(status_code=409,
+                            detail=f"Boarding slip not needed for facility {s.selected_facility}")
+
+    procs = s.procedures or []
+    diags = s.diagnoses or []
+    primary = procs[0] if procs else {}
+    secondary = procs[1] if len(procs) > 1 else {}
+    primary_dx = diags[0] if diags else {}
+
+    return {
+        "facility": s.selected_facility,
+        "fields": {
+            "surgery_date":      str(s.scheduled_date) if s.scheduled_date else "",
+            "start_time":        (str(s.scheduled_start_time)[:5]
+                                    if s.scheduled_start_time else ""),
+            "estimated_minutes": s.estimated_minutes or 0,
+            "primary_surgeon":   s.surgeon_primary or "",
+            "secondary_surgeon": s.surgeon_secondary or "",
+            "primary_cpt":       primary.get("cpt") or "",
+            "primary_description": primary.get("description") or "",
+            "secondary_cpt":     secondary.get("cpt") or "",
+            "secondary_description": secondary.get("description") or "",
+            "icd":               primary_dx.get("icd") or "",
+            "diagnosis_description": primary_dx.get("description") or "",
+            "anesthesia":        s.anesthesia or "",
+            "special_request":   s.special_equipment_notes or "",
+            "auth_number":       s.auth_number or "",
+            "additional_notes":  s.notes or "",
+        },
     }
 
 
