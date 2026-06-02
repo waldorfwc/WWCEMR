@@ -80,6 +80,12 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "device_ownership": (a.device.ownership if a.device else None),
         "device_received_date":
             (str(a.device.purchase_date) if a.device and a.device.purchase_date else None),
+        "device_purchase_price":
+            (str(a.device.purchase_price) if a.device and a.device.purchase_price is not None else None),
+        "device_typical_cost":
+            (str(a.device.device_type.typical_cost)
+              if a.device and a.device.device_type and a.device.device_type.typical_cost is not None
+              else None),
         "chart_number": a.chart_number,
         "patient_name": a.patient_name,
         "patient_dob": str(a.patient_dob) if a.patient_dob else None,

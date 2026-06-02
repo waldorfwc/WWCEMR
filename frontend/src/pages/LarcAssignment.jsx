@@ -114,6 +114,32 @@ export default function LarcAssignment() {
       {/* Replacement chain banner (failed_used assignments only) */}
       {a.status === 'failed_used' && <ReplacementChainCard a={a} />}
 
+      {/* Benefits calculator — always-visible card. The benefits_verified
+          milestone still uses BenefitsBody under the hood, but this surfaces
+          it without requiring the user to expand a milestone first. */}
+      {(a.device_ownership || 'wwc_owned') !== 'patient_owned' && (
+        <div className="card mb-4">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span className="text-emerald-700 text-base">$</span>
+            <h2 className="text-sm font-semibold text-gray-800">Benefits Calculator</h2>
+            <span className="text-[11px] text-gray-500">
+              Patient responsibility for this device
+            </span>
+          </div>
+          <BenefitsBody a={a} />
+        </div>
+      )}
+      {a.device_ownership === 'patient_owned' && (
+        <div className="card mb-4 bg-sky-50/60 border-sky-200 text-[12px] text-gray-700">
+          <div className="font-semibold text-sky-800 mb-1">
+            Patient-Owned device — no benefits calculation
+          </div>
+          The patient (or their pharmacy plan) paid for this device.
+          WWC does not bill insurance for it, so the benefits calculator
+          is skipped.
+        </div>
+      )}
+
       {/* Milestone cards */}
       <div className="space-y-3">
         {milestones.map(m => <LarcMilestoneCard key={m.id} m={m} assignment={a} />)}
@@ -197,8 +223,14 @@ function BenefitsBody({ a }) {
 
   const [ins, setIns]     = useState(a.primary_insurance || '')
   const [notes, setNotes] = useState('')
+  // Default allowed amount to what the device cost — purchase price wins,
+  // typical cost is the fallback. Coordinator can override either way.
+  const _defaultAllowed = a.allowed_amount
+                          || a.device_purchase_price
+                          || a.device_typical_cost
+                          || ''
   const [form, setForm]   = useState({
-    allowed_amount:  a.allowed_amount  || '',
+    allowed_amount:  _defaultAllowed,
     deductible:      a.deductible      || '',
     deductible_met:  a.deductible_met  || '',
     copay:           a.copay           || '',
@@ -283,7 +315,11 @@ function BenefitsBody({ a }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <DollarInput label="Allowed amount" value={form.allowed_amount}
                       onChange={v => update('allowed_amount', v)}
-                      hint="Insurance's allowed amount for the device + visit" />
+                      hint={a.device_purchase_price
+                        ? `Default: device cost $${a.device_purchase_price}`
+                        : a.device_typical_cost
+                          ? `Default: typical cost $${a.device_typical_cost}`
+                          : "Insurance's allowed amount for the device + visit"} />
         <DollarInput label="Deductible (annual)" value={form.deductible}
                       onChange={v => update('deductible', v)} />
         <DollarInput label="Deductible met" value={form.deductible_met}
