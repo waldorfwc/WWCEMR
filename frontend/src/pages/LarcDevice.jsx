@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Package, User, FileText, Printer, Trash2 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
 
 
 export default function LarcDevice() {
@@ -70,6 +71,14 @@ export default function LarcDevice() {
                 <Trash2 size={12} /> {del.isPending ? 'Deleting…' : 'Delete'}
               </button>
             )}
+            <span className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded ${OWNERSHIP_TONES[d.ownership] || 'bg-gray-100 text-gray-700'}`}
+                  title={d.ownership === 'patient_owned'
+                    ? 'Patient or their insurance paid — WWC does NOT bill insurance.'
+                    : d.ownership === 'wwc_claimed'
+                      ? 'Originally patient-purchased; claimed by WWC. Billable to insurance.'
+                      : 'WWC paid. Billable to insurance.'}>
+              {OWNERSHIP_LABELS[d.ownership] || d.ownership_label || d.ownership}
+            </span>
             <span className="text-[10px] uppercase tracking-wide bg-plum-100 text-plum-700 px-2 py-1 rounded">
               {d.status.replace(/_/g, ' ')}
             </span>
@@ -86,6 +95,14 @@ export default function LarcDevice() {
           <Field label="Purchase date">
             {d.purchase_date ? fmt.date(d.purchase_date) : '—'}
           </Field>
+          {d.purchasing_patient_chart && (
+            <Field label="Purchased by patient">
+              <span className="font-mono">#{d.purchasing_patient_chart}</span>
+              {d.purchasing_patient_name && (
+                <span className="text-gray-600 ml-1">· {d.purchasing_patient_name}</span>
+              )}
+            </Field>
+          )}
           {d.manufacturer_serial && (
             <Field label="Serial #">
               <span className="font-mono">{d.manufacturer_serial}</span>

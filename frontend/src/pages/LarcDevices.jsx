@@ -18,11 +18,24 @@ const STATUS_TONES = {
   expired:     'bg-gray-200 text-gray-700',
 }
 
+export const OWNERSHIP_TONES = {
+  patient_owned: 'bg-sky-100 text-sky-800',
+  wwc_owned:     'bg-plum-100 text-plum-700',
+  wwc_claimed:   'bg-emerald-100 text-emerald-800',
+}
+
+export const OWNERSHIP_LABELS = {
+  patient_owned: 'Patient',
+  wwc_owned:     'WWC',
+  wwc_claimed:   'WWC Claimed',
+}
+
 
 export default function LarcDevices() {
   const navigate = useNavigate()
   const [filters, setFilters] = useState({
-    device_type_id: '', category: '', status: '', location: '', search: '',
+    device_type_id: '', category: '', status: '', location: '', ownership: '',
+    search: '',
     active_only: true,
   })
   const [adding, setAdding] = useState(false)
@@ -134,6 +147,17 @@ export default function LarcDevices() {
             </select>
           </div>
           <div>
+            <label className="text-[10px] uppercase text-gray-500 block mb-1">Ownership</label>
+            <select className="input text-sm w-full"
+                    value={filters.ownership}
+                    onChange={e => setFilters({ ...filters, ownership: e.target.value })}>
+              <option value="">All</option>
+              <option value="wwc_owned">WWC Owned</option>
+              <option value="wwc_claimed">WWC Claimed</option>
+              <option value="patient_owned">Patient Owned</option>
+            </select>
+          </div>
+          <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Search</label>
             <div className="relative">
               <Search size={12} className="absolute left-2 top-2.5 text-muted" />
@@ -161,6 +185,7 @@ export default function LarcDevices() {
               <th className="table-th">Our ID</th>
               <th className="table-th">Type</th>
               <th className="table-th">Lot #</th>
+              <th className="table-th">Ownership</th>
               <th className="table-th">Location</th>
               <th className="table-th">Expires</th>
               <th className="table-th">Status</th>
@@ -168,10 +193,10 @@ export default function LarcDevices() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {isLoading && (
-              <tr><td colSpan={7} className="table-td text-center py-6 text-gray-400">Loading…</td></tr>
+              <tr><td colSpan={8} className="table-td text-center py-6 text-gray-400">Loading…</td></tr>
             )}
             {!isLoading && devices.length === 0 && (
-              <tr><td colSpan={7} className="table-td text-center py-6 text-gray-400 italic">
+              <tr><td colSpan={8} className="table-td text-center py-6 text-gray-400 italic">
                 No devices match.
               </td></tr>
             )}
@@ -198,6 +223,11 @@ export default function LarcDevices() {
                     )}
                   </td>
                   <td className="table-td font-mono text-[11px]">{d.manufacturer_lot || '—'}</td>
+                  <td className="table-td">
+                    <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${OWNERSHIP_TONES[d.ownership] || 'bg-gray-100 text-gray-700'}`}>
+                      {OWNERSHIP_LABELS[d.ownership] || d.ownership_label || d.ownership}
+                    </span>
+                  </td>
                   <td className="table-td text-[11px]">{d.location_label}</td>
                   <td className="table-td text-[11px]">
                     {d.expiration_date ? fmt.date(d.expiration_date) : '—'}

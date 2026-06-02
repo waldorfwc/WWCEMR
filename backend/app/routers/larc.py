@@ -480,6 +480,7 @@ def list_devices(
     category: Optional[str] = None,
     status: Optional[str] = None,
     location: Optional[str] = None,
+    ownership: Optional[str] = None,
     search: Optional[str] = None,
     active_only: bool = True,
     page: int = 1,
@@ -508,6 +509,8 @@ def list_devices(
         q = q.filter(LarcDevice.status.in_(ACTIVE_DEVICE_STATUSES))
     if location:
         q = q.filter(LarcDevice.location == location)
+    if ownership:
+        q = q.filter(LarcDevice.ownership == ownership)
     if search:
         like = f"%{search}%"
         q = q.filter(or_(
