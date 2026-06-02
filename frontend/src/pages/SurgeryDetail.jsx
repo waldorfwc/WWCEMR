@@ -568,7 +568,23 @@ function BoardingSlipPanel({ surgery }) {
       setGenerated(d); setError(null); setEditing(false)
       qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
     },
-    onError: (e) => setError(e?.response?.data?.detail || e.message),
+    onError: (e) => {
+      // Defensive: a 422 from FastAPI returns detail as an array of
+      // {type, loc, msg, input} objects which would crash React if
+      // dropped into JSX as a child. Flatten to a string.
+      const d = e?.response?.data?.detail
+      let msg
+      if (Array.isArray(d)) {
+        msg = d.map(x => (x?.msg || JSON.stringify(x))).join('; ')
+      } else if (typeof d === 'string') {
+        msg = d
+      } else if (d) {
+        msg = JSON.stringify(d)
+      } else {
+        msg = e?.message || 'Unknown error'
+      }
+      setError(msg)
+    },
   })
 
   const facility = surgery.selected_facility

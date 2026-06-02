@@ -12,7 +12,7 @@ from typing import Optional
 
 from app.models.surgery import SurgeryFile
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import or_, func, desc
 from sqlalchemy.orm import Session, joinedload
@@ -1747,9 +1747,13 @@ def _translate_overrides(facility: str, user_overrides: dict) -> dict:
 
 @router.post("/{surgery_id}/boarding-slip")
 def generate_boarding_slip(surgery_id: str,
-                            payload: Optional[BoardingSlipPayload] = None,
+                            request: Request,
+                            payload: Optional[BoardingSlipPayload] = Body(default=None),
                             db: Session = Depends(get_db),
                             current_user: dict = Depends(require_permission("surgery:work"))):
+    import logging as _lg
+    _lg.getLogger(__name__).info(
+        "boarding-slip POST sid=%s payload=%r", surgery_id, payload)
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
