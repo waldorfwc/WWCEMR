@@ -77,6 +77,7 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "device_id": str(a.device_id),
         "device_our_id": a.device.our_id if a.device else None,
         "device_type_name": (a.device.device_type.name if a.device and a.device.device_type else None),
+        "device_ownership": (a.device.ownership if a.device else None),
         "chart_number": a.chart_number,
         "patient_name": a.patient_name,
         "patient_dob": str(a.patient_dob) if a.patient_dob else None,

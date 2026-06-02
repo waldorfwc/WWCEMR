@@ -7,6 +7,7 @@ import {
   Truck, Package, FileText, X,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
 
 
 const BUCKET_DEFS = [
@@ -406,7 +407,21 @@ export default function Larc() {
                   <div className="text-[10px] text-gray-500 font-mono">{a.chart_number}</div>
                 </td>
                 <td className="table-td text-[12px]">
-                  {a.device_our_id || <span className="text-gray-400 italic">none yet</span>}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span>
+                      {a.device_our_id || <span className="text-gray-400 italic">none yet</span>}
+                    </span>
+                    {a.device_ownership && (
+                      <span className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded ${OWNERSHIP_TONES[a.device_ownership] || 'bg-gray-100 text-gray-700'}`}
+                            title={a.device_ownership === 'patient_owned'
+                              ? 'Patient Owned — WWC does NOT bill insurance.'
+                              : a.device_ownership === 'wwc_claimed'
+                                ? 'WWC Claimed (originally patient-owned).'
+                                : 'WWC Owned — billable to insurance.'}>
+                        {OWNERSHIP_LABELS[a.device_ownership] || a.device_ownership}
+                      </span>
+                    )}
+                  </div>
                   {a.device_type_name && <div className="text-[10px] text-gray-500">{a.device_type_name}</div>}
                 </td>
                 <td className="table-td text-[11px] capitalize">{a.source_flow.replace('_', ' ')}</td>
