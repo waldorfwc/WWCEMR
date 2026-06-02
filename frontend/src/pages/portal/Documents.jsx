@@ -43,8 +43,8 @@ function PdfDownloadButton({ url, filename, label }) {
 function InstructionsCard({ sid, instructions }) {
   if (instructions === null) {
     return (
-      <section className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Instructions</h2>
+      <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+        <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
         <p className="text-sm text-gray-600">
           Instructions for this procedure aren't online yet — please call our
           office at <a href="tel:2402522140" className="underline">240-252-2140</a>.
@@ -53,9 +53,9 @@ function InstructionsCard({ sid, instructions }) {
     )
   }
   return (
-    <section className="bg-white rounded-lg shadow p-4">
-      <h2 className="text-sm font-semibold text-gray-700 mb-3">Instructions</h2>
-      <ul className="divide-y divide-gray-100">
+    <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+      <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
+      <ul className="divide-y divide-plum-50">
         <li className="py-2 flex items-center justify-between">
           <span className="text-sm text-gray-800">Pre-op instructions</span>
           <PdfDownloadButton
@@ -78,8 +78,8 @@ function InstructionsCard({ sid, instructions }) {
 function ConsentDocsCard({ sid, consents }) {
   if (!consents?.length) {
     return (
-      <section className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Consent forms</h2>
+      <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+        <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
         <p className="text-sm text-gray-600">
           Signed consent forms will appear here once everyone has signed.
         </p>
@@ -87,9 +87,9 @@ function ConsentDocsCard({ sid, consents }) {
     )
   }
   return (
-    <section className="bg-white rounded-lg shadow p-4">
-      <h2 className="text-sm font-semibold text-gray-700 mb-3">Consent forms</h2>
-      <ul className="divide-y divide-gray-100">
+    <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+      <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
+      <ul className="divide-y divide-plum-50">
         {consents.map(c => (
           <li key={c.envelope_id}
               className="py-2 flex items-center justify-between gap-3">
@@ -110,8 +110,8 @@ function ConsentDocsCard({ sid, consents }) {
 function ReceiptsCard({ receipts }) {
   if (!receipts?.length) {
     return (
-      <section className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Receipts</h2>
+      <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+        <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Receipts</h2>
         <p className="text-sm text-gray-600">
           Receipts for your payments will appear here.
         </p>
@@ -119,9 +119,9 @@ function ReceiptsCard({ receipts }) {
     )
   }
   return (
-    <section className="bg-white rounded-lg shadow p-4">
-      <h2 className="text-sm font-semibold text-gray-700 mb-3">Receipts</h2>
-      <ul className="divide-y divide-gray-100">
+    <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+      <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Receipts</h2>
+      <ul className="divide-y divide-plum-50">
         {receipts.map(r => (
           <li key={r.id}
               className="py-2 flex items-center justify-between text-sm">
@@ -162,7 +162,7 @@ function LabsAppointmentCard({ sid, labs, refetchDocs }) {
   }
 
   return (
-    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+    <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-700">Pre-Op Lab Appointment</h2>
         <span className={`text-xs px-2 py-1 rounded ${
@@ -246,7 +246,7 @@ function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
   )
 
   return (
-    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+    <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-700">Clearance</h2>
         <span className={`text-xs px-2 py-1 rounded ${statusBadge}`}>
@@ -352,7 +352,7 @@ function FmlaCard({ sid, fmla, refetchFmla }) {
                                  'bg-gray-200 text-gray-700'
 
   return (
-    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+    <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-700">FMLA paperwork</h2>
         <span className={`text-xs px-2 py-1 rounded ${badge}`}>
@@ -471,19 +471,34 @@ export default function Documents() {
     queryFn: () => portalApi.get(`/${sid}/fmla`).then(r => r.data),
     staleTime: 30_000,
   })
-  if (isLoading) return <div className="text-sm text-gray-500">Loading…</div>
+  if (isLoading) {
+    return <div className="px-6 md:px-10 py-16 text-plum-600/70 text-sm">Loading…</div>
+  }
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-gray-900">Documents</h1>
-      <InstructionsCard sid={sid} instructions={data.instructions} />
-      <ConsentDocsCard sid={sid} consents={data.consents} />
-      <ReceiptsCard receipts={data.receipts} />
-      <LabsAppointmentCard sid={sid} labs={data.labs} refetchDocs={refetchDocs} />
-      <ClearanceCard sid={sid}
-                       clearance={data.clearance}
-                       uploads={uploadsData?.uploads}
-                       refetchUploads={refetchUploads} />
-      <FmlaCard sid={sid} fmla={fmlaData} refetchFmla={refetchFmla} />
+    <div className="px-6 md:px-10 py-8 md:py-10 max-w-5xl">
+      <header className="mb-8">
+        <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mb-2">
+          Patient portal
+        </div>
+        <h1 className="font-serif text-[32px] md:text-[40px] text-plum-ink font-semibold tracking-tight leading-tight">
+          Documents
+        </h1>
+        <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">
+          Pre-op instructions, signed consent forms, receipts, lab and
+          clearance uploads — everything in one place.
+        </p>
+      </header>
+      <div className="space-y-4">
+        <InstructionsCard sid={sid} instructions={data.instructions} />
+        <ConsentDocsCard sid={sid} consents={data.consents} />
+        <ReceiptsCard receipts={data.receipts} />
+        <LabsAppointmentCard sid={sid} labs={data.labs} refetchDocs={refetchDocs} />
+        <ClearanceCard sid={sid}
+                         clearance={data.clearance}
+                         uploads={uploadsData?.uploads}
+                         refetchUploads={refetchUploads} />
+        <FmlaCard sid={sid} fmla={fmlaData} refetchFmla={refetchFmla} />
+      </div>
     </div>
   )
 }
