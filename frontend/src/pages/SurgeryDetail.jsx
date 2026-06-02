@@ -2016,16 +2016,30 @@ function MilestoneCard({ m, surgery, flat = false }) {
 }
 
 
-function SurgerySection({ title, anchor, children }) {
+// Group color palette. Each group gets a faint tinted bg + matching left
+// accent border so cards are visually distinct without compromising
+// readability. Divider lines between sub-items use a darker shade of the
+// same hue so they stay visible on the tinted background.
+const SECTION_TONES = {
+  emerald: { bg: 'bg-emerald-50/60',  accent: 'border-l-4 border-l-emerald-400',  divide: 'border-emerald-200' },
+  sky:     { bg: 'bg-sky-50/60',      accent: 'border-l-4 border-l-sky-400',      divide: 'border-sky-200' },
+  amber:   { bg: 'bg-amber-50/60',    accent: 'border-l-4 border-l-amber-400',    divide: 'border-amber-200' },
+  plum:    { bg: 'bg-plum-50/70',     accent: 'border-l-4 border-l-plum-400',     divide: 'border-plum-300' },
+  slate:   { bg: 'bg-slate-100/70',   accent: 'border-l-4 border-l-slate-400',    divide: 'border-slate-200' },
+  teal:    { bg: 'bg-teal-50/60',     accent: 'border-l-4 border-l-teal-400',     divide: 'border-teal-200' },
+}
+
+function SurgerySection({ title, anchor, tone = 'slate', children }) {
   const kids = (Array.isArray(children) ? children : [children]).filter(Boolean)
   if (kids.length === 0) return null
+  const t = SECTION_TONES[tone] || SECTION_TONES.slate
   return (
-    <section id={anchor} className="card mb-4 scroll-mt-16">
-      <h2 className="text-base font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200">
+    <section id={anchor} className={`card mb-4 scroll-mt-16 ${t.bg} ${t.accent}`}>
+      <h2 className={`text-base font-semibold text-gray-800 mb-3 pb-2 border-b ${t.divide}`}>
         {title}
       </h2>
       {kids.map((child, i) => (
-        <div key={i} className={i === 0 ? '' : 'border-t border-gray-200 mt-3 pt-3'}>
+        <div key={i} className={i === 0 ? '' : `border-t ${t.divide} mt-3 pt-3`}>
           {child}
         </div>
       ))}
@@ -2042,18 +2056,18 @@ function GroupedSurgeryBody({ surgery, milestones }) {
 
   return (
     <>
-      <SurgerySection title="Benefits & Payments" anchor="group-benefits-payments">
+      <SurgerySection title="Benefits & Payments" anchor="group-benefits-payments" tone="emerald">
         {ms('benefits_determined')}
         {ms('prior_auth')}
         <PaymentsSection surgery={surgery} flat />
       </SurgerySection>
 
-      <SurgerySection title="Appointments" anchor="group-appointments">
+      <SurgerySection title="Appointments" anchor="group-appointments" tone="sky">
         {ms('patient_picks_date')}
         {ms('post_op_appts_scheduled')}
       </SurgerySection>
 
-      <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery">
+      <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery" tone="amber">
         <ClearanceCardBody surgery={surgery} />
         {ms('consent')}
         {ms('assistant_surgeon')}
@@ -2061,21 +2075,21 @@ function GroupedSurgeryBody({ surgery, milestones }) {
         {ms('labs_to_hospital')}
       </SurgerySection>
 
-      <SurgerySection title="Communication & Messaging" anchor="group-communication">
+      <SurgerySection title="Communication & Messaging" anchor="group-communication" tone="plum">
         {ms('klara_scheduling')}
         <MessagesSection sid={surgery.id} flat />
         <PatientEmailsSection surgery={surgery} flat />
         <PatientSmsSection surgery={surgery} flat />
       </SurgerySection>
 
-      <SurgerySection title="Post Surgery" anchor="group-post-surgery">
+      <SurgerySection title="Post Surgery" anchor="group-post-surgery" tone="slate">
         {ms('post_op_call')}
         {ms('op_notes')}
         {ms('path_report')}
         {ms('surgery_billed')}
       </SurgerySection>
 
-      <SurgerySection title="Devices" anchor="group-devices">
+      <SurgerySection title="Devices" anchor="group-devices" tone="teal">
         {ms('device_assigned')}
         <LarcDevicePickerCard surgery={surgery} flat />
       </SurgerySection>
