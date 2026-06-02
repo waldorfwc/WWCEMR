@@ -108,6 +108,12 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "office_meds_pickup_confirmed_by": s.office_meds_pickup_confirmed_by,
         "preop_date": str(s.preop_date) if s.preop_date else None,
         "preop_needs_repeat": _preop_needs_repeat(s),
+        "lab_appointment_date": (
+            str(s.lab_appointment_date) if s.lab_appointment_date else None),
+        "lab_appointment_reported_at": (
+            s.lab_appointment_reported_at.isoformat()
+            if s.lab_appointment_reported_at else None),
+        "lab_appointment_reported_by": s.lab_appointment_reported_by,
         "post_op_appt_date": str(s.post_op_appt_date) if s.post_op_appt_date else None,
         "post_op_appt_2nd_date": (
             str(s.post_op_appt_2nd_date) if s.post_op_appt_2nd_date else None),
@@ -967,6 +973,9 @@ class SurgeryPatch(BaseModel):
     # Phase J4 — SMS opt-in
     sms_consent:      Optional[bool] = None
     cell_phone:       Optional[str]  = None
+    # Pre-op lab appointment (patient typically reports this on portal,
+    # but staff can backfill via this PATCH if patient called in)
+    lab_appointment_date: Optional[str] = None
 
 
 # ─── Slot duration patch (Phase D3) ────────────────────────────────
@@ -1119,6 +1128,23 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                                 detail="assistant_surgeon_appt_date must be YYYY-MM-DD")
     elif "assistant_surgeon_appt_date" in data:
         data["assistant_surgeon_appt_date"] = None
+
+    # Lab appointment date — staff backfill of patient self-report
+    if "lab_appointment_date" in data:
+        from datetime import datetime as _dt
+        if data["lab_appointment_date"]:
+            try:
+                data["lab_appointment_date"] = _dt.strptime(
+                    data["lab_appointment_date"][:10], "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=422,
+                                    detail="lab_appointment_date must be YYYY-MM-DD")
+            s.lab_appointment_reported_at = _dt.utcnow()
+            s.lab_appointment_reported_by = f"staff:{current_user.get('email') or 'system'}"
+        else:
+            data["lab_appointment_date"] = None
+            s.lab_appointment_reported_at = None
+            s.lab_appointment_reported_by = None
 
     # Convert legacy is_urgent shim → urgency enum
     if "is_urgent" in data:
@@ -1589,6 +1615,76 @@ def block_day_availability(
 
 
 # ─── Boarding slips ─────────────────────────────────────────────────
+
+@router.post("/{surgery_id}/clearance/generate-form")
+def generate_clearance_form(surgery_id: str,
+                             db: Session = Depends(get_db),
+                             current_user: dict = Depends(require_permission("surgery:work"))):
+    """Generate a fillable cardiac/anesthesia clearance form for the
+    cardiologist, save it as a SurgeryFile (visible on the patient
+    portal too), and email the patient with the portal link."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if not s.clearance_required:
+        raise HTTPException(status_code=409,
+                            detail="Clearance is not marked required for this surgery.")
+
+    from app.services.surgery_clearance_form import generate_for_surgery
+    try:
+        f = generate_for_surgery(db, s, by_email=current_user.get("email") or "system")
+    except Exception as exc:
+        log = logging.getLogger(__name__)
+        log.exception("clearance form generation failed")
+        raise HTTPException(status_code=500,
+                            detail=f"Clearance form generation failed: {exc}")
+
+    # Patient email (soft-fail — don't break the staff workflow if SMTP is down)
+    email_sent = False
+    if s.email:
+        try:
+            from app.services.patient_email import send_patient_email
+            portal_url = (
+                f"https://gw.waldorfwomenscare.com/portal/s/{s.id}/documents"
+            )
+            html = f"""
+            <p>Hello {s.patient_name or 'there'},</p>
+            <p>Your pre-operative cardiac/anesthesia clearance form is ready.
+            Please log in to your patient portal to download it, bring it to
+            your cardiologist, and upload the completed letter when it's
+            signed.</p>
+            <p><a href="{portal_url}">Open your patient portal</a></p>
+            <p>Thank you,<br/>Waldorf Women's Care</p>
+            """
+            rec = send_patient_email(
+                db,
+                kind=None,
+                to_email=s.email,
+                context={},
+                sent_by=current_user.get("email") or "system",
+                surgery_id=s.id,
+                chart_number=s.chart_number,
+                ad_hoc_subject="Pre-op clearance form ready",
+                ad_hoc_html=html,
+            )
+            email_sent = (rec.status == "sent")
+        except Exception:
+            log = logging.getLogger(__name__)
+            log.exception("clearance form email failed (soft-fail)")
+
+    # Move the clearance_status forward to request_sent unless already further
+    if s.clearance_status in (None, "", "not_required", "required"):
+        s.clearance_status = "request_sent"
+        db.commit()
+
+    return {
+        "id": str(f.id),
+        "filename": f.filename,
+        "size_bytes": f.size_bytes,
+        "download_url": f"/api/surgery/{surgery_id}/files/{f.id}/download",
+        "email_sent": email_sent,
+    }
+
 
 @router.post("/{surgery_id}/boarding-slip")
 def generate_boarding_slip(surgery_id: str,

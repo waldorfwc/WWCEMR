@@ -134,6 +134,82 @@ function ReceiptsCard({ receipts }) {
   )
 }
 
+function LabsAppointmentCard({ sid, labs, refetchDocs }) {
+  const [date, setDate] = useState(labs?.appointment_date || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  if (!labs?.scheduled_date) return null   // no surgery date yet; nothing to schedule against
+
+  // Compute 4-7 day window from surgery date
+  const base = new Date(labs.scheduled_date + 'T00:00:00')
+  const earliest = new Date(base); earliest.setDate(earliest.getDate() - 7)
+  const latest   = new Date(base); latest.setDate(latest.getDate() - 4)
+  const isoE = earliest.toISOString().slice(0, 10)
+  const isoL = latest.toISOString().slice(0, 10)
+  const longFmt = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(
+    undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+
+  async function save() {
+    setBusy(true); setErr('')
+    try {
+      await portalApi.post(`/${sid}/self-report/lab-appointment-date`,
+                            { date: date || null })
+      refetchDocs?.()
+    } catch (e) {
+      setErr(e?.response?.data?.detail || 'Save failed.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <section className="bg-white rounded-lg shadow p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">Pre-Op Lab Appointment</h2>
+        <span className={`text-xs px-2 py-1 rounded ${
+          labs.appointment_date
+            ? 'bg-green-100 text-green-700'
+            : 'bg-amber-100 text-amber-700'
+        }`}>
+          {labs.appointment_date ? 'scheduled' : 'needed'}
+        </span>
+      </div>
+      <p className="text-sm text-gray-700">
+        Please schedule your pre-op labs between{' '}
+        <strong>{longFmt(isoE)}</strong> and <strong>{longFmt(isoL)}</strong>{' '}
+        (4–7 days before your surgery). After you book, enter the date below
+        so our office knows you're set.
+      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        <input type="date"
+               min={isoE} max={isoL}
+               value={date}
+               onChange={e => setDate(e.target.value)}
+               className="border border-gray-300 rounded px-2 py-1 text-sm" />
+        <button onClick={save} disabled={busy || (date === (labs.appointment_date || ''))}
+                className="btn-primary text-sm">
+          {busy ? 'Saving…' : labs.appointment_date ? 'Update' : 'Save'}
+        </button>
+        {labs.appointment_date && (
+          <button onClick={() => { setDate(''); save() }} disabled={busy}
+                  className="text-xs text-gray-500 hover:underline">
+            Clear
+          </button>
+        )}
+      </div>
+      {labs.appointment_date && (
+        <div className="text-xs text-gray-600">
+          ✓ Reported: <strong>{longFmt(labs.appointment_date)}</strong>
+          {labs.reported_at && (
+            <span className="text-gray-400"> · saved {labs.reported_at.slice(0, 10)}</span>
+          )}
+        </div>
+      )}
+      {err && <div className="text-xs text-red-600">{err}</div>}
+    </section>
+  )
+}
+
+
 function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -180,12 +256,19 @@ function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
 
       <div>
         <div className="text-xs text-gray-500 mb-1">
-          Step 1: Download the blank template
+          Step 1: Download your clearance form
         </div>
-        <PdfDownloadButton
-          url={`/${sid}/clearance/template`}
-          filename="wwc_clearance_template.pdf"
-          label="Download template" />
+        {clearance.form_available ? (
+          <PdfDownloadButton
+            url={`/${sid}/clearance/generated-form`}
+            filename={clearance.form_filename || 'wwc_clearance_form.pdf'}
+            label="Download personalized form" />
+        ) : (
+          <PdfDownloadButton
+            url={`/${sid}/clearance/template`}
+            filename="wwc_clearance_template.pdf"
+            label="Download blank template" />
+        )}
       </div>
 
       {!isStaffPreview() && (
@@ -373,7 +456,7 @@ function FmlaCard({ sid, fmla, refetchFmla }) {
 
 export default function Documents() {
   const { sid } = useParams()
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, refetch: refetchDocs } = useQuery({
     queryKey: ['portal-documents', sid],
     queryFn: () => portalApi.get(`/${sid}/documents`).then(r => r.data),
     staleTime: 30_000,
@@ -395,6 +478,7 @@ export default function Documents() {
       <InstructionsCard sid={sid} instructions={data.instructions} />
       <ConsentDocsCard sid={sid} consents={data.consents} />
       <ReceiptsCard receipts={data.receipts} />
+      <LabsAppointmentCard sid={sid} labs={data.labs} refetchDocs={refetchDocs} />
       <ClearanceCard sid={sid}
                        clearance={data.clearance}
                        uploads={uploadsData?.uploads}

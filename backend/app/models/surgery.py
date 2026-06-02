@@ -224,6 +224,13 @@ class Surgery(Base):
     schedule_gate_override_at = Column(DateTime, nullable=True)
     schedule_gate_override_by = Column(String(120), nullable=True)
 
+    # Pre-op labs — patient self-reports the date they got labs drawn
+    # (4–7 days before surgery is the practice rule).
+    lab_appointment_date = Column(Date, nullable=True)
+    lab_appointment_reported_at = Column(DateTime, nullable=True)
+    lab_appointment_reported_by = Column(String(40), nullable=True)
+    # values: "patient" | "staff:<email>"
+
     # Post-op
     post_op_appt_date = Column(Date, nullable=True)
     post_op_appt_2nd_date = Column(Date, nullable=True)

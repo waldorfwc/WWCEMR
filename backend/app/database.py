@@ -247,6 +247,10 @@ def _apply_lightweight_migrations():
         # Post-op visit location ("office" | "telehealth")
         ("surgeries", "post_op_appt_location",     "VARCHAR(20)"),
         ("surgeries", "post_op_appt_2nd_location", "VARCHAR(20)"),
+        # Pre-op lab appointment — patient self-reports on portal
+        ("surgeries", "lab_appointment_date",         "DATE"),
+        ("surgeries", "lab_appointment_reported_at",  "DATETIME"),
+        ("surgeries", "lab_appointment_reported_by",  "VARCHAR(40)"),
         # Billing (Phase 3)
         ("surgeries", "modmed_claim_number", "VARCHAR(80)"),
         ("surgeries", "billed_icd10_codes", "JSON"),

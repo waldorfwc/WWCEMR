@@ -562,31 +562,32 @@ function BoardingSlipPanel({ surgery }) {
   const ready = facility === 'medstar' || facility === 'crmc'
 
   return (
-    <div className="card !p-3">
-      <div className="flex items-center gap-1.5 mb-2">
+    <div className="space-y-3">
+      <div className="flex items-center gap-1.5">
         <FileText size={14} className="text-plum-700" />
-        <h3 className="text-sm font-semibold text-gray-800">Boarding slip</h3>
+        <h3 className="text-sm font-semibold text-gray-800">Hospital Posting</h3>
       </div>
       {!ready && (
         <div className="text-[11px] text-gray-500 italic">
-          Boarding slip is for hospital surgeries only. Office procedures don't need one.
+          Hospital posting is for hospital surgeries only. Office procedures don't need one.
           {!facility && <> Pick a facility first.</>}
         </div>
       )}
       {ready && (
         <>
-          <p className="text-[11px] text-gray-500 mb-2">
+          <p className="text-[11px] text-gray-500">
             Generate a {facility === 'medstar' ? 'MedStar Posting Form' : 'CRMC Posting Request'}{' '}
-            prefilled with this patient's details.
+            prefilled with this patient's details. After the hospital confirms the booking,
+            upload the confirmation below.
           </p>
           <button className="btn-primary text-xs flex items-center gap-1"
                   onClick={() => generate.mutate()}
                   disabled={generate.isPending}>
             <FileText size={11} /> {generate.isPending ? 'Generating…' : `Generate ${facilityLabel} slip`}
           </button>
-          {error && <div className="text-xs text-red-600 mt-2">{error}</div>}
+          {error && <div className="text-xs text-red-600">{error}</div>}
           {generated && (
-            <div className="mt-2 text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between">
+            <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 flex items-baseline justify-between">
               <span>✓ Generated <code>{generated.filename}</code></span>
               <a href={`/api${generated.download_url.replace(/^\/api/, '')}`}
                  download
@@ -595,6 +596,8 @@ function BoardingSlipPanel({ surgery }) {
               </a>
             </div>
           )}
+          <FilesPanel surgery={surgery} kindFilter="boarding_slip_confirmation"
+                       label="Hospital Posting Confirmation" />
         </>
       )}
     </div>
@@ -2095,8 +2098,8 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery" tone="amber">
-        <ClearanceCardBody surgery={surgery} />
         {ms('consent')}
+        <ClearanceCardBody surgery={surgery} />
         {ms('assistant_surgeon')}
         {ms('surgery_confirmed_hospital')}
         {ms('labs_to_hospital')}
@@ -2247,94 +2250,7 @@ function PatientPicksDateBody({ surgery }) {
 
 
 function SurgeryConfirmedBody({ surgery }) {
-  const qc = useQueryClient()
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState({
-    scheduled_date: surgery.scheduled_date || '',
-    scheduled_start_time: surgery.scheduled_start_time?.slice(0, 5) || '',
-    selected_facility: surgery.selected_facility || '',
-  })
-
-  const patch = useMutation({
-    mutationFn: () => api.patch(`/surgery/${surgery.id}`, draft).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-      setEditing(false)
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
-  })
-
-  return (
-    <div className="space-y-2">
-      <div className="text-[12px] text-gray-700">
-        Once a date is set and the boarding slip is sent, confirm with the
-        hospital and check this off. Use the manual override below only if
-        you need to change date/time/place outside the date-picker flow.
-      </div>
-
-      <BoardingSlipPanel surgery={surgery} />
-
-      <div className="border border-gray-200 rounded p-2">
-        <div className="flex items-center justify-between mb-1">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">
-            Manual override (date / time / facility)
-          </div>
-          {!editing && (
-            <button className="text-[11px] text-plum-700 hover:underline"
-                    onClick={() => setEditing(true)}>
-              <Edit3 size={10} className="inline" /> Edit
-            </button>
-          )}
-        </div>
-        {!editing ? (
-          <div className="text-[12px] text-gray-700">
-            {surgery.scheduled_date || '—'} · {surgery.scheduled_start_time?.slice(0,5) || '—'} ·
-            {' '}{FACILITY_SHORT[surgery.selected_facility] || surgery.selected_facility || '—'}
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-2 text-[11px]">
-            <div>
-              <div className="text-[9px] uppercase text-gray-500">Date</div>
-              <input type="date" className="input text-[12px] w-full"
-                     value={draft.scheduled_date}
-                     onChange={e => setDraft({ ...draft, scheduled_date: e.target.value })} />
-            </div>
-            <div>
-              <div className="text-[9px] uppercase text-gray-500">Start time</div>
-              <input type="time" className="input text-[12px] w-full"
-                     value={draft.scheduled_start_time}
-                     onChange={e => setDraft({ ...draft, scheduled_start_time: e.target.value })} />
-            </div>
-            <div>
-              <div className="text-[9px] uppercase text-gray-500">Facility</div>
-              <select className="input text-[12px] w-full"
-                      value={draft.selected_facility}
-                      onChange={e => setDraft({ ...draft, selected_facility: e.target.value })}>
-                <option value="">—</option>
-                <option value="medstar">MedStar</option>
-                <option value="crmc">CRMC</option>
-                <option value="office">Office</option>
-              </select>
-            </div>
-            <div className="col-span-3 flex gap-1 mt-1">
-              <button className="btn-primary text-[11px]"
-                      onClick={() => patch.mutate()}
-                      disabled={patch.isPending}>
-                {patch.isPending ? 'Saving…' : 'Save override'}
-              </button>
-              <button className="text-[11px] text-muted hover:underline"
-                      onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-              <span className="text-[10px] text-amber-700 ml-2 self-center">
-                ⚠ Manual override doesn't release/claim block-schedule slots.
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  return <BoardingSlipPanel surgery={surgery} />
 }
 
 
@@ -2627,7 +2543,64 @@ function ClearanceCardBody({ surgery }) {
         {patch.isPending ? 'Saving…' : 'Save'}
       </button>
 
-      <FilesPanel surgery={surgery} kindFilter="clearance" label="Clearance Letter" />
+      {required && (
+        <ClearanceFormGenerator surgery={surgery} />
+      )}
+    </div>
+  )
+}
+
+
+function ClearanceFormGenerator({ surgery }) {
+  const qc = useQueryClient()
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  const generate = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/clearance/generate-form`).then(r => r.data),
+    onSuccess: (d) => {
+      setResult(d); setError(null)
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-files', surgery.id] })
+    },
+    onError: (e) => setError(e?.response?.data?.detail || e.message),
+  })
+
+  return (
+    <div className="border border-amber-200 bg-white rounded p-2 space-y-1.5">
+      <div className="flex items-center gap-1.5">
+        <FileText size={12} className="text-plum-700" />
+        <h4 className="text-[12px] font-semibold text-gray-800">Clearance Form</h4>
+      </div>
+      <p className="text-[11px] text-gray-600">
+        Generate a fillable clearance form prefilled with patient + surgery
+        details. The patient receives an email with a portal link to download
+        it. They take the form to their cardiologist, then upload the signed
+        letter on their portal.
+      </p>
+      <button className="btn-primary text-xs flex items-center gap-1"
+              onClick={() => generate.mutate()}
+              disabled={generate.isPending}>
+        <FileText size={11} /> {generate.isPending ? 'Generating…' : 'Generate Clearance Form'}
+      </button>
+      {error && <div className="text-xs text-red-600">{error}</div>}
+      {result && (
+        <div className="text-[11px] bg-green-50 border border-green-200 rounded p-2 space-y-0.5">
+          <div className="flex items-baseline justify-between">
+            <span>✓ Generated <code>{result.filename}</code></span>
+            <a href={`/api${result.download_url.replace(/^\/api/, '')}`}
+               download
+               className="text-plum-700 hover:underline flex items-center gap-1">
+              <Download size={11} /> Download
+            </a>
+          </div>
+          <div className="text-[10px] text-gray-600">
+            {result.email_sent
+              ? <>✓ Emailed to patient — they'll see it on their portal.</>
+              : <>⚠ Patient email not sent (no email on file or send failed). Share the download manually.</>}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2672,6 +2645,12 @@ function AssistantSurgeonCardBody({ surgery }) {
   if (!required) {
     return (
       <div className="space-y-2 text-[12px]">
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-gray-800">Assistant Surgeon</h3>
+          <span className="text-[10px] uppercase tracking-wide bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+            not required
+          </span>
+        </div>
         <p className="text-gray-700">
           Most surgeries don't need an assistant surgeon. Toggle this on
           when the primary surgeon has requested one (usually Dr. Gillespie).
@@ -2687,9 +2666,22 @@ function AssistantSurgeonCardBody({ surgery }) {
 
   const officeNotified = !!surgery.assistant_surgeon_office_notified_at
   const apptConfirmed = !!surgery.assistant_surgeon_appt_confirmed_at
+  const headerTone = apptConfirmed
+    ? 'bg-green-100 text-green-700'
+    : officeNotified ? 'bg-blue-100 text-blue-700'
+    : 'bg-amber-100 text-amber-700'
+  const headerLabel = apptConfirmed ? 'appt confirmed'
+    : officeNotified ? 'office notified'
+    : 'required'
 
   return (
     <div className="space-y-3 text-[12px]">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800">Assistant Surgeon</h3>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${headerTone}`}>
+          {headerLabel}
+        </span>
+      </div>
       {/* Assistant surgeon contact */}
       <div className="grid grid-cols-3 gap-2">
         <div>
@@ -2853,34 +2845,99 @@ function PriorAuthCardBody({ surgery }) {
 
 
 function LabsCardBody({ surgery }) {
-  const FACILITY_FAX = {
-    medstar: 'TODO — set MedStar pre-op labs fax in practice config',
-    crmc:    'TODO — set CRMC pre-op labs fax in practice config',
-    office:  '— (labs sent in-office; ModMed labels)',
+  const qc = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [draftDate, setDraftDate] = useState(surgery.lab_appointment_date || '')
+
+  const patch = useMutation({
+    mutationFn: (body) => api.patch(`/surgery/${surgery.id}`, body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      setEditing(false)
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  // Recommended window: 4–7 days before the surgery date.
+  let recommended = null
+  if (surgery.scheduled_date) {
+    const base = new Date(surgery.scheduled_date + 'T00:00:00')
+    const earliest = new Date(base); earliest.setDate(earliest.getDate() - 7)
+    const latest   = new Date(base); latest.setDate(latest.getDate() - 4)
+    recommended = {
+      earliest: earliest.toISOString().slice(0, 10),
+      latest:   latest.toISOString().slice(0, 10),
+    }
   }
-  const facility = surgery.selected_facility
-  const fax = FACILITY_FAX[facility] || 'Pick a facility first.'
+
+  const reportedBy = surgery.lab_appointment_reported_by || ''
+  const reportedByPatient = reportedBy === 'patient'
+
   return (
     <div className="space-y-2 text-[12px]">
-      <div className="bg-plum-50/40 border border-plum-100 rounded p-2">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
-          Send labs to
-        </div>
-        <div className="font-medium">
-          {facility ? (FACILITY_SHORT[facility] || facility) : '—'}
-        </div>
-        <div className="font-mono text-[11px] text-gray-700 mt-1">{fax}</div>
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800">Pre-Op Labs</h3>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+          surgery.lab_appointment_date
+            ? 'bg-green-100 text-green-700'
+            : 'bg-amber-100 text-amber-700'
+        }`}>
+          {surgery.lab_appointment_date ? 'scheduled' : 'awaiting patient report'}
+        </span>
       </div>
-      <div>
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
-          ModMed pull-and-fax workflow
+
+      {recommended && (
+        <div className="text-[11px] text-gray-600">
+          Patient should get pre-op labs drawn between{' '}
+          <strong>{fmt.date(recommended.earliest)}</strong> and{' '}
+          <strong>{fmt.date(recommended.latest)}</strong>{' '}
+          (4–7 days before surgery).
         </div>
-        <ol className="list-decimal pl-5 text-[11px] text-gray-700 space-y-0.5">
-          <li>Open the patient chart in ModMed → <strong>Labs</strong> tab.</li>
-          <li>Select all pre-op labs (CBC, CMP, T&S, β-hCG, EKG, CXR as needed).</li>
-          <li>Click <strong>Print → Fax</strong> and enter the hospital fax above.</li>
-          <li>Mark this milestone done with the fax confirmation number in notes.</li>
-        </ol>
+      )}
+
+      {!editing ? (
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <div>
+            <span className="text-[10px] uppercase tracking-wide text-gray-500">Lab appointment:</span>{' '}
+            {surgery.lab_appointment_date
+              ? <span className="font-medium">{fmt.date(surgery.lab_appointment_date)}</span>
+              : <span className="text-gray-400 italic">not yet reported</span>}
+          </div>
+          {surgery.lab_appointment_date && (
+            <div className="text-[10px] text-gray-500">
+              {reportedByPatient ? 'self-reported by patient'
+                : reportedBy ? `entered ${reportedBy.replace('staff:', 'by ')}`
+                : ''}
+              {surgery.lab_appointment_reported_at &&
+                ` · ${surgery.lab_appointment_reported_at.slice(0, 10)}`}
+            </div>
+          )}
+          <button className="text-[11px] text-plum-700 hover:underline"
+                  onClick={() => setEditing(true)}>
+            <Edit3 size={10} className="inline" /> {surgery.lab_appointment_date ? 'Edit' : 'Enter on behalf of patient'}
+          </button>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 flex-wrap">
+          <input type="date" className="input text-[12px]"
+                 min={recommended?.earliest}
+                 max={recommended?.latest}
+                 value={draftDate}
+                 onChange={e => setDraftDate(e.target.value)} />
+          <button className="btn-primary text-[11px]"
+                  onClick={() => patch.mutate({ lab_appointment_date: draftDate || null })}
+                  disabled={patch.isPending}>
+            {patch.isPending ? 'Saving…' : 'Save'}
+          </button>
+          <button className="text-[11px] text-muted hover:underline"
+                  onClick={() => { setEditing(false); setDraftDate(surgery.lab_appointment_date || '') }}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      <div className="text-[10px] text-gray-500 italic">
+        Patient normally reports this date on their portal. Use the editor above to backfill if they called in.
       </div>
     </div>
   )
@@ -3465,12 +3522,20 @@ function ConsentPanel({ surgery }) {
     }
   }
 
+  const fmtDateTime = (iso) => {
+    if (!iso) return null
+    const d = new Date(iso)
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    })
+  }
+
   return (
     <div className={`card !p-3 mt-3 border ${tone}`}>
-      <div className="flex items-center gap-1.5 mb-1">
+      <div className="flex items-center gap-1.5 mb-2">
         <FileText size={14} className="text-plum-700" />
         <h3 className="text-sm font-semibold text-gray-800">Consent</h3>
-        <span className="text-[10px] text-gray-500 capitalize">· {status.replace(/_/g, ' ')}</span>
         {envelopes.length > 0 && (
           <span className="text-[10px] text-gray-500">
             · {envelopes.filter(e => e.status === 'signed').length}/{envelopes.length} signed
@@ -3478,24 +3543,47 @@ function ConsentPanel({ surgery }) {
         )}
       </div>
 
+      {/* Top-level status timeline */}
+      {(surgery.consent_sent_at || surgery.consent_signed_at) && (
+        <div className="text-[11px] text-gray-700 space-y-0.5 mb-3">
+          {surgery.consent_sent_at && (
+            <div>
+              <span className="text-gray-500">Consent sent:</span>{' '}
+              <span className="font-medium">{fmtDateTime(surgery.consent_sent_at)}</span>
+            </div>
+          )}
+          {surgery.consent_signed_at && (
+            <div>
+              <span className="text-gray-500">Signed:</span>{' '}
+              <span className="font-medium text-green-700">{fmtDateTime(surgery.consent_signed_at)}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Per-envelope rows when any have been sent */}
       {envelopes.length > 0 && (
         <div className="space-y-1 mb-3">
           {envelopes.map(e => (
             <div key={e.id}
-                 className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] border ${envelopeStatusTone(e.status)}`}>
-              <span className="font-medium flex-1">
-                {e.template_name || 'Unknown template'}
-                {e.is_supplemental && (
-                  <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>
+                 className={`px-2 py-1.5 rounded text-[11px] border ${envelopeStatusTone(e.status)}`}>
+              <div className="flex items-center gap-2">
+                <span className="font-medium flex-1">
+                  {e.template_name || 'Unknown template'}
+                  {e.is_supplemental && (
+                    <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>
+                  )}
+                </span>
+                <span className="text-[10px] uppercase tracking-wide font-medium">{e.status}</span>
+                {e.envelope_id && (
+                  <span className="text-[10px] font-mono text-gray-500">{e.envelope_id.slice(0, 8)}…</span>
                 )}
-              </span>
-              <span className="text-[10px] uppercase tracking-wide font-medium">{e.status}</span>
-              {e.signed_at && (
-                <span className="text-[10px]">signed {fmt.date(e.signed_at.slice(0, 10))}</span>
-              )}
-              {e.envelope_id && (
-                <span className="text-[10px] font-mono text-gray-500">{e.envelope_id.slice(0, 8)}…</span>
+              </div>
+              {(e.sent_at || e.signed_at) && (
+                <div className="text-[10px] text-gray-600 mt-0.5 flex gap-3">
+                  {e.sent_at && <span>Sent {fmtDateTime(e.sent_at)}</span>}
+                  {e.signed_at && <span className="text-green-700">Signed {fmtDateTime(e.signed_at)}</span>}
+                </div>
               )}
             </div>
           ))}
@@ -3583,11 +3671,6 @@ function ConsentPanel({ surgery }) {
                   title="Manual override — patient signed in person">
             <Check size={11} /> {signedManual.isPending ? 'Saving…' : 'Mark signed (manual)'}
           </button>
-        )}
-        {isSigned && (
-          <span className="text-[11px] text-green-700 italic">
-            ✓ Consent complete — milestone advanced
-          </span>
         )}
       </div>
     </div>
