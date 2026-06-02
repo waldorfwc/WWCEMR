@@ -66,6 +66,19 @@ def _hours_minutes(total_min: Optional[int]) -> tuple[str, str]:
     return str(h), str(m)
 
 
+def _us_date(d) -> str:
+    """Format a date (or YYYY-MM-DD string) as MM/DD/YYYY for the printed
+    form. Returns '' for None / blank input."""
+    if not d:
+        return ""
+    if isinstance(d, str):
+        try:
+            d = datetime.strptime(d[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return d  # leave already-formatted strings alone
+    return f"{d.month:02d}/{d.day:02d}/{d.year}"
+
+
 # ─── MedStar (fillable PDF form) ──────────────────────────────────
 
 def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
@@ -86,7 +99,7 @@ def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
     h, m = _hours_minutes(s.estimated_minutes)
 
     fields = {
-        "Surgery Date Requested":     str(s.scheduled_date) if s.scheduled_date else "",
+        "Surgery Date Requested":     _us_date(s.scheduled_date),
         "Start Time":                 (str(s.scheduled_start_time)[:5] if s.scheduled_start_time else ""),
         "Secondary Surgeon":          s.surgeon_secondary or "",
         "Est Time Needed":            "",
@@ -97,9 +110,9 @@ def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
         "Secondary CPT":              secondary_cpt,
         "AUTO_PatientNameLast":       last,
         "AUTO_PatientNameFirst":      first,
-        "AUTO_PatientDateOfBirth":    str(s.dob) if s.dob else "",
+        "AUTO_PatientDateOfBirth":    _us_date(s.dob),
         "AUTO_PatientAge":            str(_age(s.dob)) if s.dob else "",
-        "AUTO_CurrentDate":           str(date.today()),
+        "AUTO_CurrentDate":           _us_date(date.today()),
         "AUTO_PatientPhone":          s.cell_phone or s.phone or "",
         "AUTO_PatientAddress":        s.address_street or "",
         "AUTO_PatientCity":           s.address_city or "",
@@ -206,7 +219,7 @@ def generate_crmc(s: Surgery, overrides: Optional[dict] = None) -> bytes:
 
     # Build the data map first, then apply overrides, then draw.
     data = {
-        "requested_date":    str(s.scheduled_date) if s.scheduled_date else "",
+        "requested_date":    _us_date(s.scheduled_date),
         "requested_time":    str(s.scheduled_start_time)[:5] if s.scheduled_start_time else "",
         "outpatient":        "X",
         "procedure":         (descr or "")[:60],
@@ -217,7 +230,7 @@ def generate_crmc(s: Surgery, overrides: Optional[dict] = None) -> bytes:
         "special_request":   (s.special_equipment_notes or "")[:60],
         "last_name":         last,
         "first_name":        first,
-        "dob":               str(s.dob) if s.dob else "",
+        "dob":               _us_date(s.dob),
         "address":           s.address_street or "",
         "city":              s.address_city or "",
         "zip":               s.address_zip or "",

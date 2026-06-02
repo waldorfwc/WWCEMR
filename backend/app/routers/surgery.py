@@ -1738,11 +1738,31 @@ _USER_TO_CRMC = {
 }
 
 
+# User-friendly keys that hold dates and should land on the printed form
+# as MM/DD/YYYY (HTML date inputs send YYYY-MM-DD).
+_DATE_OVERRIDE_KEYS = {"surgery_date"}
+
+
+def _us_date_str(v) -> str:
+    """Coerce YYYY-MM-DD → MM/DD/YYYY for PDF rendering. Leaves other
+    strings untouched."""
+    s = str(v)
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        try:
+            from datetime import datetime as _dt
+            d = _dt.strptime(s[:10], "%Y-%m-%d").date()
+            return f"{d.month:02d}/{d.day:02d}/{d.year}"
+        except ValueError:
+            pass
+    return s
+
+
 def _translate_overrides(facility: str, user_overrides: dict) -> dict:
     """Translate user-friendly keys to the field names the generators
     expect. Unknown keys pass through unchanged so power users can also
     target raw PDF field names directly. estimated_minutes is split into
-    Hrs / Est Time Needed for MedStar."""
+    Hrs / Est Time Needed for MedStar. Date fields are reformatted to
+    MM/DD/YYYY so they print the way the practice wants."""
     if not user_overrides:
         return {}
     mapping = _USER_TO_MEDSTAR if facility == "medstar" else _USER_TO_CRMC
@@ -1760,7 +1780,7 @@ def _translate_overrides(facility: str, user_overrides: dict) -> dict:
                 pass
             continue
         pdf_key = mapping.get(k, k)
-        out[pdf_key] = str(v)
+        out[pdf_key] = _us_date_str(v) if k in _DATE_OVERRIDE_KEYS else str(v)
     return out
 
 
