@@ -75,6 +75,7 @@ import Schedule from './pages/portal/Schedule'
 import Consent from './pages/portal/Consent'
 import PortalDocuments from './pages/portal/Documents'
 import Messages from './pages/portal/Messages'
+import PreviewPortal from './pages/portal/PreviewPortal'
 import ReviewForm from './pages/reputation/ReviewForm'
 import ReputationEmbed from './pages/reputation/Embed'
 import AdminReputationProfiles from './pages/AdminReputationProfiles'
@@ -203,6 +204,8 @@ export default function App() {
         {/* Public provider portal — signed-token, no login */}
         <Route path="/p/missing-charges/:token" element={<ProviderMissingChargesPortal />} />
         {/* Patient portal — own auth, own shell */}
+        {/* Design preview — public, no auth, mock data */}
+        <Route path="/portal/preview" element={<PreviewPortal />} />
         <Route path="/portal/login" element={<PortalLogin />} />
         <Route path="/portal/verify" element={<PortalVerify />} />
         <Route path="/portal/s/:sid" element={<PortalShell />}>
