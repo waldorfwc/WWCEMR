@@ -260,6 +260,8 @@ def dashboard(surgery_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="surgery not found")
     first_proc = (s.procedures or [{}])[0]
     summary = {
+        "patient_name":  s.patient_name or "",
+        "chart_number":  s.chart_number or "",
         "procedure":     first_proc.get("description") or first_proc.get("name") or "",
         "surgeon":       s.surgeon_primary or "",
         "surgery_date":  s.scheduled_date.isoformat() if s.scheduled_date else None,
@@ -267,7 +269,11 @@ def dashboard(surgery_id: str, db: Session = Depends(get_db),
                             if s.scheduled_start_time else None,
         "facility":      FACILITY_SHORT.get(s.selected_facility or "",
                                              s.selected_facility or ""),
+        "facility_code": s.selected_facility or "",
         "patient_responsibility": _money(s.patient_responsibility),
+        "outstanding_balance":    _money(
+            max(0, (s.patient_responsibility or 0) - (s.amount_paid or 0))
+        ) if s.patient_responsibility else None,
     }
     milestones = [
         _payment_milestone(s),

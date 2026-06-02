@@ -1,26 +1,32 @@
-import { useEffect } from 'react'
-import { Outlet, Link, useNavigate, useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Outlet, NavLink, useNavigate, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import {
+  CalendarDays, ClipboardCheck, CreditCard, FileText,
+  HeartHandshake, MessageSquare, Phone, Menu, X, Sparkles,
+} from 'lucide-react'
 import { usePortalAuth } from '../../hooks/usePortalAuth'
-import { setPortalSession } from '../../lib/portal-api'
+import { setPortalSession, portalApi } from '../../lib/portal-api'
 import PreviewBanner from '../../components/portal/PreviewBanner'
 
 const NAV = [
-  { to: '',          label: 'Dashboard' },
-  { to: 'payments',  label: 'Payments' },
-  { to: 'schedule',  label: 'Schedule' },
-  { to: 'consent',   label: 'Consent' },
-  { to: 'documents', label: 'Documents' },
-  { to: 'messages',  label: 'Messages',  comingSoon: true },
+  { to: '',          label: 'Dashboard', icon: HeartHandshake, end: true },
+  { to: 'payments',  label: 'Payments',  icon: CreditCard },
+  { to: 'schedule',  label: 'Schedule',  icon: CalendarDays },
+  { to: 'consent',   label: 'Consent',   icon: ClipboardCheck },
+  { to: 'documents', label: 'Documents', icon: FileText },
+  { to: 'messages',  label: 'Messages',  icon: MessageSquare },
 ]
 
 export default function PortalShell() {
   const { sid } = useParams()
   const { session, signOut } = usePortalAuth()
   const nav = useNavigate()
+  const [mobileOpen, setMobileOpen] = useState(false)
 
-  // Coordinator preview entry: if URL has ?staff_token=..., bake it into
-  // localStorage as the active session, then strip from the URL so it
-  // doesn't show up in copy/paste or browser history. Runs once on mount.
+  // Coordinator preview entry: ?staff_token=... bakes the session into
+  // localStorage, strips the URL, and reloads so the rest of the shell
+  // sees the new token.
   useEffect(() => {
     const url = new URL(window.location.href)
     const tok = url.searchParams.get('staff_token')
@@ -28,39 +34,168 @@ export default function PortalShell() {
       setPortalSession({ token: tok, surgery_id: sid })
       url.searchParams.delete('staff_token')
       window.history.replaceState({}, '', url.toString())
-      // Force a re-render so the session check below sees the new token.
-      // Easiest path: reload. The page is fresh anyway since this is the
-      // staff member's first visit.
       window.location.reload()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Dashboard data drives the sidebar header (patient name, chart,
+  // procedure context). Same query used by the Dashboard page — TanStack
+  // dedupes the fetch.
+  const { data: dash } = useQuery({
+    queryKey: ['portal-dashboard', sid],
+    queryFn: () => portalApi.get(`/${sid}/dashboard`).then(r => r.data),
+    enabled: !!session.token,
+    staleTime: 30_000,
+  })
+  const patient = dash?.surgery
+
   if (!session.token) {
     nav('/portal/login', { replace: true })
     return null
   }
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <PreviewBanner />
-      <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-        <div className="text-lg font-semibold text-plum-700">WWC Apps</div>
-        <button className="text-sm text-gray-600 underline"
-                onClick={() => { signOut(); nav('/portal/login') }}>
+
+  function doSignOut() {
+    signOut()
+    nav('/portal/login')
+  }
+
+  const Sidebar = (
+    <aside className="w-72 shrink-0 bg-white border-r border-plum-100
+                       flex flex-col min-h-screen">
+      <div className="px-6 pt-7 pb-6 border-b border-plum-100">
+        <div className="flex items-start gap-3">
+          <div className="w-12 h-12 rounded-full bg-plum-100 grid place-items-center
+                            text-plum-700 shrink-0">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-plum-600/70 font-medium">
+              Waldorf Women's Care
+            </div>
+            <div className="font-serif text-[18px] leading-tight text-plum-ink font-semibold tracking-tight mt-0.5">
+              Patient Portal
+            </div>
+            <div className="font-serif italic text-plum-600 text-[11px] -mt-0.5">
+              &amp; Aesthetics
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {patient && (
+        <div className="px-6 py-5 border-b border-plum-100">
+          <div className="text-[10px] uppercase tracking-[0.16em] text-plum-600/70 mb-1">
+            Care plan for
+          </div>
+          <div className="font-serif text-[18px] text-plum-ink leading-tight font-semibold">
+            {patient.patient_name?.split(',').reverse().join(' ').trim() || 'Your care'}
+          </div>
+          {patient.chart_number && (
+            <div className="text-[11px] text-plum-600/80 mt-1 font-mono">
+              chart #{patient.chart_number}
+            </div>
+          )}
+          {patient.procedure && (
+            <div className="text-[11px] text-plum-700 mt-3">
+              {patient.procedure}
+            </div>
+          )}
+          {patient.facility && (
+            <div className="text-[11px] text-plum-600/80 mt-0.5">
+              {patient.facility}
+            </div>
+          )}
+        </div>
+      )}
+
+      <nav className="flex-1 px-3 py-4 space-y-0.5">
+        {NAV.map(item => {
+          const Icon = item.icon
+          return (
+            <NavLink
+              key={item.to}
+              to={`/portal/s/${sid}${item.to ? '/' + item.to : ''}`}
+              end={item.end}
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] transition-colors ${
+                  isActive
+                    ? 'bg-plum-100 text-plum-ink font-medium'
+                    : 'text-plum-700/80 hover:bg-plum-50'
+                }`
+              }>
+              {({ isActive }) => (
+                <>
+                  <Icon size={16}
+                        className={isActive ? 'text-plum-700' : 'text-plum-400'} />
+                  <span className="flex-1">{item.label}</span>
+                </>
+              )}
+            </NavLink>
+          )
+        })}
+      </nav>
+
+      <div className="px-6 pb-6">
+        <div className="rounded-lg bg-plum-50 border border-plum-100 p-3">
+          <div className="flex items-center gap-2 text-[11px] text-plum-700">
+            <Phone size={12} />
+            <span className="font-semibold">Need help?</span>
+          </div>
+          <div className="text-[11px] text-plum-600/80 mt-1 leading-relaxed">
+            Call our office at <strong className="text-plum-ink">240-252-2140</strong>
+            {' '}for any questions about your care plan.
+          </div>
+        </div>
+        <button onClick={doSignOut}
+                className="w-full mt-3 text-[11px] text-plum-600/70 hover:text-plum-700">
           Sign out
         </button>
+      </div>
+    </aside>
+  )
+
+  return (
+    <div className="min-h-screen bg-plum-50/40 text-plum-ink">
+      <PreviewBanner />
+
+      {/* Mobile top bar */}
+      <header className="md:hidden sticky top-0 z-30 bg-white border-b border-plum-100 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles size={18} className="text-plum-700" />
+          <span className="font-serif font-semibold text-plum-ink text-[15px]">
+            Patient Portal
+          </span>
+        </div>
+        <button onClick={() => setMobileOpen(true)}
+                className="p-2 text-plum-700 hover:bg-plum-50 rounded">
+          <Menu size={20} />
+        </button>
       </header>
+
       <div className="flex">
-        <nav className="w-48 border-r border-gray-200 bg-white p-3 hidden sm:block">
-          {NAV.map(item => (
-            <Link key={item.to}
-                  to={`/portal/s/${sid}/${item.to}`}
-                  className={`block px-2 py-2 rounded text-sm ${item.comingSoon ? 'text-gray-400' : 'text-gray-800 hover:bg-gray-100'}`}>
-              {item.label}{item.comingSoon ? ' · soon' : ''}
-            </Link>
-          ))}
-        </nav>
-        <main className="flex-1 p-4 max-w-3xl mx-auto"><Outlet /></main>
+        {/* Desktop sidebar */}
+        <div className="hidden md:block">{Sidebar}</div>
+
+        {/* Mobile sidebar drawer */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMobileOpen(false)}>
+            <div className="absolute inset-0 bg-plum-900/40" />
+            <div className="relative w-72 h-full bg-white shadow-xl"
+                 onClick={e => e.stopPropagation()}>
+              <button onClick={() => setMobileOpen(false)}
+                      className="absolute top-3 right-3 text-plum-600 hover:text-plum-900 p-1">
+                <X size={18} />
+              </button>
+              {Sidebar}
+            </div>
+          </div>
+        )}
+
+        <main className="flex-1 min-h-screen min-w-0">
+          <Outlet />
+        </main>
       </div>
     </div>
   )
