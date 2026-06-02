@@ -1899,7 +1899,6 @@ function MilestoneRow({ m, surgery }) {
       : 'bg-white border-gray-100'
     }`}>
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 shrink-0 w-6 text-right text-xs text-gray-400">{m.position}.</div>
         <div className="mt-0.5 shrink-0">{MILESTONE_ICON[m.status] || MILESTONE_ICON.pending}</div>
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
@@ -2098,7 +2097,7 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery" tone="amber">
-        {ms('consent')}
+        <ConsentPanel surgery={surgery} />
         <ClearanceCardBody surgery={surgery} />
         {ms('assistant_surgeon')}
         {ms('surgery_confirmed_hospital')}
