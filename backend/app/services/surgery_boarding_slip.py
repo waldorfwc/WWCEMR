@@ -12,6 +12,7 @@ import io
 import logging
 import os
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional
 
 from pypdf import PdfReader, PdfWriter
@@ -20,14 +21,14 @@ from reportlab.lib.pagesizes import letter
 from sqlalchemy.orm import Session
 
 from app.models.surgery import Surgery, SurgeryFile
+from app.services.storage import save_blob
 
 log = logging.getLogger(__name__)
 
-UPLOADS_DIR = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/surgery_boarding_slips"
-os.makedirs(UPLOADS_DIR, exist_ok=True)
-
-MEDSTAR_TEMPLATE = "/Users/wwcclaudecode/Downloads/MedStar Posting Form Fillable.pdf"
-CRMC_TEMPLATE    = "/Users/wwcclaudecode/Downloads/Mapping for CRMC Boarding Slip Prefill.pdf"
+# Templates ship inside the container image at backend/app/assets/.
+_ASSETS = Path(__file__).resolve().parents[1] / "assets" / "boarding_slip_templates"
+MEDSTAR_TEMPLATE = str(_ASSETS / "medstar_template.pdf")
+CRMC_TEMPLATE    = str(_ASSETS / "crmc_template.pdf")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────
@@ -67,8 +68,8 @@ def _hours_minutes(total_min: Optional[int]) -> tuple[str, str]:
 
 # ─── MedStar (fillable PDF form) ──────────────────────────────────
 
-def generate_medstar(s: Surgery) -> str:
-    """Fill the MedStar Posting Form. Returns path to the new PDF."""
+def generate_medstar(s: Surgery) -> bytes:
+    """Fill the MedStar Posting Form. Returns the new PDF bytes."""
     if not os.path.exists(MEDSTAR_TEMPLATE):
         raise RuntimeError(f"MedStar template missing: {MEDSTAR_TEMPLATE}")
 
@@ -123,13 +124,9 @@ def generate_medstar(s: Surgery) -> str:
             # Pages without form widgets raise — skip
             pass
 
-    out_path = os.path.join(
-        UPLOADS_DIR,
-        f"medstar_{s.chart_number}_{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf",
-    )
-    with open(out_path, "wb") as f:
-        writer.write(f)
-    return out_path
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
 
 
 # ─── CRMC (overlay onto scanned template) ─────────────────────────
@@ -177,8 +174,9 @@ CRMC_COORDS = {
 }
 
 
-def generate_crmc(s: Surgery) -> str:
-    """Overlay surgery info onto the CRMC scanned template."""
+def generate_crmc(s: Surgery) -> bytes:
+    """Overlay surgery info onto the CRMC scanned template. Returns the
+    new PDF bytes."""
     if not os.path.exists(CRMC_TEMPLATE):
         raise RuntimeError(f"CRMC template missing: {CRMC_TEMPLATE}")
 
@@ -246,35 +244,40 @@ def generate_crmc(s: Surgery) -> str:
     for p in template.pages[1:]:
         writer.add_page(p)
 
-    out_path = os.path.join(
-        UPLOADS_DIR,
-        f"crmc_{s.chart_number}_{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf",
-    )
-    with open(out_path, "wb") as f:
-        writer.write(f)
-    return out_path
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
 
 
 # ─── Public API ──────────────────────────────────────────────────
 
 def generate_for_surgery(db: Session, s: Surgery, *, by_email: str) -> SurgeryFile:
-    """Pick the right generator based on facility and persist the result
-    as a SurgeryFile row."""
+    """Pick the right generator based on facility, persist via storage
+    adapter, and write a SurgeryFile row pointing at the storage key."""
     if s.selected_facility == "medstar":
-        path = generate_medstar(s)
+        pdf_bytes = generate_medstar(s)
+        slug = "medstar"
     elif s.selected_facility == "crmc":
-        path = generate_crmc(s)
+        pdf_bytes = generate_crmc(s)
+        slug = "crmc"
     else:
         raise ValueError(f"No boarding slip needed for facility={s.selected_facility}")
 
-    fname = os.path.basename(path)
+    safe_chart = (s.chart_number or "unknown").replace("/", "_")
+    fname = (
+        f"{slug}_{safe_chart}_"
+        f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf"
+    )
+    key = save_blob(prefix="surgery_boarding_slips",
+                    body=pdf_bytes, filename=fname)
+
     f = SurgeryFile(
         surgery_id=s.id,
         kind="boarding_slip",
         filename=fname,
-        path=path,
+        path=key,
         mime_type="application/pdf",
-        size_bytes=os.path.getsize(path),
+        size_bytes=len(pdf_bytes),
         notes=f"Generated for {s.selected_facility}",
         uploaded_by=by_email,
     )
