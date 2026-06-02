@@ -209,7 +209,7 @@ PATH_MAP = {
 
 # Hospital-based path
 HOSPITAL_MILESTONES = [
-    ("benefits_determined",    "Benefits determined",                 3),
+    ("benefits_determined",    "Benefits Determination",              3),
     ("prior_auth",             "Prior auth received",                 5),
     ("klara_scheduling",       "Klara scheduling message sent",       2),
     ("patient_picks_date",     "Patient picks surgery date",         14),
@@ -228,7 +228,7 @@ HOSPITAL_MILESTONES = [
 # Office-based path (skip device, hospital confirmation, labs, op notes,
 # assistant surgeon — office procedures don't use a co-surgeon)
 OFFICE_MILESTONES = [
-    ("benefits_determined",    "Benefits determined",                 3),
+    ("benefits_determined",    "Benefits Determination",              3),
     ("prior_auth",             "Prior auth received",                 5),
     ("klara_scheduling",       "Klara scheduling message sent",       2),
     ("patient_picks_date",     "Patient picks procedure date",       14),

@@ -7,6 +7,7 @@ import {
   MessageSquare, Download, Upload, Copy, ListPlus, Send, RefreshCw,
   ChevronDown, ChevronUp, Package, Eye,
   DollarSign, HeartPulse, UserPlus, FlaskConical, Mail, Phone, Calculator,
+  ShieldCheck,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import MessagesSection from '../components/MessagesSection'
@@ -1874,6 +1875,12 @@ function Tip({ text, children }) {
 }
 
 
+const MILESTONE_TITLE_OVERRIDE = {
+  consent: 'Consent',
+  benefits_determined: 'Benefits Determination',
+}
+
+
 function MilestoneRow({ m, surgery }) {
   const qc = useQueryClient()
   const [showNotes, setShowNotes] = useState(false)
@@ -1906,7 +1913,7 @@ function MilestoneRow({ m, surgery }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className={`text-sm font-medium ${m.status === 'not_applicable' ? 'line-through' : ''}`}>
-              {m.kind === 'consent' ? 'Consent' : m.title}
+              {MILESTONE_TITLE_OVERRIDE[m.kind] || m.title}
             </span>
             <span className="text-[10px] text-gray-500 capitalize">{m.status.replace(/_/g, ' ')}</span>
             {m.expected_duration_days && (
@@ -2090,7 +2097,7 @@ function GroupedSurgeryBody({ surgery, milestones }) {
     <>
       <SurgerySection title="Benefits & Payments" anchor="group-benefits-payments" tone="emerald">
         {ms('benefits_determined')}
-        {ms('prior_auth')}
+        <PriorAuthCardBody surgery={surgery} />
         <PaymentsSection surgery={surgery} flat />
       </SurgerySection>
 
@@ -2811,16 +2818,43 @@ function PriorAuthCardBody({ surgery }) {
   const [authNum, setAuthNum] = useState(surgery.auth_number || '')
   const [authStatus, setAuthStatus] = useState(surgery.auth_status || 'not_required')
 
-  const patch = useMutation({
+  const patchStatus = useMutation({
     mutationFn: () => api.patch(`/surgery/${surgery.id}`,
-                                { auth_number: authNum, auth_status: authStatus }).then(r => r.data),
+                                  { auth_status: authStatus }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+  })
+  const patchNum = useMutation({
+    mutationFn: () => api.patch(`/surgery/${surgery.id}`,
+                                  { auth_number: authNum }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
   })
 
+  const STATUS_TONE = {
+    not_required: 'bg-gray-100 text-gray-600',
+    required:     'bg-amber-100 text-amber-700',
+    sent_request: 'bg-blue-100 text-blue-700',
+    sent_records: 'bg-blue-100 text-blue-700',
+    peer_review:  'bg-amber-100 text-amber-700',
+    approved:     'bg-green-100 text-green-700',
+    denied:       'bg-red-100 text-red-700',
+    tbd:          'bg-gray-100 text-gray-600',
+    completed:    'bg-green-100 text-green-700',
+  }
+
   return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-2 text-[11px]">
-        <div>
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+          <ShieldCheck size={14} className="text-emerald-700" />
+          Prior Auth
+        </h3>
+        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_TONE[authStatus] || 'bg-gray-100 text-gray-600'}`}>
+          {authStatus.replace(/_/g, ' ')}
+        </span>
+      </div>
+
+      <div className="flex items-end gap-2 text-[11px]">
+        <div className="flex-1 max-w-[260px]">
           <div className="text-[10px] uppercase tracking-wide text-gray-500">Auth status</div>
           <select className="input text-[12px] w-full"
                   value={authStatus}
@@ -2836,21 +2870,31 @@ function PriorAuthCardBody({ surgery }) {
             <option value="completed">completed</option>
           </select>
         </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Auth / reference #</div>
-          <input className="input text-[12px] w-full font-mono"
+        <button className="btn-secondary text-[11px]"
+                onClick={() => patchStatus.mutate()}
+                disabled={patchStatus.isPending}>
+          {patchStatus.isPending ? 'Saving…' : 'Save status'}
+        </button>
+      </div>
+
+      <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior Auth Response" />
+
+      <div className="border-t border-gray-200 pt-2 space-y-1">
+        <div className="text-[10px] uppercase tracking-wide text-gray-500">
+          Prior Auth No. / Reference No.
+        </div>
+        <div className="flex items-center gap-2">
+          <input className="input text-[12px] font-mono flex-1 max-w-[280px]"
                  value={authNum}
                  onChange={e => setAuthNum(e.target.value)}
                  placeholder="e.g. AUTH-2026-1234" />
+          <button className="btn-primary text-[11px]"
+                  onClick={() => patchNum.mutate()}
+                  disabled={patchNum.isPending || authNum === (surgery.auth_number || '')}>
+            {patchNum.isPending ? 'Saving…' : 'Save'}
+          </button>
         </div>
       </div>
-      <button className="btn-primary text-[11px]"
-              onClick={() => patch.mutate()}
-              disabled={patch.isPending}>
-        {patch.isPending ? 'Saving…' : 'Save auth info'}
-      </button>
-
-      <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior Auth Response" />
     </div>
   )
 }
