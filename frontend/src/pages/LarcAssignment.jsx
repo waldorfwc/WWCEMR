@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Edit3, RotateCcw, X, SkipForward, FileText,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
 
 
 const MILESTONE_ICON = {
@@ -79,6 +80,21 @@ export default function LarcAssignment() {
                 <div className="text-[10px] text-gray-500">{a.device_type_name}</div>
               </>
             ) : <span className="text-amber-700 italic">not yet assigned</span>}
+          </Field>
+          <Field label="Ownership">
+            {a.device_ownership ? (
+              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${OWNERSHIP_TONES[a.device_ownership] || 'bg-gray-100 text-gray-700'}`}
+                    title={a.device_ownership === 'patient_owned'
+                      ? 'Patient Owned — WWC does NOT bill insurance.'
+                      : a.device_ownership === 'wwc_claimed'
+                        ? 'WWC Claimed (originally patient-owned).'
+                        : 'WWC Owned — billable to insurance.'}>
+                {OWNERSHIP_LABELS[a.device_ownership] || a.device_ownership}
+              </span>
+            ) : <span className="text-gray-400">—</span>}
+          </Field>
+          <Field label="Date received">
+            {a.device_received_date ? fmt.date(a.device_received_date) : <span className="text-gray-400">—</span>}
           </Field>
           <Field label="Insurance">
             {a.primary_insurance || <span className="text-gray-400">—</span>}
