@@ -390,7 +390,8 @@ def _post_op_visits_serialized(s: Surgery) -> list[dict]:
     from app.services.post_op_schedule import determine_post_op_schedule
     return [
         {"label": v.label, "days_post_op": v.days_post_op,
-         "suggested_location": v.suggested_location}
+         "suggested_location": v.suggested_location,
+         "location_locked": v.location_locked}
         for v in determine_post_op_schedule(s)
     ]
 
@@ -2340,8 +2341,24 @@ def save_post_op_appts(
             raise HTTPException(status_code=422,
                                 detail=f"invalid location: {v}")
         return v
-    s.post_op_appt_location = _normalize_location(payload.first_location)
-    s.post_op_appt_2nd_location = _normalize_location(payload.second_location)
+    first_loc  = _normalize_location(payload.first_location)
+    second_loc = _normalize_location(payload.second_location)
+
+    # Safety net: clinically-required in-person visits can't be saved
+    # as telehealth even if a stale frontend tries to.
+    from app.services.post_op_schedule import determine_post_op_schedule
+    rule_visits = determine_post_op_schedule(s)
+    if len(rule_visits) > 0 and rule_visits[0].location_locked and first_loc == "telehealth":
+        raise HTTPException(
+            status_code=422,
+            detail=f"{rule_visits[0].label} must be in-person")
+    if len(rule_visits) > 1 and rule_visits[1].location_locked and second_loc == "telehealth":
+        raise HTTPException(
+            status_code=422,
+            detail=f"{rule_visits[1].label} must be in-person")
+
+    s.post_op_appt_location     = first_loc
+    s.post_op_appt_2nd_location = second_loc
 
     # Auto-close the milestone when all required appts are filled
     m = next((mm for mm in s.milestones if mm.kind == "post_op_appts_scheduled"), None)

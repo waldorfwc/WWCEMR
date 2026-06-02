@@ -32,6 +32,7 @@ class PostOpVisit:
     label: str               # human label, e.g. "1 week post-op"
     days_post_op: int        # expected days after surgery
     suggested_location: str = "office"   # "office" | "telehealth"
+    location_locked: bool = False        # True = clinically required in-office
 
 
 # Ordered most-demanding → least. First match in this list wins for each
@@ -41,11 +42,16 @@ class PostOpVisit:
 # Default location convention: the first/early visit is in-office
 # (wound + suture check, vitals, sometimes labs). Later visits are
 # typically a general check-in and run fine over telehealth.
+#
+# A few visits are CLINICALLY REQUIRED to be in person — flagged with
+# location_locked=True so the coordinator can't accidentally book them
+# as telehealth.
 PROCEDURE_RULES: list[tuple[list[str], list[PostOpVisit]]] = [
     # Hysterectomy variants (TAH, TLH, LAVH, robotic, supracervical, etc.)
     (["hysterectomy"], [
         PostOpVisit("1 week post-op", 7, "office"),
-        PostOpVisit("6 weeks post-op", 42, "telehealth"),
+        # 6-week hysterectomy visit must be in-person (cuff check).
+        PostOpVisit("6 weeks post-op", 42, "office", location_locked=True),
     ]),
     # Myomectomy
     (["myomectomy"], [
@@ -56,9 +62,9 @@ PROCEDURE_RULES: list[tuple[list[str], list[PostOpVisit]]] = [
     (["ablation"], [
         PostOpVisit("2 months post-op", 60, "telehealth"),
     ]),
-    # LEEP
+    # LEEP — 2-week visit must be in-person (margin/biopsy follow-up).
     (["leep"], [
-        PostOpVisit("2 weeks post-op", 14, "office"),
+        PostOpVisit("2 weeks post-op", 14, "office", location_locked=True),
     ]),
     # D&C / Hysteroscopy
     (["d&c", "dilation", "dilatation", "hysteroscopy"], [

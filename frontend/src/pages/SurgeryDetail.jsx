@@ -2267,12 +2267,16 @@ function PostOpApptsCardBody({ surgery }) {
   }, [surgery.scheduled_date, visits])
 
   const save = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/post-op-appts`,
-                                { first_date: first || null,
-                                  second_date: second || null,
-                                  first_location: first ? firstLoc : null,
-                                  second_location: second ? secondLoc : null })
-                          .then(r => r.data),
+    mutationFn: () => {
+      const firstLocked  = !!visits[0]?.location_locked
+      const secondLocked = !!visits[1]?.location_locked
+      return api.post(`/surgery/${surgery.id}/post-op-appts`,
+                       { first_date: first || null,
+                         second_date: second || null,
+                         first_location:  first  ? (firstLocked  ? 'office' : firstLoc)  : null,
+                         second_location: second ? (secondLocked ? 'office' : secondLoc) : null })
+                 .then(r => r.data)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
       qc.invalidateQueries({ queryKey: ['surgery-list'] })
@@ -2308,7 +2312,7 @@ function PostOpApptsCardBody({ surgery }) {
     if (visits[1] && suggested[1]) setSecond(suggested[1])
   }
 
-  function LocationToggle({ value, onChange, suggestedLoc }) {
+  function LocationToggle({ value, onChange, suggestedLoc, locked }) {
     return (
       <div className="flex items-center gap-1 text-[11px]">
         <button type="button"
@@ -2322,15 +2326,21 @@ function PostOpApptsCardBody({ surgery }) {
           Office{suggestedLoc === 'office' && <span className="text-[9px]"> ★</span>}
         </button>
         <button type="button"
-                onClick={() => onChange('telehealth')}
+                disabled={locked}
+                onClick={() => !locked && onChange('telehealth')}
                 className={`px-1.5 py-0.5 rounded border ${
-                  value === 'telehealth'
-                    ? 'bg-plum-100 border-plum-300 text-plum-800'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
+                  locked
+                    ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed line-through'
+                    : value === 'telehealth'
+                        ? 'bg-plum-100 border-plum-300 text-plum-800'
+                        : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
                 }`}
-                title={suggestedLoc === 'telehealth' ? 'Suggested' : ''}>
-          Telehealth{suggestedLoc === 'telehealth' && <span className="text-[9px]"> ★</span>}
+                title={locked ? 'Required in-person' : (suggestedLoc === 'telehealth' ? 'Suggested' : '')}>
+          Telehealth{!locked && suggestedLoc === 'telehealth' && <span className="text-[9px]"> ★</span>}
         </button>
+        {locked && (
+          <span className="text-[10px] text-amber-700 italic">in-person required</span>
+        )}
       </div>
     )
   }
@@ -2390,8 +2400,10 @@ function PostOpApptsCardBody({ surgery }) {
               </div>
               <div className="flex items-center gap-2 pl-32">
                 <span className="text-[10px] text-gray-500">Visit type:</span>
-                <LocationToggle value={loc} onChange={setLoc}
-                                suggestedLoc={v.suggested_location} />
+                <LocationToggle value={v.location_locked ? 'office' : loc}
+                                onChange={setLoc}
+                                suggestedLoc={v.suggested_location}
+                                locked={!!v.location_locked} />
               </div>
             </div>
           )
