@@ -1351,9 +1351,11 @@ const DOSE_STATUS_TONES = {
 function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
   const doses = visit.doses || []
   const planned = doses.filter(d => d.status === 'planned')
+  const hasProposed = doses.some(d => ['planned', 'pulled'].includes(d.status))
   const showAddMid = visit.status === 'in_progress' &&
                        doses.some(d => ['pulled', 'added'].includes(d.status))
   const [swapDose, setSwapDose] = useState(null)
+  const [editProposedOpen, setEditProposedOpen] = useState(false)
 
   return (
     <div className="border border-gray-200 rounded p-3 bg-gray-50/50">
@@ -1362,6 +1364,13 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
           Dose card ({doses.length})
         </h3>
         <div className="flex items-center gap-2">
+          {hasProposed && (
+            <button className="text-[11px] flex items-center gap-1 px-2 py-1 rounded border border-plum-300 bg-white text-plum-700 hover:bg-plum-50"
+                    onClick={() => setEditProposedOpen(true)}
+                    title="Edit the proposed dose: change combination, quantity, or lots before bagging">
+              <Edit3 size={11}/> Edit proposed dose
+            </button>
+          )}
           {planned.length > 0 && (
             <button className="btn-primary text-[11px] flex items-center gap-1"
                     onClick={onFillBag}>
@@ -1434,6 +1443,155 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
           onClose={() => setSwapDose(null)}
         />
       )}
+      {editProposedOpen && (
+        <EditProposedDoseDrawer
+          visit={visit}
+          onClose={() => setEditProposedOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+
+function EditProposedDoseDrawer({ visit, onClose }) {
+  // Edit the proposed-dose card holistically: change dose-type combination,
+  // quantities, and lots — before the bag is filled. Submits the full new
+  // card via PUT /pellets/visits/{id}/dose-card (already auto-returns the
+  // prior reservation and pulls fresh per line).
+  const qc = useQueryClient()
+  const initial = (visit.doses || [])
+    .filter(d => ['planned', 'pulled'].includes(d.status))
+    .sort((a, b) => (a.position || 0) - (b.position || 0))
+    .map(d => ({
+      dose_type_id: d.dose_type_id,
+      quantity:     d.quantity,
+      lot_id:       d.lot_id || '',
+    }))
+  const [rows, setRows] = useState(
+    initial.length > 0
+      ? initial
+      : [{ dose_type_id: '', quantity: 1, lot_id: '' }]
+  )
+  const [error, setError] = useState(null)
+
+  const { data: doseTypes } = useQuery({
+    queryKey: ['pellet-dose-types-active'],
+    queryFn: () => api.get('/pellets/dose-types').then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
+  const dtList = Array.isArray(doseTypes)
+    ? doseTypes
+    : (doseTypes?.dose_types || doseTypes?.types || [])
+  const dtOptions = dtList.filter(t => t.is_active !== false)
+
+  function updateRow(i, patch) {
+    setRows(prev => prev.map((r, j) => j === i ? { ...r, ...patch } : r))
+  }
+  function addRow() {
+    setRows(prev => [...prev, { dose_type_id: '', quantity: 1, lot_id: '' }])
+  }
+  function removeRow(i) {
+    setRows(prev => prev.filter((_, j) => j !== i))
+  }
+
+  const submit = useMutation({
+    mutationFn: () => api.put(`/pellets/visits/${visit.id}/dose-card`, {
+      doses: rows
+        .filter(r => r.dose_type_id && Number(r.quantity) > 0)
+        .map(r => ({
+          dose_type_id: r.dose_type_id,
+          quantity:     Number(r.quantity),
+          ...(r.lot_id ? { lot_id: r.lot_id } : {}),
+        })),
+    }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-patient', visit.patient_id] })
+      qc.invalidateQueries({ queryKey: ['pellet-upcoming-calendar'] })
+      onClose()
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Save failed'))
+    },
+  })
+
+  const validRows = rows.filter(r => r.dose_type_id && Number(r.quantity) > 0)
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-xl bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between z-10">
+          <h2 className="text-[15px] font-semibold text-gray-900">
+            Edit proposed dose
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-[12px] text-gray-600">
+            Replace the proposed dose for this visit. Old planned/pulled
+            doses return to inventory and the new combination is pulled.
+            Bagging and insertion are separate steps; this only affects what's
+            <em> proposed</em>.
+          </p>
+
+          <ul className="space-y-2">
+            {rows.map((r, i) => (
+              <li key={i} className="bg-gray-50 border border-gray-200 rounded p-2 space-y-1.5">
+                <div className="grid grid-cols-[1fr_80px_24px] gap-2">
+                  <select className="input text-[12px]"
+                          value={r.dose_type_id}
+                          onChange={e => updateRow(i, { dose_type_id: e.target.value, lot_id: '' })}>
+                    <option value="">— select dose type —</option>
+                    {dtOptions.map(t => (
+                      <option key={t.id} value={t.id}>{t.label}</option>
+                    ))}
+                  </select>
+                  <input type="number" min="1" className="input text-[12px] font-mono"
+                         value={r.quantity}
+                         onChange={e => updateRow(i, { quantity: e.target.value })} />
+                  <button onClick={() => removeRow(i)}
+                          className="text-red-600 hover:bg-red-50 rounded p-1"
+                          title="Remove this row">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+                {r.dose_type_id && (
+                  <LotPickerForType
+                    doseTypeId={r.dose_type_id}
+                    location={visit.location}
+                    minQty={Number(r.quantity) || 1}
+                    selected={r.lot_id}
+                    onSelect={(id) => updateRow(i, { lot_id: id || '' })} />
+                )}
+              </li>
+            ))}
+          </ul>
+
+          <button onClick={addRow}
+                  className="text-[11px] text-plum-700 hover:underline flex items-center gap-1">
+            <Plus size={11}/> Add another dose
+          </button>
+
+          {error && (
+            <div className="text-[12px] text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
+            <button onClick={() => submit.mutate()}
+                    disabled={submit.isPending || validRows.length === 0}
+                    className="btn-primary text-sm">
+              {submit.isPending ? 'Saving…' : `Save (${validRows.length} dose${validRows.length === 1 ? '' : 's'})`}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
