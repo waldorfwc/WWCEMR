@@ -138,6 +138,9 @@ app.include_router(recall_filter_presets.router, prefix="/api")
 app.include_router(training.router, prefix="/api")
 # Surgery config admin (must come before surgery.router — /config would match /{surgery_id})
 app.include_router(surgery_config.router, prefix="/api")
+# Surgery fee schedule + CCI/MPR admin + per-surgery calculator
+# (Must come BEFORE surgery.router — /fee-schedule would match /{surgery_id})
+app.include_router(fee_schedule_router.router, prefix="/api")
 # Surgery scheduling — handlers gate by surgery:* permissions
 app.include_router(surgery.router, prefix="/api")
 # Patient-facing date picker — public, soft-auth via DOB + last 4 of phone
@@ -155,8 +158,6 @@ app.include_router(boldsign.router, prefix="/api")
 app.include_router(consent_templates.router, prefix="/api")
 # User-scoped saved filter presets for the surgery dashboard
 app.include_router(surgery_filter_presets.router, prefix="/api")
-# Surgery fee schedule + CCI/MPR admin + per-surgery calculator
-app.include_router(fee_schedule_router.router, prefix="/api")
 # LARC device inventory + tracking
 app.include_router(larc.router, prefix="/api")
 # Pellet inventory + receiving + DEA-compliant audit
