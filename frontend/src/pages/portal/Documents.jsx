@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
+import OfficeProcedureInstructions from '../../components/portal/OfficeProcedureInstructions'
 
 function fmtMoney(v) {
   return `$${Number(v).toFixed(2)}`
@@ -40,37 +41,13 @@ function PdfDownloadButton({ url, filename, label }) {
   )
 }
 
-function InstructionsCard({ sid, instructions }) {
-  if (instructions === null) {
-    return (
-      <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-        <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
-        <p className="text-sm text-gray-600">
-          Instructions for this procedure aren't online yet — please call our
-          office at <a href="tel:2402522140" className="underline">240-252-2140</a>.
-        </p>
-      </section>
-    )
-  }
+function InstructionsCard() {
   return (
     <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
-      <ul className="divide-y divide-plum-50">
-        <li className="py-2 flex items-center justify-between">
-          <span className="text-sm text-gray-800">Pre-op instructions</span>
-          <PdfDownloadButton
-            url={`/${sid}/documents/instructions/preop`}
-            filename="preop_instructions.pdf"
-            label="Download" />
-        </li>
-        <li className="py-2 flex items-center justify-between">
-          <span className="text-sm text-gray-800">Post-op instructions</span>
-          <PdfDownloadButton
-            url={`/${sid}/documents/instructions/postop`}
-            filename="postop_instructions.pdf"
-            label="Download" />
-        </li>
-      </ul>
+      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">
+        Instructions
+      </h2>
+      <OfficeProcedureInstructions />
     </section>
   )
 }
@@ -488,6 +465,7 @@ export default function Documents() {
         </p>
       </header>
       <div className="space-y-4">
+        <InstructionsCard />
         <ConsentDocsCard sid={sid} consents={data.consents} />
         <ReceiptsCard receipts={data.receipts} />
         <LabsAppointmentCard sid={sid} labs={data.labs} refetchDocs={refetchDocs} />
