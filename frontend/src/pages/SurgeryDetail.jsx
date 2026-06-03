@@ -2686,6 +2686,191 @@ function SurgerySection({ title, anchor, tone = 'slate', headerRight, children }
 }
 
 
+// ─── Step-based layout (numbered workflow) ──────────────────────────
+
+const MILESTONE_DONE_STATES = new Set(['done', 'skipped', 'not_applicable'])
+
+const STEP_CFG = [
+  { n: 1,  title: 'Patient & Order Intake',            tone: 'slate'   },
+  { n: 2,  title: 'Surgery Benefits',                  tone: 'emerald' },
+  { n: 3,  title: 'Payment',                           tone: 'emerald' },
+  { n: 4,  title: 'Consents',                          tone: 'amber'   },
+  { n: 5,  title: 'Select Surgery Date & Post-Op Dates', tone: 'sky'   },
+  { n: 6,  title: 'Allocate Device',                   tone: 'teal',   optional: true },
+  { n: 7,  title: 'Prior Auth',                        tone: 'amber',  optional: true },
+  { n: 8,  title: 'Clearance / EKG',                   tone: 'amber',  optional: true },
+  { n: 9,  title: 'Asst Surgeon / Device Rep',         tone: 'amber',  optional: true },
+  { n: 10, title: 'Post Surgery to Hospital',          tone: 'sky'     },
+  { n: 11, title: 'Labs',                              tone: 'amber'   },
+  { n: 12, title: 'Post Surgery Welfare F/U',          tone: 'slate'   },
+  { n: 13, title: 'Surgery Notes & Reports',           tone: 'slate'   },
+  { n: 14, title: 'Bill Surgery',                      tone: 'slate'   },
+]
+
+function stepCompletion(n, s, byKind) {
+  const done = (kind) => MILESTONE_DONE_STATES.has(byKind[kind]?.status)
+  switch (n) {
+    case 1: return { state: 'done' }   // Order is in the system if we're here
+    case 2: return { state: done('benefits_determined') ? 'done' : 'todo' }
+    case 3: {
+      const resp = Number(s.patient_responsibility || 0)
+      const paid = Number(s.amount_paid || 0)
+      if (resp <= 0) return { state: 'done' }
+      return { state: paid >= resp ? 'done' : 'todo' }
+    }
+    case 4: {
+      const cs = (s.consent_status || '').toLowerCase()
+      return { state: (cs === 'signed' || cs === 'not_required') ? 'done' : 'todo' }
+    }
+    case 5: {
+      const datePicked = !!s.scheduled_date
+      const postOpsDone = done('post_op_appts_scheduled')
+      if (datePicked && postOpsDone) return { state: 'done' }
+      if (datePicked || postOpsDone) return { state: 'in_progress' }
+      return { state: 'todo' }
+    }
+    case 6: {
+      // Device allocation is required when LARC or office-procedure device-tracked
+      const needed = !!s.larc_device_required
+      if (!needed) return { state: 'n/a', optionalRequired: false }
+      return { state: s.larc_assigned_device_id ? 'done' : 'todo', optionalRequired: true }
+    }
+    case 7: {
+      const status = (s.auth_status || '').toLowerCase()
+      if (status === 'not_required' || status === '' || !s.clearance_required && status === '') {
+        // fallback: only mark done if the milestone is done/skipped
+      }
+      if (done('prior_auth')) return { state: 'done' }
+      if (status === 'not_required') return { state: 'n/a', optionalRequired: false }
+      if (!status) return { state: 'todo', optionalRequired: false }
+      return { state: 'todo', optionalRequired: true }
+    }
+    case 8: {
+      const cs = (s.clearance_status || '').toLowerCase()
+      if (cs === 'not_required' || !s.clearance_required) return { state: 'n/a', optionalRequired: false }
+      if (['received', 'sent_to_hospital', 'completed'].includes(cs)) return { state: 'done' }
+      return { state: 'todo', optionalRequired: true }
+    }
+    case 9: {
+      if (!s.assistant_surgeon_required) return { state: 'n/a', optionalRequired: false }
+      if (done('assistant_surgeon')) return { state: 'done' }
+      return { state: 'todo', optionalRequired: true }
+    }
+    case 10: {
+      if (done('surgery_confirmed_hospital')) return { state: 'done' }
+      return { state: 'todo' }
+    }
+    case 11: {
+      if (done('labs_to_hospital') || s.labs_sent_to_hospital) return { state: 'done' }
+      return { state: 'todo' }
+    }
+    case 12: {
+      const pocs = (s.post_op_call_status || '').toLowerCase()
+      if (pocs === 'spoke to pt.' || done('post_op_call')) return { state: 'done' }
+      return { state: 'todo' }
+    }
+    case 13: {
+      const opDone   = done('op_notes')   || ['completed', 'received'].includes((s.operative_report_status || '').toLowerCase())
+      const pathDone = done('path_report')
+      if (opDone && pathDone) return { state: 'done' }
+      if (opDone || pathDone) return { state: 'in_progress' }
+      return { state: 'todo' }
+    }
+    case 14: {
+      if (s.payment_posted_to_billing || done('surgery_billed')) return { state: 'done' }
+      return { state: 'todo' }
+    }
+    default: return { state: 'todo' }
+  }
+}
+
+
+function SurgeryStepTimeline({ surgery, byKind }) {
+  return (
+    <div className="card !p-3 mb-4 overflow-x-auto">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold text-gray-800">Your surgery journey</h2>
+        <div className="text-[11px] uppercase tracking-wide text-plum-600/70">
+          {STEP_CFG.filter(st => stepCompletion(st.n, surgery, byKind).state === 'done').length}
+          {' '}of {STEP_CFG.length} complete
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-1 min-w-[1180px]">
+        {STEP_CFG.map((step, i) => {
+          const { state } = stepCompletion(step.n, surgery, byKind)
+          const isDone     = state === 'done'
+          const isCurrent  = state === 'in_progress'
+          const isNA       = state === 'n/a'
+          return (
+            <div key={step.n} className="flex-1 flex items-center">
+              <a href={`#step-${step.n}`}
+                  className="flex flex-col items-center flex-1 hover:opacity-90">
+                <div className={`w-9 h-9 rounded-full grid place-items-center text-[12px] font-semibold transition ${
+                  isDone
+                    ? 'bg-plum-700 text-white shadow-sm'
+                    : isCurrent
+                      ? 'bg-white border-2 border-plum-700 text-plum-700 ring-2 ring-plum-100'
+                      : isNA
+                        ? 'bg-gray-100 border border-gray-200 text-gray-400'
+                        : 'bg-plum-50 border border-plum-200 text-plum-500'
+                }`}>
+                  {isDone ? '✓' : isNA ? '—' : step.n}
+                </div>
+                <div className={`text-[10px] mt-1.5 text-center leading-tight w-[78px] ${
+                  isNA ? 'text-gray-400' : (isDone || isCurrent) ? 'text-plum-700 font-medium' : 'text-plum-500'
+                }`}>
+                  {step.title}
+                </div>
+              </a>
+              {i < STEP_CFG.length - 1 && (
+                <div className={`h-px flex-1 mt-[-22px] ${
+                  isDone ? 'bg-plum-300' : 'bg-plum-100'
+                }`} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+
+function StepCard({ n, title, tone, optional, surgery, byKind, headerRight, children }) {
+  const kids = (Array.isArray(children) ? children : [children]).filter(Boolean)
+  if (kids.length === 0) return null
+  const { state } = stepCompletion(n, surgery, byKind)
+  const isNA = state === 'n/a'
+  const isDone = state === 'done'
+  const t = SECTION_TONES[tone] || SECTION_TONES.slate
+  return (
+    <section id={`step-${n}`} className={`card mb-4 scroll-mt-16 ${t.bg} ${t.accent}`}>
+      <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${t.divide}`}>
+        <div className={`text-[11px] uppercase tracking-wide px-2 py-0.5 rounded-full font-semibold ${
+          isDone
+            ? 'bg-plum-700 text-white'
+            : isNA
+              ? 'bg-gray-200 text-gray-500'
+              : 'bg-plum-100 text-plum-700'
+        }`}>
+          Step {n}
+        </div>
+        <h2 className="text-base font-semibold text-gray-800 flex-1">
+          {title}{optional && <span className="text-[11px] text-gray-500 font-normal ml-1">(if required)</span>}
+        </h2>
+        {isDone && <span className="text-[11px] text-emerald-700 font-medium">✓ Complete</span>}
+        {headerRight}
+      </div>
+      {kids.map((child, i) => (
+        <div key={i} className={i === 0 ? '' : `border-t ${t.divide} mt-3 pt-3`}>
+          {child}
+        </div>
+      ))}
+    </section>
+  )
+}
+
+
 function GroupedSurgeryBody({ surgery, milestones }) {
   const byKind = Object.fromEntries(milestones.map(m => [m.kind, m]))
   const ms = (kind) => byKind[kind]
@@ -2694,52 +2879,118 @@ function GroupedSurgeryBody({ surgery, milestones }) {
 
   return (
     <>
-      <SurgerySection title="Benefits & Payments" anchor="group-benefits-payments" tone="emerald"
-                      headerRight={
-                        <FeeScheduleButton
-                          surgeryId={surgery.id}
-                          onApplied={() => {/* surgery query auto-invalidates via the apply endpoint */}} />
-                      }>
+      <SurgeryStepTimeline surgery={surgery} byKind={byKind} />
+
+      {/* Step 2 — Surgery Benefits */}
+      <StepCard n={2} title="Surgery Benefits" tone="emerald"
+                surgery={surgery} byKind={byKind}
+                headerRight={
+                  <FeeScheduleButton
+                    surgeryId={surgery.id}
+                    onApplied={() => {/* surgery query auto-invalidates */}} />
+                }>
         {ms('benefits_determined')}
-        <PriorAuthCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 3 — Payment */}
+      <StepCard n={3} title="Payment" tone="emerald"
+                surgery={surgery} byKind={byKind}>
         <PaymentsSection surgery={surgery} flat />
-      </SurgerySection>
+      </StepCard>
 
-      <SurgerySection title="Appointments" anchor="group-appointments" tone="sky">
-        <PatientPicksDateBody surgery={surgery} />
-        <PostOpApptsCardBody surgery={surgery} />
-      </SurgerySection>
-
-      <SurgerySection title="Pre-Surgery Coordination" anchor="group-pre-surgery" tone="amber">
+      {/* Step 4 — Consents */}
+      <StepCard n={4} title="Consents" tone="amber"
+                surgery={surgery} byKind={byKind}>
+        {ms('consent')}
         <ConsentPanel surgery={surgery} />
+      </StepCard>
+
+      {/* Step 5 — Select Surgery Date & Post-Op Dates */}
+      <StepCard n={5} title="Select Surgery Date & Post-Op Dates" tone="sky"
+                surgery={surgery} byKind={byKind}>
+        {ms('patient_picks_date')}
+        <PatientPicksDateBody surgery={surgery} />
+        {ms('post_op_appts_scheduled')}
+        <PostOpApptsCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 6 — Allocate Device (if required) */}
+      <StepCard n={6} title="Allocate Device" tone="teal" optional
+                surgery={surgery} byKind={byKind}>
+        <RequestDevicePanel surgery={surgery} />
+        <LarcDevicePickerCard surgery={surgery} flat />
+      </StepCard>
+
+      {/* Step 7 — Prior Auth (if required) */}
+      <StepCard n={7} title="Prior Auth" tone="amber" optional
+                surgery={surgery} byKind={byKind}>
+        {ms('prior_auth')}
+        <PriorAuthCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 8 — Clearance / EKG (if required) */}
+      <StepCard n={8} title="Clearance / EKG" tone="amber" optional
+                surgery={surgery} byKind={byKind}>
         <ClearanceCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 9 — Asst Surgeon / Device Rep (if required) */}
+      <StepCard n={9} title="Asst Surgeon / Device Rep" tone="amber" optional
+                surgery={surgery} byKind={byKind}>
+        {ms('assistant_surgeon')}
         <AssistantSurgeonCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 10 — Post Surgery to Hospital */}
+      <StepCard n={10} title="Post Surgery to Hospital" tone="sky"
+                surgery={surgery} byKind={byKind}>
+        {ms('surgery_confirmed_hospital')}
         <ErrorBoundary label="Hospital Posting">
           <SurgeryConfirmedBody surgery={surgery} />
         </ErrorBoundary>
+      </StepCard>
+
+      {/* Step 11 — Labs */}
+      <StepCard n={11} title="Labs" tone="amber"
+                surgery={surgery} byKind={byKind}>
+        {ms('labs_to_hospital')}
         <LabsCardBody surgery={surgery} />
-      </SurgerySection>
+      </StepCard>
 
-      <SurgerySection title="Communication & Messaging" anchor="group-communication" tone="plum">
-        <PortalAccessPanel surgery={surgery} />
-        <KlaraPanel surgery={surgery} />
-        <MessagesSection sid={surgery.id} flat />
-        <PatientEmailsSection surgery={surgery} flat />
-        <PatientSmsSection surgery={surgery} flat />
-      </SurgerySection>
-
-      <SurgerySection title="Post Surgery" anchor="group-post-surgery" tone="slate">
+      {/* Step 12 — Post Surgery Welfare F/U */}
+      <StepCard n={12} title="Post Surgery Welfare F/U" tone="slate"
+                surgery={surgery} byKind={byKind}>
         {byKind['post_op_call'] && (
           <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
         )}
-        <FilesPanel surgery={surgery} kindFilter="op_notes" label="Operative Report" />
-        <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
-        <SurgeryBilledCardBody surgery={surgery} />
-      </SurgerySection>
+      </StepCard>
 
-      <SurgerySection title="Devices" anchor="group-devices" tone="teal">
-        <RequestDevicePanel surgery={surgery} />
-        <LarcDevicePickerCard surgery={surgery} flat />
+      {/* Step 13 — Surgery Notes & Reports */}
+      <StepCard n={13} title="Surgery Notes & Reports" tone="slate"
+                surgery={surgery} byKind={byKind}>
+        {ms('op_notes')}
+        <FilesPanel surgery={surgery} kindFilter="op_notes" label="Operative Report" />
+        {ms('path_report')}
+        <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
+      </StepCard>
+
+      {/* Step 14 — Bill Surgery */}
+      <StepCard n={14} title="Bill Surgery" tone="slate"
+                surgery={surgery} byKind={byKind}>
+        {ms('surgery_billed')}
+        <SurgeryBilledCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Communication & Messaging — kept intact for review; the user can
+          move these into appropriate steps later. */}
+      <SurgerySection title="Communication & Messaging (review — move into a step later)"
+                      anchor="group-communication" tone="plum">
+        <PortalAccessPanel surgery={surgery} />
+        <KlaraPanel surgery={surgery} />
+        {ms('klara_scheduling')}
+        <MessagesSection sid={surgery.id} flat />
+        <PatientEmailsSection surgery={surgery} flat />
+        <PatientSmsSection surgery={surgery} flat />
       </SurgerySection>
     </>
   )
