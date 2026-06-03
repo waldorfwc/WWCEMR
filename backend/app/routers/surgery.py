@@ -168,6 +168,15 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "billed_cpt_codes": s.billed_cpt_codes or [],
         "billed_at": s.billed_at.isoformat() if s.billed_at else None,
         "billed_by": s.billed_by,
+        # Step-card completion signals
+        "benefits_verified_at":      (str(s.benefits_verified_at)
+                                        if s.benefits_verified_at else None),
+        "labs_sent_to_hospital":     bool(s.labs_sent_to_hospital),
+        "payment_posted_to_billing": bool(s.payment_posted_to_billing),
+        "calendar_invite_sent_at":   (s.calendar_invite_sent_at.isoformat()
+                                        if s.calendar_invite_sent_at else None),
+        "operative_report_status":   s.operative_report_status,
+        "post_op_call_status":       s.post_op_call_status,
         "latest_boarding_slip": _latest_file(s, kind="boarding_slip"),
         "billing_ai_notes": s.billing_ai_notes,
         "consent_envelopes": [
@@ -1491,27 +1500,9 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
 # ─── Milestone helper ───────────────────────────────────────────────
 
 def _spawn_milestones(db: Session, s: Surgery) -> None:
-    """Create the milestone set for this surgery if missing. Catalog
-    matches the seed importer."""
-    from app.services.surgery_smartsheet_seed import (
-        HOSPITAL_MILESTONES, OFFICE_MILESTONES,
-    )
-    from app.models.surgery import SurgeryMilestone
-
-    catalog = OFFICE_MILESTONES if s.selected_facility == "office" else HOSPITAL_MILESTONES
-    for pos, (kind, title, expected_days) in enumerate(catalog, 1):
-        # Conditional milestones default to not_applicable when the
-        # corresponding flag is off — surfaces only when the workflow
-        # actually needs them.
-        if kind == "assistant_surgeon" and not s.assistant_surgeon_required:
-            initial_status = "not_applicable"
-        else:
-            initial_status = "pending"
-        db.add(SurgeryMilestone(
-            surgery_id=s.id,
-            kind=kind, title=title, position=pos,
-            status=initial_status, expected_duration_days=expected_days,
-        ))
+    """Milestones are retired — the numbered Steps on the detail page have
+    replaced them. Kept as a no-op so callers don't need to change."""
+    return None
 
 
 # ─── Block schedule admin (Phase 1.7) ───────────────────────────────

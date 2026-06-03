@@ -2795,11 +2795,12 @@ function checkSurgeryInfoMissing(s) {
 }
 
 
-function stepCompletion(n, s, byKind) {
-  const done = (kind) => MILESTONE_DONE_STATES.has(byKind[kind]?.status)
+function stepCompletion(n, s, _byKind) {
+  // Milestones are retired — every step derives completion from surgery
+  // fields directly.
   switch (n) {
     case 1: return { state: checkSurgeryInfoMissing(s).length === 0 ? 'done' : 'todo' }
-    case 2: return { state: done('benefits_determined') ? 'done' : 'todo' }
+    case 2: return { state: s.benefits_verified_at ? 'done' : 'todo' }
     case 3: {
       const resp = Number(s.patient_responsibility || 0)
       const paid = Number(s.amount_paid || 0)
@@ -2812,60 +2813,54 @@ function stepCompletion(n, s, byKind) {
     }
     case 5: {
       const datePicked = !!s.scheduled_date
-      const postOpsDone = done('post_op_appts_scheduled')
+      const postOpsDone = !!s.post_op_appt_date
       if (datePicked && postOpsDone) return { state: 'done' }
       if (datePicked || postOpsDone) return { state: 'in_progress' }
       return { state: 'todo' }
     }
     case 6: {
-      // Device allocation is required when LARC or office-procedure device-tracked
-      const needed = !!s.larc_device_required
-      if (!needed) return { state: 'n/a', optionalRequired: false }
-      return { state: s.larc_assigned_device_id ? 'done' : 'todo', optionalRequired: true }
+      // Only office procedures (LARC, etc.) require an allocated device.
+      if (s.selected_facility !== 'office') return { state: 'n/a' }
+      return { state: 'todo' }   // device-assigned signal lives on a separate table
     }
     case 7: {
       const status = (s.auth_status || '').toLowerCase()
-      if (status === 'not_required' || status === '' || !s.clearance_required && status === '') {
-        // fallback: only mark done if the milestone is done/skipped
-      }
-      if (done('prior_auth')) return { state: 'done' }
-      if (status === 'not_required') return { state: 'n/a', optionalRequired: false }
-      if (!status) return { state: 'todo', optionalRequired: false }
-      return { state: 'todo', optionalRequired: true }
+      if (status === 'not_required') return { state: 'n/a' }
+      if (['approved', 'completed'].includes(status)) return { state: 'done' }
+      return { state: 'todo' }
     }
     case 8: {
       const cs = (s.clearance_status || '').toLowerCase()
-      if (cs === 'not_required' || !s.clearance_required) return { state: 'n/a', optionalRequired: false }
+      if (cs === 'not_required' || !s.clearance_required) return { state: 'n/a' }
       if (['received', 'sent_to_hospital', 'completed'].includes(cs)) return { state: 'done' }
-      return { state: 'todo', optionalRequired: true }
+      return { state: 'todo' }
     }
     case 9: {
-      if (!s.assistant_surgeon_required) return { state: 'n/a', optionalRequired: false }
-      if (done('assistant_surgeon')) return { state: 'done' }
-      return { state: 'todo', optionalRequired: true }
+      if (!s.assistant_surgeon_required) return { state: 'n/a' }
+      if (s.assistant_surgeon_office_notified_at && s.assistant_surgeon_appt_confirmed_at) {
+        return { state: 'done' }
+      }
+      return { state: 'todo' }
     }
     case 10: {
-      if (done('surgery_confirmed_hospital')) return { state: 'done' }
+      if (s.calendar_invite_sent_at) return { state: 'done' }
       return { state: 'todo' }
     }
     case 11: {
-      if (done('labs_to_hospital') || s.labs_sent_to_hospital) return { state: 'done' }
+      if (s.labs_sent_to_hospital) return { state: 'done' }
       return { state: 'todo' }
     }
     case 12: {
       const pocs = (s.post_op_call_status || '').toLowerCase()
-      if (pocs === 'spoke to pt.' || done('post_op_call')) return { state: 'done' }
+      if (pocs === 'spoke to pt.') return { state: 'done' }
       return { state: 'todo' }
     }
     case 13: {
-      const opDone   = done('op_notes')   || ['completed', 'received'].includes((s.operative_report_status || '').toLowerCase())
-      const pathDone = done('path_report')
-      if (opDone && pathDone) return { state: 'done' }
-      if (opDone || pathDone) return { state: 'in_progress' }
-      return { state: 'todo' }
+      const opDone = ['completed', 'received'].includes((s.operative_report_status || '').toLowerCase())
+      return { state: opDone ? 'done' : 'todo' }
     }
     case 14: {
-      if (s.payment_posted_to_billing || done('surgery_billed')) return { state: 'done' }
+      if (s.payment_posted_to_billing) return { state: 'done' }
       return { state: 'todo' }
     }
     default: return { state: 'todo' }
@@ -3015,7 +3010,7 @@ function GroupedSurgeryBody({ surgery, milestones }) {
                     surgeryId={surgery.id}
                     onApplied={() => {/* surgery query auto-invalidates */}} />
                 }>
-        {ms('benefits_determined')}
+        <BenefitsPanel surgery={surgery} />
       </StepCard>
 
       {/* Step 3 — Payment */}
@@ -3027,16 +3022,13 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       {/* Step 4 — Consents */}
       <StepCard n={4} title="Consents" tone="amber"
                 surgery={surgery} byKind={byKind}>
-        {ms('consent')}
         <ConsentPanel surgery={surgery} />
       </StepCard>
 
       {/* Step 5 — Select Surgery Date & Post-Op Dates */}
       <StepCard n={5} title="Select Surgery Date & Post-Op Dates" tone="sky"
                 surgery={surgery} byKind={byKind}>
-        {ms('patient_picks_date')}
         <PatientPicksDateBody surgery={surgery} />
-        {ms('post_op_appts_scheduled')}
         <PostOpApptsCardBody surgery={surgery} />
       </StepCard>
 
@@ -3050,7 +3042,6 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       {/* Step 7 — Prior Auth (if required) */}
       <StepCard n={7} title="Prior Auth" tone="amber" optional
                 surgery={surgery} byKind={byKind}>
-        {ms('prior_auth')}
         <PriorAuthCardBody surgery={surgery} />
       </StepCard>
 
@@ -3063,14 +3054,12 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       {/* Step 9 — Asst Surgeon / Device Rep (if required) */}
       <StepCard n={9} title="Asst Surgeon / Device Rep" tone="amber" optional
                 surgery={surgery} byKind={byKind}>
-        {ms('assistant_surgeon')}
         <AssistantSurgeonCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 10 — Post Surgery to Hospital */}
       <StepCard n={10} title="Post Surgery to Hospital" tone="sky"
                 surgery={surgery} byKind={byKind}>
-        {ms('surgery_confirmed_hospital')}
         <ErrorBoundary label="Hospital Posting">
           <SurgeryConfirmedBody surgery={surgery} />
         </ErrorBoundary>
@@ -3079,31 +3068,25 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       {/* Step 11 — Labs */}
       <StepCard n={11} title="Labs" tone="amber"
                 surgery={surgery} byKind={byKind}>
-        {ms('labs_to_hospital')}
         <LabsCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 12 — Post Surgery Welfare F/U */}
       <StepCard n={12} title="Post Surgery Welfare F/U" tone="slate"
                 surgery={surgery} byKind={byKind}>
-        {byKind['post_op_call'] && (
-          <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
-        )}
+        <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
       </StepCard>
 
       {/* Step 13 — Surgery Notes & Reports */}
       <StepCard n={13} title="Surgery Notes & Reports" tone="slate"
                 surgery={surgery} byKind={byKind}>
-        {ms('op_notes')}
         <FilesPanel surgery={surgery} kindFilter="op_notes" label="Operative Report" />
-        {ms('path_report')}
         <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
       </StepCard>
 
       {/* Step 14 — Bill Surgery */}
       <StepCard n={14} title="Bill Surgery" tone="slate"
                 surgery={surgery} byKind={byKind}>
-        {ms('surgery_billed')}
         <SurgeryBilledCardBody surgery={surgery} />
       </StepCard>
 
