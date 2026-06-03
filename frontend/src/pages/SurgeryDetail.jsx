@@ -2771,10 +2771,11 @@ const STEP_CFG_HOSPITAL = [
   { n: 8,  title: 'Clearance / EKG',                   tone: 'amber',  optional: true },
   { n: 9,  title: 'Asst Surgeon / Device Rep',         tone: 'amber',  optional: true },
   { n: 10, title: 'Post Surgery to Hospital',          tone: 'sky'     },
-  { n: 11, title: 'Labs',                              tone: 'amber'   },
-  { n: 12, title: 'Post Surgery Welfare F/U',          tone: 'slate'   },
-  { n: 13, title: 'Surgery Notes & Reports',           tone: 'slate'   },
-  { n: 14, title: 'Bill Surgery',                      tone: 'slate'   },
+  { n: 11, title: 'Add Surgery Appointment to ModMed', tone: 'sky'     },
+  { n: 12, title: 'Labs',                              tone: 'amber'   },
+  { n: 13, title: 'Post Surgery Welfare F/U',          tone: 'slate'   },
+  { n: 14, title: 'Surgery Notes & Reports',           tone: 'slate'   },
+  { n: 15, title: 'Bill Surgery',                      tone: 'slate'   },
 ]
 
 const STEP_CFG_OFFICE = [
@@ -2885,20 +2886,21 @@ function stepCompletion(n, s, _byKind) {
       if (s.calendar_invite_sent_at) return { state: 'done' }
       return { state: 'todo' }
     }
-    case 11: {
+    case 11: return { state: s.scheduled_in_modmed_at ? 'done' : 'todo' }
+    case 12: {
       if (s.labs_sent_to_hospital) return { state: 'done' }
       return { state: 'todo' }
     }
-    case 12: {
+    case 13: {
       const pocs = (s.post_op_call_status || '').toLowerCase()
       if (pocs === 'spoke to pt.') return { state: 'done' }
       return { state: 'todo' }
     }
-    case 13: {
+    case 14: {
       const opDone = ['completed', 'received'].includes((s.operative_report_status || '').toLowerCase())
       return { state: opDone ? 'done' : 'todo' }
     }
-    case 14: {
+    case 15: {
       if (s.payment_posted_to_billing) return { state: 'done' }
       return { state: 'todo' }
     }
@@ -2999,7 +3001,7 @@ function SurgeryInfoChecklist({ surgery }) {
 
 function SurgeryStepTimeline({ surgery, byKind, steps }) {
   const journeyLabel = isOffice(surgery) ? 'Your procedure journey' : 'Your surgery journey'
-  const minWidth = steps.length >= 14 ? 1180 : 1000
+  const minWidth = steps.length * 84
   return (
     <div className="card !p-3 mb-4 overflow-x-auto">
       <div className="flex items-center justify-between mb-3">
@@ -3169,27 +3171,33 @@ function GroupedSurgeryBody({ surgery, milestones }) {
         </ErrorBoundary>
       </StepCard>
 
-      {/* Step 11 — Labs */}
-      <StepCard n={11} title="Labs" tone="amber"
+      {/* Step 11 — Add Surgery Appointment to ModMed */}
+      <StepCard n={11} title="Add Surgery Appointment to ModMed" tone="sky"
+                surgery={surgery} byKind={byKind}>
+        <ModMedScheduledPanel surgery={surgery} />
+      </StepCard>
+
+      {/* Step 12 — Labs */}
+      <StepCard n={12} title="Labs" tone="amber"
                 surgery={surgery} byKind={byKind}>
         <LabsCardBody surgery={surgery} />
       </StepCard>
 
-      {/* Step 12 — Post Surgery Welfare F/U */}
-      <StepCard n={12} title="Post Surgery Welfare F/U" tone="slate"
+      {/* Step 13 — Post Surgery Welfare F/U */}
+      <StepCard n={13} title="Post Surgery Welfare F/U" tone="slate"
                 surgery={surgery} byKind={byKind}>
         <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
       </StepCard>
 
-      {/* Step 13 — Surgery Notes & Reports */}
-      <StepCard n={13} title="Surgery Notes & Reports" tone="slate"
+      {/* Step 14 — Surgery Notes & Reports */}
+      <StepCard n={14} title="Surgery Notes & Reports" tone="slate"
                 surgery={surgery} byKind={byKind}>
         <FilesPanel surgery={surgery} kindFilter="op_notes" label="Operative Report" />
         <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
       </StepCard>
 
-      {/* Step 14 — Bill Surgery */}
-      <StepCard n={14} title="Bill Surgery" tone="slate"
+      {/* Step 15 — Bill Surgery */}
+      <StepCard n={15} title="Bill Surgery" tone="slate"
                 surgery={surgery} byKind={byKind}>
         <SurgeryBilledCardBody surgery={surgery} />
       </StepCard>
