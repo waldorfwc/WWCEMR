@@ -2760,7 +2760,7 @@ function SurgerySection({ title, anchor, tone = 'slate', headerRight, children }
 
 const MILESTONE_DONE_STATES = new Set(['done', 'skipped', 'not_applicable'])
 
-const STEP_CFG = [
+const STEP_CFG_HOSPITAL = [
   { n: 1,  title: 'Surgery Info',                      tone: 'slate'   },
   { n: 2,  title: 'Surgery Benefits',                  tone: 'emerald' },
   { n: 3,  title: 'Payment',                           tone: 'emerald' },
@@ -2776,6 +2776,24 @@ const STEP_CFG = [
   { n: 13, title: 'Surgery Notes & Reports',           tone: 'slate'   },
   { n: 14, title: 'Bill Surgery',                      tone: 'slate'   },
 ]
+
+const STEP_CFG_OFFICE = [
+  { n: 1,  title: 'Add Surgery',                       tone: 'slate'   },
+  { n: 2,  title: 'Procedure Benefits',                tone: 'emerald' },
+  { n: 3,  title: 'Payment',                           tone: 'emerald' },
+  { n: 4,  title: 'Consents',                          tone: 'amber'   },
+  { n: 5,  title: 'Select Procedure Date & Post-Op Dates', tone: 'sky' },
+  { n: 6,  title: 'Allocate Device',                   tone: 'teal',   optional: true },
+  { n: 7,  title: 'Prior Auth',                        tone: 'amber',  optional: true },
+  { n: 8,  title: 'Device Rep',                        tone: 'amber',  optional: true },
+  { n: 9,  title: 'Add Procedure Appointment to ModMed', tone: 'sky'   },
+  { n: 10, title: 'Post Surgery Welfare F/U',          tone: 'slate'   },
+  { n: 11, title: 'Procedure Pathology Report',        tone: 'slate',  optional: true },
+  { n: 12, title: 'Bill Surgery',                      tone: 'slate'   },
+]
+
+function isOffice(s) { return s.selected_facility === 'office' }
+function stepsFor(s) { return isOffice(s) ? STEP_CFG_OFFICE : STEP_CFG_HOSPITAL }
 
 function checkSurgeryInfoMissing(s) {
   const missing = []
@@ -2816,7 +2834,9 @@ function checkSurgeryInfoMissing(s) {
 
 function stepCompletion(n, s, _byKind) {
   // Milestones are retired — every step derives completion from surgery
-  // fields directly.
+  // fields directly. Office procedures get a 12-step flow that differs
+  // from the 14-step hospital flow at steps 8, 9, 10, 11, 13.
+  if (isOffice(s)) return stepCompletionOffice(n, s)
   switch (n) {
     case 1: return { state: checkSurgeryInfoMissing(s).length === 0 ? 'done' : 'todo' }
     case 2: return { state: s.benefits_verified_at ? 'done' : 'todo' }
@@ -2887,6 +2907,64 @@ function stepCompletion(n, s, _byKind) {
 }
 
 
+function stepCompletionOffice(n, s) {
+  switch (n) {
+    case 1: return { state: checkSurgeryInfoMissing(s).length === 0 ? 'done' : 'todo' }
+    case 2: return { state: s.benefits_verified_at ? 'done' : 'todo' }
+    case 3: {
+      const resp = Number(s.patient_responsibility || 0)
+      const paid = Number(s.amount_paid || 0)
+      if (resp <= 0) return { state: 'done' }
+      return { state: paid >= resp ? 'done' : 'todo' }
+    }
+    case 4: {
+      const cs = (s.consent_status || '').toLowerCase()
+      return { state: (cs === 'signed' || cs === 'not_required') ? 'done' : 'todo' }
+    }
+    case 5: {
+      const datePicked = !!s.scheduled_date
+      const postOpsDone = !!s.post_op_appt_date
+      if (datePicked && postOpsDone) return { state: 'done' }
+      if (datePicked || postOpsDone) return { state: 'in_progress' }
+      return { state: 'todo' }
+    }
+    case 6: {
+      // Office procedures usually need an allocated device (LARC etc.)
+      return { state: 'todo' }   // device-assigned signal lives on a separate table
+    }
+    case 7: {
+      const status = (s.auth_status || '').toLowerCase()
+      if (status === 'not_required') return { state: 'n/a' }
+      if (['approved', 'completed'].includes(status)) return { state: 'done' }
+      return { state: 'todo' }
+    }
+    case 8: {
+      // Device Rep — reuses the assistant_surgeon_required + notification fields
+      if (!s.assistant_surgeon_required) return { state: 'n/a' }
+      if (s.assistant_surgeon_office_notified_at && s.assistant_surgeon_appt_confirmed_at) {
+        return { state: 'done' }
+      }
+      return { state: 'todo' }
+    }
+    case 9: return { state: s.scheduled_in_modmed_at ? 'done' : 'todo' }
+    case 10: {
+      const pocs = (s.post_op_call_status || '').toLowerCase()
+      return { state: pocs === 'spoke to pt.' ? 'done' : 'todo' }
+    }
+    case 11: {
+      // Pathology report optional — done when the operative_report_status is
+      // marked completed/received OR there's a pathology file uploaded.
+      const ors = (s.operative_report_status || '').toLowerCase()
+      if (ors === 'not_required') return { state: 'n/a' }
+      if (['completed', 'received'].includes(ors)) return { state: 'done' }
+      return { state: 'todo' }
+    }
+    case 12: return { state: s.payment_posted_to_billing ? 'done' : 'todo' }
+    default: return { state: 'todo' }
+  }
+}
+
+
 function SurgeryInfoChecklist({ surgery }) {
   const missing = checkSurgeryInfoMissing(surgery)
   if (missing.length === 0) {
@@ -2919,18 +2997,20 @@ function SurgeryInfoChecklist({ surgery }) {
 }
 
 
-function SurgeryStepTimeline({ surgery, byKind }) {
+function SurgeryStepTimeline({ surgery, byKind, steps }) {
+  const journeyLabel = isOffice(surgery) ? 'Your procedure journey' : 'Your surgery journey'
+  const minWidth = steps.length >= 14 ? 1180 : 1000
   return (
     <div className="card !p-3 mb-4 overflow-x-auto">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-semibold text-gray-800">Your surgery journey</h2>
+        <h2 className="text-sm font-semibold text-gray-800">{journeyLabel}</h2>
         <div className="text-[11px] uppercase tracking-wide text-plum-600/70">
-          {STEP_CFG.filter(st => stepCompletion(st.n, surgery, byKind).state === 'done').length}
-          {' '}of {STEP_CFG.length} complete
+          {steps.filter(st => stepCompletion(st.n, surgery, byKind).state === 'done').length}
+          {' '}of {steps.length} complete
         </div>
       </div>
-      <div className="flex items-center justify-between gap-1 min-w-[1180px]">
-        {STEP_CFG.map((step, i) => {
+      <div className="flex items-center justify-between gap-1" style={{ minWidth: `${minWidth}px` }}>
+        {steps.map((step, i) => {
           const { state } = stepCompletion(step.n, surgery, byKind)
           const isDone     = state === 'done'
           const isCurrent  = state === 'in_progress'
@@ -2956,7 +3036,7 @@ function SurgeryStepTimeline({ surgery, byKind }) {
                   {step.title}
                 </div>
               </a>
-              {i < STEP_CFG.length - 1 && (
+              {i < steps.length - 1 && (
                 <div className={`h-px flex-1 mt-[-22px] ${
                   isDone ? 'bg-plum-300' : 'bg-plum-100'
                 }`} />
@@ -3010,10 +3090,15 @@ function GroupedSurgeryBody({ surgery, milestones }) {
   const ms = (kind) => byKind[kind]
     ? <MilestoneCard m={byKind[kind]} surgery={surgery} flat />
     : null
+  const steps = stepsFor(surgery)
+
+  if (isOffice(surgery)) {
+    return <OfficeProcedureBody surgery={surgery} byKind={byKind} steps={steps} />
+  }
 
   return (
     <>
-      <SurgeryStepTimeline surgery={surgery} byKind={byKind} />
+      <SurgeryStepTimeline surgery={surgery} byKind={byKind} steps={steps} />
 
       {/* Step 1 — Surgery Info validator */}
       <StepCard n={1} title="Surgery Info" tone="slate"
@@ -3113,6 +3198,148 @@ function GroupedSurgeryBody({ surgery, milestones }) {
     </>
   )
 }
+
+
+function OfficeProcedureBody({ surgery, byKind, steps }) {
+  return (
+    <>
+      <SurgeryStepTimeline surgery={surgery} byKind={byKind} steps={steps} />
+
+      {/* Step 1 — Add Surgery (Surgery Info validator) */}
+      <StepCard n={1} title="Add Surgery" tone="slate"
+                surgery={surgery} byKind={byKind}>
+        <SurgeryInfoChecklist surgery={surgery} />
+      </StepCard>
+
+      {/* Step 2 — Procedure Benefits */}
+      <StepCard n={2} title="Procedure Benefits" tone="emerald"
+                surgery={surgery} byKind={byKind}
+                headerRight={
+                  <FeeScheduleButton
+                    surgeryId={surgery.id}
+                    onApplied={() => {/* auto-invalidates */}} />
+                }>
+        <BenefitsPanel surgery={surgery} />
+      </StepCard>
+
+      {/* Step 3 — Payment */}
+      <StepCard n={3} title="Payment" tone="emerald"
+                surgery={surgery} byKind={byKind}>
+        <PaymentsSection surgery={surgery} flat />
+      </StepCard>
+
+      {/* Step 4 — Consents */}
+      <StepCard n={4} title="Consents" tone="amber"
+                surgery={surgery} byKind={byKind}>
+        <ConsentPanel surgery={surgery} />
+      </StepCard>
+
+      {/* Step 5 — Select Procedure Date & Post-Op Dates */}
+      <StepCard n={5} title="Select Procedure Date & Post-Op Dates" tone="sky"
+                surgery={surgery} byKind={byKind}>
+        <PatientPicksDateBody surgery={surgery} />
+        <PostOpApptsCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 6 — Allocate Device (if required) */}
+      <StepCard n={6} title="Allocate Device" tone="teal" optional
+                surgery={surgery} byKind={byKind}>
+        <RequestDevicePanel surgery={surgery} />
+        <LarcDevicePickerCard surgery={surgery} flat />
+      </StepCard>
+
+      {/* Step 7 — Prior Auth */}
+      <StepCard n={7} title="Prior Auth" tone="amber" optional
+                surgery={surgery} byKind={byKind}>
+        <PriorAuthCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 8 — Device Rep (if required) */}
+      <StepCard n={8} title="Device Rep" tone="amber" optional
+                surgery={surgery} byKind={byKind}>
+        <AssistantSurgeonCardBody surgery={surgery} />
+      </StepCard>
+
+      {/* Step 9 — Add Procedure Appointment to ModMed */}
+      <StepCard n={9} title="Add Procedure Appointment to ModMed" tone="sky"
+                surgery={surgery} byKind={byKind}>
+        <ModMedScheduledPanel surgery={surgery} />
+      </StepCard>
+
+      {/* Step 10 — Post Surgery Welfare F/U */}
+      <StepCard n={10} title="Post Surgery Welfare F/U" tone="slate"
+                surgery={surgery} byKind={byKind}>
+        <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
+      </StepCard>
+
+      {/* Step 11 — Procedure Pathology Report (if required) */}
+      <StepCard n={11} title="Procedure Pathology Report" tone="slate" optional
+                surgery={surgery} byKind={byKind}>
+        <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
+      </StepCard>
+
+      {/* Step 12 — Bill Surgery */}
+      <StepCard n={12} title="Bill Surgery" tone="slate"
+                surgery={surgery} byKind={byKind}>
+        <SurgeryBilledCardBody surgery={surgery} />
+      </StepCard>
+    </>
+  )
+}
+
+
+function ModMedScheduledPanel({ surgery }) {
+  const qc = useQueryClient()
+  const scheduled = !!surgery.scheduled_in_modmed_at
+  const mut = useMutation({
+    mutationFn: (confirmed) =>
+      api.post(`/surgery/${surgery.id}/modmed-scheduled`, { confirmed })
+         .then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+    },
+  })
+  return (
+    <div className="card !p-3 mt-1 text-[12px]">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <div className="font-semibold text-gray-800 mb-0.5">ModMed appointment status</div>
+          {scheduled ? (
+            <div className="text-emerald-700">
+              ✓ Added to ModMed{' '}
+              <span className="text-gray-500">
+                {fmt.date(surgery.scheduled_in_modmed_at)}
+                {surgery.scheduled_in_modmed_by && <> · by {surgery.scheduled_in_modmed_by}</>}
+              </span>
+            </div>
+          ) : (
+            <div className="text-amber-700">
+              Not yet added to ModMed. Create the appointment in ModMed, then mark below.
+            </div>
+          )}
+        </div>
+        <div className="flex gap-1.5">
+          {!scheduled && (
+            <button className="btn-primary text-xs flex items-center gap-1"
+                    disabled={mut.isPending}
+                    onClick={() => mut.mutate(true)}>
+              <Check size={11} /> {mut.isPending ? 'Saving…' : 'Mark added to ModMed'}
+            </button>
+          )}
+          {scheduled && (
+            <button className="btn-secondary text-xs"
+                    disabled={mut.isPending}
+                    onClick={() => mut.mutate(false)}>
+              Undo
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 function milestoneInlineContent(m, surgery) {
   switch (m.kind) {
