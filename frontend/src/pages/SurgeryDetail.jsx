@@ -487,6 +487,77 @@ function PaymentsSection({ surgery, flat = false }) {
 }
 
 
+// ─── Portal access invite ─────────────────────────────────────────
+
+function PortalAccessPanel({ surgery }) {
+  const qc = useQueryClient()
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState(null)
+
+  const send = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/portal-access/send`).then(r => r.data),
+    onSuccess: (d) => {
+      setResult(d); setError(null)
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Send failed'))
+      setResult(null)
+    },
+  })
+
+  const portalUrl = `https://gw.waldorfwomenscare.com/p/surgery/${surgery.id}`
+  const [copied, setCopied] = useState(false)
+  function copyLink() {
+    navigator.clipboard.writeText(portalUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div className="card !p-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Send size={14} className="text-plum-700" />
+        <h3 className="text-sm font-semibold text-gray-800">Send Portal Access</h3>
+      </div>
+      <p className="text-[11px] text-gray-500 mb-2">
+        Emails the patient a link to log in to their portal. They verify with
+        DOB + last 4 of phone. Use the Klara drafter below for SMS.
+      </p>
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <button className="btn-primary text-xs flex items-center gap-1"
+                disabled={!surgery.email || send.isPending}
+                onClick={() => send.mutate()}
+                title={surgery.email ? `Email ${surgery.email}` : 'No email on file'}>
+          <Send size={11} /> {send.isPending ? 'Sending…' : 'Email portal link'}
+        </button>
+        <button className="btn-secondary text-xs flex items-center gap-1"
+                onClick={copyLink}>
+          <Copy size={11} /> {copied ? 'Copied!' : 'Copy link'}
+        </button>
+        <span className="text-[11px] text-gray-500 font-mono truncate max-w-xs">
+          {portalUrl}
+        </span>
+      </div>
+      {!surgery.email && (
+        <div className="text-[11px] text-amber-700 mt-2">
+          No email on file — paste the link into Klara to send by SMS.
+        </div>
+      )}
+      {result && (
+        <div className="text-[11px] text-green-700 mt-2 flex items-center gap-1">
+          <Check size={11} /> Sent to {result.sent_to}
+        </div>
+      )}
+      {error && (
+        <div className="text-[11px] text-red-700 mt-2">✗ {error}</div>
+      )}
+    </div>
+  )
+}
+
+
 // ─── Klara message drafts ─────────────────────────────────────────
 
 function KlaraPanel({ surgery }) {
@@ -2511,6 +2582,7 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </SurgerySection>
 
       <SurgerySection title="Communication & Messaging" anchor="group-communication" tone="plum">
+        <PortalAccessPanel surgery={surgery} />
         <KlaraPanel surgery={surgery} />
         <MessagesSection sid={surgery.id} flat />
         <PatientEmailsSection surgery={surgery} flat />

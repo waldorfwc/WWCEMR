@@ -2203,6 +2203,73 @@ def log_klara_sent(surgery_id: str, payload: KlaraSendNote,
     return {"ok": True}
 
 
+# ─── Portal-access invite ───────────────────────────────────────────
+
+@router.post("/{surgery_id}/portal-access/send")
+def send_portal_access(surgery_id: str,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(require_permission("surgery:work"))):
+    """Email the patient a link to the portal login page along with the
+    DOB + last-4-of-phone instructions. Records to PatientEmail history and
+    drops a SurgeryNotification row so the Communication card surfaces it."""
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if not s.email:
+        raise HTTPException(status_code=422,
+                            detail="No email on file for this patient. "
+                                   "Use the Klara drafter to send by SMS instead.")
+
+    portal_url = f"https://gw.waldorfwomenscare.com/p/surgery/{s.id}"
+    first = (s.first_name or (s.patient_name or "").split(",")[-1].strip().split()[0]
+             if s.patient_name else "there")
+    html = f"""
+    <p>Hello {first},</p>
+    <p>You now have access to your Waldorf Women's Care patient portal.
+    From there you can review your benefits estimate, pay your patient
+    responsibility, pick a surgery date, sign consent forms, and message
+    your care team.</p>
+    <p><a href="{portal_url}"
+           style="background:#7c3aed;color:#fff;padding:10px 18px;
+                  border-radius:8px;text-decoration:none;display:inline-block;">
+        Open my patient portal
+    </a></p>
+    <p>To log in you'll need:</p>
+    <ul>
+      <li>Your <strong>date of birth</strong></li>
+      <li>The <strong>last 4 digits</strong> of the phone number we have on file</li>
+    </ul>
+    <p>If anything doesn't work, call our office at 240-252-2140.</p>
+    <p>Thank you,<br/>Waldorf Women's Care</p>
+    """
+
+    from app.services.patient_email import send_patient_email
+    from app.models.surgery import SurgeryNotification
+    rec = send_patient_email(
+        db,
+        kind=None,
+        to_email=s.email,
+        context={},
+        sent_by=current_user.get("email") or "system",
+        surgery_id=s.id,
+        chart_number=s.chart_number,
+        ad_hoc_subject="Your patient portal access",
+        ad_hoc_html=html,
+    )
+    db.add(SurgeryNotification(
+        surgery_id=s.id,
+        kind="portal_invite",
+        sent_by=current_user.get("email"),
+        body_preview=f"Portal invite emailed to {s.email}",
+    ))
+    db.commit()
+
+    if rec.status != "sent":
+        raise HTTPException(status_code=502,
+                            detail=f"Email send failed: {rec.failure_reason or 'unknown'}")
+    return {"ok": True, "sent_to": s.email}
+
+
 @router.post("/{surgery_id}/files", status_code=201)
 async def upload_file(
     surgery_id: str,
