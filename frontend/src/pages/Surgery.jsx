@@ -1125,6 +1125,8 @@ function ManualCreateDrawer({ onClose }) {
     staleTime: 300_000,
   })
   const insuranceOpts = picks?.insurance_companies || []
+  const surgeonOpts   = picks?.surgeons || []
+  const procedureOpts = picks?.procedures || []
   const [form, setForm] = useState({
     chart_number: '',
     patient_name: '',
@@ -1140,19 +1142,44 @@ function ManualCreateDrawer({ onClose }) {
     secondary_insurance: '',
     secondary_member_id: '',
     surgeon_primary: '',
+    surgery_name: '',
     procedures: [{ cpt: '', description: '' }],
     diagnoses:  [{ icd: '', description: '' }],
     eligible_facilities: ['medstar'],
     estimated_minutes: 180,
+    preop_date: '',
     is_robotic: false,
     is_urgent: false,
     notes: '',
   })
   const [error, setError] = useState(null)
 
-  const addressMissing =
-    !form.address_street.trim() || !form.address_city.trim()
+  const requiredMissing =
+    !form.chart_number.trim() || !form.patient_name.trim()
+    || !form.dob || !form.phone.trim() || !form.email.trim()
+    || !form.address_street.trim() || !form.address_city.trim()
     || !form.address_state.trim() || !form.address_zip.trim()
+    || !form.primary_insurance || !form.primary_member_id.trim()
+    || !form.surgeon_primary || !form.surgery_name
+    || !form.preop_date
+    || !form.estimated_minutes
+    || !form.eligible_facilities.length
+    || !form.procedures.some(p => (p.cpt || '').trim() || (p.description || '').trim())
+    || !form.diagnoses.some(d => (d.icd || '').trim() || (d.description || '').trim())
+
+  function pickSurgery(label) {
+    // The dropdown is keyed by description; auto-fill the first procedure row
+    // with the matching CPT + description so coordinators don't double-enter.
+    const match = procedureOpts.find(p => p.description === label)
+    setForm(f => ({
+      ...f,
+      surgery_name: label,
+      procedures: match
+        ? [{ cpt: match.cpt, description: match.description },
+           ...f.procedures.slice(1)]
+        : f.procedures,
+    }))
+  }
 
   const create = useMutation({
     mutationFn: () => api.post('/surgery/manual', {
@@ -1170,6 +1197,8 @@ function ManualCreateDrawer({ onClose }) {
       secondary_insurance: form.secondary_insurance || null,
       secondary_member_id: form.secondary_member_id || null,
       surgeon_primary: form.surgeon_primary || null,
+      surgery_name: form.surgery_name,
+      preop_date: form.preop_date,
       procedures: (form.procedures || [])
         .map(p => ({ cpt: (p.cpt || '').trim() || null,
                        description: (p.description || '').trim() || null }))
@@ -1231,15 +1260,15 @@ function ManualCreateDrawer({ onClose }) {
                      placeholder="Owens, Traci"
                      onChange={e => setForm({ ...form, patient_name: e.target.value })} />
             </Field>
-            <Field label="DOB">
+            <Field label="DOB *">
               <input className="input text-sm font-mono" type="date" value={form.dob}
                      onChange={e => setForm({ ...form, dob: e.target.value })} />
             </Field>
-            <Field label="Phone">
+            <Field label="Phone *">
               <input className="input text-sm" value={form.phone}
                      onChange={e => setForm({ ...form, phone: e.target.value })} />
             </Field>
-            <Field label="Email">
+            <Field label="Email *">
               <input className="input text-sm" value={form.email}
                      onChange={e => setForm({ ...form, email: e.target.value })} />
             </Field>
@@ -1266,21 +1295,42 @@ function ManualCreateDrawer({ onClose }) {
                        onChange={e => setForm({ ...form, address_zip: e.target.value })} />
               </Field>
             </div>
-            <Field label="Surgeon">
-              <input className="input text-sm" value={form.surgeon_primary}
-                     placeholder="Cooke, Aryian MD"
-                     onChange={e => setForm({ ...form, surgeon_primary: e.target.value })} />
+            <Field label="Surgeon *">
+              <select className="input text-sm" value={form.surgeon_primary}
+                       onChange={e => setForm({ ...form, surgeon_primary: e.target.value })}>
+                <option value="">— select —</option>
+                {surgeonOpts.map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
             </Field>
-            <Field label="Primary insurance">
+            <Field label="Pre-op date *">
+              <input className="input text-sm font-mono" type="date" value={form.preop_date}
+                     onChange={e => setForm({ ...form, preop_date: e.target.value })} />
+            </Field>
+            <div className="col-span-2">
+              <Field label="Surgery name *">
+                <select className="input text-sm" value={form.surgery_name}
+                         onChange={e => pickSurgery(e.target.value)}>
+                  <option value="">— select a surgery —</option>
+                  {procedureOpts.map(p => (
+                    <option key={p.cpt} value={p.description}>
+                      {p.description} ({p.cpt})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            <Field label="Primary insurance *">
               <select className="input text-sm" value={form.primary_insurance}
                        onChange={e => setForm({ ...form, primary_insurance: e.target.value })}>
-                <option value="">— none —</option>
+                <option value="">— select —</option>
                 {insuranceOpts.map(n => (
                   <option key={`p-${n}`} value={n}>{n}</option>
                 ))}
               </select>
             </Field>
-            <Field label="Primary member ID">
+            <Field label="Primary member ID *">
               <input className="input text-sm font-mono" value={form.primary_member_id}
                      onChange={e => setForm({ ...form, primary_member_id: e.target.value })} />
             </Field>
@@ -1433,9 +1483,9 @@ function ManualCreateDrawer({ onClose }) {
             </div>
           )}
 
-          {addressMissing && (
+          {requiredMissing && (
             <div className="text-xs text-amber-700">
-              Street address, city, state, and ZIP are required.
+              All starred fields are required (Secondary insurance and Notes are optional).
             </div>
           )}
           {error && !create.isError && (
@@ -1446,7 +1496,7 @@ function ManualCreateDrawer({ onClose }) {
             <button className="btn-secondary text-sm" onClick={onClose}>Cancel</button>
             <button className="btn-primary text-sm"
                     onClick={() => create.mutate()}
-                    disabled={create.isPending || !form.chart_number || !form.patient_name || addressMissing}>
+                    disabled={create.isPending || requiredMissing}>
               {create.isPending ? 'Creating…' : 'Create surgery'}
             </button>
           </div>

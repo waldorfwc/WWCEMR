@@ -860,26 +860,30 @@ async def upload_order(
 # ─── Manual create (no PDF) ─────────────────────────────────────────
 
 class ManualSurgeryIn(BaseModel):
+    """All fields required EXCEPT secondary insurance / member ID and notes —
+    a patient may not have a secondary policy."""
     chart_number: str
     patient_name: str           # "Last, First"
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    dob: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    address_street: str         # required — boarding slips and benefits letters need it
+    dob: str
+    phone: str
+    email: str
+    address_street: str
     address_city: str
     address_state: str
     address_zip: str
-    primary_insurance: Optional[str] = None
-    primary_member_id: Optional[str] = None
+    primary_insurance: str
+    primary_member_id: str
     secondary_insurance: Optional[str] = None
     secondary_member_id: Optional[str] = None
-    surgeon_primary: Optional[str] = None
+    surgeon_primary: str
+    surgery_name: str           # display label for the procedure picked from the dropdown
     procedures: list[dict] = []  # [{cpt, description}]
     diagnoses: list[dict] = []
     eligible_facilities: list[str] = []
-    estimated_minutes: Optional[int] = None
+    estimated_minutes: int
+    preop_date: str             # surgeon pre-op visit
     is_robotic: bool = False
     is_urgent: bool = False
     notes: Optional[str] = None
@@ -911,19 +915,40 @@ def create_manual(payload: ManualSurgeryIn,
     else:
         classification = "minor"
 
-    dob = None
-    if payload.dob:
-        try:
-            dob = datetime.strptime(payload.dob[:10], "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(status_code=422, detail="dob must be YYYY-MM-DD")
+    try:
+        dob = datetime.strptime(payload.dob[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="dob must be YYYY-MM-DD")
+    try:
+        preop_date = datetime.strptime(payload.preop_date[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="preop_date must be YYYY-MM-DD")
 
-    for fname, label in [("address_street", "Street address"),
-                          ("address_city",   "City"),
-                          ("address_state",  "State"),
-                          ("address_zip",    "ZIP code")]:
+    required = [
+        ("chart_number",       "Chart number"),
+        ("patient_name",       "Patient name"),
+        ("phone",              "Phone"),
+        ("email",              "Email"),
+        ("address_street",     "Street address"),
+        ("address_city",       "City"),
+        ("address_state",      "State"),
+        ("address_zip",        "ZIP code"),
+        ("primary_insurance",  "Primary insurance"),
+        ("primary_member_id",  "Primary member ID"),
+        ("surgeon_primary",    "Surgeon"),
+        ("surgery_name",       "Surgery name"),
+    ]
+    for fname, label in required:
         if not (getattr(payload, fname) or "").strip():
             raise HTTPException(status_code=422, detail=f"{label} is required")
+    if not payload.estimated_minutes or payload.estimated_minutes <= 0:
+        raise HTTPException(status_code=422, detail="Estimated minutes is required")
+    if not payload.eligible_facilities:
+        raise HTTPException(status_code=422, detail="At least one eligible facility is required")
+    if not [p for p in payload.procedures if (p.get("cpt") or p.get("description"))]:
+        raise HTTPException(status_code=422, detail="At least one procedure (CPT) is required")
+    if not [d for d in payload.diagnoses if (d.get("icd") or d.get("description"))]:
+        raise HTTPException(status_code=422, detail="At least one diagnosis (ICD-10) is required")
 
     s = Surgery(
         chart_number=payload.chart_number.strip(),
@@ -950,6 +975,7 @@ def create_manual(payload: ManualSurgeryIn,
         estimated_minutes=payload.estimated_minutes,
         is_robotic=payload.is_robotic,
         procedure_classification=classification,
+        preop_date=preop_date,
         urgency=("urgent" if payload.is_urgent else "routine"),
         notes=payload.notes,
         status="incomplete",
