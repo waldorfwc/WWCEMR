@@ -84,11 +84,42 @@ def _earliest_lot_with_stock(db: Session, dose_type_id, qty: int,
               .join(PelletStock, PelletStock.lot_id == PelletLot.id)
               .filter(PelletLot.dose_type_id == dose_type_id,
                       PelletStock.location == location,
-                      PelletStock.doses_on_hand >= qty)
+                      PelletStock.doses_on_hand >= qty,
+                      PelletStock.status == "active")
               .order_by(PelletLot.expiration_date.asc().nullslast(),
                         PelletLot.received_at.asc())
               .first())
     return pair
+
+
+def _specific_lot_with_stock(db: Session, lot_id, dose_type_id, qty: int,
+                              location: str):
+    """Validate a caller-specified lot for use as a proposed dose. Raises
+    HTTPException with a specific reason on any failure; returns
+    (PelletLot, PelletStock) on success."""
+    lot = db.query(PelletLot).filter(PelletLot.id == lot_id).first()
+    if lot is None:
+        raise HTTPException(status_code=422, detail=f"lot {lot_id} not found")
+    if str(lot.dose_type_id) != str(dose_type_id):
+        raise HTTPException(
+            status_code=422,
+            detail=(f"lot {lot.qualgen_lot_number} does not match the "
+                    "requested dose type"))
+    stock = (db.query(PelletStock)
+                .filter(PelletStock.lot_id == lot.id,
+                        PelletStock.location == location)
+                .first())
+    if stock is None or stock.status != "active":
+        raise HTTPException(
+            status_code=409,
+            detail=(f"lot {lot.qualgen_lot_number} has no active stock at "
+                    f"{location}"))
+    if stock.doses_on_hand < qty:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"lot {lot.qualgen_lot_number} only has "
+                    f"{stock.doses_on_hand} dose(s) at {location} (need {qty})"))
+    return lot, stock
 
 
 # Dose statuses that mean "the provider has finalized" — only managers
@@ -3153,6 +3184,8 @@ def _visit_dict(v: PelletVisit, include_milestones: bool = True,
                 "is_controlled": bool(d.dose_type.is_controlled) if d.dose_type else False,
                 "lot_id":       str(d.lot_id) if d.lot_id else None,
                 "qualgen_lot":  d.lot.qualgen_lot_number if d.lot else None,
+                "lot_expiration_date": (d.lot.expiration_date.isoformat()
+                                         if d.lot and d.lot.expiration_date else None),
                 "quantity":     d.quantity,
                 "position":     d.position,
                 "status":       d.status,
@@ -3736,6 +3769,10 @@ def _complete_visit_milestone_for_patient(db: Session, p: PelletPatient,
 class DoseLineIn(BaseModel):
     dose_type_id: str
     quantity:     int = 1
+    # Optional explicit lot override. When set, the named lot is used
+    # instead of FIFO auto-pick. Lot must (a) belong to the dose_type and
+    # (b) have enough stock at the visit's location.
+    lot_id:       Optional[str] = None
 
 
 class VisitIn(BaseModel):
@@ -4207,7 +4244,8 @@ def set_dose_card(visit_id: str, payload: DoseCardIn,
             db.delete(d)
     db.flush()
 
-    # 2. Add new proposed doses + auto-assign FIFO lot + decrement stock
+    # 2. Add new proposed doses + assign lot (FIFO unless caller specified
+    #    a lot_id) + decrement stock
     short_components = []   # collect shortages for one combined error
     pending = []
     for i, d in enumerate(payload.doses, start=1):
@@ -4217,7 +4255,10 @@ def set_dose_card(visit_id: str, payload: DoseCardIn,
                                 detail=f"unknown dose type {d.dose_type_id}")
         if d.quantity <= 0:
             raise HTTPException(status_code=422, detail="quantity must be positive")
-        pair = _earliest_lot_with_stock(db, dt.id, d.quantity, location)
+        if d.lot_id:
+            pair = _specific_lot_with_stock(db, d.lot_id, dt.id, d.quantity, location)
+        else:
+            pair = _earliest_lot_with_stock(db, dt.id, d.quantity, location)
         if not pair:
             short_components.append(f"{d.quantity}× {dt.label}")
             continue
@@ -4264,6 +4305,9 @@ class DoseAppendIn(BaseModel):
     dose_type_id: str
     quantity:     int = 1
     notes:        Optional[str] = None
+    # Optional explicit lot override. When set, the named lot is used
+    # instead of FIFO auto-pick.
+    lot_id:       Optional[str] = None
 
 
 @router.post("/visits/{visit_id}/doses", status_code=201)
@@ -4313,8 +4357,12 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
                 summary=f"Historical dose appended ({payload.quantity}× {dt.label})",
                 detail={"visit_id": str(v.id), "manager_override": True})
     else:
-        # Proposed dose — auto-assign FIFO lot + decrement stock
-        pair = _earliest_lot_with_stock(db, dt.id, payload.quantity, location)
+        # Proposed dose — caller can pin a lot, else FIFO + decrement stock
+        if payload.lot_id:
+            pair = _specific_lot_with_stock(
+                db, payload.lot_id, dt.id, payload.quantity, location)
+        else:
+            pair = _earliest_lot_with_stock(db, dt.id, payload.quantity, location)
         if not pair:
             raise HTTPException(
                 status_code=409,
@@ -4338,6 +4386,85 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
 
     db.commit(); db.refresh(v)
     return _visit_dict(v)
+
+
+class DoseLotChangeIn(BaseModel):
+    """Body for PATCH /visits/{visit_id}/doses/{dose_id} — swap the lot
+    on a still-proposed (planned/pulled) dose. Mutates stock: returns
+    the old lot's reserve and pulls from the new lot."""
+    lot_id: str
+
+
+@router.patch("/visits/{visit_id}/doses/{dose_id}")
+def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
+                      db: Session = Depends(get_db),
+                      current_user: dict = Depends(require_permission("pellet:work"))):
+    """Swap the lot assigned to a proposed (planned/pulled) dose.
+    Returns the old lot's reserve and pulls from the new lot. Provider
+    in-room reassignment — common when the provider wants a different
+    expiration or label. Confirmed doses require `pellet:manage`."""
+    d = (db.query(PelletVisitDose).options(joinedload(PelletVisitDose.dose_type))
+           .filter(PelletVisitDose.id == dose_id,
+                   PelletVisitDose.visit_id == visit_id).first())
+    if not d:
+        raise HTTPException(status_code=404, detail="dose entry not found")
+    v = db.query(PelletVisit).filter(PelletVisit.id == visit_id).first()
+    if not v:
+        raise HTTPException(status_code=404, detail="visit not found")
+    if d.status in CONFIRMED_DOSE_STATUSES and not _is_admin(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="This dose is already confirmed — only a manager can edit it.")
+    if d.status not in ("planned", "pulled"):
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Only proposed (planned/pulled) doses can have their lot "
+                    f"swapped (this one is {d.status})."))
+
+    by = current_user.get("email") or "system"
+    location = _require_visit_location(v)
+
+    new_lot, new_stock = _specific_lot_with_stock(
+        db, payload.lot_id, d.dose_type_id, d.quantity, location)
+
+    old_lot_id = d.lot_id
+    if str(old_lot_id) == str(new_lot.id):
+        raise HTTPException(
+            status_code=409,
+            detail="The dose is already pulled from that lot.")
+
+    # Return the old lot's reserve
+    if old_lot_id is not None:
+        old_stock = _get_or_create_stock(db, old_lot_id, location)
+        old_stock.doses_on_hand += d.quantity
+        _audit(db, actor=by, action="dose_proposed_return",
+               lot_id=old_lot_id, location=location, delta_doses=d.quantity,
+               summary=(f"Returned {d.quantity} {d.dose_type.label if d.dose_type else ''} "
+                          f"to stock (lot swap)"),
+               detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
+
+    # Pull from the new lot
+    new_stock.doses_on_hand -= d.quantity
+    d.lot_id = new_lot.id
+    d.pulled_at = datetime.utcnow()
+    d.pulled_by = by
+
+    _audit(db, actor=by, action="dose_proposed_pull",
+           lot_id=new_lot.id, location=location, delta_doses=-d.quantity,
+           summary=(f"Lot swap: pulled {d.quantity}× "
+                      f"{d.dose_type.label if d.dose_type else ''} "
+                      f"from lot {new_lot.qualgen_lot_number}"),
+           detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
+                    "old_lot_id": str(old_lot_id) if old_lot_id else None})
+
+    db.commit(); db.refresh(d)
+    return {
+        "dose_id":   str(d.id),
+        "lot_id":    str(d.lot_id),
+        "qualgen_lot_number": new_lot.qualgen_lot_number,
+        "expiration_date": (new_lot.expiration_date.isoformat()
+                              if new_lot.expiration_date else None),
+    }
 
 
 @router.delete("/visits/{visit_id}/doses/{dose_id}", status_code=204)

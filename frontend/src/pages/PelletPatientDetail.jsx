@@ -5,6 +5,7 @@ import {
   ArrowLeft, User, Plus, CheckCircle2, Circle, Edit3, Save, X,
   DollarSign, Calendar, Pill, Shield, Send, ExternalLink, Trash2,
   PackageOpen, AlertTriangle, History, MessageSquare, Clock, RotateCcw,
+  Replace,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
@@ -1340,6 +1341,7 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
   const planned = doses.filter(d => d.status === 'planned')
   const showAddMid = visit.status === 'in_progress' &&
                        doses.some(d => ['pulled', 'added'].includes(d.status))
+  const [swapDose, setSwapDose] = useState(null)
 
   return (
     <div className="border border-gray-200 rounded p-3 bg-gray-50/50">
@@ -1369,34 +1371,150 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
         </div>
       ) : (
         <ul className="divide-y divide-gray-100 text-[12px]">
-          {doses.map(d => (
-            <li key={d.id} className="py-1.5 flex items-baseline justify-between gap-2">
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <span className="font-medium">{d.quantity}×</span>
-                <span>{d.dose_label}</span>
-                {d.is_controlled && (
-                  <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
-                )}
-                {d.qualgen_lot && (
-                  <span className="text-[10px] text-gray-500 font-mono">lot {d.qualgen_lot}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded ${DOSE_STATUS_TONES[d.status] || ''}`}>
-                  {d.status}
-                </span>
-                {['pulled', 'added'].includes(d.status) && (
-                  <button className="text-red-600 hover:bg-red-50 p-0.5 rounded"
-                          title="Mid-procedure disposal (dropped / broken)"
-                          onClick={() => onDispose(d)}>
-                    <Trash2 size={11}/>
-                  </button>
-                )}
-              </div>
-            </li>
-          ))}
+          {doses.map(d => {
+            const isSwappable = ['planned', 'pulled'].includes(d.status)
+            return (
+              <li key={d.id} className="py-1.5 flex items-baseline justify-between gap-2">
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <span className="font-medium">{d.quantity}×</span>
+                  <span>{d.dose_label}</span>
+                  {d.is_controlled && (
+                    <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+                  )}
+                  {d.qualgen_lot && (
+                    <span className="text-[10px] text-gray-500 font-mono">lot {d.qualgen_lot}</span>
+                  )}
+                  {d.lot_expiration_date && (
+                    <span className="text-[10px] text-gray-400">
+                      exp {fmt.date(d.lot_expiration_date)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded ${DOSE_STATUS_TONES[d.status] || ''}`}>
+                    {d.status}
+                  </span>
+                  {isSwappable && (
+                    <button className="text-plum-700 hover:bg-plum-50 p-0.5 rounded"
+                            title="Swap lot for this proposed dose"
+                            onClick={() => setSwapDose(d)}>
+                      <Replace size={11}/>
+                    </button>
+                  )}
+                  {['pulled', 'added'].includes(d.status) && (
+                    <button className="text-red-600 hover:bg-red-50 p-0.5 rounded"
+                            title="Mid-procedure disposal (dropped / broken)"
+                            onClick={() => onDispose(d)}>
+                      <Trash2 size={11}/>
+                    </button>
+                  )}
+                </div>
+              </li>
+            )
+          })}
         </ul>
       )}
+
+      {swapDose && (
+        <LotSwapDrawer
+          visit={visit}
+          dose={swapDose}
+          onClose={() => setSwapDose(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+
+function LotSwapDrawer({ visit, dose, onClose }) {
+  const qc = useQueryClient()
+  const [error, setError] = useState(null)
+  const { data, isLoading } = useQuery({
+    queryKey: ['lot-options', dose.dose_type_id, visit.location],
+    queryFn: () => api.get('/pellets/lots', {
+      params: {
+        dose_type_id: dose.dose_type_id,
+        location:     visit.location,
+        in_stock_only: true,
+      },
+    }).then(r => r.data),
+  })
+
+  const swap = useMutation({
+    mutationFn: (lot_id) =>
+      api.patch(`/pellets/visits/${visit.id}/doses/${dose.id}`, { lot_id })
+         .then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-patient', visit.patient_id] })
+      qc.invalidateQueries({ queryKey: ['pellet-upcoming-calendar'] })
+      onClose()
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Swap failed'))
+    },
+  })
+
+  const lots = (data?.lots || [])
+    .filter(l => (l.balances?.[visit.location] || 0) >= dose.quantity)
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+          <h2 className="text-[15px] font-semibold text-gray-900">
+            Swap lot · {dose.quantity}× {dose.dose_label}
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="text-[12px] text-gray-600">
+            Current lot: <strong className="font-mono">{dose.qualgen_lot || '—'}</strong>
+            {dose.lot_expiration_date && <> · exp {fmt.date(dose.lot_expiration_date)}</>}
+            {' · '}at {visit.location}
+          </div>
+          {isLoading ? (
+            <div className="text-[12px] text-gray-500 italic">Loading lots…</div>
+          ) : lots.length === 0 ? (
+            <div className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+              No other lots have ≥{dose.quantity} dose(s) of {dose.dose_label} at {visit.location}.
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {lots.map(l => {
+                const isCurrent = String(l.id) === String(dose.lot_id)
+                const stockHere = l.balances?.[visit.location] || 0
+                return (
+                  <li key={l.id} className="py-2 flex items-center justify-between gap-2">
+                    <div className="text-[12px]">
+                      <div className="font-mono">{l.qualgen_lot_number}</div>
+                      <div className="text-[11px] text-gray-500">
+                        exp {l.expiration_date ? fmt.date(l.expiration_date) : '—'}
+                        {' · '}{stockHere} at {visit.location}
+                      </div>
+                    </div>
+                    <button className="btn-primary text-[11px] disabled:opacity-50"
+                            disabled={isCurrent || swap.isPending}
+                            onClick={() => swap.mutate(l.id)}>
+                      {isCurrent ? 'Current' : 'Use this lot'}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {error && (
+            <div className="text-[12px] text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
