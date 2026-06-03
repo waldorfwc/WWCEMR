@@ -11,7 +11,7 @@ function EmptyState({ sid }) {
       <div className="w-12 h-12 rounded-xl bg-plum-50 grid place-items-center text-plum-700 mb-4">
         <ClipboardCheck size={20} />
       </div>
-      <h3 className="font-serif text-[18px] text-plum-ink font-semibold">
+      <h3 className="font-serif text-[15px] text-plum-ink font-semibold">
         Forms will appear here
       </h3>
       <p className="text-[13px] text-plum-700/80 mt-2 max-w-md">
@@ -167,7 +167,7 @@ export default function Consent() {
         <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mb-2">
           Patient portal
         </div>
-        <h1 className="font-serif text-[32px] md:text-[40px] text-plum-ink font-semibold tracking-tight leading-tight">
+        <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
           Consent forms
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">

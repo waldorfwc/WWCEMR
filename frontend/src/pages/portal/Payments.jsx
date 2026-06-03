@@ -18,7 +18,7 @@ function BalanceCard({ data, onPayClick }) {
         <div className="flex items-center gap-2 text-emerald-700 text-[12px] font-semibold uppercase tracking-[0.16em]">
           <CheckCircle2 size={14} /> Paid in full
         </div>
-        <div className="font-serif text-[40px] text-plum-ink font-semibold mt-2 leading-none">
+        <div className="font-serif text-[30px] text-plum-ink font-semibold mt-2 leading-none">
           {fmtMoney(data.paid)}
         </div>
         <p className="text-[13px] text-plum-700/80 mt-3">
@@ -46,7 +46,7 @@ function BalanceCard({ data, onPayClick }) {
         <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[0.16em] text-rose-700">
           <CreditCard size={14} /> Balance due
         </div>
-        <div className="font-serif text-[44px] text-plum-ink font-semibold mt-2 leading-none">
+        <div className="font-serif text-[34px] text-plum-ink font-semibold mt-2 leading-none">
           {fmtMoney(balance)}
         </div>
         <p className="text-[13px] text-plum-700/80 mt-3 max-w-md">
@@ -68,7 +68,7 @@ function History({ rows }) {
   if (!rows?.length) return null
   return (
     <section className="bg-white rounded-2xl border border-plum-100 p-6 shadow-sm">
-      <h2 className="font-serif text-[18px] text-plum-ink font-semibold tracking-tight mb-4">
+      <h2 className="font-serif text-[15px] text-plum-ink font-semibold tracking-tight mb-4">
         Payment history
       </h2>
       <ul className="divide-y divide-plum-50">
@@ -129,7 +129,7 @@ export default function Payments() {
         <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mb-2">
           Patient portal
         </div>
-        <h1 className="font-serif text-[32px] md:text-[40px] text-plum-ink font-semibold tracking-tight leading-tight">
+        <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
           Payments
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">
@@ -142,7 +142,6 @@ export default function Payments() {
         <BalanceCard data={data} onPayClick={() => setShowFlow(true)} />
         {showFlow && (
           <StepUpPayFlow
-            stepUpUrl={`/${sid}/payments/step-up`}
             checkoutUrl={`/${sid}/payments/checkout`}
             onCancel={() => setShowFlow(false)} />
         )}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { usePortalAuth } from '../../hooks/usePortalAuth'
+import logoFull from '../../assets/wwc-logo-full.png'
 
 export default function PortalVerify() {
   const loc = useLocation()
@@ -49,7 +50,11 @@ export default function PortalVerify() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <form onSubmit={submit}
             className="bg-white rounded-lg shadow p-6 max-w-sm w-full space-y-4">
-        <h1 className="text-xl font-semibold text-plum-700">Enter your code</h1>
+        <div className="flex justify-center mb-1">
+          <img src={logoFull} alt="Waldorf Women's Care — Patient Portal"
+               className="h-20 w-auto" />
+        </div>
+        <h2 className="text-sm font-semibold text-plum-700">Enter your code</h2>
         <p className="text-sm text-gray-600">
           We texted a 6-digit code to the phone we have on file. It expires
           in 5 minutes.

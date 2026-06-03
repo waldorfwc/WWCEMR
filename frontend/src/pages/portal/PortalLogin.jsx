@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePortalAuth } from '../../hooks/usePortalAuth'
+import logoFull from '../../assets/wwc-logo-full.png'
 
 export default function PortalLogin() {
   const [dob, setDob] = useState('')
@@ -25,7 +26,10 @@ export default function PortalLogin() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <form onSubmit={submit}
             className="bg-white rounded-lg shadow p-6 max-w-sm w-full space-y-4">
-        <h1 className="text-xl font-semibold text-plum-700">WWC Patient Portal</h1>
+        <div className="flex justify-center mb-1">
+          <img src={logoFull} alt="Waldorf Women's Care — Patient Portal"
+               className="h-20 w-auto" />
+        </div>
         <p className="text-sm text-gray-600">
           Sign in with your date of birth and the last 4 digits of the phone
           number we have on file. We'll text you a verification code.

@@ -73,7 +73,7 @@ export default function PortalShell() {
             <div className="text-[10px] uppercase tracking-[0.18em] text-plum-600/70 font-medium">
               Waldorf Women's Care
             </div>
-            <div className="font-serif text-[18px] leading-tight text-plum-ink font-semibold tracking-tight mt-0.5">
+            <div className="font-serif text-[15px] leading-tight text-plum-ink font-semibold tracking-tight mt-0.5">
               Patient Portal
             </div>
             <div className="font-serif italic text-plum-600 text-[11px] -mt-0.5">
@@ -88,7 +88,7 @@ export default function PortalShell() {
           <div className="text-[10px] uppercase tracking-[0.16em] text-plum-600/70 mb-1">
             Care plan for
           </div>
-          <div className="font-serif text-[18px] text-plum-ink leading-tight font-semibold">
+          <div className="font-serif text-[15px] text-plum-ink leading-tight font-semibold">
             {patient.patient_name?.split(',').reverse().join(' ').trim() || 'Your care'}
           </div>
           {patient.chart_number && (

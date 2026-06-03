@@ -41,7 +41,7 @@ function BlockDayList({ days, onPick }) {
               <CalendarDays size={20} />
             </div>
             <div className="min-w-0">
-              <div className="font-serif text-[18px] text-plum-ink font-semibold leading-tight">
+              <div className="font-serif text-[15px] text-plum-ink font-semibold leading-tight">
                 {d.weekday}, {d.block_date}
               </div>
               <div className="text-[12px] text-plum-700/80 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -80,7 +80,7 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
         <div className="text-[10px] uppercase tracking-[0.2em] text-plum-600/70 mb-1">
           Confirm
         </div>
-        <h3 className="font-serif text-[20px] text-plum-ink font-semibold tracking-tight">
+        <h3 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight">
           Lock in your surgery date
         </h3>
         <div className="bg-plum-50/60 rounded-xl p-4 mt-4 space-y-1">
@@ -151,7 +151,7 @@ export default function Schedule() {
         <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mb-2">
           Patient portal
         </div>
-        <h1 className="font-serif text-[32px] md:text-[40px] text-plum-ink font-semibold tracking-tight leading-tight">
+        <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
           Pick your date
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">

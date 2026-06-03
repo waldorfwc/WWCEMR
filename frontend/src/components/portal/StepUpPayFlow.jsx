@@ -1,99 +1,75 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useState } from 'react'
+import { ExternalLink } from 'lucide-react'
 import { portalApi } from '../../lib/portal-api'
 
 /**
- * SMS-step-up + 6-digit code entry + Stripe Checkout redirect.
- * Used by both surgery balance payment (P2) and FMLA fee payment (P5b).
+ * Direct Stripe Checkout launcher (no SMS step-up).
+ *
+ * The portal JWT already authenticates the patient — re-prompting for a
+ * texted PIN added friction without security benefit. We hit the checkout
+ * endpoint, open Stripe in a new tab so the patient can return to the
+ * dashboard with one click, and leave a small "we opened a new tab" panel
+ * behind for context.
  *
  * Props:
- *   stepUpUrl   — e.g. `/${sid}/payments/step-up` or `/${sid}/fmla/step-up`
  *   checkoutUrl — e.g. `/${sid}/payments/checkout` or `/${sid}/fmla/checkout`
- *   onCancel    — called when the user backs out
+ *   onCancel    — close handler
  */
-export default function StepUpPayFlow({ stepUpUrl, checkoutUrl, onCancel }) {
-  const [stage, setStage] = useState('sending')   // sending | code | redirecting | error
-  const [token, setToken] = useState(null)
-  const [digits, setDigits] = useState(['','','','','',''])
+export default function StepUpPayFlow({ checkoutUrl, onCancel }) {
+  const [stage, setStage] = useState('opening')   // opening | opened | error
+  const [stripeUrl, setStripeUrl] = useState(null)
   const [err, setErr] = useState('')
-  const refs = useRef([])
 
   useEffect(() => {
     let cancelled = false
-    portalApi.post(stepUpUrl).then(r => {
+    portalApi.post(checkoutUrl, {}).then(r => {
       if (cancelled) return
-      setToken(r.data.step_up_token)
-      setStage('code')
+      setStripeUrl(r.data.checkout_url)
+      const w = window.open(r.data.checkout_url, '_blank', 'noopener,noreferrer')
+      setStage(w ? 'opened' : 'error')
+      if (!w) setErr('Your browser blocked the popup. Use the link below.')
     }).catch(e => {
       if (cancelled) return
       setErr(e?.response?.data?.detail || 'Could not start payment.')
       setStage('error')
     })
     return () => { cancelled = true }
-  }, [stepUpUrl])
+  }, [checkoutUrl])
 
-  function setDigit(i, v) {
-    const c = v.replace(/\D/g, '').slice(-1)
-    const next = [...digits]; next[i] = c; setDigits(next)
-    if (c && i < 5) refs.current[i+1]?.focus()
-  }
-
-  async function submit(e) {
-    e?.preventDefault?.()
-    const code = digits.join('')
-    if (code.length !== 6) return
-    setErr(''); setStage('redirecting')
-    try {
-      const { data } = await portalApi.post(checkoutUrl, {
-        step_up_token: token, code,
-      })
-      window.location.assign(data.checkout_url)
-    } catch (e) {
-      setErr(e?.response?.data?.detail || 'Invalid code.')
-      setStage('code')
-    }
-  }
-
-  useEffect(() => {
-    if (stage === 'code' && digits.every(d => d !== '')) submit()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [digits, stage])
-
-  if (stage === 'sending') {
-    return <div className="text-sm text-gray-500 mt-4">Sending you a code…</div>
-  }
-  if (stage === 'redirecting') {
-    return <div className="text-sm text-gray-500 mt-4">Redirecting to Stripe…</div>
+  if (stage === 'opening') {
+    return <div className="text-sm text-plum-700/70 mt-4">Opening Stripe…</div>
   }
   if (stage === 'error') {
     return (
-      <div className="mt-4">
-        <div className="text-sm text-red-600">{err}</div>
-        <button onClick={onCancel} className="btn-secondary mt-2">Back</button>
+      <div className="mt-4 bg-white rounded-2xl border border-rose-200 p-5 shadow-sm">
+        <div className="text-sm text-rose-700">{err || 'Could not open Stripe.'}</div>
+        {stripeUrl && (
+          <a href={stripeUrl} target="_blank" rel="noopener noreferrer"
+             className="text-plum-700 underline text-sm mt-2 inline-flex items-center gap-1">
+            <ExternalLink size={12} /> Open Stripe manually
+          </a>
+        )}
+        <div className="mt-3">
+          <button onClick={onCancel} className="btn-secondary">Close</button>
+        </div>
       </div>
     )
   }
   return (
-    <form onSubmit={submit} className="mt-4 space-y-3">
-      <div className="text-sm text-gray-600">
-        Enter the 6-digit code we just texted you. (5 min expiry.)
+    <div className="mt-4 bg-white rounded-2xl border border-plum-100 p-5 shadow-sm">
+      <div className="text-[13px] text-plum-700/80">
+        Stripe opened in a new tab. Finish paying there, then come back to
+        this window — your balance will refresh automatically.
       </div>
-      <div className="flex gap-2">
-        {digits.map((d, i) => (
-          <input key={i}
-                  ref={el => refs.current[i] = el}
-                  type="text" inputMode="numeric"
-                  maxLength={1} value={d}
-                  onChange={e => setDigit(i, e.target.value)}
-                  className="w-10 h-12 text-center text-lg rounded border-gray-300" />
-        ))}
+      <div className="flex gap-2 mt-4 flex-wrap">
+        {stripeUrl && (
+          <a href={stripeUrl} target="_blank" rel="noopener noreferrer"
+             className="btn-primary inline-flex items-center gap-1">
+            <ExternalLink size={12} /> Re-open Stripe tab
+          </a>
+        )}
+        <button onClick={onCancel} className="btn-secondary">Back to portal</button>
       </div>
-      {err && <div className="text-sm text-red-600">{err}</div>}
-      <div className="flex gap-2">
-        <button type="submit" disabled={digits.join('').length !== 6}
-                 className="btn-primary">Continue</button>
-        <button type="button" onClick={onCancel}
-                 className="btn-secondary">Cancel</button>
-      </div>
-    </form>
+    </div>
   )
 }

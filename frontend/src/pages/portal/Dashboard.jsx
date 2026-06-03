@@ -108,7 +108,7 @@ export default function Dashboard() {
           <div className="text-[11px] uppercase tracking-[0.22em] text-white/80 font-medium mb-2">
             {today}
           </div>
-          <h1 className="font-serif text-white text-[32px] md:text-[44px] leading-tight font-semibold tracking-tight">
+          <h1 className="font-serif text-white text-[24px] md:text-[34px] leading-tight font-semibold tracking-tight">
             Welcome back, {firstName}.
           </h1>
           <p className="text-white/85 text-[13px] md:text-[15px] mt-1.5 max-w-xl">
@@ -123,7 +123,7 @@ export default function Dashboard() {
         {/* Journey */}
         <section className="mb-12">
           <div className="flex items-baseline justify-between mb-5 gap-3">
-            <h2 className="font-serif text-[20px] md:text-[22px] text-plum-ink font-semibold tracking-tight">
+            <h2 className="font-serif text-[14px] md:text-[15px] text-plum-ink font-semibold tracking-tight">
               Your care journey
             </h2>
             <div className="text-[11px] uppercase tracking-[0.16em] text-plum-600/70 shrink-0">
@@ -135,7 +135,7 @@ export default function Dashboard() {
 
         {/* Action cards */}
         <section className="mb-14">
-          <h2 className="font-serif text-[20px] md:text-[22px] text-plum-ink font-semibold tracking-tight mb-5">
+          <h2 className="font-serif text-[14px] md:text-[15px] text-plum-ink font-semibold tracking-tight mb-5">
             What's next
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -308,7 +308,7 @@ function ActionCard({ icon: Icon, tone, title, meta, body, cta, urgent, disabled
       <div className={`w-12 h-12 rounded-xl ${t.icon} grid place-items-center mb-4`}>
         <Icon size={20} />
       </div>
-      <h3 className="font-serif text-[18px] md:text-[19px] text-plum-ink font-semibold tracking-tight">
+      <h3 className="font-serif text-[15px] md:text-[16px] text-plum-ink font-semibold tracking-tight">
         {title}
       </h3>
       <div className="text-[12px] text-plum-700 mt-0.5 font-medium tracking-wide">

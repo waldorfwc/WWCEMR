@@ -38,7 +38,7 @@ export default function Messages() {
         <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mb-2">
           Patient portal
         </div>
-        <h1 className="font-serif text-[32px] md:text-[40px] text-plum-ink font-semibold tracking-tight leading-tight">
+        <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
           Messages
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">

@@ -367,25 +367,20 @@ def portal_payments_step_up(
 
 
 class CheckoutPayload(BaseModel):
-    step_up_token: str
-    code: str
+    step_up_token: Optional[str] = None  # legacy — ignored
+    code: Optional[str] = None            # legacy — ignored
 
 
 @router.post("/{surgery_id}/payments/checkout")
 def portal_payments_checkout(
     surgery_id: str,
-    payload: CheckoutPayload,
+    payload: Optional[CheckoutPayload] = None,
     db: Session = Depends(get_db),
     _: str = Depends(require_portal_token),
 ):
-    """Verify the step-up code; create a Stripe Checkout session for the
-    outstanding balance. Returns the URL the browser should visit."""
-    code = "".join(c for c in (payload.code or "") if c.isdigit())
-    if len(code) != 6:
-        raise HTTPException(status_code=401, detail="Invalid code")
-    matched_sid = auth.verify_code(db, payload.step_up_token, code)
-    if matched_sid is None or matched_sid != surgery_id:
-        raise HTTPException(status_code=401, detail="Invalid code")
+    """Create a Stripe Checkout session for the outstanding balance. The
+    portal JWT is the only auth required — no SMS step-up. Returns the URL
+    the browser should visit."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -1092,25 +1087,19 @@ def portal_fmla_step_up(
 
 
 class FmlaCheckoutPayload(BaseModel):
-    step_up_token: str
-    code: str
+    step_up_token: Optional[str] = None  # legacy — ignored
+    code: Optional[str] = None            # legacy — ignored
 
 
 @router.post("/{surgery_id}/fmla/checkout")
 def portal_fmla_checkout(
     surgery_id: str,
-    payload: FmlaCheckoutPayload,
+    payload: Optional[FmlaCheckoutPayload] = None,
     db: Session = Depends(get_db),
     _: str = Depends(require_portal_token),
 ):
-    """Verify the SMS code; create a Stripe Checkout session for the
-    FMLA processing fee. Returns the URL the browser should visit."""
-    code = "".join(c for c in (payload.code or "") if c.isdigit())
-    if len(code) != 6:
-        raise HTTPException(status_code=401, detail="Invalid code")
-    matched_sid = auth.verify_code(db, payload.step_up_token, code)
-    if matched_sid is None or matched_sid != surgery_id:
-        raise HTTPException(status_code=401, detail="Invalid code")
+    """Create a Stripe Checkout session for the FMLA processing fee.
+    Portal JWT is the only auth required — no SMS step-up."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")

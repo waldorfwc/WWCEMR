@@ -44,7 +44,7 @@ function InstructionsCard({ sid, instructions }) {
   if (instructions === null) {
     return (
       <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-        <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
+        <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
         <p className="text-sm text-gray-600">
           Instructions for this procedure aren't online yet — please call our
           office at <a href="tel:2402522140" className="underline">240-252-2140</a>.
@@ -54,7 +54,7 @@ function InstructionsCard({ sid, instructions }) {
   }
   return (
     <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-      <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
+      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Instructions</h2>
       <ul className="divide-y divide-plum-50">
         <li className="py-2 flex items-center justify-between">
           <span className="text-sm text-gray-800">Pre-op instructions</span>
@@ -79,7 +79,7 @@ function ConsentDocsCard({ sid, consents }) {
   if (!consents?.length) {
     return (
       <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-        <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
+        <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
         <p className="text-sm text-gray-600">
           Signed consent forms will appear here once everyone has signed.
         </p>
@@ -88,7 +88,7 @@ function ConsentDocsCard({ sid, consents }) {
   }
   return (
     <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-      <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
+      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
       <ul className="divide-y divide-plum-50">
         {consents.map(c => (
           <li key={c.envelope_id}
@@ -111,7 +111,7 @@ function ReceiptsCard({ receipts }) {
   if (!receipts?.length) {
     return (
       <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-        <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Receipts</h2>
+        <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Receipts</h2>
         <p className="text-sm text-gray-600">
           Receipts for your payments will appear here.
         </p>
@@ -120,7 +120,7 @@ function ReceiptsCard({ receipts }) {
   }
   return (
     <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-      <h2 className="font-serif text-[17px] text-plum-ink font-semibold tracking-tight mb-3">Receipts</h2>
+      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Receipts</h2>
       <ul className="divide-y divide-plum-50">
         {receipts.map(r => (
           <li key={r.id}
@@ -438,7 +438,6 @@ function FmlaCard({ sid, fmla, refetchFmla }) {
 
           {!feePaid && hasBlank && showPay && !isStaffPreview() && (
             <StepUpPayFlow
-              stepUpUrl={`/${sid}/fmla/step-up`}
               checkoutUrl={`/${sid}/fmla/checkout`}
               onCancel={() => setShowPay(false)} />
           )}
@@ -480,7 +479,7 @@ export default function Documents() {
         <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mb-2">
           Patient portal
         </div>
-        <h1 className="font-serif text-[32px] md:text-[40px] text-plum-ink font-semibold tracking-tight leading-tight">
+        <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
           Documents
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">
@@ -489,7 +488,6 @@ export default function Documents() {
         </p>
       </header>
       <div className="space-y-4">
-        <InstructionsCard sid={sid} instructions={data.instructions} />
         <ConsentDocsCard sid={sid} consents={data.consents} />
         <ReceiptsCard receipts={data.receipts} />
         <LabsAppointmentCard sid={sid} labs={data.labs} refetchDocs={refetchDocs} />
