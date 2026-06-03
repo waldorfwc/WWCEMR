@@ -57,6 +57,7 @@ export default function SurgeryDetail() {
   const [showSchedule, setShowSchedule] = useState(false)
   const [showKlara, setShowKlara] = useState(false)
   const [showPortalInvite, setShowPortalInvite] = useState(false)
+  const [showMessages, setShowMessages] = useState(false)
 
   const { data: tpl } = useQuery({
     queryKey: ['surgery-templates'],
@@ -157,6 +158,14 @@ export default function SurgeryDetail() {
               title="Email the patient their surgery portal login link"
             >
               <Send size={11} /> Send portal access
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMessages(true)}
+              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              title="Patient portal messages, emails, and SMS"
+            >
+              <Mail size={11} /> Messages
             </button>
             <button
               type="button"
@@ -365,6 +374,16 @@ export default function SurgeryDetail() {
       {showPortalInvite && (
         <PanelDrawer title="Send Surgery Portal Access" onClose={() => setShowPortalInvite(false)}>
           <PortalAccessPanel surgery={s} />
+        </PanelDrawer>
+      )}
+
+      {showMessages && (
+        <PanelDrawer title="Messages" onClose={() => setShowMessages(false)}>
+          <div className="space-y-5">
+            <MessagesSection sid={s.id} flat />
+            <PatientEmailsSection surgery={s} flat />
+            <PatientSmsSection surgery={s} flat />
+          </div>
         </PanelDrawer>
       )}
 
@@ -3090,15 +3109,7 @@ function GroupedSurgeryBody({ surgery, milestones }) {
         <SurgeryBilledCardBody surgery={surgery} />
       </StepCard>
 
-      {/* Communication & Messaging — kept intact for review; the user can
-          move these into appropriate steps later. KlaraPanel + PortalAccess
-          are now triggered from the patient-header buttons instead. */}
-      <SurgerySection title="Communication & Messaging (review — move into a step later)"
-                      anchor="group-communication" tone="plum">
-        <MessagesSection sid={surgery.id} flat />
-        <PatientEmailsSection surgery={surgery} flat />
-        <PatientSmsSection surgery={surgery} flat />
-      </SurgerySection>
+      {/* Messages live in the top-of-card 'Messages' drawer now. */}
     </>
   )
 }
