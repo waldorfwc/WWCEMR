@@ -3,19 +3,20 @@ import { Outlet, NavLink, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
   CalendarDays, ClipboardCheck, CreditCard, FileText,
-  HeartHandshake, MessageSquare, Phone, Menu, X, Sparkles,
+  HeartHandshake, MessageSquare, Phone, Menu, X,
 } from 'lucide-react'
 import { usePortalAuth } from '../../hooks/usePortalAuth'
 import { setPortalSession, portalApi } from '../../lib/portal-api'
 import PreviewBanner from '../../components/portal/PreviewBanner'
+import logoFull from '../../assets/wwc-logo-full.png'
 
 const NAV = [
-  { to: '',          label: 'Dashboard', icon: HeartHandshake, end: true },
-  { to: 'payments',  label: 'Payments',  icon: CreditCard },
-  { to: 'schedule',  label: 'Schedule',  icon: CalendarDays },
-  { to: 'consent',   label: 'Consent',   icon: ClipboardCheck },
-  { to: 'documents', label: 'Documents', icon: FileText },
-  { to: 'messages',  label: 'Messages',  icon: MessageSquare },
+  { to: '',          label: 'Dashboard',                icon: HeartHandshake, end: true },
+  { to: 'payments',  label: 'Payments',                 icon: CreditCard },
+  { to: 'schedule',  label: 'Schedule',                 icon: CalendarDays },
+  { to: 'consent',   label: 'Consent',                  icon: ClipboardCheck },
+  { to: 'documents', label: 'Instructions & Documents', icon: FileText },
+  { to: 'messages',  label: 'Messages',                 icon: MessageSquare },
 ]
 
 export default function PortalShell() {
@@ -64,22 +65,10 @@ export default function PortalShell() {
     <aside className="w-72 shrink-0 bg-white border-r border-plum-100
                        flex flex-col min-h-screen">
       <div className="px-6 pt-7 pb-6 border-b border-plum-100">
-        <div className="flex items-start gap-3">
-          <div className="w-12 h-12 rounded-full bg-plum-100 grid place-items-center
-                            text-plum-700 shrink-0">
-            <Sparkles size={20} />
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-plum-600/70 font-medium">
-              Waldorf Women's Care
-            </div>
-            <div className="font-serif text-[15px] leading-tight text-plum-ink font-semibold tracking-tight mt-0.5">
-              Patient Portal
-            </div>
-            <div className="font-serif italic text-plum-600 text-[11px] -mt-0.5">
-              &amp; Aesthetics
-            </div>
-          </div>
+        <img src={logoFull} alt="Waldorf Women's Care · WWC Gynecology &amp; Aesthetics"
+             className="h-16 w-auto" />
+        <div className="text-[10px] uppercase tracking-[0.18em] text-plum-600/70 font-medium mt-3">
+          Patient Portal
         </div>
       </div>
 
@@ -161,13 +150,8 @@ export default function PortalShell() {
       <PreviewBanner />
 
       {/* Mobile top bar */}
-      <header className="md:hidden sticky top-0 z-30 bg-white border-b border-plum-100 px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles size={18} className="text-plum-700" />
-          <span className="font-serif font-semibold text-plum-ink text-[15px]">
-            Patient Portal
-          </span>
-        </div>
+      <header className="md:hidden sticky top-0 z-30 bg-white border-b border-plum-100 px-4 py-2 flex items-center justify-between">
+        <img src={logoFull} alt="Waldorf Women's Care" className="h-10 w-auto" />
         <button onClick={() => setMobileOpen(true)}
                 className="p-2 text-plum-700 hover:bg-plum-50 rounded">
           <Menu size={20} />
