@@ -1464,8 +1464,11 @@ function EditProposedDoseDrawer({ visit, onClose }) {
     .sort((a, b) => (a.position || 0) - (b.position || 0))
     .map(d => ({
       dose_type_id: d.dose_type_id,
+      dose_label:   d.dose_label,
       quantity:     d.quantity,
       lot_id:       d.lot_id || '',
+      qualgen_lot:  d.qualgen_lot || '',
+      lot_expiration_date: d.lot_expiration_date || null,
     }))
   const [rows, setRows] = useState(
     initial.length > 0
@@ -1544,7 +1547,8 @@ function EditProposedDoseDrawer({ visit, onClose }) {
                 <div className="grid grid-cols-[1fr_80px_24px] gap-2">
                   <select className="input text-[12px]"
                           value={r.dose_type_id}
-                          onChange={e => updateRow(i, { dose_type_id: e.target.value, lot_id: '' })}>
+                          onChange={e => updateRow(i, { dose_type_id: e.target.value, lot_id: '',
+                                                          qualgen_lot: '', lot_expiration_date: null })}>
                     <option value="">— select dose type —</option>
                     {dtOptions.map(t => (
                       <option key={t.id} value={t.id}>{t.label}</option>
@@ -1559,6 +1563,16 @@ function EditProposedDoseDrawer({ visit, onClose }) {
                     <Trash2 size={12} />
                   </button>
                 </div>
+                {(r.qualgen_lot || r.lot_expiration_date) && (
+                  <div className="text-[11px] text-gray-600 flex items-center gap-2 px-0.5">
+                    {r.qualgen_lot && (
+                      <span className="font-mono">lot {r.qualgen_lot}</span>
+                    )}
+                    {r.lot_expiration_date && (
+                      <span className="text-gray-500">exp {fmt.date(r.lot_expiration_date)}</span>
+                    )}
+                  </div>
+                )}
                 {r.dose_type_id && (
                   <LotPickerForType
                     doseTypeId={r.dose_type_id}
@@ -2144,6 +2158,11 @@ function DoseLineGroup({ label, color, doses, onDel, canDel, managerOnly }) {
           )}
           {d.qualgen_lot && (
             <span className="ml-0.5 text-[9px] text-gray-500 font-mono">lot {d.qualgen_lot}</span>
+          )}
+          {d.lot_expiration_date && (
+            <span className="ml-0.5 text-[9px] text-gray-400">
+              exp {fmt.date(d.lot_expiration_date)}
+            </span>
           )}
           {canActuallyDel && onDel && (
             <button onClick={() => {
