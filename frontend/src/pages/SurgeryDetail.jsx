@@ -390,7 +390,23 @@ function PaymentsSection({ surgery, flat = false }) {
   })
 
   const outstanding = Number(data?.outstanding_balance || 0)
-  const payments = data?.payments || []
+  // Show every non-requested row (paid/refunded/failed/expired = audit trail)
+  // but collapse stacked 'requested' rows to just the newest one — each Pay-Now
+  // click creates a fresh Stripe Checkout session, and stale ones just clutter
+  // the view.
+  const allPayments = data?.payments || []
+  const payments = (() => {
+    const seenRequested = false ? null : { v: false }
+    const out = []
+    for (const p of allPayments) {
+      if (p.status === 'requested') {
+        if (seenRequested.v) continue
+        seenRequested.v = true
+      }
+      out.push(p)
+    }
+    return out
+  })()
   const fmtMoney = (v) => `$${Number(v || 0).toFixed(2)}`
 
   function copy(url) {
@@ -490,6 +506,7 @@ function PaymentsSection({ surgery, flat = false }) {
 // ─── Portal access invite ─────────────────────────────────────────
 
 function FeeScheduleButton({ surgeryId, onApplied }) {
+  const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
   const [open, setOpen] = useState(false)
@@ -511,6 +528,8 @@ function FeeScheduleButton({ surgeryId, onApplied }) {
       const r = await api.post(`/surgery/${surgeryId}/fee-schedule/apply`)
       onApplied?.(r.data.allowed_amount)
       setResult(r.data.preview); setOpen(true)
+      qc.invalidateQueries({ queryKey: ['surgery', surgeryId] })
+      qc.invalidateQueries({ queryKey: ['surgery-payments', surgeryId] })
     } catch (e) {
       const d = e?.response?.data?.detail
       setError(typeof d === 'string' ? d : (e?.message || 'Apply failed'))
@@ -2647,15 +2666,16 @@ const SECTION_TONES = {
   teal:    { bg: 'bg-teal-50/60',     accent: 'border-l-4 border-l-teal-400',     divide: 'border-teal-200' },
 }
 
-function SurgerySection({ title, anchor, tone = 'slate', children }) {
+function SurgerySection({ title, anchor, tone = 'slate', headerRight, children }) {
   const kids = (Array.isArray(children) ? children : [children]).filter(Boolean)
   if (kids.length === 0) return null
   const t = SECTION_TONES[tone] || SECTION_TONES.slate
   return (
     <section id={anchor} className={`card mb-4 scroll-mt-16 ${t.bg} ${t.accent}`}>
-      <h2 className={`text-base font-semibold text-gray-800 mb-3 pb-2 border-b ${t.divide}`}>
-        {title}
-      </h2>
+      <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${t.divide}`}>
+        <h2 className="text-base font-semibold text-gray-800 flex-1">{title}</h2>
+        {headerRight}
+      </div>
       {kids.map((child, i) => (
         <div key={i} className={i === 0 ? '' : `border-t ${t.divide} mt-3 pt-3`}>
           {child}
@@ -2674,7 +2694,12 @@ function GroupedSurgeryBody({ surgery, milestones }) {
 
   return (
     <>
-      <SurgerySection title="Benefits & Payments" anchor="group-benefits-payments" tone="emerald">
+      <SurgerySection title="Benefits & Payments" anchor="group-benefits-payments" tone="emerald"
+                      headerRight={
+                        <FeeScheduleButton
+                          surgeryId={surgery.id}
+                          onApplied={() => {/* surgery query auto-invalidates via the apply endpoint */}} />
+                      }>
         {ms('benefits_determined')}
         <PriorAuthCardBody surgery={surgery} />
         <PaymentsSection surgery={surgery} flat />

@@ -145,6 +145,14 @@ def create_checkout_session(
         cancel_url=_cancel_url(),
     )
 
+    # Supersede any prior open requests for this surgery (a Stripe Checkout
+    # Session expires after 24h anyway, and stacked 'requested' rows clutter
+    # the payment history view).
+    (db.query(SurgeryPayment)
+       .filter(SurgeryPayment.surgery_id == surgery.id,
+               SurgeryPayment.status == "requested")
+       .update({"status": "expired"}, synchronize_session=False))
+
     pay = SurgeryPayment(
         surgery_id=surgery.id,
         stripe_checkout_session_id=session.id,

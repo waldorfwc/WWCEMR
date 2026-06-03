@@ -223,6 +223,30 @@ def apply_from_fee_schedule(surgery_id: str,
         raise HTTPException(status_code=404, detail="surgery not found")
     result = calculate_allowed_for_surgery(db, s)
     s.allowed_amount = result["total_allowed"]
+
+    # Re-run the patient-responsibility formula against the new allowed amount
+    # using the existing deductible/copay/coinsurance/OOP-max fields on the
+    # surgery. Mirrors the BenefitsPanel live calc on the frontend.
+    def _f(v): return float(v or 0)
+    allowed     = _f(s.allowed_amount)
+    deductible  = _f(s.deductible)
+    ded_met     = _f(s.deductible_met)
+    copay       = _f(s.copay)
+    coins_pct   = _f(s.coinsurance_pct)
+    oop_max     = _f(s.oop_max)
+    oop_met     = _f(s.oop_met)
+
+    ded_remaining = max(0.0, deductible - ded_met)
+    ded_portion   = min(allowed, ded_remaining)
+    after_ded     = max(0.0, allowed - ded_portion)
+    coins_portion = round(after_ded * (coins_pct / 100.0), 2)
+    raw           = round(ded_portion + coins_portion + copay, 2)
+    if oop_max > 0:
+        oop_remaining = max(0.0, oop_max - oop_met)
+        s.patient_responsibility = round(min(raw, oop_remaining), 2)
+    else:
+        s.patient_responsibility = raw
+
     db.commit()
 
     from app.models.surgery import SurgeryNote
@@ -231,12 +255,15 @@ def apply_from_fee_schedule(surgery_id: str,
         created_by=current_user.get("email"),
         content=(f"Allowed amount set to ${result['total_allowed']:.2f} "
                   f"from fee schedule ({result['insurance'] or 'no insurance set'}). "
+                  f"Patient responsibility recalculated to "
+                  f"${float(s.patient_responsibility or 0):.2f}. "
                   f"CPTs: {', '.join(r['cpt'] for r in result['per_cpt']) or 'none'}"),
     ))
     db.commit()
 
     return {
         "allowed_amount": float(s.allowed_amount or 0),
+        "patient_responsibility": float(s.patient_responsibility or 0),
         "preview": {
             "insurance":     result["insurance"],
             "total_allowed": float(result["total_allowed"]),
