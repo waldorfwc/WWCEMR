@@ -2576,7 +2576,11 @@ function ConfirmInsertionDrawer({ visit, qc, onClose }) {
     queryFn: () => api.get('/pellets/dose-types').then(r => r.data),
     staleTime: 5 * 60_000,
   })
-  const dtOptions = (doseTypes?.dose_types || []).filter(t => t.is_active !== false)
+  // /pellets/dose-types returns the array directly, not { dose_types: [...] }
+  const dtList = Array.isArray(doseTypes)
+    ? doseTypes
+    : (doseTypes?.dose_types || doseTypes?.types || [])
+  const dtOptions = dtList.filter(t => t.is_active !== false)
 
   function setLine(doseId, patch) {
     setLines(prev => ({ ...prev, [doseId]: { ...prev[doseId], ...patch } }))
@@ -2668,7 +2672,7 @@ function ConfirmInsertionDrawer({ visit, qc, onClose }) {
                         </span>
                       )}
                     </div>
-                    <div className="flex gap-1 text-[11px]">
+                    <div className="flex gap-1 text-[11px] flex-wrap">
                       {['insert', 'return', 'swap'].map(a => (
                         <button key={a}
                                 onClick={() => setLine(d.id, { action: a })}
@@ -2682,6 +2686,15 @@ function ConfirmInsertionDrawer({ visit, qc, onClose }) {
                           {a === 'insert' ? '✓ Insert' : a === 'return' ? '↩ Return' : '🔄 Swap'}
                         </button>
                       ))}
+                      <button onClick={() => setAdditions(prev => [
+                                ...prev,
+                                { dose_type_id: d.dose_type_id, quantity: 1, lot_id: '',
+                                  notes: `Provider added a 2nd ${d.dose_label}` },
+                              ])}
+                              className="px-2 py-1 rounded border bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                              title="Provider gave an additional pellet of this same dose">
+                        + Add 1 more
+                      </button>
                     </div>
                   </div>
                   {l.action === 'swap' && (
