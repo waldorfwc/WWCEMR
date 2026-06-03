@@ -867,6 +867,10 @@ class ManualSurgeryIn(BaseModel):
     dob: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    address_street: str         # required — boarding slips and benefits letters need it
+    address_city: str
+    address_state: str
+    address_zip: str
     primary_insurance: Optional[str] = None
     primary_member_id: Optional[str] = None
     secondary_insurance: Optional[str] = None
@@ -914,6 +918,13 @@ def create_manual(payload: ManualSurgeryIn,
         except ValueError:
             raise HTTPException(status_code=422, detail="dob must be YYYY-MM-DD")
 
+    for fname, label in [("address_street", "Street address"),
+                          ("address_city",   "City"),
+                          ("address_state",  "State"),
+                          ("address_zip",    "ZIP code")]:
+        if not (getattr(payload, fname) or "").strip():
+            raise HTTPException(status_code=422, detail=f"{label} is required")
+
     s = Surgery(
         chart_number=payload.chart_number.strip(),
         patient_name=payload.patient_name.strip(),
@@ -923,6 +934,10 @@ def create_manual(payload: ManualSurgeryIn,
         phone=payload.phone,
         cell_phone=payload.phone,
         email=payload.email,
+        address_street=payload.address_street.strip(),
+        address_city=payload.address_city.strip(),
+        address_state=payload.address_state.strip(),
+        address_zip=payload.address_zip.strip(),
         primary_insurance=payload.primary_insurance,
         primary_member_id=payload.primary_member_id,
         secondary_insurance=payload.secondary_insurance,
@@ -1044,6 +1059,8 @@ class SurgeryPatch(BaseModel):
     # Pre-op lab appointment (patient typically reports this on portal,
     # but staff can backfill via this PATCH if patient called in)
     lab_appointment_date: Optional[str] = None
+    # Pre-op visit with the surgeon (anchors the Unresponsive 30-day clock)
+    preop_date: Optional[str] = None
 
 
 # ─── Slot duration patch (Phase D3) ────────────────────────────────
@@ -1196,6 +1213,18 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                                 detail="assistant_surgeon_appt_date must be YYYY-MM-DD")
     elif "assistant_surgeon_appt_date" in data:
         data["assistant_surgeon_appt_date"] = None
+
+    # Pre-op visit date (with the surgeon)
+    if "preop_date" in data:
+        if data["preop_date"]:
+            try:
+                data["preop_date"] = datetime.strptime(
+                    data["preop_date"][:10], "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=422,
+                                    detail="preop_date must be YYYY-MM-DD")
+        else:
+            data["preop_date"] = None
 
     # Lab appointment date — staff backfill of patient self-report
     if "lab_appointment_date" in data:

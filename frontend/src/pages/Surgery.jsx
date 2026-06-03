@@ -1131,6 +1131,10 @@ function ManualCreateDrawer({ onClose }) {
     dob: '',
     phone: '',
     email: '',
+    address_street: '',
+    address_city: '',
+    address_state: '',
+    address_zip: '',
     primary_insurance: '',
     primary_member_id: '',
     secondary_insurance: '',
@@ -1144,6 +1148,11 @@ function ManualCreateDrawer({ onClose }) {
     is_urgent: false,
     notes: '',
   })
+  const [error, setError] = useState(null)
+
+  const addressMissing =
+    !form.address_street.trim() || !form.address_city.trim()
+    || !form.address_state.trim() || !form.address_zip.trim()
 
   const create = useMutation({
     mutationFn: () => api.post('/surgery/manual', {
@@ -1152,6 +1161,10 @@ function ManualCreateDrawer({ onClose }) {
       dob: form.dob || null,
       phone: form.phone || null,
       email: form.email || null,
+      address_street: form.address_street.trim(),
+      address_city:   form.address_city.trim(),
+      address_state:  form.address_state.trim(),
+      address_zip:    form.address_zip.trim(),
       primary_insurance: form.primary_insurance || null,
       primary_member_id: form.primary_member_id || null,
       secondary_insurance: form.secondary_insurance || null,
@@ -1176,6 +1189,10 @@ function ManualCreateDrawer({ onClose }) {
       qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
       onClose()
       navigate(`/surgery/${data.id}`)
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Create failed'))
     },
   })
 
@@ -1226,6 +1243,29 @@ function ManualCreateDrawer({ onClose }) {
               <input className="input text-sm" value={form.email}
                      onChange={e => setForm({ ...form, email: e.target.value })} />
             </Field>
+            <div className="col-span-2">
+              <Field label="Street address *">
+                <input className="input text-sm" value={form.address_street}
+                       placeholder="123 Main St"
+                       onChange={e => setForm({ ...form, address_street: e.target.value })} />
+              </Field>
+            </div>
+            <Field label="City *">
+              <input className="input text-sm" value={form.address_city}
+                     onChange={e => setForm({ ...form, address_city: e.target.value })} />
+            </Field>
+            <div className="grid grid-cols-[1fr_1fr] gap-2">
+              <Field label="State *">
+                <input className="input text-sm" value={form.address_state}
+                       maxLength={2} placeholder="MD"
+                       onChange={e => setForm({ ...form, address_state: e.target.value.toUpperCase() })} />
+              </Field>
+              <Field label="ZIP *">
+                <input className="input text-sm font-mono" value={form.address_zip}
+                       placeholder="20601"
+                       onChange={e => setForm({ ...form, address_zip: e.target.value })} />
+              </Field>
+            </div>
             <Field label="Surgeon">
               <input className="input text-sm" value={form.surgeon_primary}
                      placeholder="Cooke, Aryian MD"
@@ -1393,11 +1433,20 @@ function ManualCreateDrawer({ onClose }) {
             </div>
           )}
 
+          {addressMissing && (
+            <div className="text-xs text-amber-700">
+              Street address, city, state, and ZIP are required.
+            </div>
+          )}
+          {error && !create.isError && (
+            <div className="text-xs text-red-600">{error}</div>
+          )}
+
           <div className="flex justify-end gap-2 pt-2">
             <button className="btn-secondary text-sm" onClick={onClose}>Cancel</button>
             <button className="btn-primary text-sm"
                     onClick={() => create.mutate()}
-                    disabled={create.isPending || !form.chart_number || !form.patient_name}>
+                    disabled={create.isPending || !form.chart_number || !form.patient_name || addressMissing}>
               {create.isPending ? 'Creating…' : 'Create surgery'}
             </button>
           </div>
