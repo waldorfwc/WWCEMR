@@ -3413,6 +3413,7 @@ def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
         raise HTTPException(status_code=404, detail="surgery not found")
 
     from app.models.stripe_payment import SurgeryPayment
+    from app.models.surgery import SurgeryNote
     pretty = {"modpay": "ModMed Pay", "check": "Check",
               "cash": "Cash", "other": "Other"}[method]
     description = f"Manual payment · {pretty}" + (f" — {payload.note}" if payload.note else "")
