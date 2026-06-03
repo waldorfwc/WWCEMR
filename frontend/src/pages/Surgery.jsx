@@ -256,7 +256,7 @@ export default function Surgery() {
       </div>
 
       {/* Next available date per facility */}
-      <NextAvailableBar next={dash?.next_slots || {}} />
+      <NextAvailableBar next={dash?.next_slots || {}} horizon={dash?.booked_through || {}} />
 
       {/* Critical alerts + To-do (release alerts now folded into to-do) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
@@ -528,7 +528,7 @@ export default function Surgery() {
 }
 
 
-function NextAvailableBar({ next }) {
+function NextAvailableBar({ next, horizon }) {
   const items = [
     { key: 'medstar', label: 'MedStar (robotic)', tone: 'bg-blue-50 border-blue-200 text-blue-800' },
     { key: 'crmc',    label: 'CRMC (minor/major)', tone: 'bg-violet-50 border-violet-200 text-violet-800' },
@@ -544,15 +544,22 @@ function NextAvailableBar({ next }) {
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
       {items.map(it => {
         const slot = next[it.key]
+        const fill = horizon?.[it.key]
         if (!slot) {
           return (
             <div key={it.key} className={`card border ${it.tone} !p-2.5`}>
               <div className="text-[10px] uppercase tracking-wide opacity-80">{it.label}</div>
               <div className="text-sm mt-1 italic opacity-70">No openings in next 180 days</div>
+              {fill && (
+                <div className="text-[10px] opacity-70 mt-0.5">
+                  Booked through {fmt.date(fill.block_date)}
+                </div>
+              )}
             </div>
           )
         }
         const dOut = daysOut(slot.block_date)
+        const fillOut = fill ? daysOut(fill.block_date) : null
         return (
           <div key={it.key} className={`card border ${it.tone} !p-2.5`}>
             <div className="text-[10px] uppercase tracking-wide opacity-80">{it.label}</div>
@@ -564,6 +571,11 @@ function NextAvailableBar({ next }) {
             </div>
             <div className="text-[10px] opacity-80 mt-0.5">
               {slot.block_window} · {slot.cases_already_booked} case{slot.cases_already_booked === 1 ? '' : 's'} booked
+            </div>
+            <div className="text-[10px] opacity-70 mt-0.5">
+              {fill
+                ? <>Booked through {fmt.date(fill.block_date)} <span className="opacity-70">· {fillOut} day{fillOut === 1 ? '' : 's'} out</span></>
+                : <em>No future bookings yet</em>}
             </div>
           </div>
         )

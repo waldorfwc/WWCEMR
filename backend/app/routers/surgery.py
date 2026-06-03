@@ -319,6 +319,24 @@ def dashboard(db: Session = Depends(get_db),
             "probe_kind": probe_kind,
         }
 
+    # Booking horizon per facility: the latest BlockDay (today or later)
+    # that has at least one case booked. Tells the scheduler at a glance
+    # how far out we're currently filled.
+    from app.models.surgery import SurgerySlot
+    horizon_rows = (db.query(BlockDay.facility,
+                              func.max(BlockDay.block_date).label("last_date"))
+                      .join(SurgerySlot, SurgerySlot.block_day_id == BlockDay.id)
+                      .filter(BlockDay.block_date >= today)
+                      .group_by(BlockDay.facility)
+                      .all())
+    booked_through: dict = {"medstar": None, "crmc": None, "office": None}
+    for facility, last_date in horizon_rows:
+        if facility in booked_through and last_date:
+            booked_through[facility] = {
+                "block_date": str(last_date),
+                "weekday":    last_date.strftime("%A"),
+            }
+
     # Release-alert flags — surface unbooked hospital days + under-booked
     # office days inline on the dashboard so the scheduler sees them
     # without waiting for the daily email.
@@ -353,6 +371,7 @@ def dashboard(db: Session = Depends(get_db),
         "critical_alerts": critical[:10],
         "todo": todo[:20],
         "next_slots": next_slots,
+        "booked_through": booked_through,
         "hospital_unbooked": hospital_unbooked,
         "office_underbooked": office_underbooked,
     }
