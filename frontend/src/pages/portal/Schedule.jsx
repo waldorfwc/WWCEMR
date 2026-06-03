@@ -6,14 +6,23 @@ import { portalApi, isStaffPreview } from '../../lib/portal-api'
 
 
 function GateBanner({ gate, sid }) {
+  const isConsent = /consent/i.test(gate.reason || '')
+  const label  = isConsent ? 'Consent required'  : 'Payment required'
+  const cta    = isConsent ? 'Go to Consent'     : 'Go to Payments'
+  const target = isConsent ? `/portal/s/${sid}/consent`
+                            : `/portal/s/${sid}/payments`
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
       <div className="flex items-center gap-2 text-amber-800 text-[12px] font-semibold uppercase tracking-[0.16em]">
-        <Lock size={14} /> Payment required
+        <Lock size={14} /> {label}
       </div>
       <p className="text-[14px] text-plum-700/90 mt-3">{gate.reason}</p>
-      <Link to={`/portal/s/${sid}/payments`} className="btn-primary mt-5 inline-block">
-        Go to Payments
+      <p className="text-[12px] text-plum-700/70 mt-2">
+        You'll be able to pick a surgery date once your balance is paid and your
+        consent forms are signed.
+      </p>
+      <Link to={target} className="btn-primary mt-5 inline-block">
+        {cta}
       </Link>
     </div>
   )

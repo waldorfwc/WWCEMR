@@ -172,20 +172,23 @@ def schedule_gate_for_surgery(surgery: Surgery) -> tuple[bool, Optional[str]]:
     Returns (allowed, reason). 'reason' is a patient-facing string when
     not allowed; None when allowed.
 
-    Rules:
-      pt_resp <= 0                        → allowed (no balance to pay)
-      Surgery.amount_paid >= pt_resp      → allowed (paid in full)
-      surgery.schedule_gate_override      → allowed (coordinator override)
-      otherwise                           → not allowed, show outstanding amount
+    Rules (checked in order; coordinator override skips all of them):
+      1. Outstanding balance must be $0 (paid or no responsibility)
+      2. Consent must be signed (or not required)
     """
-    pt_resp = float(surgery.patient_responsibility or 0)
-    if pt_resp <= 0:
-        return True, None
-    paid = float(surgery.amount_paid or 0)
-    if paid >= pt_resp:
-        return True, None
     if surgery.schedule_gate_override:
         return True, None
-    outstanding = pt_resp - paid
-    return False, (f"Please make your payment before booking a surgery date. "
-                    f"Outstanding balance: ${outstanding:.2f}")
+
+    pt_resp = float(surgery.patient_responsibility or 0)
+    paid    = float(surgery.amount_paid or 0)
+    if pt_resp > 0 and paid < pt_resp:
+        outstanding = pt_resp - paid
+        return False, (f"Please pay your balance before booking a surgery date. "
+                        f"Outstanding balance: ${outstanding:.2f}.")
+
+    consent = (surgery.consent_status or "not_required").lower()
+    if consent not in ("signed", "not_required"):
+        return False, ("Please sign your consent forms before booking a "
+                        "surgery date.")
+
+    return True, None
