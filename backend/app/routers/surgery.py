@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 from datetime import date as _date, datetime, time as _time, timedelta
+from decimal import Decimal
 from typing import Any, Optional
 
 from app.models.surgery import SurgeryFile
