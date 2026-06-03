@@ -454,7 +454,7 @@ export default function Documents() {
     <div className="px-6 md:px-10 py-8 md:py-10 max-w-5xl">
       <header className="mb-8">
         <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mb-2">
-          Patient portal
+          Surgery portal
         </div>
         <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
           Documents

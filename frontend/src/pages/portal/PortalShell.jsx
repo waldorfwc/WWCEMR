@@ -68,7 +68,7 @@ export default function PortalShell() {
         <img src={logoFull} alt="Waldorf Women's Care · WWC Gynecology &amp; Aesthetics"
              className="h-16 w-auto" />
         <div className="text-[10px] uppercase tracking-[0.18em] text-plum-600/70 font-medium mt-3">
-          Patient Portal
+          Surgery Portal
         </div>
       </div>
 
@@ -136,6 +136,9 @@ export default function PortalShell() {
             Call our office at <strong className="text-plum-ink">240-252-2140</strong>
             {' '}for any questions about your care plan.
           </div>
+        </div>
+        <div className="text-[10px] text-plum-600/70 mt-3 italic leading-snug px-1">
+          Surgery portal access ends <strong className="text-plum-ink">30 days after your surgery date</strong>.
         </div>
         <button onClick={doSignOut}
                 className="w-full mt-3 text-[11px] text-plum-600/70 hover:text-plum-700">

@@ -1771,10 +1771,10 @@ def generate_clearance_form(surgery_id: str,
             html = f"""
             <p>Hello {s.patient_name or 'there'},</p>
             <p>Your pre-operative cardiac/anesthesia clearance form is ready.
-            Please log in to your patient portal to download it, bring it to
+            Please log in to your surgery portal to download it, bring it to
             your cardiologist, and upload the completed letter when it's
             signed.</p>
-            <p><a href="{portal_url}">Open your patient portal</a></p>
+            <p><a href="{portal_url}">Open your surgery portal</a></p>
             <p>Thank you,<br/>Waldorf Women's Care</p>
             """
             rec = send_patient_email(
@@ -2278,20 +2278,24 @@ def send_portal_access(surgery_id: str,
              if s.patient_name else "there")
     html = f"""
     <p>Hello {first},</p>
-    <p>You now have access to your Waldorf Women's Care patient portal.
+    <p>You now have access to your Waldorf Women's Care surgery portal.
     From there you can review your benefits estimate, pay your patient
     responsibility, pick a surgery date, sign consent forms, and message
     your care team.</p>
     <p><a href="{portal_url}"
            style="background:#7c3aed;color:#fff;padding:10px 18px;
                   border-radius:8px;text-decoration:none;display:inline-block;">
-        Open my patient portal
+        Open my surgery portal
     </a></p>
     <p>To log in you'll need:</p>
     <ul>
       <li>Your <strong>date of birth</strong></li>
       <li>The <strong>last 4 digits</strong> of the phone number we have on file</li>
     </ul>
+    <p style="color:#6b7280;font-size:13px;font-style:italic;">
+      Your surgery portal access will end <strong>30 days after your surgery date</strong>.
+      Save any documents you'd like to keep before then.
+    </p>
     <p>If anything doesn't work, call our office at 240-252-2140.</p>
     <p>Thank you,<br/>Waldorf Women's Care</p>
     """
@@ -2306,7 +2310,7 @@ def send_portal_access(surgery_id: str,
         sent_by=current_user.get("email") or "system",
         surgery_id=s.id,
         chart_number=s.chart_number,
-        ad_hoc_subject="Your patient portal access",
+        ad_hoc_subject="Your surgery portal access",
         ad_hoc_html=html,
     )
     db.add(SurgeryNotification(

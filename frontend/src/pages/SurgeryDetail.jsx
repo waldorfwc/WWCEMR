@@ -519,11 +519,11 @@ function PortalAccessPanel({ surgery }) {
     <div className="card !p-3">
       <div className="flex items-center gap-1.5 mb-2">
         <Send size={14} className="text-plum-700" />
-        <h3 className="text-sm font-semibold text-gray-800">Send Portal Access</h3>
+        <h3 className="text-sm font-semibold text-gray-800">Send Surgery Portal Access</h3>
       </div>
       <p className="text-[11px] text-gray-500 mb-2">
-        Emails the patient a link to log in to their portal. They verify with
-        DOB + last 4 of phone. Use the Klara drafter below for SMS.
+        Emails the patient a link to log in to their surgery portal. They verify with
+        DOB + last 4 of phone. Access ends 30 days post-surgery. Use the Klara drafter below for SMS.
       </p>
       <div className="flex flex-wrap gap-1.5 items-center">
         <button className="btn-primary text-xs flex items-center gap-1"
@@ -1455,7 +1455,7 @@ function PickDateLink() {
   }
   return (
     <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-      <span className="text-gray-500">Patient portal link:</span>
+      <span className="text-gray-500">Surgery portal link:</span>
       <a href={url}
          target="_blank"
          rel="noopener noreferrer"

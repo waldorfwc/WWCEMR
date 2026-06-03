@@ -29,10 +29,10 @@ export default function PortalLogin() {
             className="bg-white rounded-2xl border border-plum-100 shadow-sm
                           p-7 max-w-sm w-full space-y-5">
         <div className="flex flex-col items-center">
-          <img src={logoFull} alt="Waldorf Women's Care — Patient Portal"
+          <img src={logoFull} alt="Waldorf Women's Care — Surgery Portal"
                className="h-20 w-auto" />
           <div className="text-[10px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mt-3">
-            Patient portal
+            Surgery portal
           </div>
         </div>
 
@@ -85,6 +85,9 @@ export default function PortalLogin() {
         <p className="text-[11px] text-plum-700/60 text-center">
           Lost access? Call our office at{' '}
           <a href="tel:2402522140" className="underline text-plum-700">240-252-2140</a>.
+        </p>
+        <p className="text-[10px] text-plum-700/60 text-center italic">
+          Surgery portal access ends <strong>30 days after your surgery date</strong>.
         </p>
       </form>
     </div>
