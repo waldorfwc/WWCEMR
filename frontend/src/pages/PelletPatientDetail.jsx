@@ -1002,6 +1002,7 @@ function VisitCard({ visit, patient, qc }) {
   const [bagOpen, setBagOpen] = useState(false)
   const [insertionOpen, setInsertionOpen] = useState(false)
   const [addMidOpen, setAddMidOpen] = useState(false)
+  const [confirmInsertionOpen, setConfirmInsertionOpen] = useState(false)
   const [disposeDose, setDisposeDose] = useState(null)   // a dose obj
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [cancelOpen, setCancelOpen]         = useState(false)
@@ -1064,13 +1065,20 @@ function VisitCard({ visit, patient, qc }) {
         <PaymentBox visit={visit} qc={qc} />
       )}
 
-      {/* Insertion outcome — once bag is filled + appt arrives */}
-      {hasPulled && visit.status === 'in_progress' && (
-        <div className="mt-3 border-t border-gray-100 pt-3">
+      {/* Confirm-what-was-inserted (per-line) and Reschedule/Cancel outcome */}
+      {(hasPlanned || hasPulled) && !['billed','cancelled'].includes(visit.status) && (
+        <div className="mt-3 border-t border-gray-100 pt-3 flex flex-wrap gap-2">
           <button className="btn-primary text-sm flex items-center gap-1"
-                  onClick={() => setInsertionOpen(true)}>
-            <CheckCircle2 size={12}/> Record insertion outcome
+                  onClick={() => setConfirmInsertionOpen(true)}>
+            <CheckCircle2 size={12}/> Confirm what was inserted…
           </button>
+          {hasPulled && visit.status === 'in_progress' && (
+            <button className="text-sm flex items-center gap-1 px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700"
+                    onClick={() => setInsertionOpen(true)}
+                    title="Reschedule or cancel without confirming each line">
+              <RotateCcw size={12}/> Reschedule / Cancel
+            </button>
+          )}
         </div>
       )}
 
@@ -1095,6 +1103,10 @@ function VisitCard({ visit, patient, qc }) {
       {insertionOpen && (
         <InsertionOutcomeDrawer visit={visit} qc={qc}
                                   onClose={() => setInsertionOpen(false)} />
+      )}
+      {confirmInsertionOpen && (
+        <ConfirmInsertionDrawer visit={visit} qc={qc}
+                                  onClose={() => setConfirmInsertionOpen(false)} />
       )}
       {addMidOpen && (
         <MidProcedureAddDrawer visit={visit} qc={qc}
@@ -2537,6 +2549,295 @@ function BagFillDrawer({ visit, qc, onClose }) {
 
 
 // ── Insertion outcome ─────────────────────────────────────────────
+
+function ConfirmInsertionDrawer({ visit, qc, onClose }) {
+  // Per-line decisions for every still-proposed dose, plus an "add new"
+  // bottom block. Defaults: insert all bagged doses as-is (the common
+  // case). Provider can flip rows to Return or Swap, or add new doses.
+  const proposed = (visit.doses || [])
+    .filter(d => ['planned', 'pulled'].includes(d.status))
+    .sort((a, b) => (a.position || 0) - (b.position || 0))
+
+  // line state: { dose_id: { action, new_dose_type_id, new_lot_id, new_qty } }
+  const [lines, setLines] = useState(() => Object.fromEntries(
+    proposed.map(d => [d.id, {
+      action:           'insert',
+      new_dose_type_id: '',
+      new_lot_id:       '',
+      new_qty:          d.quantity,
+    }])
+  ))
+  const [additions, setAdditions] = useState([])
+  const [notes, setNotes] = useState('')
+  const [error, setError] = useState(null)
+
+  const { data: doseTypes } = useQuery({
+    queryKey: ['pellet-dose-types-active'],
+    queryFn: () => api.get('/pellets/dose-types').then(r => r.data),
+    staleTime: 5 * 60_000,
+  })
+  const dtOptions = (doseTypes?.dose_types || []).filter(t => t.is_active !== false)
+
+  function setLine(doseId, patch) {
+    setLines(prev => ({ ...prev, [doseId]: { ...prev[doseId], ...patch } }))
+  }
+
+  function addNewLine() {
+    setAdditions(prev => [...prev, { dose_type_id: '', quantity: 1, lot_id: '', notes: '' }])
+  }
+  function updateAddition(i, patch) {
+    setAdditions(prev => prev.map((a, j) => j === i ? { ...a, ...patch } : a))
+  }
+  function dropAddition(i) {
+    setAdditions(prev => prev.filter((_, j) => j !== i))
+  }
+
+  const submit = useMutation({
+    mutationFn: () => api.post(`/pellets/visits/${visit.id}/confirm-insertion`, {
+      lines: proposed.map(d => {
+        const l = lines[d.id]
+        const out = { dose_id: d.id, action: l.action }
+        if (l.action === 'swap') {
+          out.new_dose_type_id = l.new_dose_type_id
+          if (l.new_lot_id)   out.new_lot_id   = l.new_lot_id
+          if (l.new_qty != null && l.new_qty !== d.quantity)
+            out.new_quantity = Number(l.new_qty)
+        }
+        return out
+      }),
+      additions: additions
+        .filter(a => a.dose_type_id && a.quantity > 0)
+        .map(a => ({
+          dose_type_id: a.dose_type_id,
+          quantity:     Number(a.quantity),
+          ...(a.lot_id ? { lot_id: a.lot_id } : {}),
+          ...(a.notes  ? { notes: a.notes  } : {}),
+        })),
+      notes: notes || null,
+    }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-patient', visit.patient_id] })
+      qc.invalidateQueries({ queryKey: ['pellet-upcoming-calendar'] })
+      onClose()
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Submit failed'))
+    },
+  })
+
+  const validSwapsOK = proposed.every(d => {
+    const l = lines[d.id]
+    return l.action !== 'swap' || !!l.new_dose_type_id
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-2xl bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between z-10">
+          <h2 className="text-[15px] font-semibold text-gray-900">
+            Confirm what was inserted
+          </h2>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <p className="text-[12px] text-gray-600">
+            For each bagged dose, choose what the provider actually did.
+            Return/Swap automatically refunds the original pellet to stock.
+          </p>
+
+          <ul className="divide-y divide-gray-100">
+            {proposed.map(d => {
+              const l = lines[d.id]
+              return (
+                <li key={d.id} className="py-2 space-y-2">
+                  <div className="flex items-baseline justify-between flex-wrap gap-2">
+                    <div className="text-[13px]">
+                      <span className="font-medium">{d.quantity}×</span>{' '}
+                      {d.dose_label}{' '}
+                      <span className="text-[11px] text-gray-500 font-mono">
+                        lot {d.qualgen_lot}
+                      </span>
+                      {d.lot_expiration_date && (
+                        <span className="text-[10px] text-gray-400 ml-1">
+                          exp {fmt.date(d.lot_expiration_date)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-1 text-[11px]">
+                      {['insert', 'return', 'swap'].map(a => (
+                        <button key={a}
+                                onClick={() => setLine(d.id, { action: a })}
+                                className={`px-2 py-1 rounded border ${
+                                  l.action === a
+                                    ? a === 'insert' ? 'bg-emerald-600 text-white border-emerald-600'
+                                      : a === 'return' ? 'bg-amber-600 text-white border-amber-600'
+                                      : 'bg-violet-600 text-white border-violet-600'
+                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                }`}>
+                          {a === 'insert' ? '✓ Insert' : a === 'return' ? '↩ Return' : '🔄 Swap'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {l.action === 'swap' && (
+                    <div className="bg-violet-50/40 border border-violet-200 rounded p-2 space-y-1.5">
+                      <div className="text-[11px] uppercase tracking-wide text-violet-700 font-semibold">
+                        Swap to
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-[1fr_100px] gap-2">
+                        <select className="input text-[12px]"
+                                value={l.new_dose_type_id}
+                                onChange={e => setLine(d.id, { new_dose_type_id: e.target.value })}>
+                          <option value="">— select dose type —</option>
+                          {dtOptions.map(t => (
+                            <option key={t.id} value={t.id}>{t.label}</option>
+                          ))}
+                        </select>
+                        <input type="number" min="1" className="input text-[12px] font-mono"
+                                placeholder="Qty"
+                                value={l.new_qty}
+                                onChange={e => setLine(d.id, { new_qty: e.target.value })} />
+                      </div>
+                      {l.new_dose_type_id && (
+                        <LotPickerForType
+                          doseTypeId={l.new_dose_type_id}
+                          location={visit.location}
+                          minQty={Number(l.new_qty) || 1}
+                          selected={l.new_lot_id}
+                          onSelect={(id) => setLine(d.id, { new_lot_id: id })} />
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+
+          {/* Additions */}
+          <div className="border-t border-gray-200 pt-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[12px] font-semibold text-gray-800">
+                Add new dose(s) (provider added in-room)
+              </div>
+              <button className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
+                      onClick={addNewLine}>
+                <Plus size={11}/> Add row
+              </button>
+            </div>
+            {additions.length === 0 && (
+              <div className="text-[11px] text-gray-500 italic">
+                No additions. Use this when the provider grabbed an extra pellet
+                that wasn't in the bag.
+              </div>
+            )}
+            <ul className="space-y-2">
+              {additions.map((a, i) => (
+                <li key={i} className="bg-gray-50 border border-gray-200 rounded p-2 space-y-1.5">
+                  <div className="grid grid-cols-[1fr_80px_24px] gap-2">
+                    <select className="input text-[12px]"
+                            value={a.dose_type_id}
+                            onChange={e => updateAddition(i, { dose_type_id: e.target.value })}>
+                      <option value="">— select dose type —</option>
+                      {dtOptions.map(t => (
+                        <option key={t.id} value={t.id}>{t.label}</option>
+                      ))}
+                    </select>
+                    <input type="number" min="1" className="input text-[12px] font-mono"
+                            value={a.quantity}
+                            onChange={e => updateAddition(i, { quantity: e.target.value })} />
+                    <button onClick={() => dropAddition(i)}
+                            className="text-red-600 hover:bg-red-50 rounded p-1">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                  {a.dose_type_id && (
+                    <LotPickerForType
+                      doseTypeId={a.dose_type_id}
+                      location={visit.location}
+                      minQty={Number(a.quantity) || 1}
+                      selected={a.lot_id}
+                      onSelect={(id) => updateAddition(i, { lot_id: id })} />
+                  )}
+                  <input type="text" className="input text-[12px]"
+                          placeholder="Note (optional)"
+                          value={a.notes || ''}
+                          onChange={e => updateAddition(i, { notes: e.target.value })} />
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Overall note */}
+          <div>
+            <label className="text-[11px] uppercase tracking-wide text-gray-500 font-medium block mb-1">
+              Visit note (optional)
+            </label>
+            <textarea className="input text-[12px] w-full"
+                       rows={2}
+                       value={notes}
+                       onChange={e => setNotes(e.target.value)} />
+          </div>
+
+          {error && (
+            <div className="text-[12px] text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
+            <button onClick={() => submit.mutate()}
+                    disabled={submit.isPending || !validSwapsOK}
+                    className="btn-primary text-sm">
+              {submit.isPending ? 'Confirming…' : 'Confirm insertion'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function LotPickerForType({ doseTypeId, location, minQty, selected, onSelect }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['lot-options', doseTypeId, location],
+    queryFn: () => api.get('/pellets/lots', {
+      params: { dose_type_id: doseTypeId, location, in_stock_only: true },
+    }).then(r => r.data),
+    enabled: !!doseTypeId,
+  })
+  const lots = (data?.lots || []).filter(l => (l.balances?.[location] || 0) >= minQty)
+  if (!doseTypeId) return null
+  if (isLoading) return <div className="text-[10px] text-gray-500 italic">Loading lots…</div>
+  if (lots.length === 0) {
+    return (
+      <div className="text-[10px] text-amber-700">
+        No lot has ≥{minQty} at {location}.
+      </div>
+    )
+  }
+  return (
+    <select className="input text-[12px] w-full"
+             value={selected || ''}
+             onChange={e => onSelect(e.target.value || null)}>
+      <option value="">FIFO (auto-pick earliest expiry)</option>
+      {lots.map(l => (
+        <option key={l.id} value={l.id}>
+          {l.qualgen_lot_number}
+          {l.expiration_date ? ` · exp ${l.expiration_date}` : ''}
+          {' · '}{l.balances?.[location] || 0} on hand
+        </option>
+      ))}
+    </select>
+  )
+}
+
 
 function InsertionOutcomeDrawer({ visit, qc, onClose }) {
   const [outcome, setOutcome] = useState('perfect')

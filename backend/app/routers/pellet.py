@@ -4735,6 +4735,251 @@ def confirm_doses_as_planned(visit_id: str,
     return _visit_dict(v)
 
 
+# Per-line confirm-insertion --------------------------------------------
+#
+# This is the in-room "what was actually inserted" workflow: each bagged
+# dose gets one of three actions, plus the provider can add brand-new
+# doses (mid-procedure additions) — all in one transaction.
+
+_CONFIRM_ACTIONS = {"insert", "return", "swap"}
+
+
+class ConfirmInsertLine(BaseModel):
+    """One decision per existing planned/pulled dose.
+
+    action="insert" → flip to 'inserted'; stock unchanged
+                       (reservation = real consumption)
+    action="return" → flip to 'returned'; stock += quantity
+    action="swap"   → mark original 'returned' (stock += original qty),
+                      then create a fresh 'inserted' dose with new dose
+                      type / lot / quantity. Lot is FIFO if new_lot_id
+                      omitted; quantity defaults to original.
+    """
+    dose_id:           str
+    action:            str
+    new_dose_type_id:  Optional[str] = None
+    new_lot_id:        Optional[str] = None
+    new_quantity:      Optional[int] = None
+
+
+class ConfirmInsertAddition(BaseModel):
+    """A brand-new dose the provider added in-room."""
+    dose_type_id: str
+    quantity:     int = 1
+    lot_id:       Optional[str] = None
+    notes:        Optional[str] = None
+
+
+class ConfirmInsertionIn(BaseModel):
+    lines:        list[ConfirmInsertLine] = []
+    additions:    list[ConfirmInsertAddition] = []
+    notes:        Optional[str] = None
+
+
+@router.post("/visits/{visit_id}/confirm-insertion")
+def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(require_permission("pellet:work"))):
+    """Per-line confirmation of what was actually inserted vs. bagged.
+
+    Each line targets one existing planned/pulled dose with insert / return
+    / swap. Additions create brand-new 'inserted' rows. All transitions
+    are atomic and audited.
+
+    After commit, the visit transitions to status='inserted' (or stays
+    there if already inserted)."""
+    v = (db.query(PelletVisit)
+           .options(joinedload(PelletVisit.doses).joinedload(PelletVisitDose.dose_type),
+                    joinedload(PelletVisit.milestones))
+           .filter(PelletVisit.id == visit_id).first())
+    if not v:
+        raise HTTPException(status_code=404, detail="visit not found")
+    if v.status in ("billed", "cancelled"):
+        raise HTTPException(status_code=409,
+                            detail=f"visit is {v.status} — cannot confirm")
+
+    by = current_user.get("email") or "system"
+    location = _require_visit_location(v)
+    now = datetime.utcnow()
+    by_dose = {str(d.id): d for d in (v.doses or [])}
+
+    # ── 1. Validate every line up front (so partial commits don't happen) ──
+    for line in payload.lines:
+        if line.action not in _CONFIRM_ACTIONS:
+            raise HTTPException(status_code=422,
+                                detail=f"action must be one of {sorted(_CONFIRM_ACTIONS)}")
+        d = by_dose.get(line.dose_id)
+        if not d:
+            raise HTTPException(status_code=404,
+                                detail=f"dose {line.dose_id} not on this visit")
+        if d.status not in ("planned", "pulled"):
+            raise HTTPException(
+                status_code=409,
+                detail=(f"dose {d.id} is {d.status}; only planned/pulled doses "
+                        "can be confirmed via this endpoint."))
+        if line.action == "swap":
+            if not line.new_dose_type_id:
+                raise HTTPException(status_code=422,
+                                    detail="swap requires new_dose_type_id")
+            new_dt = (db.query(PelletDoseType)
+                        .filter(PelletDoseType.id == line.new_dose_type_id).first())
+            if not new_dt:
+                raise HTTPException(status_code=404,
+                                    detail=f"dose type {line.new_dose_type_id} not found")
+            new_qty = line.new_quantity if line.new_quantity is not None else d.quantity
+            if new_qty <= 0:
+                raise HTTPException(status_code=422, detail="new_quantity must be > 0")
+            if line.new_lot_id:
+                _specific_lot_with_stock(db, line.new_lot_id, new_dt.id, new_qty, location)
+            else:
+                if not _earliest_lot_with_stock(db, new_dt.id, new_qty, location):
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(f"Insufficient stock at {location} for "
+                                f"{new_qty}× {new_dt.label}."))
+
+    for add in payload.additions:
+        new_dt = (db.query(PelletDoseType)
+                    .filter(PelletDoseType.id == add.dose_type_id).first())
+        if not new_dt:
+            raise HTTPException(status_code=404,
+                                detail=f"dose type {add.dose_type_id} not found")
+        if add.quantity <= 0:
+            raise HTTPException(status_code=422, detail="quantity must be > 0")
+        if add.lot_id:
+            _specific_lot_with_stock(db, add.lot_id, new_dt.id, add.quantity, location)
+        else:
+            if not _earliest_lot_with_stock(db, new_dt.id, add.quantity, location):
+                raise HTTPException(
+                    status_code=409,
+                    detail=(f"Insufficient stock at {location} for "
+                            f"{add.quantity}× {new_dt.label}."))
+
+    # ── 2. Apply ──
+    next_pos = max([d.position for d in (v.doses or [])], default=0)
+
+    stats = {"inserted": 0, "returned": 0, "swapped": 0, "added": 0}
+
+    for line in payload.lines:
+        d = by_dose[line.dose_id]
+        if line.action == "insert":
+            d.status      = "inserted"
+            d.resolved_at = now
+            d.resolved_by = by
+            _audit(db, actor=by, action="dose_inserted",
+                   lot_id=d.lot_id, location=location, delta_doses=0,
+                   summary=(f"Confirmed insertion: {d.quantity}× "
+                              f"{d.dose_type.label if d.dose_type else ''}"),
+                   detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
+            stats["inserted"] += 1
+
+        elif line.action == "return":
+            if d.lot_id:
+                old_stock = _get_or_create_stock(db, d.lot_id, location)
+                old_stock.doses_on_hand += d.quantity
+            d.status      = "returned"
+            d.resolved_at = now
+            d.resolved_by = by
+            _audit(db, actor=by, action="dose_returned",
+                   lot_id=d.lot_id, location=location,
+                   delta_doses=d.quantity,
+                   summary=(f"Bagged dose returned to stock: "
+                              f"{d.quantity}× "
+                              f"{d.dose_type.label if d.dose_type else ''}"),
+                   detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
+            stats["returned"] += 1
+
+        else:  # swap
+            # Return the original
+            if d.lot_id:
+                old_stock = _get_or_create_stock(db, d.lot_id, location)
+                old_stock.doses_on_hand += d.quantity
+            d.status      = "returned"
+            d.resolved_at = now
+            d.resolved_by = by
+            _audit(db, actor=by, action="dose_returned",
+                   lot_id=d.lot_id, location=location, delta_doses=d.quantity,
+                   summary=(f"Swap — original returned: "
+                              f"{d.quantity}× "
+                              f"{d.dose_type.label if d.dose_type else ''}"),
+                   detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
+            # Insert the replacement
+            new_dt = (db.query(PelletDoseType)
+                        .filter(PelletDoseType.id == line.new_dose_type_id).first())
+            new_qty = line.new_quantity if line.new_quantity is not None else d.quantity
+            if line.new_lot_id:
+                lot, stock = _specific_lot_with_stock(
+                    db, line.new_lot_id, new_dt.id, new_qty, location)
+            else:
+                lot, stock = _earliest_lot_with_stock(db, new_dt.id, new_qty, location)
+            stock.doses_on_hand -= new_qty
+            next_pos += 1
+            new_d = PelletVisitDose(
+                visit_id=v.id, dose_type_id=new_dt.id, quantity=new_qty,
+                lot_id=lot.id, position=next_pos, status="inserted",
+                pulled_at=now, pulled_by=by,
+                resolved_at=now, resolved_by=by,
+                notes=f"Swap from {d.dose_type.label if d.dose_type else ''}",
+            )
+            db.add(new_d); db.flush()
+            _audit(db, actor=by, action="dose_added",
+                   lot_id=lot.id, location=location, delta_doses=-new_qty,
+                   summary=(f"Swap — inserted {new_qty}× {new_dt.label} "
+                              f"from lot {lot.qualgen_lot_number}"),
+                   detail={"visit_id": str(v.id), "visit_dose_id": str(new_d.id),
+                            "swapped_from_dose_id": str(d.id)})
+            stats["swapped"] += 1
+
+    for add in payload.additions:
+        new_dt = (db.query(PelletDoseType)
+                    .filter(PelletDoseType.id == add.dose_type_id).first())
+        if add.lot_id:
+            lot, stock = _specific_lot_with_stock(
+                db, add.lot_id, new_dt.id, add.quantity, location)
+        else:
+            lot, stock = _earliest_lot_with_stock(db, new_dt.id, add.quantity, location)
+        stock.doses_on_hand -= add.quantity
+        next_pos += 1
+        new_d = PelletVisitDose(
+            visit_id=v.id, dose_type_id=new_dt.id, quantity=add.quantity,
+            lot_id=lot.id, position=next_pos, status="inserted",
+            pulled_at=now, pulled_by=by,
+            resolved_at=now, resolved_by=by,
+            notes=add.notes,
+        )
+        db.add(new_d); db.flush()
+        _audit(db, actor=by, action="dose_added",
+               lot_id=lot.id, location=location, delta_doses=-add.quantity,
+               summary=(f"Provider added in-room: {add.quantity}× "
+                          f"{new_dt.label} lot {lot.qualgen_lot_number}"),
+               detail={"visit_id": str(v.id), "visit_dose_id": str(new_d.id)})
+        stats["added"] += 1
+
+    # ── 3. Visit-level transition ──
+    if not v.inserted_at:
+        v.inserted_at = now
+        v.inserted_by = by
+    v.outcome  = "perfect"
+    v.status   = "inserted"
+    _complete_milestone(v, "inserted", by)
+
+    if payload.notes:
+        v.outcome_notes = (
+            (v.outcome_notes + " | " if v.outcome_notes else "")
+            + payload.notes
+        )
+
+    _audit(db, actor=by, action="visit_confirm_insertion",
+           summary=(f"Per-line insertion confirmed for "
+                      f"{v.patient.patient_name if v.patient else ''}: "
+                      f"{stats['inserted']} kept, {stats['returned']} returned, "
+                      f"{stats['swapped']} swapped, {stats['added']} added"),
+           detail={"visit_id": str(v.id), **stats})
+
+    db.commit(); db.refresh(v)
+    return _visit_dict(v)
+
+
 # Mid-procedure add / reduce / dispose --------------------------------
 
 class MidAddIn(BaseModel):
