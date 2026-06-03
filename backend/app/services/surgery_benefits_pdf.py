@@ -106,10 +106,13 @@ def generate_bytes(s: Surgery, breakdown: dict) -> bytes:
     story = []
 
     # ─── Branded header ─────────────────────────────────────────────
+    # WWC logo is ~1.93:1 — keep aspect ratio so it isn't warped.
     logo = None
     if os.path.exists(LOGO_PATH):
         try:
-            logo = Image(LOGO_PATH, width=0.9 * inch, height=0.9 * inch)
+            logo_w = 1.5 * inch
+            logo_h = logo_w / 1.932
+            logo = Image(LOGO_PATH, width=logo_w, height=logo_h)
         except Exception:
             logo = None
 
@@ -121,7 +124,7 @@ def generate_bytes(s: Surgery, breakdown: dict) -> bytes:
     ]
     header_tbl = Table(
         [[logo or "", title_cell]],
-        colWidths=[1.1 * inch, 6.0 * inch])
+        colWidths=[1.7 * inch, 5.4 * inch])
     header_tbl.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING",  (0, 0), (-1, -1), 0),
