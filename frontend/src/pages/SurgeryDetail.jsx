@@ -110,7 +110,7 @@ export default function SurgeryDetail() {
       </Link>
 
       {/* Patient header */}
-      <div className="card mb-4">
+      <div id="patient-header" className="card mb-4 scroll-mt-16">
         <div className="flex items-baseline justify-between gap-3 mb-2">
           <div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -2691,7 +2691,7 @@ function SurgerySection({ title, anchor, tone = 'slate', headerRight, children }
 const MILESTONE_DONE_STATES = new Set(['done', 'skipped', 'not_applicable'])
 
 const STEP_CFG = [
-  { n: 1,  title: 'Patient & Order Intake',            tone: 'slate'   },
+  { n: 1,  title: 'Surgery Info',                      tone: 'slate'   },
   { n: 2,  title: 'Surgery Benefits',                  tone: 'emerald' },
   { n: 3,  title: 'Payment',                           tone: 'emerald' },
   { n: 4,  title: 'Consents',                          tone: 'amber'   },
@@ -2707,10 +2707,47 @@ const STEP_CFG = [
   { n: 14, title: 'Bill Surgery',                      tone: 'slate'   },
 ]
 
+function checkSurgeryInfoMissing(s) {
+  const missing = []
+  const need = (cond, label) => { if (!cond) missing.push(label) }
+  need(!!s.chart_number,        'Chart number')
+  need(!!s.patient_name,        'Patient name')
+  need(!!s.dob,                 'Date of birth')
+  need(!!s.phone,               'Phone')
+  need(!!s.email,               'Email')
+  need(!!s.address_street,      'Street address')
+  need(!!s.address_city,        'City')
+  need(!!s.address_state,       'State')
+  need(!!s.address_zip,         'ZIP code')
+  need(!!s.primary_insurance,   'Primary insurance')
+  need(!!s.primary_member_id,   'Primary member ID')
+  need(!!s.surgeon_primary,     'Surgeon')
+  need(Array.isArray(s.procedures)
+       && s.procedures.some(p => (p?.cpt || p?.description)),
+       'At least one procedure (CPT)')
+  need(Array.isArray(s.diagnoses)
+       && s.diagnoses.some(d => (d?.icd || d?.description)),
+       'At least one diagnosis (ICD-10)')
+  need(!!s.estimated_minutes && Number(s.estimated_minutes) > 0, 'Estimated minutes')
+  need(Array.isArray(s.eligible_facilities) && s.eligible_facilities.length > 0,
+       'Eligible facility')
+  need(!!s.preop_date,          'Pre-op date')
+  // Decisions that gate later steps
+  need(!!s.auth_status,         'Prior-auth status decided')
+  if (s.clearance_required) {
+    need(!!s.clearance_status, 'Clearance status decided')
+  }
+  if (s.assistant_surgeon_required) {
+    need(!!s.assistant_surgeon_name, 'Assistant surgeon name')
+  }
+  return missing
+}
+
+
 function stepCompletion(n, s, byKind) {
   const done = (kind) => MILESTONE_DONE_STATES.has(byKind[kind]?.status)
   switch (n) {
-    case 1: return { state: 'done' }   // Order is in the system if we're here
+    case 1: return { state: checkSurgeryInfoMissing(s).length === 0 ? 'done' : 'todo' }
     case 2: return { state: done('benefits_determined') ? 'done' : 'todo' }
     case 3: {
       const resp = Number(s.patient_responsibility || 0)
@@ -2782,6 +2819,38 @@ function stepCompletion(n, s, byKind) {
     }
     default: return { state: 'todo' }
   }
+}
+
+
+function SurgeryInfoChecklist({ surgery }) {
+  const missing = checkSurgeryInfoMissing(surgery)
+  if (missing.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-[13px] text-emerald-700 bg-emerald-50/40
+                       border border-emerald-200 rounded-lg px-3 py-3">
+        <CheckCircle2 size={16} className="text-emerald-700 shrink-0" />
+        <span>All Required Surgery Information has been completed.</span>
+      </div>
+    )
+  }
+  return (
+    <div className="text-[13px]">
+      <div className="text-amber-800 font-medium mb-2">
+        {missing.length} required field{missing.length === 1 ? '' : 's'} still missing:
+      </div>
+      <ul className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 mb-3 list-disc pl-5 text-gray-800">
+        {missing.map(label => <li key={label}>{label}</li>)}
+      </ul>
+      <a href="#patient-header"
+         className="btn-primary text-xs inline-flex items-center gap-1">
+        Update missing fields →
+      </a>
+      <p className="text-[11px] text-gray-500 mt-2">
+        The link scrolls you to the patient header card — each row has an{' '}
+        <em>edit</em> button.
+      </p>
+    </div>
+  )
 }
 
 
@@ -2880,6 +2949,12 @@ function GroupedSurgeryBody({ surgery, milestones }) {
   return (
     <>
       <SurgeryStepTimeline surgery={surgery} byKind={byKind} />
+
+      {/* Step 1 — Surgery Info validator */}
+      <StepCard n={1} title="Surgery Info" tone="slate"
+                surgery={surgery} byKind={byKind}>
+        <SurgeryInfoChecklist surgery={surgery} />
+      </StepCard>
 
       {/* Step 2 — Surgery Benefits */}
       <StepCard n={2} title="Surgery Benefits" tone="emerald"
