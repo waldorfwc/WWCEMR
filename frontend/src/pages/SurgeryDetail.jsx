@@ -28,6 +28,17 @@ const STATUS_TONE = {
   unresponsive:  'bg-gray-100 text-gray-500',
 }
 
+const STATUS_LABEL = {
+  incomplete:    'Incomplete',
+  new:           'New',
+  in_progress:   'Benefits Check',
+  confirmed:     'Pre-Surgery',
+  completed:     'Post-Surgery',
+  hold:          'Hold',
+  cancelled:     'Canceled',
+  unresponsive:  'Unresponsive',
+}
+
 const MILESTONE_ICON = {
   done:           <CheckCircle2 size={16} className="text-green-600" />,
   in_progress:    <Clock size={16} className="text-amber-600" />,
@@ -105,7 +116,7 @@ export default function SurgeryDetail() {
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold text-gray-900">{s.patient_name}</h1>
               {s.urgency === "urgent" && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">🚨 URGENT</span>}
-              <span className={`text-[11px] px-2 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{s.status}</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{STATUS_LABEL[s.status] || s.status}</span>
               {s.sub_flag && <span className="text-[10px] text-gray-500">· {s.sub_flag.replace(/_/g, ' ')}</span>}
               {s.behind_schedule && (
                 <span className={`text-[11px] font-semibold ${s.hours_overdue > 48 ? 'text-red-700' : 'text-amber-700'}`}>

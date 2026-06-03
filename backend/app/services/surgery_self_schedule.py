@@ -130,6 +130,8 @@ def claim_slot_for_patient(
     surgery.scheduled_date = bd.block_date
     surgery.scheduled_start_time = start
     surgery.selected_facility = bd.facility
+    if surgery.status in ("new", "in_progress"):
+        surgery.status = "confirmed"
     db.add(SurgeryNote(
         surgery_id=surgery.id,
         created_by=sent_by,

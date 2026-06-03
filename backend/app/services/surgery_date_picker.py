@@ -248,6 +248,9 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
     s.scheduled_date = bd.block_date
     s.scheduled_start_time = _time(h, m)
     s.selected_facility = bd.facility
+    # Date picked → Pre-Surgery (internal value: "confirmed")
+    if s.status in ("new", "in_progress"):
+        s.status = "confirmed"
 
     if is_reschedule:
         s.reschedule_count = (s.reschedule_count or 0) + 1

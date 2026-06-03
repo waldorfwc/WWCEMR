@@ -13,6 +13,7 @@ import { useFacilities } from '../hooks/useFacilities'
 
 
 const STATUS_TONE = {
+  incomplete:    'bg-gray-100 text-gray-700',
   new:           'bg-gray-100 text-gray-700',
   in_progress:   'bg-amber-50 text-amber-800',
   confirmed:     'bg-blue-50 text-blue-800',
@@ -20,6 +21,18 @@ const STATUS_TONE = {
   hold:          'bg-violet-50 text-violet-800',
   cancelled:     'bg-red-50 text-red-700',
   unresponsive:  'bg-gray-100 text-gray-500',
+}
+
+// Internal status value → human label shown to the user.
+export const STATUS_LABEL = {
+  incomplete:    'Incomplete',
+  new:           'New',
+  in_progress:   'Benefits Check',
+  confirmed:     'Pre-Surgery',
+  completed:     'Post-Surgery',
+  hold:          'Hold',
+  cancelled:     'Canceled',
+  unresponsive:  'Unresponsive',
 }
 
 
@@ -31,7 +44,7 @@ const BUCKET_DEFS = [
   { k: 'needs_benefits',      l: 'Needs Benefits',      tone: 'amber',   descr: 'Insurance benefits not yet determined' },
   { k: 'needs_prior_auth',    l: 'Needs Prior Auth',    tone: 'amber',   descr: 'Authorization not yet granted' },
   { k: 'needs_sched_msg',     l: 'Needs Sched Msg',     tone: 'amber',   descr: 'Klara scheduling link not yet sent' },
-  { k: 'unresponsive',        l: 'Unresponsive',        tone: 'red',     descr: 'Klara scheduling sent 7+ days ago, no date picked yet' },
+  { k: 'unresponsive',        l: 'Unresponsive',        tone: 'red',     descr: 'Pre-op visit was 30+ days ago and patient still has not picked a surgery date' },
   { k: 'date_picked',         l: 'Date Picked',         tone: 'blue',    descr: 'Patient has picked a surgery date' },
   { k: 'needs_consent',       l: 'Needs Consent',       tone: 'amber',   descr: 'Date is picked but consent is not signed' },
   { k: 'needs_clearance',     l: 'Needs Clearance',     tone: 'amber',   descr: 'Medical clearance pending' },
@@ -317,13 +330,14 @@ export default function Surgery() {
             <select className="input text-sm" value={filters.status}
                     onChange={e => setF({ status: e.target.value })}>
               <option value="">All</option>
+              <option value="incomplete">Incomplete</option>
               <option value="new">New</option>
-              <option value="in_progress">In progress</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="completed">Completed</option>
-              <option value="hold">Hold</option>
-              <option value="cancelled">Cancelled</option>
+              <option value="in_progress">Benefits Check</option>
+              <option value="confirmed">Pre-Surgery</option>
+              <option value="completed">Post-Surgery</option>
               <option value="unresponsive">Unresponsive</option>
+              <option value="hold">Hold</option>
+              <option value="cancelled">Canceled</option>
             </select>
           </div>
           <div>
@@ -876,7 +890,7 @@ function SurgeryRow({ s, onOpen }) {
       </td>
       <td className="px-2 py-1.5">
         <span className={`text-[10px] px-1.5 py-0.5 rounded ${STATUS_TONE[s.status] || 'bg-gray-100'}`}>
-          {s.status}
+          {STATUS_LABEL[s.status] || s.status}
         </span>
         {s.sub_flag && (
           <span className="text-[9px] text-gray-500 ml-1">· {s.sub_flag.replace(/_/g, ' ')}</span>

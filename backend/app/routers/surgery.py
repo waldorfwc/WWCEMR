@@ -405,9 +405,11 @@ ALL_BUCKETS = [
 ]
 
 
-# Days since klara_scheduling was completed before a no-date-picked surgery
-# is flagged as unresponsive
-UNRESPONSIVE_AFTER_DAYS = 7
+# Days past the pre-op visit (with the surgeon) before a no-date-picked
+# surgery is flagged as unresponsive. The pre-op visit is when expectations
+# and risks are reviewed, so a patient who hasn't picked a date 30 days
+# later has stopped engaging.
+UNRESPONSIVE_AFTER_DAYS = 30
 
 # Pre-op exams/labs are good for 180 days before surgery. After that they
 # must be repeated.
@@ -488,13 +490,11 @@ def _surgery_buckets(s: Surgery, today: Optional[_date] = None) -> set[str]:
     if _assistant_surgeon_outstanding(s):
         buckets.add("needs_assistant_surgeon")
 
-    # Unresponsive: Klara scheduling was sent but the patient hasn't picked
-    # a date in the past 7+ days. Helps schedulers triage stalled outreach.
-    if not has_date and is_done("klara_scheduling"):
-        klara = by_kind.get("klara_scheduling")
-        sent_at = klara.completed_at if klara else None
-        if sent_at and (today - sent_at.date()).days >= UNRESPONSIVE_AFTER_DAYS:
-            buckets.add("unresponsive")
+    # Unresponsive: pre-op visit happened 30+ days ago but the patient
+    # hasn't picked a surgery date. Helps schedulers triage stalled patients.
+    if (not has_date and s.preop_date
+            and (today - s.preop_date).days >= UNRESPONSIVE_AFTER_DAYS):
+        buckets.add("unresponsive")
 
     if has_date:
         buckets.add("date_picked")
@@ -1313,8 +1313,8 @@ def milestone_action(
         m.status = "done"
         m.completed_at = now
         m.completed_by = me
-        # First milestone done? auto-bump status from new → in_progress
-        if s.status == "new":
+        # benefits_determined is the canonical gate from New → Benefits Check
+        if s.status == "new" and m.kind == "benefits_determined":
             s.status = "in_progress"
     elif action == "skip":
         m.status = "skipped"
@@ -2666,6 +2666,8 @@ def coordinator_schedule(
     db.add(slot)
     s.scheduled_date = bd.block_date
     s.selected_facility = bd.facility
+    if s.status in ("new", "in_progress"):
+        s.status = "confirmed"
     audit_body = (f"Coordinator scheduled {bd.block_date} {start.strftime('%H:%M')} "
                   f"({duration} min, template default {default} min) at {bd.facility}.")
     if payload.override_reason:
