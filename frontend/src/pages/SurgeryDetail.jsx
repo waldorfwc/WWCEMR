@@ -396,12 +396,12 @@ function PaymentsSection({ surgery, flat = false }) {
   // the view.
   const allPayments = data?.payments || []
   const payments = (() => {
-    const seenRequested = false ? null : { v: false }
+    let seenRequested = false
     const out = []
     for (const p of allPayments) {
       if (p.status === 'requested') {
-        if (seenRequested.v) continue
-        seenRequested.v = true
+        if (seenRequested) continue
+        seenRequested = true
       }
       out.push(p)
     }
@@ -4576,6 +4576,10 @@ function BenefitsPanel({ surgery }) {
       setManualError(null)
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
       qc.invalidateQueries({ queryKey: ['surgery-payments', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      qc.refetchQueries({ queryKey: ['surgery', surgery.id] })
+      qc.refetchQueries({ queryKey: ['surgery-payments', surgery.id] })
     },
     onError: (e) => {
       const d = e?.response?.data?.detail
@@ -4692,7 +4696,7 @@ function BenefitsPanel({ surgery }) {
         </div>
       </div>
 
-      {/* Live breakdown */}
+      {/* Live breakdown — 'patient owes' subtracts amount already paid (manual + Stripe) */}
       <div className="bg-plum-50/40 border border-plum-100 rounded p-3 text-xs mb-3">
         <div className="text-[10px] uppercase tracking-wide text-plum-700 font-semibold mb-1">
           Live preview
@@ -4702,9 +4706,11 @@ function BenefitsPanel({ surgery }) {
           <Stat label="Coinsurance portion"  val={`$${calc.coins_portion.toFixed(2)}`}
                   sub={calc.after_ded > 0 ? `${form.coinsurance_pct || 0}% of $${calc.after_ded.toFixed(2)}` : null} />
           <Stat label="Copay"                val={`$${(calc.copay || 0).toFixed(2)}`} />
-          <Stat label="Patient owes"         val={`$${calc.final.toFixed(2)}`}
+          <Stat label="Patient owes"         val={`$${Math.max(0, calc.final - Number(surgery.amount_paid || 0)).toFixed(2)}`}
                   big tone={calc.capped ? 'amber' : 'green'}
-                  sub={calc.capped ? '⚠ Capped by OOP max' : null} />
+                  sub={Number(surgery.amount_paid || 0) > 0
+                         ? `Estimate ${'$' + calc.final.toFixed(2)} − $${Number(surgery.amount_paid || 0).toFixed(2)} already paid`
+                         : (calc.capped ? '⚠ Capped by OOP max' : null)} />
         </div>
         {calc.oop_remaining !== null && (
           <div className="text-[10px] text-gray-500 mt-2">
