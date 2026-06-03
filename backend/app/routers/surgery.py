@@ -2054,6 +2054,47 @@ def send_boarding_slip(surgery_id: str,
             "send_history": f.send_history or []}
 
 
+@router.post("/candidates/bulk-import")
+async def bulk_import_candidates(
+    file: UploadFile = File(...),
+    dry_run: bool = Query(True),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(require_permission("surgery:work")),
+):
+    """Upload a ModMed-style patient roster Excel and create Surgery rows
+    in 'incomplete' status. Defaults to dry-run so the coordinator can
+    preview the row breakdown before committing.
+
+    Skips a chart number when an active (non-cancelled, non-completed)
+    surgery already exists for that chart.
+    """
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=422, detail="empty file")
+    if len(contents) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=413,
+                            detail="file >25 MB; split it into smaller batches")
+
+    from app.services.surgery_candidate_import import parse_excel, import_rows
+    try:
+        rows = parse_excel(contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=422,
+                            detail=f"Could not parse Excel: {exc}")
+
+    if not rows:
+        return {"total": 0, "created": 0, "skipped": 0, "errors": 0,
+                "created_rows": [], "skipped_rows": [], "error_rows": [],
+                "dry_run": dry_run, "filename": file.filename}
+
+    result = import_rows(db, rows, dry_run=dry_run,
+                          by_email=current_user.get("email") or "system")
+    result["filename"] = file.filename
+    return result
+
+
 # ─── Klara message drafter ──────────────────────────────────────────
 
 @router.get("/{surgery_id}/klara-draft/{kind}")
