@@ -129,7 +129,7 @@ export default function SurgeryDetail() {
               {s.dob && <> · DOB {fmt.date(s.dob)}{s.age != null && ` (age ${s.age})`}</>}
               {s.phone && <> · {s.phone}</>}
             </div>
-            <PickDateLink surgeryId={s.id} />
+            <PickDateLink />
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -1444,8 +1444,8 @@ const FACILITY_SHORT = {
 }
 
 
-function PickDateLink({ surgeryId }) {
-  const url = `${window.location.origin}/p/surgery/${surgeryId}`
+function PickDateLink() {
+  const url = `${window.location.origin}/portal/login`
   const [copied, setCopied] = useState(false)
   function copy() {
     navigator.clipboard.writeText(url).then(() => {
@@ -1455,7 +1455,7 @@ function PickDateLink({ surgeryId }) {
   }
   return (
     <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-      <span className="text-gray-500">Patient pick-a-date link:</span>
+      <span className="text-gray-500">Patient portal link:</span>
       <a href={url}
          target="_blank"
          rel="noopener noreferrer"
