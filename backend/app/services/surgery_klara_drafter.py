@@ -75,8 +75,8 @@ def _money(v) -> str:
 
 
 def _patient_link(s: Surgery) -> str:
-    """Stub for the Phase 2 patient self-service date picker."""
-    return f"https://gw.waldorfwomenscare.com/p/surgery/{s.id}"
+    """Patient portal entry point. They sign in with DOB + last 4 of phone."""
+    return "https://gw.waldorfwomenscare.com/portal/login"
 
 
 # ─── Templates ───────────────────────────────────────────────────

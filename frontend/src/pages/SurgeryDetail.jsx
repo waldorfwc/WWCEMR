@@ -507,7 +507,7 @@ function PortalAccessPanel({ surgery }) {
     },
   })
 
-  const portalUrl = `https://gw.waldorfwomenscare.com/p/surgery/${surgery.id}`
+  const portalUrl = `https://gw.waldorfwomenscare.com/portal/login`
   const [copied, setCopied] = useState(false)
   function copyLink() {
     navigator.clipboard.writeText(portalUrl)

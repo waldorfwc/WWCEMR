@@ -1767,9 +1767,7 @@ def generate_clearance_form(surgery_id: str,
     if s.email:
         try:
             from app.services.patient_email import send_patient_email
-            portal_url = (
-                f"https://gw.waldorfwomenscare.com/portal/s/{s.id}/documents"
-            )
+            portal_url = "https://gw.waldorfwomenscare.com/portal/login"
             html = f"""
             <p>Hello {s.patient_name or 'there'},</p>
             <p>Your pre-operative cardiac/anesthesia clearance form is ready.
@@ -2275,7 +2273,7 @@ def send_portal_access(surgery_id: str,
                             detail="No email on file for this patient. "
                                    "Use the Klara drafter to send by SMS instead.")
 
-    portal_url = f"https://gw.waldorfwomenscare.com/p/surgery/{s.id}"
+    portal_url = "https://gw.waldorfwomenscare.com/portal/login"
     first = (s.first_name or (s.patient_name or "").split(",")[-1].strip().split()[0]
              if s.patient_name else "there")
     html = f"""
