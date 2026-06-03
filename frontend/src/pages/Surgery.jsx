@@ -256,14 +256,37 @@ export default function Surgery() {
         </div>
       </div>
 
-      {/* Action-bucket chip bar — horizontally scrollable on narrow screens */}
-      <div className="flex flex-wrap gap-1.5 mb-4">
-        {BUCKET_DEFS.map(b => (
+      {/* Status row — Unresponsive + Needs Repeat Pre-op */}
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-medium
+                          self-center mr-1">
+          Status
+        </div>
+        {STATUS_BUCKETS.map(b => (
           <BucketChip
             key={b.k}
             label={b.l}
             val={dash?.buckets?.[b.k]}
             tone={b.tone}
+            descr={b.descr}
+            active={filters.bucket === b.k}
+            onClick={() => setF({ bucket: filters.bucket === b.k ? '' : b.k })}
+          />
+        ))}
+      </div>
+
+      {/* Step chips — numbered circle + title + count, ordered by step */}
+      <div className="flex flex-wrap items-stretch gap-1.5 mb-4">
+        <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-medium
+                          self-center mr-1">
+          Steps
+        </div>
+        {STEP_BUCKETS.map(b => (
+          <StepBucketChip
+            key={b.k}
+            n={b.n}
+            label={b.l}
+            val={dash?.buckets?.[b.k]}
             descr={b.descr}
             active={filters.bucket === b.k}
             onClick={() => setF({ bucket: filters.bucket === b.k ? '' : b.k })}
@@ -292,7 +315,13 @@ export default function Surgery() {
 
       {filters.bucket && (
         <div className="mb-2 text-xs text-gray-700">
-          Filtered to: <strong>{BUCKET_DEFS.find(b => b.k === filters.bucket)?.l}</strong>
+          Filtered to: <strong>{(() => {
+            const step = STEP_BUCKETS.find(b => b.k === filters.bucket)
+            if (step) return `Step ${step.n} · ${step.l}`
+            return STATUS_BUCKETS.find(b => b.k === filters.bucket)?.l
+                || BUCKET_DEFS.find(b => b.k === filters.bucket)?.l
+                || filters.bucket
+          })()}</strong>
           <button onClick={() => setF({ bucket: '' })}
                   className="ml-2 text-plum-700 hover:underline">clear filter</button>
         </div>
@@ -631,6 +660,62 @@ function PresetChip({ preset, onLoad, onSetDefault, onDelete }) {
         <Trash2 size={10} />
       </button>
     </div>
+  )
+}
+
+
+// Status filters (state, not workflow steps).
+const STATUS_BUCKETS = [
+  { k: 'unresponsive',       l: 'Unresponsive',       tone: 'red', descr: 'Pre-op visit was 30+ days ago and patient still has not picked a surgery date' },
+  { k: 'needs_repeat_preop', l: 'Needs Repeat Pre-op', tone: 'red', descr: 'Pre-op was >180 days before surgery — must be repeated' },
+]
+
+
+// Step-aligned action chips. The `n` is the Step number on the Surgery
+// detail page (hospital 15-step flow); `k` is the existing dashboard bucket
+// key the backend computes. Ordered by step number.
+const STEP_BUCKETS = [
+  { n: 2,  k: 'needs_benefits',           l: 'Benefits',         descr: 'Insurance benefits not yet determined' },
+  { n: 4,  k: 'needs_consent',            l: 'Consents',         descr: 'Date is picked but consent is not signed' },
+  { n: 5,  k: 'needs_followup_appt',      l: 'Post-Op Dates',    descr: 'Date picked but post-op appointment not scheduled' },
+  { n: 7,  k: 'needs_prior_auth',         l: 'Prior Auth',       descr: 'Authorization not yet granted' },
+  { n: 8,  k: 'needs_clearance',          l: 'Clearance / EKG',  descr: 'Medical clearance pending' },
+  { n: 9,  k: 'needs_assistant_surgeon',  l: 'Asst Surgeon',     descr: 'Assistant surgeon required — office not notified or patient appt not confirmed' },
+  { n: 12, k: 'needs_labs',               l: 'Labs',             descr: 'Hospital surgery within 7 days, no labs sent' },
+  { n: 13, k: 'needs_post_op_call',       l: 'Post-Op F/U',      descr: 'Surgery date passed and we have not spoken to patient' },
+  { n: 14, k: 'needs_post_op_docs',       l: 'Notes & Reports',  descr: '5+ days post-op, op notes not received' },
+  { n: 15, k: 'needs_billed',             l: 'Bill Surgery',     descr: 'Op notes received, not yet billed' },
+]
+
+
+function StepBucketChip({ n, label, val, descr, active, onClick }) {
+  const showVal = val !== undefined && val !== null && val !== '—'
+  return (
+    <button type="button"
+            onClick={onClick}
+            title={descr}
+            className={`inline-flex items-center gap-2 pl-1 pr-2.5 py-1 rounded-full
+                          border text-[12px] transition ${
+                            active
+                              ? 'bg-plum-700 text-white border-plum-700 shadow-sm'
+                              : 'bg-white text-plum-700 border-plum-200 hover:bg-plum-50'
+                          }`}>
+        <span className={`w-6 h-6 rounded-full grid place-items-center text-[11px] font-semibold ${
+          active ? 'bg-white text-plum-700' : 'bg-plum-100 text-plum-700'
+        }`}>
+          {n}
+        </span>
+        <span className={`font-medium ${active ? 'text-white' : 'text-plum-ink'}`}>
+          {label}
+        </span>
+        {showVal && (
+          <span className={`text-[11px] font-semibold ${
+            active ? 'text-white/90' : 'text-plum-700/80'
+          }`}>
+            {val}
+          </span>
+        )}
+    </button>
   )
 }
 
