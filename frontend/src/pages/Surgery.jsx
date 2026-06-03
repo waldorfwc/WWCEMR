@@ -235,6 +235,7 @@ export default function Surgery() {
           </Link>
           <MessagesLink />
           <ManualCreateButton />
+          <UploadDemographicsButton />
           <UploadOrderButton />
         </div>
       </div>
@@ -881,6 +882,18 @@ function SurgeryRow({ s, onOpen }) {
 }
 
 
+function UploadDemographicsButton() {
+  const { has } = useCurrentUser()
+  if (!has?.('surgery:work')) return null
+  return (
+    <Link to="/surgery/bulk-import"
+          className="btn-secondary text-sm flex items-center gap-1">
+      <Upload size={13} /> Upload Surgery Patient Demographics
+    </Link>
+  )
+}
+
+
 function UploadOrderButton() {
   const { has } = useCurrentUser()
   const [open, setOpen] = useState(false)
@@ -889,7 +902,7 @@ function UploadOrderButton() {
     <>
       <button onClick={() => setOpen(true)}
               className="btn-primary text-sm flex items-center gap-1">
-        <Upload size={13} /> Upload surgery order
+        <Upload size={13} /> Upload Surgery Order
       </button>
       {open && <UploadDrawer onClose={() => setOpen(false)} />}
     </>
@@ -936,9 +949,12 @@ function UploadDrawer({ onClose }) {
         <div className="p-6 space-y-4">
           <div className="card !p-3 text-xs text-gray-700 bg-gray-50">
             Upload a ModMed surgery order PDF. The system will use Claude to
-            extract patient, procedure, insurance, and facility info, then
-            create a new surgery in <strong>incomplete</strong> status. Review
-            and complete the extracted fields, then mark it as <strong>new</strong>.
+            extract patient, procedure, insurance, and facility info. If the
+            chart number matches a row already imported via{' '}
+            <strong>Upload Surgery Patient Demographics</strong>, the order
+            will be mapped onto that existing row; otherwise a new surgery is
+            created in <strong>incomplete</strong> status. Review and then
+            mark as <strong>new</strong>.
           </div>
 
           <div className="card !p-3 space-y-2">
@@ -983,7 +999,9 @@ function UploadDrawer({ onClose }) {
 
           {result && !result.duplicate && (
             <div className="card !p-3 bg-green-50 border-green-200 text-xs text-green-900 space-y-1">
-              <div className="font-semibold">✓ Surgery created</div>
+              <div className="font-semibold">
+                {result.merged ? '✓ Order mapped to existing patient' : '✓ Surgery created'}
+              </div>
               <p>{result.message}</p>
               <div className="text-[11px] text-gray-700 mt-2 space-y-0.5">
                 <div><strong>Patient:</strong> {result.extracted.patient_name} (chart {result.extracted.chart_number})</div>

@@ -774,13 +774,44 @@ async def upload_order(
                             detail="Parser couldn't extract patient identity. "
                                    "Try manually creating the surgery instead.")
 
-    # Avoid duplicates: same chart + same procedures + status not cancelled
+    # If a demographics-only row exists for this chart (from the bulk
+    # roster import), merge the parsed surgery fields into it rather than
+    # creating a duplicate.
     existing = (db.query(Surgery)
                   .filter(Surgery.chart_number == kwargs["chart_number"],
                           Surgery.status.notin_(["cancelled", "completed"]))
                   .first())
     if existing:
-        # Don't auto-merge; surface the existing row so the scheduler decides
+        if existing.sub_flag == "candidate_imported":
+            # Order PDF wins for surgery-specific fields; keep existing
+            # demographics (phone/email/address) since they came from
+            # ModMed and may be richer than the order header.
+            _ORDER_FIELDS = {
+                "patient_name", "first_name", "last_name", "dob",
+                "primary_insurance", "primary_member_id",
+                "secondary_insurance", "secondary_member_id",
+                "procedures", "diagnoses",
+                "eligible_facilities", "estimated_minutes",
+                "is_robotic", "is_urgent",
+                "surgeon_primary", "scheduled_at",
+            }
+            for k, v in kwargs.items():
+                if k in _ORDER_FIELDS and v not in (None, "", [], {}):
+                    setattr(existing, k, v)
+            existing.order_pdf_path = pdf_key
+            existing.sub_flag = None
+            db.commit(); db.refresh(existing)
+            return {
+                "duplicate": False,
+                "merged": True,
+                "id": str(existing.id),
+                "status": existing.status,
+                "extracted": kwargs,
+                "message": (f"Mapped surgery order onto existing demographics row for "
+                            f"{existing.patient_name} (chart {existing.chart_number}). "
+                            "Review the merged fields, then mark as 'new'."),
+            }
+        # Real duplicate — surface for the scheduler to decide
         return {
             "duplicate": True,
             "existing_id": str(existing.id),
