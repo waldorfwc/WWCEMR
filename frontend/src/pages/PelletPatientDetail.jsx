@@ -2485,6 +2485,29 @@ function HormoneAlternatives({ label, alts, picked, onPick }) {
                     </span>
                   ))}
                 </div>
+                {alt.components.some(c => (c.fifo_lots || []).length > 0) && (
+                  <ul className="mt-1 space-y-0.5 text-[10px] text-gray-500">
+                    {alt.components.map((c, j) => (
+                      <li key={j}>
+                        <span className="text-gray-700 font-medium">{c.count}× {c.dose_mg}mg</span>
+                        {(c.fifo_lots || []).map((lot, k) => (
+                          <span key={k} className="ml-1">
+                            {k > 0 && ', '}
+                            <span className="font-mono">
+                              {lot.count > 1 ? `${lot.count}× ` : ''}lot {lot.qualgen_lot_number}
+                            </span>
+                            {lot.expiration_date && (
+                              <span className="text-gray-400"> · exp {fmt.date(lot.expiration_date)}</span>
+                            )}
+                          </span>
+                        ))}
+                        {(c.fifo_lots || []).length === 0 && (
+                          <span className="text-red-600 ml-1">no lot available</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               {inStock ? (
                 <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-green-100 text-green-700 shrink-0">

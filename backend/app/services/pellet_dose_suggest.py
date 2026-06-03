@@ -51,9 +51,53 @@ def suggest_for_hormone(
                     .join(PelletLot, PelletLot.dose_type_id == PelletDoseType.id)
                     .join(PelletStock, PelletStock.lot_id == PelletLot.id)
                     .filter(PelletDoseType.hormone == hormone,
-                            PelletStock.location == location)
+                            PelletStock.location == location,
+                            PelletStock.status == "active")
                     .group_by(PelletDoseType.id).all())
     on_hand_by_type = {str(t_id): int(qty or 0) for (t_id, qty) in stock_rows}
+
+    # FIFO lots per dose type at this location (earliest-expiring first).
+    # We use these later to project which lots would be pulled per component.
+    lot_rows = (db.query(PelletLot, PelletStock)
+                  .join(PelletStock, PelletStock.lot_id == PelletLot.id)
+                  .join(PelletDoseType, PelletDoseType.id == PelletLot.dose_type_id)
+                  .filter(PelletDoseType.hormone == hormone,
+                          PelletStock.location == location,
+                          PelletStock.status == "active",
+                          PelletStock.doses_on_hand > 0)
+                  .order_by(PelletLot.expiration_date.asc().nullslast(),
+                              PelletLot.received_at.asc())
+                  .all())
+    lots_by_type: dict[str, list[dict]] = {}
+    for lot, stock in lot_rows:
+        lots_by_type.setdefault(str(lot.dose_type_id), []).append({
+            "lot_id":             str(lot.id),
+            "qualgen_lot_number": lot.qualgen_lot_number,
+            "expiration_date":    (lot.expiration_date.isoformat()
+                                    if lot.expiration_date else None),
+            "available":          int(stock.doses_on_hand or 0),
+        })
+
+    def _allocate_fifo(dt_id: str, want: int) -> list[dict]:
+        """Walk FIFO lots and project how many pellets come from each.
+        Returns a list of {lot_id, qualgen_lot_number, expiration_date, count}
+        sized as needed (may be shorter than `want` if stock is short)."""
+        out = []
+        remaining = int(want)
+        for lot in lots_by_type.get(dt_id, []):
+            if remaining <= 0:
+                break
+            take = min(lot["available"], remaining)
+            if take <= 0:
+                continue
+            out.append({
+                "lot_id":             lot["lot_id"],
+                "qualgen_lot_number": lot["qualgen_lot_number"],
+                "expiration_date":    lot["expiration_date"],
+                "count":              take,
+            })
+            remaining -= take
+        return out
 
     target_tenths = _to_tenths(target_mg)
     if target_tenths <= 0:
@@ -111,6 +155,7 @@ def suggest_for_hormone(
                 "count":        count,
                 "on_hand":      on_hand,
                 "short":        short,
+                "fifo_lots":    _allocate_fifo(t_id, count),
             })
         per_dose.sort(key=lambda x: -x["dose_mg"])  # display largest first
         scored.append({
