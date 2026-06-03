@@ -489,6 +489,120 @@ function PaymentsSection({ surgery, flat = false }) {
 
 // ─── Portal access invite ─────────────────────────────────────────
 
+function FeeScheduleButton({ surgeryId, onApplied }) {
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [open, setOpen] = useState(false)
+  const [error, setError] = useState(null)
+
+  async function preview() {
+    setBusy(true); setError(null)
+    try {
+      const r = await api.get(`/surgery/${surgeryId}/fee-schedule/preview`)
+      setResult(r.data); setOpen(true)
+    } catch (e) {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Lookup failed'))
+    } finally { setBusy(false) }
+  }
+  async function apply() {
+    setBusy(true); setError(null)
+    try {
+      const r = await api.post(`/surgery/${surgeryId}/fee-schedule/apply`)
+      onApplied?.(r.data.allowed_amount)
+      setResult(r.data.preview); setOpen(true)
+    } catch (e) {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Apply failed'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <>
+      <button onClick={preview} disabled={busy}
+              className="btn-secondary text-[11px] flex items-center gap-1">
+        <DollarSign size={11} /> {busy ? 'Looking up…' : 'Pull from Fee Schedule'}
+      </button>
+      {error && <span className="text-[11px] text-red-700 ml-2">{error}</span>}
+      {open && result && (
+        <FeeSchedulePreviewModal
+          result={result}
+          busy={busy}
+          onApply={apply}
+          onClose={() => { setOpen(false); setResult(null) }} />
+      )}
+    </>
+  )
+}
+
+
+function FeeSchedulePreviewModal({ result, busy, onApply, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+         onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full"
+           onClick={e => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 text-sm">
+            Fee schedule preview · {result.insurance || 'no insurance set'}
+          </h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="text-[12px] text-gray-700">
+            Total allowed: <span className="font-mono font-semibold text-lg text-emerald-700">
+              ${result.total_allowed.toFixed(2)}
+            </span>
+          </div>
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-left text-[10px] uppercase text-gray-500 border-b">
+                <th className="py-1">CPT</th>
+                <th className="py-1 text-right">Schedule</th>
+                <th className="py-1 text-right">Applied</th>
+                <th className="py-1">Why</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {result.per_cpt.map(r => (
+                <tr key={r.cpt}>
+                  <td className="py-1.5 font-mono">{r.cpt}</td>
+                  <td className="py-1.5 text-right font-mono">
+                    {r.allowed_from_schedule != null
+                      ? `$${r.allowed_from_schedule.toFixed(2)}` : '—'}
+                  </td>
+                  <td className="py-1.5 text-right font-mono">
+                    {r.applied != null ? `$${r.applied.toFixed(2)}` : '—'}
+                  </td>
+                  <td className="py-1.5 text-gray-600">{r.reason || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {result.warnings?.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded p-2 text-[11px] text-amber-900">
+              <ul className="list-disc pl-4 space-y-0.5">
+                {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary text-sm">Close</button>
+          <button onClick={onApply} disabled={busy}
+                  className="btn-primary text-sm flex items-center gap-1">
+            <DollarSign size={12} /> {busy ? 'Applying…' : 'Set as allowed amount'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 function PortalAccessPanel({ surgery }) {
   const qc = useQueryClient()
   const [result, setResult] = useState(null)
@@ -4388,10 +4502,14 @@ function BenefitsPanel({ surgery }) {
 
   return (
     <div className="card !p-3 mt-3">
-      <div className="flex items-center gap-1.5 mb-2">
+      <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         <Calculator size={14} className="text-emerald-700" />
         <h3 className="text-sm font-semibold text-gray-800">Benefits calculator</h3>
         <span className="text-[11px] text-gray-500">Patient responsibility for this surgery</span>
+        <span className="flex-1" />
+        <FeeScheduleButton
+          surgeryId={surgery.id}
+          onApplied={(allowed) => update('allowed_amount', String(allowed))} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">

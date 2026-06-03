@@ -5,6 +5,7 @@ import {
   Activity, AlertTriangle, BookOpen, Calendar, CheckCircle2, Clock, Hospital,
   Search, Stethoscope, TrendingUp, Users, Building2, Upload, X, FileText, Settings,
   Check, Phone, Save, Star, ChevronDown, ChevronUp, Trash2, MessageSquare,
+  DollarSign,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
@@ -241,6 +242,10 @@ export default function Surgery() {
           <Link to="/surgery/block-schedule"
                 className="btn-secondary text-sm flex items-center gap-1">
             <Settings size={13} /> Block schedule
+          </Link>
+          <Link to="/surgery/fee-schedule"
+                className="btn-secondary text-sm flex items-center gap-1">
+            <DollarSign size={13} /> Fee schedule
           </Link>
           <Link to="/surgery/waitlist"
                 className="btn-secondary text-sm flex items-center gap-1">

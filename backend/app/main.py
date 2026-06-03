@@ -17,8 +17,10 @@ from app.routers import stripe_payments
 from app.routers import surgery_messages
 from app.routers import message_templates
 from app.routers import reputation_public, reputation_admin
+from app.routers import fee_schedule as fee_schedule_router
 from app.models import patient_email as _patient_email_models  # noqa: F401
 from app.models import patient_sms as _patient_sms_models  # noqa: F401
+from app.models import fee_schedule as _fee_schedule_models  # noqa: F401
 
 # RBAC guards. Every router below gates on a specific permission, computed
 # from the user's group memberships + per-user extras/revokes (see
@@ -153,6 +155,8 @@ app.include_router(boldsign.router, prefix="/api")
 app.include_router(consent_templates.router, prefix="/api")
 # User-scoped saved filter presets for the surgery dashboard
 app.include_router(surgery_filter_presets.router, prefix="/api")
+# Surgery fee schedule + CCI/MPR admin + per-surgery calculator
+app.include_router(fee_schedule_router.router, prefix="/api")
 # LARC device inventory + tracking
 app.include_router(larc.router, prefix="/api")
 # Pellet inventory + receiving + DEA-compliant audit

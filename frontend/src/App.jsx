@@ -53,6 +53,7 @@ import Recalls from './pages/Recalls'
 import Surgery from './pages/Surgery'
 import SurgeryDetail from './pages/SurgeryDetail'
 import SurgeryBulkImport from './pages/SurgeryBulkImport'
+import SurgeryFeeSchedule from './pages/SurgeryFeeSchedule'
 import StaffInbox from './pages/StaffInbox'
 import StaffMessageTemplates from './pages/StaffMessageTemplates'
 import SurgeryBlockSchedule from './pages/SurgeryBlockSchedule'
@@ -124,6 +125,7 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/surgery/waitlist"        element={<SurgeryWaitlist />} />
             <Route path="/surgery/calendar"        element={<SurgeryCalendar />} />
             <Route path="/surgery/bulk-import"     element={<SurgeryBulkImport />} />
+            <Route path="/surgery/fee-schedule"    element={<SurgeryFeeSchedule />} />
             <Route path="/surgery/:id"         element={<SurgeryDetail />} />
             <Route path="/surgery/messages"    element={<StaffInbox />} />
             <Route path="/larc"                element={<Larc />} />
