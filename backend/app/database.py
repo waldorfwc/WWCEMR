@@ -270,6 +270,14 @@ def _apply_lightweight_migrations():
         ("surgeries", "billed_at", "DATETIME"),
         ("surgeries", "billed_by", "VARCHAR(120)"),
         ("surgeries", "billing_ai_notes", "TEXT"),
+        # Secondary insurance benefit fields + card-on-file metadata
+        ("surgeries", "secondary_deductible",       "NUMERIC(10,2)"),
+        ("surgeries", "secondary_deductible_met",   "NUMERIC(10,2)"),
+        ("surgeries", "secondary_copay",            "NUMERIC(10,2)"),
+        ("surgeries", "secondary_coinsurance_pct",  "NUMERIC(5,2)"),
+        ("surgeries", "secondary_oop_max",          "NUMERIC(10,2)"),
+        ("surgeries", "secondary_oop_met",          "NUMERIC(10,2)"),
+        ("surgeries", "card_on_file",               "BOOLEAN DEFAULT FALSE"),
         # ModMed schedule confirmation + office med pickup
         ("surgeries", "scheduled_in_modmed_by", "VARCHAR(120)"),
         ("surgeries", "office_meds_pickup_confirmed_at", "DATETIME"),

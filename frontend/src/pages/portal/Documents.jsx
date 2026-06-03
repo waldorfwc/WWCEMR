@@ -52,6 +52,47 @@ function InstructionsCard() {
   )
 }
 
+function EstimateCard({ sid, estimate }) {
+  if (!estimate) {
+    return (
+      <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+        <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">
+          Patient Responsibility Estimate
+        </h2>
+        <p className="text-sm text-gray-600">
+          Once our coordinator confirms your benefits we'll post your written
+          estimate here.
+        </p>
+      </section>
+    )
+  }
+  return (
+    <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
+      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">
+        Patient Responsibility Estimate
+      </h2>
+      <ul className="divide-y divide-plum-50">
+        <li className="py-2 flex items-center justify-between">
+          <div className="text-sm">
+            <div className="text-gray-800">{estimate.filename}</div>
+            {estimate.uploaded_at && (
+              <div className="text-[11px] text-gray-500 mt-0.5">
+                Prepared {new Date(estimate.uploaded_at).toLocaleDateString(
+                            undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+              </div>
+            )}
+          </div>
+          <PdfDownloadButton
+            url={`/${sid}/documents/estimate/${estimate.id}`}
+            filename="patient_responsibility_estimate.pdf"
+            label="Download" />
+        </li>
+      </ul>
+    </section>
+  )
+}
+
+
 function ConsentDocsCard({ sid, consents }) {
   if (!consents?.length) {
     return (
@@ -466,6 +507,7 @@ export default function Documents() {
       </header>
       <div className="space-y-4">
         <InstructionsCard />
+        <EstimateCard sid={sid} estimate={data.estimate} />
         <ConsentDocsCard sid={sid} consents={data.consents} />
         <ReceiptsCard receipts={data.receipts} />
         <LabsAppointmentCard sid={sid} labs={data.labs} refetchDocs={refetchDocs} />

@@ -194,6 +194,13 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "oop_max": (str(s.oop_max) if s.oop_max is not None else None),
         "oop_met": (str(s.oop_met) if s.oop_met is not None else None),
         "allowed_amount": (str(s.allowed_amount) if s.allowed_amount is not None else None),
+        "secondary_deductible":      (str(s.secondary_deductible)      if s.secondary_deductible      is not None else None),
+        "secondary_deductible_met":  (str(s.secondary_deductible_met)  if s.secondary_deductible_met  is not None else None),
+        "secondary_copay":           (str(s.secondary_copay)           if s.secondary_copay           is not None else None),
+        "secondary_coinsurance_pct": (str(s.secondary_coinsurance_pct) if s.secondary_coinsurance_pct is not None else None),
+        "secondary_oop_max":         (str(s.secondary_oop_max)         if s.secondary_oop_max         is not None else None),
+        "secondary_oop_met":         (str(s.secondary_oop_met)         if s.secondary_oop_met         is not None else None),
+        "card_on_file":              bool(s.card_on_file),
         "status": s.status,
         "sub_flag": s.sub_flag,
         "is_urgent": s.urgency == "urgent",
@@ -3188,38 +3195,102 @@ class BenefitsPayload(BaseModel):
     oop_max: Optional[float] = None            # annual out-of-pocket max
     oop_met: Optional[float] = None
     allowed_amount: Optional[float] = None     # insurance-allowed for this surgery
+    # Secondary insurance — when present, runs a second pass that reduces
+    # the primary responsibility by what secondary covers.
+    secondary_deductible:      Optional[float] = None
+    secondary_deductible_met:  Optional[float] = None
+    secondary_copay:           Optional[float] = None
+    secondary_coinsurance_pct: Optional[float] = None
+    secondary_oop_max:         Optional[float] = None
+    secondary_oop_met:         Optional[float] = None
+    # Card-on-file metadata
+    card_on_file: Optional[bool] = None
     save: bool = True   # set False to preview without persisting
 
 
-def _calc_patient_responsibility(*, allowed_amount: float, deductible: float,
-                                   deductible_met: float, copay: float,
-                                   coinsurance_pct: float,
-                                   oop_max: float, oop_met: float) -> dict:
-    """Standard health-plan math. Returns a breakdown for the UI."""
+def _one_payer_share(*, base: float, deductible: float, deductible_met: float,
+                       copay: float, coinsurance_pct: float,
+                       oop_max: float, oop_met: float) -> dict:
+    """Run the standard payer math against `base` (= allowed for primary;
+    = post-primary patient share for secondary). Returns the payer's own
+    breakdown (their deductible portion, coinsurance portion, copay)
+    *plus* the resulting patient-owed amount on that pass."""
     deductible_remaining = max(0.0, deductible - deductible_met)
     oop_remaining = max(0.0, oop_max - oop_met) if oop_max > 0 else float("inf")
 
-    # Patient pays toward deductible first
-    deductible_portion = min(allowed_amount, deductible_remaining)
-    after_deductible = allowed_amount - deductible_portion
-
-    # Coinsurance applies to the post-deductible amount
-    coins_rate = coinsurance_pct / 100.0
+    deductible_portion = min(base, deductible_remaining)
+    after_deductible   = base - deductible_portion
+    coins_rate         = coinsurance_pct / 100.0
     coinsurance_portion = round(after_deductible * coins_rate, 2)
-
-    raw_responsibility = deductible_portion + coinsurance_portion + copay
-    capped_responsibility = round(min(raw_responsibility, oop_remaining), 2)
+    raw                = deductible_portion + coinsurance_portion + copay
+    capped             = round(min(raw, oop_remaining), 2)
 
     return {
         "deductible_remaining": round(deductible_remaining, 2),
-        "deductible_portion": round(deductible_portion, 2),
-        "after_deductible": round(after_deductible, 2),
-        "coinsurance_portion": coinsurance_portion,
-        "copay_portion": round(copay, 2),
-        "oop_remaining": (round(oop_remaining, 2) if oop_remaining != float("inf") else None),
-        "raw_responsibility": round(raw_responsibility, 2),
-        "patient_responsibility": capped_responsibility,
-        "capped_by_oop_max": raw_responsibility > oop_remaining,
+        "deductible_portion":   round(deductible_portion, 2),
+        "after_deductible":     round(after_deductible, 2),
+        "coinsurance_portion":  coinsurance_portion,
+        "copay_portion":        round(copay, 2),
+        "raw":                  round(raw, 2),
+        "patient_owed":         capped,
+        "capped_by_oop_max":    raw > oop_remaining,
+        "oop_remaining":        (round(oop_remaining, 2) if oop_remaining != float("inf") else None),
+    }
+
+
+def _calc_patient_responsibility(*, allowed_amount: float,
+                                   deductible: float, deductible_met: float,
+                                   copay: float, coinsurance_pct: float,
+                                   oop_max: float, oop_met: float,
+                                   secondary_deductible: float = 0,
+                                   secondary_deductible_met: float = 0,
+                                   secondary_copay: float = 0,
+                                   secondary_coinsurance_pct: float = 0,
+                                   secondary_oop_max: float = 0,
+                                   secondary_oop_met: float = 0,
+                                   has_secondary: bool = False) -> dict:
+    """Two-stage health-plan math.
+
+    Stage 1 (primary): patient owes deductible_portion + coinsurance + copay
+    (capped at primary OOP-max remaining).
+
+    Stage 2 (secondary, if present): the secondary payer applies its own
+    deductible / coinsurance / copay against the patient's stage-1 share;
+    whatever secondary doesn't cover is the final patient responsibility.
+    """
+    primary = _one_payer_share(
+        base=allowed_amount,
+        deductible=deductible, deductible_met=deductible_met,
+        copay=copay, coinsurance_pct=coinsurance_pct,
+        oop_max=oop_max, oop_met=oop_met)
+
+    if has_secondary:
+        secondary = _one_payer_share(
+            base=primary["patient_owed"],
+            deductible=secondary_deductible,
+            deductible_met=secondary_deductible_met,
+            copay=secondary_copay,
+            coinsurance_pct=secondary_coinsurance_pct,
+            oop_max=secondary_oop_max, oop_met=secondary_oop_met)
+        final = secondary["patient_owed"]
+    else:
+        secondary = None
+        final = primary["patient_owed"]
+
+    return {
+        # Stage-1 fields kept at the top level for backwards compatibility
+        # with the frontend's live calc + the PDF.
+        "deductible_remaining":   primary["deductible_remaining"],
+        "deductible_portion":     primary["deductible_portion"],
+        "after_deductible":       primary["after_deductible"],
+        "coinsurance_portion":    primary["coinsurance_portion"],
+        "copay_portion":          primary["copay_portion"],
+        "oop_remaining":          primary["oop_remaining"],
+        "raw_responsibility":     primary["raw"],
+        "primary_patient_owed":   primary["patient_owed"],
+        "capped_by_oop_max":      primary["capped_by_oop_max"],
+        "secondary":              secondary,
+        "patient_responsibility": final,
     }
 
 
@@ -3244,6 +3315,8 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
         existing = getattr(s, attr or field)
         return float(existing or 0)
 
+    has_secondary = bool((s.secondary_insurance or "").strip())
+
     breakdown = _calc_patient_responsibility(
         allowed_amount=_g("allowed_amount"),
         deductible=_g("deductible"),
@@ -3252,16 +3325,28 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
         coinsurance_pct=_g("coinsurance_pct"),
         oop_max=_g("oop_max"),
         oop_met=_g("oop_met"),
+        secondary_deductible=_g("secondary_deductible"),
+        secondary_deductible_met=_g("secondary_deductible_met"),
+        secondary_copay=_g("secondary_copay"),
+        secondary_coinsurance_pct=_g("secondary_coinsurance_pct"),
+        secondary_oop_max=_g("secondary_oop_max"),
+        secondary_oop_met=_g("secondary_oop_met"),
+        has_secondary=has_secondary,
     )
 
     pdf_file_id = None
     if payload.save:
         # Persist whatever inputs were provided
         for field in ("deductible", "deductible_met", "copay",
-                       "coinsurance_pct", "oop_max", "oop_met", "allowed_amount"):
+                       "coinsurance_pct", "oop_max", "oop_met", "allowed_amount",
+                       "secondary_deductible", "secondary_deductible_met",
+                       "secondary_copay", "secondary_coinsurance_pct",
+                       "secondary_oop_max", "secondary_oop_met"):
             v = getattr(payload, field, None)
             if v is not None:
                 setattr(s, field, v)
+        if payload.card_on_file is not None:
+            s.card_on_file = payload.card_on_file
         s.patient_responsibility = breakdown["patient_responsibility"]
         s.benefits_verified_at = _date.today()
 
@@ -3292,6 +3377,75 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
         "pdf_file_id": pdf_file_id,
         "pdf_download_url": (f"/api/surgery/{s.id}/files/{pdf_file_id}/download"
                               if pdf_file_id else None),
+    }
+
+
+# ─── Manual payment offsets (ModPay / Check / Cash / Other) ─────────
+
+_MANUAL_PAYMENT_METHODS = {"modpay", "check", "cash", "other"}
+
+
+class ManualPaymentPayload(BaseModel):
+    method: str           # modpay | check | cash | other
+    amount: float
+    note:   Optional[str] = None
+
+
+@router.post("/{surgery_id}/payments/manual", status_code=201)
+def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
+                            db: Session = Depends(get_db),
+                            current_user: dict = Depends(require_permission("surgery:work"))):
+    """Record a payment that happened outside Stripe (ModMed Pay swipe,
+    check, cash, etc.). Bumps surgery.amount_paid and adds a SurgeryPayment
+    row (status='paid', kind='manual_offset') so it appears in the
+    Payment Status history."""
+    method = (payload.method or "").strip().lower()
+    if method not in _MANUAL_PAYMENT_METHODS:
+        raise HTTPException(status_code=422,
+                            detail=f"method must be one of {sorted(_MANUAL_PAYMENT_METHODS)}")
+    amt = round(float(payload.amount or 0), 2)
+    if amt <= 0:
+        raise HTTPException(status_code=422, detail="amount must be > 0")
+
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+
+    from app.models.stripe_payment import SurgeryPayment
+    pretty = {"modpay": "ModMed Pay", "check": "Check",
+              "cash": "Cash", "other": "Other"}[method]
+    description = f"Manual payment · {pretty}" + (f" — {payload.note}" if payload.note else "")
+
+    pay = SurgeryPayment(
+        surgery_id=s.id,
+        amount_requested=Decimal(str(amt)),
+        amount_paid=Decimal(str(amt)),
+        currency="usd",
+        status="paid",
+        kind="manual_offset",
+        description=description,
+        requested_by=current_user.get("email") or "system",
+        paid_at=datetime.utcnow(),
+    )
+    db.add(pay)
+
+    prior = Decimal(str(s.amount_paid or 0))
+    s.amount_paid = prior + Decimal(str(amt))
+
+    db.add(SurgeryNote(
+        surgery_id=s.id,
+        created_by=current_user.get("email"),
+        content=(f"Manual payment recorded: ${amt:.2f} via {pretty}"
+                  + (f" — {payload.note}" if payload.note else "")
+                  + f". New amount paid: ${float(s.amount_paid):.2f}."),
+    ))
+    db.commit(); db.refresh(s); db.refresh(pay)
+
+    outstanding = float(s.patient_responsibility or 0) - float(s.amount_paid or 0)
+    return {
+        "payment_id":   str(pay.id),
+        "amount_paid":  float(s.amount_paid or 0),
+        "outstanding":  round(outstanding, 2),
     }
 
 

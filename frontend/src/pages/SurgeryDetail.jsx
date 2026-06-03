@@ -4453,7 +4453,17 @@ function BenefitsPanel({ surgery }) {
     oop_max:           surgery.oop_max || '',
     oop_met:           surgery.oop_met || '',
     allowed_amount:    surgery.allowed_amount || '',
+    secondary_deductible:       surgery.secondary_deductible || '',
+    secondary_deductible_met:   surgery.secondary_deductible_met || '',
+    secondary_copay:            surgery.secondary_copay || '',
+    secondary_coinsurance_pct:  surgery.secondary_coinsurance_pct || '',
+    secondary_oop_max:          surgery.secondary_oop_max || '',
+    secondary_oop_met:          surgery.secondary_oop_met || '',
+    card_on_file:               !!surgery.card_on_file,
   })
+  const [manual, setManual] = useState({ method: 'modpay', amount: '', note: '' })
+  const [manualError, setManualError] = useState(null)
+  const hasSecondary = !!(surgery.secondary_insurance || '').trim()
   const [savedFlash, setSavedFlash] = useState(false)
   const [lastPdfUrl, setLastPdfUrl] = useState(null)
 
@@ -4464,38 +4474,61 @@ function BenefitsPanel({ surgery }) {
     return Number.isFinite(n) ? n : 0
   }
 
-  // Live calculation — same logic as the backend (kept in sync intentionally
-  // so the staff sees identical numbers without needing a round-trip).
-  const calc = useMemo(() => {
-    const allowed = num('allowed_amount')
-    const deductible = num('deductible')
-    const ded_met = num('deductible_met')
-    const copay = num('copay')
-    const coins_pct = num('coinsurance_pct')
-    const oop_max = num('oop_max')
-    const oop_met = num('oop_met')
-
+  // Live calculation — primary first, then secondary if present.
+  function _payerShare(base, deductible, ded_met, copay, coins_pct, oop_max, oop_met) {
     const ded_remaining = Math.max(0, deductible - ded_met)
     const oop_remaining = oop_max > 0 ? Math.max(0, oop_max - oop_met) : Infinity
-
-    const ded_portion = Math.min(allowed, ded_remaining)
-    const after_ded = allowed - ded_portion
+    const ded_portion   = Math.min(base, ded_remaining)
+    const after_ded     = Math.max(0, base - ded_portion)
     const coins_portion = round2(after_ded * (coins_pct / 100))
-    const raw = ded_portion + coins_portion + copay
-    const final = round2(Math.min(raw, oop_remaining))
-
+    const raw           = ded_portion + coins_portion + copay
+    const final         = round2(Math.min(raw, oop_remaining))
     return {
       ded_remaining: round2(ded_remaining),
-      ded_portion: round2(ded_portion),
-      after_ded: round2(after_ded),
+      ded_portion:   round2(ded_portion),
+      after_ded:     round2(after_ded),
       coins_portion,
-      copay,
-      raw: round2(raw),
-      final,
-      capped: raw > oop_remaining,
+      copay:         round2(copay),
+      raw:           round2(raw),
+      patient_owed:  final,
+      capped:        raw > oop_remaining,
       oop_remaining: oop_remaining === Infinity ? null : round2(oop_remaining),
     }
-  }, [form])
+  }
+  const calc = useMemo(() => {
+    const primary = _payerShare(
+      num('allowed_amount'),
+      num('deductible'), num('deductible_met'),
+      num('copay'),
+      num('coinsurance_pct'),
+      num('oop_max'), num('oop_met'),
+    )
+    let secondary = null
+    let patient_final = primary.patient_owed
+    if (hasSecondary) {
+      secondary = _payerShare(
+        primary.patient_owed,
+        num('secondary_deductible'), num('secondary_deductible_met'),
+        num('secondary_copay'),
+        num('secondary_coinsurance_pct'),
+        num('secondary_oop_max'), num('secondary_oop_met'),
+      )
+      patient_final = secondary.patient_owed
+    }
+    return {
+      // back-compat fields for the existing breakdown UI
+      ded_remaining: primary.ded_remaining,
+      ded_portion:   primary.ded_portion,
+      after_ded:     primary.after_ded,
+      coins_portion: primary.coins_portion,
+      copay:         primary.copay,
+      raw:           primary.raw,
+      final:         patient_final,
+      capped:        primary.capped,
+      oop_remaining: primary.oop_remaining,
+      primary, secondary,
+    }
+  }, [form, hasSecondary])
 
   const save = useMutation({
     mutationFn: () => api.post(`/surgery/${surgery.id}/benefits`, {
@@ -4506,6 +4539,13 @@ function BenefitsPanel({ surgery }) {
       oop_max: numOrNull(form.oop_max),
       oop_met: numOrNull(form.oop_met),
       allowed_amount: numOrNull(form.allowed_amount),
+      secondary_deductible:       numOrNull(form.secondary_deductible),
+      secondary_deductible_met:   numOrNull(form.secondary_deductible_met),
+      secondary_copay:            numOrNull(form.secondary_copay),
+      secondary_coinsurance_pct:  numOrNull(form.secondary_coinsurance_pct),
+      secondary_oop_max:          numOrNull(form.secondary_oop_max),
+      secondary_oop_met:          numOrNull(form.secondary_oop_met),
+      card_on_file:               !!form.card_on_file,
       save: true,
     }).then(r => r.data),
     onSuccess: (data) => {
@@ -4524,6 +4564,24 @@ function BenefitsPanel({ surgery }) {
   function update(k, v) {
     setForm(prev => ({ ...prev, [k]: v }))
   }
+
+  const recordManual = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/payments/manual`, {
+      method: manual.method,
+      amount: Number(manual.amount),
+      note:   manual.note || null,
+    }).then(r => r.data),
+    onSuccess: () => {
+      setManual({ method: 'modpay', amount: '', note: '' })
+      setManualError(null)
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-payments', surgery.id] })
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setManualError(typeof d === 'string' ? d : (e?.message || 'Save failed'))
+    },
+  })
 
   return (
     <div className="card !p-3 mt-3">
@@ -4563,6 +4621,75 @@ function BenefitsPanel({ surgery }) {
         <DollarInput label="OOP met"
                       value={form.oop_met}
                       onChange={v => update('oop_met', v)} />
+      </div>
+
+      {hasSecondary && (
+        <>
+          <div className="text-[11px] uppercase tracking-wide text-plum-700 font-semibold mb-2">
+            Secondary insurance · {surgery.secondary_insurance}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
+            <DollarInput label="Secondary deductible (annual)"
+                          value={form.secondary_deductible}
+                          onChange={v => update('secondary_deductible', v)} />
+            <DollarInput label="Secondary deductible met"
+                          value={form.secondary_deductible_met}
+                          onChange={v => update('secondary_deductible_met', v)} />
+            <PercentInput label="Secondary coinsurance %"
+                           value={form.secondary_coinsurance_pct}
+                           onChange={v => update('secondary_coinsurance_pct', v)} />
+            <DollarInput label="Secondary copay"
+                          value={form.secondary_copay}
+                          onChange={v => update('secondary_copay', v)} />
+            <DollarInput label="Secondary OOP max (annual)"
+                          value={form.secondary_oop_max}
+                          onChange={v => update('secondary_oop_max', v)} />
+            <DollarInput label="Secondary OOP met"
+                          value={form.secondary_oop_met}
+                          onChange={v => update('secondary_oop_met', v)} />
+          </div>
+        </>
+      )}
+
+      {/* Card-on-file + manual payment row */}
+      <div className="bg-gray-50 border border-gray-200 rounded p-3 mb-3 space-y-2">
+        <label className="inline-flex items-center gap-2 text-[12px] text-gray-800">
+          <input type="checkbox"
+                  checked={!!form.card_on_file}
+                  onChange={e => update('card_on_file', e.target.checked)} />
+          Patient has a card on file
+        </label>
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            Record a payment already received (reduces the estimate)
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-[140px_120px_1fr_auto] gap-2 items-end">
+            <select className="input text-xs"
+                     value={manual.method}
+                     onChange={e => setManual({ ...manual, method: e.target.value })}>
+              <option value="modpay">ModMed Pay</option>
+              <option value="check">Check</option>
+              <option value="cash">Cash</option>
+              <option value="other">Other</option>
+            </select>
+            <input type="number" min="0" step="0.01"
+                    placeholder="Amount"
+                    className="input text-xs font-mono"
+                    value={manual.amount}
+                    onChange={e => setManual({ ...manual, amount: e.target.value })} />
+            <input type="text" placeholder="Note (optional — check #, reference, etc.)"
+                    className="input text-xs"
+                    value={manual.note}
+                    onChange={e => setManual({ ...manual, note: e.target.value })} />
+            <button className="btn-secondary text-xs flex items-center gap-1"
+                    onClick={() => recordManual.mutate()}
+                    disabled={recordManual.isPending || !manual.amount || Number(manual.amount) <= 0}>
+              <DollarSign size={11} />
+              {recordManual.isPending ? 'Saving…' : 'Record payment'}
+            </button>
+          </div>
+          {manualError && <div className="text-[11px] text-red-700 mt-1">{manualError}</div>}
+        </div>
       </div>
 
       {/* Live breakdown */}

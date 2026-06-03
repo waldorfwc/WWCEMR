@@ -648,6 +648,23 @@ def portal_documents(surgery_id: str, db: Session = Depends(get_db),
             "amount":     str(p.amount_paid or 0),
         })
 
+    # Patient Responsibility Estimate — most recent one stays visible so the
+    # patient can re-download it. Older ones are kept in the DB as audit.
+    from app.models.surgery import SurgeryFile as _SurgeryFile
+    estimate = (db.query(_SurgeryFile)
+                  .filter(_SurgeryFile.surgery_id == s.id,
+                          _SurgeryFile.kind == "benefits_estimate")
+                  .order_by(_SurgeryFile.uploaded_at.desc())
+                  .first())
+    estimate_obj = None
+    if estimate is not None:
+        estimate_obj = {
+            "id":          str(estimate.id),
+            "filename":    estimate.filename,
+            "uploaded_at": (estimate.uploaded_at.isoformat()
+                              if estimate.uploaded_at else None),
+        }
+
     # Instructions: structure stays present so the frontend can show both
     # rows. When the procedure has no classification, the whole section is
     # null and the frontend renders the "not available" message.
@@ -673,6 +690,7 @@ def portal_documents(surgery_id: str, db: Session = Depends(get_db),
         "instructions": instructions,
         "consents":     consents,
         "receipts":     receipts,
+        "estimate":     estimate_obj,
         "clearance": {
             "required":         bool(s.clearance_required),
             "status":           s.clearance_status or "not_required",
@@ -730,6 +748,38 @@ def portal_documents_instructions(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ─── Patient Responsibility Estimate download ───────────────────────
+
+@router.get("/{surgery_id}/documents/estimate/{file_id}")
+def portal_documents_estimate(
+    surgery_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Stream the saved Patient Responsibility Estimate PDF from storage."""
+    from app.models.surgery import SurgeryFile as _SurgeryFile
+    f = (db.query(_SurgeryFile)
+           .filter(_SurgeryFile.id == file_id,
+                   _SurgeryFile.surgery_id == surgery_id,
+                   _SurgeryFile.kind == "benefits_estimate")
+           .first())
+    if f is None:
+        raise HTTPException(status_code=404, detail="estimate not found")
+    from app.services.storage import read_blob
+    try:
+        body = read_blob(f.path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="file not found in storage")
+    from fastapi.responses import Response
+    return Response(
+        content=body,
+        media_type="application/pdf",
+        headers={"Content-Disposition":
+                 f'inline; filename="patient_responsibility_estimate.pdf"'},
     )
 
 

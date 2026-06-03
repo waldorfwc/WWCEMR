@@ -261,6 +261,18 @@ class Surgery(Base):
     patient_responsibility = Column(Numeric(10, 2), nullable=True)
     amount_paid = Column(Numeric(10, 2), default=0, nullable=False)
     payment_posted_to_billing = Column(Boolean, default=False, nullable=False)
+    # Secondary insurance benefit fields. Calculator runs primary first,
+    # then secondary covers its share of what primary left.
+    secondary_deductible       = Column(Numeric(10, 2), nullable=True)
+    secondary_deductible_met   = Column(Numeric(10, 2), nullable=True)
+    secondary_copay            = Column(Numeric(10, 2), nullable=True)
+    secondary_coinsurance_pct  = Column(Numeric(5, 2),  nullable=True)
+    secondary_oop_max          = Column(Numeric(10, 2), nullable=True)
+    secondary_oop_met          = Column(Numeric(10, 2), nullable=True)
+    # Card-on-file flag — staff metadata; means the patient has a card
+    # saved with us (ModMed Pay or Stripe) that can be charged when the
+    # final balance lands.
+    card_on_file               = Column(Boolean, default=False, nullable=False)
 
     # Billing (Phase 3 — AI-suggested + ModMed claim tracking)
     modmed_claim_number = Column(String(80), nullable=True)
