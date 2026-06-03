@@ -211,7 +211,6 @@ PATH_MAP = {
 HOSPITAL_MILESTONES = [
     ("benefits_determined",    "Benefits Determination",              3),
     ("prior_auth",             "Prior auth received",                 5),
-    ("klara_scheduling",       "Klara scheduling message sent",       2),
     ("patient_picks_date",     "Patient picks surgery date",         14),
     ("post_op_appts_scheduled","Post-op appointments scheduled",      7),
     ("device_assigned",        "Device ordered/assigned",             3),
@@ -230,7 +229,6 @@ HOSPITAL_MILESTONES = [
 OFFICE_MILESTONES = [
     ("benefits_determined",    "Benefits Determination",              3),
     ("prior_auth",             "Prior auth received",                 5),
-    ("klara_scheduling",       "Klara scheduling message sent",       2),
     ("patient_picks_date",     "Patient picks procedure date",       14),
     ("post_op_appts_scheduled","Post-op appointments scheduled",      7),
     ("device_assigned",        "Device ordered/assigned",             3),

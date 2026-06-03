@@ -55,6 +55,8 @@ export default function SurgeryDetail() {
   const [showCancel, setShowCancel] = useState(false)
   const [freedBlockDayId, setFreedBlockDayId] = useState(null)
   const [showSchedule, setShowSchedule] = useState(false)
+  const [showKlara, setShowKlara] = useState(false)
+  const [showPortalInvite, setShowPortalInvite] = useState(false)
 
   const { data: tpl } = useQuery({
     queryKey: ['surgery-templates'],
@@ -131,7 +133,7 @@ export default function SurgeryDetail() {
             </div>
             <PickDateLink />
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             <button
               type="button"
               onClick={viewAsPatient}
@@ -139,6 +141,22 @@ export default function SurgeryDetail() {
               title="Open this patient's portal in a new tab (read-only)"
             >
               <Eye size={11} /> View as patient
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowKlara(true)}
+              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              title="Draft a Klara message for this patient"
+            >
+              <MessageSquare size={11} /> Klara message
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPortalInvite(true)}
+              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              title="Email the patient their surgery portal login link"
+            >
+              <Send size={11} /> Send portal access
             </button>
             <button
               type="button"
@@ -337,6 +355,18 @@ export default function SurgeryDetail() {
       )}
 
       <NotesPanel surgery={s} />
+
+      {showKlara && (
+        <PanelDrawer title="Klara message drafter" onClose={() => setShowKlara(false)}>
+          <KlaraPanel surgery={s} />
+        </PanelDrawer>
+      )}
+
+      {showPortalInvite && (
+        <PanelDrawer title="Send Surgery Portal Access" onClose={() => setShowPortalInvite(false)}>
+          <PortalAccessPanel surgery={s} />
+        </PanelDrawer>
+      )}
 
       {showCancel && (
         <CancelDrawer
@@ -615,6 +645,27 @@ function FeeSchedulePreviewModal({ result, busy, onApply, onClose }) {
                   className="btn-primary text-sm flex items-center gap-1">
             <DollarSign size={12} /> {busy ? 'Applying…' : 'Set as allowed amount'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function PanelDrawer({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-xl bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-6 py-4 flex items-center justify-between z-10">
+          <h2 className="font-serif font-semibold text-ink text-[16px]">{title}</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-6">
+          {children}
         </div>
       </div>
     </div>
@@ -3057,12 +3108,10 @@ function GroupedSurgeryBody({ surgery, milestones }) {
       </StepCard>
 
       {/* Communication & Messaging — kept intact for review; the user can
-          move these into appropriate steps later. */}
+          move these into appropriate steps later. KlaraPanel + PortalAccess
+          are now triggered from the patient-header buttons instead. */}
       <SurgerySection title="Communication & Messaging (review — move into a step later)"
                       anchor="group-communication" tone="plum">
-        <PortalAccessPanel surgery={surgery} />
-        <KlaraPanel surgery={surgery} />
-        {ms('klara_scheduling')}
         <MessagesSection sid={surgery.id} flat />
         <PatientEmailsSection surgery={surgery} flat />
         <PatientSmsSection surgery={surgery} flat />
@@ -3075,7 +3124,7 @@ function milestoneInlineContent(m, surgery) {
   switch (m.kind) {
     case 'benefits_determined':         return <BenefitsPanel surgery={surgery} />
     case 'prior_auth':                  return <PriorAuthCardBody surgery={surgery} />
-    case 'klara_scheduling':            return <KlaraPanel surgery={surgery} />
+    case 'klara_scheduling':            return null   // milestone retired
     case 'patient_picks_date':          return <PatientPicksDateBody surgery={surgery} />
     case 'post_op_appts_scheduled':     return <PostOpApptsCardBody surgery={surgery} />
     case 'assistant_surgeon':           return <AssistantSurgeonCardBody surgery={surgery} />

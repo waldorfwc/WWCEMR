@@ -398,7 +398,6 @@ ALL_BUCKETS = [
     "incomplete",
     "needs_benefits",
     "needs_prior_auth",
-    "needs_sched_msg",
     "unresponsive",
     "date_picked",
     "needs_consent",
@@ -493,8 +492,6 @@ def _surgery_buckets(s: Surgery, today: Optional[_date] = None) -> set[str]:
         buckets.add("needs_benefits")
     if not is_done("prior_auth"):
         buckets.add("needs_prior_auth")
-    if not is_done("klara_scheduling"):
-        buckets.add("needs_sched_msg")
     if _assistant_surgeon_outstanding(s):
         buckets.add("needs_assistant_surgeon")
 
@@ -546,7 +543,7 @@ def _surgery_buckets(s: Surgery, today: Optional[_date] = None) -> set[str]:
 # Milestone kinds that must be done before surgery day. Anything past
 # `patient_picks_date` is post-op and doesn't gate readiness.
 PRE_OP_MILESTONES = {
-    "benefits_determined", "prior_auth", "klara_scheduling",
+    "benefits_determined", "prior_auth",
     "patient_picks_date", "device_assigned", "consent",
     "surgery_confirmed_hospital", "labs_to_hospital",
 }
@@ -2233,10 +2230,10 @@ class KlaraSendNote(BaseModel):
 def log_klara_sent(surgery_id: str, payload: KlaraSendNote,
                     db: Session = Depends(get_db),
                     current_user: dict = Depends(require_permission("surgery:work"))):
-    """Record that staff copied the draft into Klara and sent it. Adds
-    a SurgeryNotification row + bumps the klara_scheduling milestone if
-    this is the initial outreach."""
-    from app.models.surgery import SurgeryNotification, SurgeryMilestone
+    """Record that staff copied the draft into Klara and sent it. Keeps the
+    SurgeryNotification audit row; the klara_scheduling milestone was
+    retired so there's nothing to auto-advance."""
+    from app.models.surgery import SurgeryNotification
 
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
@@ -2248,18 +2245,6 @@ def log_klara_sent(surgery_id: str, payload: KlaraSendNote,
         sent_by=current_user.get("email"),
         body_preview=payload.body_preview,
     ))
-
-    if payload.kind == "klara_initial":
-        m = (db.query(SurgeryMilestone)
-               .filter(SurgeryMilestone.surgery_id == s.id,
-                       SurgeryMilestone.kind == "klara_scheduling")
-               .first())
-        if m and m.status not in ("done", "skipped"):
-            m.status = "done"
-            m.completed_at = datetime.utcnow()
-            m.completed_by = current_user.get("email")
-            s.sub_flag = "klara_sent"
-
     db.commit()
     return {"ok": True}
 

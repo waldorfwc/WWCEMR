@@ -44,7 +44,6 @@ const BUCKET_DEFS = [
   { k: 'incomplete',          l: 'Incomplete',          tone: 'amber',   descr: 'Missing required information from the order' },
   { k: 'needs_benefits',      l: 'Needs Benefits',      tone: 'amber',   descr: 'Insurance benefits not yet determined' },
   { k: 'needs_prior_auth',    l: 'Needs Prior Auth',    tone: 'amber',   descr: 'Authorization not yet granted' },
-  { k: 'needs_sched_msg',     l: 'Needs Sched Msg',     tone: 'amber',   descr: 'Klara scheduling link not yet sent' },
   { k: 'unresponsive',        l: 'Unresponsive',        tone: 'red',     descr: 'Pre-op visit was 30+ days ago and patient still has not picked a surgery date' },
   { k: 'date_picked',         l: 'Date Picked',         tone: 'blue',    descr: 'Patient has picked a surgery date' },
   { k: 'needs_consent',       l: 'Needs Consent',       tone: 'amber',   descr: 'Date is picked but consent is not signed' },
@@ -62,7 +61,6 @@ const BUCKET_DEFS = [
 const MILESTONE_TITLE = {
   benefits_determined:        'Benefits',
   prior_auth:                 'Prior Auth',
-  klara_scheduling:           'Klara Scheduling',
   patient_picks_date:         'Patient Picks Date',
   post_op_appts_scheduled:    'Post-Op Appts',
   device_assigned:            'Device',
