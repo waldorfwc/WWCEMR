@@ -94,24 +94,24 @@ export default function Dashboard() {
 
   return (
     <div>
-      {/* Hero — soft plum gradient, no photography */}
-      <section className="relative h-72 overflow-hidden bg-plum-ink">
+      {/* Hero — compact plum gradient, no photography */}
+      <section className="relative overflow-hidden bg-plum-ink">
         <div className="absolute inset-0 bg-gradient-to-br from-plum-900 via-plum-700 to-plum-400" />
         <div className="absolute inset-0 opacity-60"
              style={{ background: 'radial-gradient(60% 80% at 80% 20%, rgba(255,255,255,0.18), transparent 60%)' }} />
         <div className="absolute inset-0 opacity-40 mix-blend-overlay pointer-events-none"
              style={{ backgroundImage: `url("${GRAIN_SVG}")`, backgroundSize: '180px 180px' }} />
-        <div className="absolute top-8 right-10 font-serif italic text-white/15 text-[140px] leading-none select-none pointer-events-none">
+        <div className="absolute top-2 right-6 font-serif italic text-white/15 text-[72px] leading-none select-none pointer-events-none">
           W
         </div>
-        <div className="relative h-full flex flex-col justify-end px-6 md:px-10 pb-10">
-          <div className="text-[11px] uppercase tracking-[0.22em] text-white/80 font-medium mb-2">
+        <div className="relative flex flex-col justify-center px-6 md:px-10 py-4">
+          <div className="text-[10px] uppercase tracking-[0.22em] text-white/80 font-medium">
             {today}
           </div>
-          <h1 className="font-serif text-white text-[24px] md:text-[34px] leading-tight font-semibold tracking-tight">
+          <h1 className="font-serif text-white text-[18px] md:text-[22px] leading-tight font-semibold tracking-tight mt-0.5">
             Welcome back, {firstName}.
           </h1>
-          <p className="text-white/85 text-[13px] md:text-[15px] mt-1.5 max-w-xl">
+          <p className="text-white/85 text-[12px] md:text-[13px] mt-1 max-w-xl">
             {surgeryDate
               ? <>Your surgery is scheduled for <strong>{surgeryDate}</strong>. A few steps below to get you ready.</>
               : <>Your care plan is below. Once you've completed the steps, we'll help you pick a surgery date.</>}
@@ -119,10 +119,10 @@ export default function Dashboard() {
         </div>
       </section>
 
-      <div className="px-6 md:px-10 py-8 md:py-10 max-w-5xl">
+      <div className="px-6 md:px-10 py-4 md:py-5 max-w-5xl">
         {/* Journey */}
-        <section className="mb-12">
-          <div className="flex items-baseline justify-between mb-5 gap-3">
+        <section className="mb-5">
+          <div className="flex items-baseline justify-between mb-3 gap-3">
             <h2 className="font-serif text-[14px] md:text-[15px] text-plum-ink font-semibold tracking-tight">
               Your care journey
             </h2>
@@ -134,7 +134,7 @@ export default function Dashboard() {
         </section>
 
         {/* Action cards */}
-        <section className="mb-14">
+        <section className="mb-5">
           <h2 className="font-serif text-[14px] md:text-[15px] text-plum-ink font-semibold tracking-tight mb-5">
             What's next
           </h2>
