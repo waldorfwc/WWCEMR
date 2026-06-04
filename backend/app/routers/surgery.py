@@ -833,6 +833,15 @@ async def upload_order(
                     setattr(existing, k, v)
             existing.order_pdf_path = pdf_key
             existing.sub_flag = None
+            db.add(SurgeryFile(
+                surgery_id=existing.id,
+                kind="order",
+                filename=file.filename or "order.pdf",
+                path=pdf_key,
+                mime_type="application/pdf",
+                size_bytes=len(contents),
+                uploaded_by=current_user.get("email"),
+            ))
             db.commit(); db.refresh(existing)
             return {
                 "duplicate": False,
@@ -861,6 +870,19 @@ async def upload_order(
         created_by=current_user.get("email"),
     )
     db.add(s); db.commit(); db.refresh(s)
+    # Also surface the order PDF in surgery_files so the detail page's
+    # "Order PDF" card can link to it. order_pdf_path on the surgery row
+    # is the source of truth; this row is a UI mirror.
+    db.add(SurgeryFile(
+        surgery_id=s.id,
+        kind="order",
+        filename=file.filename or "order.pdf",
+        path=pdf_key,
+        mime_type="application/pdf",
+        size_bytes=len(contents),
+        uploaded_by=current_user.get("email"),
+    ))
+    db.commit()
     return {
         "duplicate": False,
         "id": str(s.id),

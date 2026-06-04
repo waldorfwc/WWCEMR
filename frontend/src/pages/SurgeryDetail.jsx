@@ -355,13 +355,7 @@ export default function SurgeryDetail() {
       </div>
 
       {/* Grouped surgery sections (Phase L1) */}
-      {milestones.length === 0 ? (
-        <div className="card text-xs text-gray-500 italic bg-amber-50 border border-amber-200">
-          No milestones yet — surgery is in <code>{s.status}</code> status. Click <strong>Mark as new</strong> above to generate milestones.
-        </div>
-      ) : (
-        <GroupedSurgeryBody surgery={s} milestones={milestones} />
-      )}
+      <GroupedSurgeryBody surgery={s} milestones={milestones} />
 
       <NotesPanel surgery={s} />
 
