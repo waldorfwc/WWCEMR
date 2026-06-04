@@ -340,7 +340,7 @@ function ModMedImportDrawer({ onClose }) {
 
           {summary && (
             <div className="card !p-3">
-              <h3 className="text-sm font-semibold text-gray-800 mb-1">Currently loaded</h3>
+              <h3 className="text-sm font-semibold text-gray-800 mb-1">Currently Loaded</h3>
               <ul className="text-xs text-gray-700 space-y-0.5">
                 {Object.entries(summary.totals_by_source || {}).map(([s, n]) => (
                   <li key={s}><strong>{s}</strong>: {n.toLocaleString()} rows</li>

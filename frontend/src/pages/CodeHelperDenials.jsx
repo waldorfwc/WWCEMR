@@ -53,7 +53,7 @@ export default function CodeHelperDenials() {
         <ChevronLeft size={13} /> Back to Code Helper
       </Link>
       <div className="flex items-baseline justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Denial list</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Denial List</h1>
         <div className="flex items-center gap-2">
           <label className="text-[11px] text-gray-500">
             <input type="checkbox" checked={showInactive}

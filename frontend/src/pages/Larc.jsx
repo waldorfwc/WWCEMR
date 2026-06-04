@@ -209,7 +209,7 @@ export default function Larc() {
         <div className="card">
           <div className="flex items-center gap-1.5 mb-2">
             <Truck size={14} className="text-amber-700" />
-            <h2 className="text-sm font-semibold text-gray-800">Reorder alerts</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Reorder Alerts</h2>
             <span className="text-[11px] text-muted">(in-stock below threshold)</span>
           </div>
           {(dash?.reorder_alerts || []).length === 0 ? (

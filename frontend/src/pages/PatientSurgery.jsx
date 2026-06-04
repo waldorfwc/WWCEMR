@@ -106,7 +106,7 @@ function AuthScreen({ surgeryId, onAuthed }) {
     <div className="bg-white rounded-lg border border-border-subtle shadow-sm p-6">
       <div className="flex items-center gap-2 mb-1 text-plum-700">
         <Lock size={16} />
-        <h1 className="text-lg font-serif font-semibold">Verify your identity</h1>
+        <h1 className="text-lg font-serif font-semibold">Verify Your Identity</h1>
       </div>
       <p className="text-xs text-gray-600 mb-4">
         We just need your date of birth and the last 4 digits of the phone number we have on file.
@@ -514,7 +514,7 @@ function CancelledScreen({ status, result }) {
     <div className="bg-white rounded-lg border border-border-subtle shadow-sm p-6">
       <div className="flex items-center gap-2 mb-3 text-gray-700">
         <XCircle size={20} />
-        <h1 className="text-lg font-serif font-semibold">Surgery cancelled</h1>
+        <h1 className="text-lg font-serif font-semibold">Surgery Cancelled</h1>
       </div>
       <p className="text-sm text-gray-700 mb-3">
         Your surgery has been cancelled. We're sorry we won't be seeing you on
@@ -986,7 +986,7 @@ function CardiologistAskScreen({ surgeryId, headers, status, onUpdated }) {
     <div className="bg-white rounded-lg border border-border-subtle shadow-sm p-5">
       <div className="flex items-center gap-2 mb-2 text-amber-700">
         <AlertCircle size={20} />
-        <h1 className="text-lg font-serif font-semibold">Medical clearance needed</h1>
+        <h1 className="text-lg font-serif font-semibold">Medical Clearance Needed</h1>
       </div>
       <p className="text-sm text-gray-700 mb-3">
         Hi {status.patient_first_name} — your surgery requires medical clearance before

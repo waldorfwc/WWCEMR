@@ -787,7 +787,7 @@ export default function Admin() {
     <div>
       <div className="flex items-baseline justify-between mb-4">
         <div>
-          <h1 className="font-serif font-semibold text-ink text-[22px] m-0">User management</h1>
+          <h1 className="font-serif font-semibold text-ink text-[22px] m-0">User Management</h1>
           <div className="text-muted text-[12px] mt-0.5">
             {(users?.length || 0)} users · {(allGroups?.length || 0)} groups
           </div>

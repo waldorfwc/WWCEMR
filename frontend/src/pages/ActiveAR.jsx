@@ -603,7 +603,7 @@ export default function ActiveAR() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
           {/* Workflow split */}
           <div className="card py-2 px-3">
-            <h2 className="text-xs uppercase text-gray-500 mb-2">Workflow split</h2>
+            <h2 className="text-xs uppercase text-gray-500 mb-2">Workflow Split</h2>
             {summary.by_workflow_state ? (
               <div className="text-[12px] text-ink">
                 {Object.entries(summary.by_workflow_state).map(([state, count]) => (

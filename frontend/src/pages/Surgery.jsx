@@ -222,7 +222,7 @@ export default function Surgery() {
     <div>
       <div className="mb-4 flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Surgery scheduling</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Surgery Scheduling</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {data?.total || 0} surgeries currently in the system. Click a row to open milestones.
           </p>
@@ -796,7 +796,7 @@ function CriticalAlertsPanel({ alerts, onOpen }) {
     <div className="card">
       <div className="flex items-center gap-1.5 mb-2">
         <AlertTriangle size={14} className="text-red-700" />
-        <h2 className="text-sm font-semibold text-gray-800">Critical alerts</h2>
+        <h2 className="text-sm font-semibold text-gray-800">Critical Alerts</h2>
         <span className="text-[11px] text-muted">(&gt;48h overdue)</span>
       </div>
       {alerts.length === 0 ? (

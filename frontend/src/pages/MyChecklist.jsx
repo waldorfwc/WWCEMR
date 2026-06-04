@@ -428,7 +428,7 @@ function PainPointPanel({ highlight }) {
     <div className={`card mt-4 ${highlight ? 'border-primary-200 bg-primary-50/40' : ''}`}>
       <div className="flex items-center gap-2 mb-2">
         <MessageSquareWarning size={16} className="text-primary-700" />
-        <h3 className="text-sm font-semibold text-gray-800">Pain points</h3>
+        <h3 className="text-sm font-semibold text-gray-800">Pain Points</h3>
       </div>
 
       {todays.length > 0 && (

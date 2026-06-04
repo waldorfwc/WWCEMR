@@ -44,7 +44,7 @@ export default function SurgeryBlockSchedule() {
           <Link to="/surgery" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
             <ArrowLeft size={12} /> Surgery dashboard
           </Link>
-          <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Block schedule</h1>
+          <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Block Schedule</h1>
           <p className="text-muted text-[12px] mt-0.5">
             Recurring surgery days + ad-hoc add-ons + holiday/PTO blackouts.
           </p>

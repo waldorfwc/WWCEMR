@@ -323,7 +323,7 @@ function CameraScanner({ onClose, onDetect, alreadyScanned }) {
     <div className="fixed inset-0 z-50 bg-black/85 flex flex-col">
       <div className="bg-white px-4 py-3 flex items-center justify-between">
         <div>
-          <h3 className="font-semibold text-sm">Camera scanner</h3>
+          <h3 className="font-semibold text-sm">Camera Scanner</h3>
           <p className="text-[11px] text-gray-500">
             Point at a label's QR code. Multiple scans queue automatically.
           </p>

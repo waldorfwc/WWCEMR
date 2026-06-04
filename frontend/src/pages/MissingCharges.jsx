@@ -348,7 +348,7 @@ function EmailProvidersDrawer({ onClose }) {
       <div className="relative w-full max-w-2xl bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">Email providers</h2>
+          <h2 className="font-serif font-semibold text-ink text-[16px]">Email Providers</h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">

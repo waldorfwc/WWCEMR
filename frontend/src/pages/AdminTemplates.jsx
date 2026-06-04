@@ -1134,7 +1134,7 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
   return (
     <div className="mt-4 border-t border-gray-100 pt-4 space-y-4">
       <div>
-        <h4 className="text-[12px] font-semibold text-ink mb-1">Authorized trainers</h4>
+        <h4 className="text-[12px] font-semibold text-ink mb-1">Authorized Trainers</h4>
         <p className="text-[11px] text-muted mb-2">
           Users who can sign off that someone has been trained on this template.
         </p>
@@ -1190,7 +1190,7 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
       </div>
 
       <div>
-        <h4 className="text-[12px] font-semibold text-ink mb-1">Certified trainees</h4>
+        <h4 className="text-[12px] font-semibold text-ink mb-1">Certified Trainees</h4>
         <p className="text-[11px] text-muted mb-2">
           Users who have been certified on this template. Only certified users
           receive instances when "Require training" is on.

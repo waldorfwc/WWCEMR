@@ -232,7 +232,7 @@ export function MatchesDrawer({ blockDayId, onClose }) {
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-4 flex items-center justify-between z-10">
           <div>
-            <h2 className="font-serif font-semibold text-ink text-[18px]">Waitlist matches</h2>
+            <h2 className="font-serif font-semibold text-ink text-[18px]">Waitlist Matches</h2>
             {data?.block_day && (
               <div className="text-[11px] text-muted">
                 {fmt.date(data.block_day.block_date)} · {labelOf(data.block_day.facility)} · {data.block_day.block_kind.replace(/_/g, ' ')}

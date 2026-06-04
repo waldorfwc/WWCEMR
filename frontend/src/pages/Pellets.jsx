@@ -111,7 +111,7 @@ export default function Pellets() {
         <div className="card">
           <div className="flex items-center gap-1.5 mb-2">
             <Truck size={14} className="text-amber-700" />
-            <h2 className="text-sm font-semibold text-gray-800">Reorder alerts</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Reorder Alerts</h2>
             <span className="text-[11px] text-muted">(packs ≤ threshold)</span>
           </div>
           {(dash?.reorder_alerts || []).length === 0 ? (
@@ -211,7 +211,7 @@ export default function Pellets() {
             <div className="card">
               <div className="flex items-center gap-1.5 mb-2">
                 <ClipboardList size={14} className="text-violet-700" />
-                <h2 className="text-sm font-semibold text-gray-800">Open counts</h2>
+                <h2 className="text-sm font-semibold text-gray-800">Open Counts</h2>
               </div>
               <ul className="text-xs space-y-1">
                 {dash.open_counts.map(c => (
@@ -2421,7 +2421,7 @@ function DisposeDrawer({ onClose }) {
       <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">Dispose pellets</h2>
+          <h2 className="font-serif font-semibold text-ink text-[16px]">Dispose Pellets</h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">

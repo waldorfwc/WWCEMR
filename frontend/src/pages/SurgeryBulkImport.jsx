@@ -59,7 +59,7 @@ export default function SurgeryBulkImport() {
       </p>
 
       <div className="card mb-4">
-        <h2 className="text-sm font-semibold text-gray-800 mb-2">Expected columns</h2>
+        <h2 className="text-sm font-semibold text-gray-800 mb-2">Expected Columns</h2>
         <div className="text-[11px] text-gray-600 grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1">
           <span>Patient MRN <span className="text-red-600">*</span></span>
           <span>Patient First Name</span>
