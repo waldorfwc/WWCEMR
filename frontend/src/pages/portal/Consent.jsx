@@ -31,6 +31,28 @@ function EmptyState({ sid }) {
 }
 
 
+// Translate raw backend errors into patient-friendly copy. Staff-only
+// hints (Settings paths, CPT/template internals, stack-trace-ish text)
+// get folded into a generic "call the office" message. The original
+// detail is preserved in the browser console so coordinators reproducing
+// the patient's screen can still see what's wrong.
+function patientFriendlyConsentError(detail) {
+  const raw = typeof detail === 'string' ? detail : ''
+  if (raw) console.warn('[portal/consent] raw backend detail:', raw)
+  if (!raw) {
+    return 'We couldn’t send your consent forms just now. Please call our office at 240-252-2140 and we’ll send them right over.'
+  }
+  const technicalPattern = /(template|CPT|cpt|procedure|Settings|Unmatched|Register)/i
+  if (technicalPattern.test(raw)) {
+    return 'Your consent forms aren’t ready yet — our coordinator needs to set them up on our end. Please call our office at 240-252-2140 and we’ll send them within the day.'
+  }
+  if (/no phone|cell|phone on file/i.test(raw)) {
+    return 'We don’t have a current phone number on file. Please call our office at 240-252-2140 so we can update it and send your forms.'
+  }
+  return 'We couldn’t send your consent forms just now. Please call our office at 240-252-2140 and we’ll send them right over.'
+}
+
+
 function ResendCard({ onResend, busy, err }) {
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 shadow-sm">
@@ -86,7 +108,7 @@ function EnvelopeRow({ env, sid }) {
       const { data } = await portalApi.get(`/${sid}/consent/sign-link/${env.id}`)
       window.location.assign(data.sign_url)
     } catch (e) {
-      setErr(e?.response?.data?.detail || 'Could not start signing.')
+      setErr(patientFriendlyConsentError(e?.response?.data?.detail))
       setBusy(false)
     }
   }
@@ -154,7 +176,7 @@ export default function Consent() {
   const resend = useMutation({
     mutationFn: () => portalApi.post(`/${sid}/consent/resend`).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['portal-consent', sid] }),
-    onError: (e) => setResendErr(e?.response?.data?.detail || 'Could not send.'),
+    onError: (e) => setResendErr(patientFriendlyConsentError(e?.response?.data?.detail)),
   })
 
   if (isLoading) {
