@@ -3645,6 +3645,69 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
     return _surgery_dict(s, include_milestones=True)
 
 
+@router.post("/{surgery_id}/consent/reset")
+def consent_reset(surgery_id: str,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(require_permission("surgery:manage"))):
+    """Revoke every live BoldSign envelope, delete all envelope rows, and
+    return the surgery's consent state to 'not_required'. Used by staff to
+    re-issue consents from scratch (e.g. after a template was updated, or
+    the patient signed under the wrong template by mistake).
+    """
+    from app.models.surgery import SurgeryConsentEnvelope
+    from app.services.boldsign_envelopes import (
+        void_envelope_row, BoldSignEnvelopeError,
+    )
+    s = (db.query(Surgery)
+           .options(joinedload(Surgery.milestones))
+           .filter(Surgery.id == surgery_id).first())
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+
+    revoked: list[str] = []
+    revoke_errors: list[str] = []
+    rows = list(db.query(SurgeryConsentEnvelope)
+                  .filter(SurgeryConsentEnvelope.surgery_id == s.id).all())
+    for row in rows:
+        if (row.boldsign_envelope_id
+                and (row.status or "").lower() not in ("voided", "revoked",
+                                                        "declined", "expired",
+                                                        "failed")):
+            try:
+                void_envelope_row(db, row, reason="Reset by practice")
+                revoked.append(row.boldsign_envelope_id)
+            except BoldSignEnvelopeError as e:
+                # Keep going — we still want to clear the DB even if a
+                # stale envelope can't be revoked at BoldSign.
+                revoke_errors.append(f"{row.boldsign_envelope_id[:8]}…: {e}")
+
+    # Wipe every envelope row regardless of whether the BoldSign revoke
+    # succeeded — staff is explicitly asking for a clean slate.
+    for row in rows:
+        db.delete(row)
+
+    s.consent_status     = "not_required"
+    s.consent_sent_at    = None
+    s.consent_signed_at  = None
+    s.consent_doc_id     = None
+
+    m = next((mm for mm in s.milestones if mm.kind == "consent"), None)
+    if m:
+        m.status        = "todo"
+        m.started_at    = None
+        m.completed_at  = None
+        m.completed_by  = None
+        m.notes         = None
+
+    db.commit(); db.refresh(s)
+    return {
+        "ok": True,
+        "revoked_envelopes": revoked,
+        "deleted_rows": len(rows),
+        "revoke_errors": revoke_errors,
+    }
+
+
 # ─── Waitlist (Phase 2) ─────────────────────────────────────────────
 
 class WaitlistJoinIn(BaseModel):

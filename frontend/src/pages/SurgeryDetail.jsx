@@ -4867,6 +4867,19 @@ function ConsentPanel({ surgery }) {
       qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
     },
   })
+  const consentReset = useMutation({
+    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/reset`).then(r => r.data),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      if (data?.revoke_errors?.length) {
+        alert(`Reset complete. ${data.revoke_errors.length} envelope(s) couldn't be revoked at BoldSign:\n\n`
+              + data.revoke_errors.join('\n'))
+      }
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Consent reset failed'),
+  })
 
   const tone = isSigned ? 'bg-green-50 border-green-200' :
                isSent   ? 'bg-amber-50 border-amber-200' :
@@ -5039,6 +5052,29 @@ function ConsentPanel({ surgery }) {
                   disabled={signedManual.isPending}
                   title="Manual override — patient signed in person">
             <Check size={11} /> {signedManual.isPending ? 'Saving…' : 'Mark signed (manual)'}
+          </button>
+        )}
+        {envelopes.length > 0 && (
+          <button className="text-xs flex items-center gap-1 ml-auto px-2 py-1 rounded
+                              border border-red-200 text-red-700 hover:bg-red-50
+                              disabled:opacity-50"
+                  onClick={() => {
+                    const live = envelopes.filter(e =>
+                      !['voided','declined','expired','failed'].includes(
+                        (e.status || '').toLowerCase()))
+                    const msg =
+                      `Reset consent for ${surgery.patient_name || 'this patient'}?\n\n`
+                      + `This will revoke ${live.length} live BoldSign envelope`
+                      + `${live.length === 1 ? '' : 's'} `
+                      + `and delete all ${envelopes.length} envelope row`
+                      + `${envelopes.length === 1 ? '' : 's'} from the database. `
+                      + `The patient will need to re-sign from scratch.\n\nContinue?`
+                    if (confirm(msg)) consentReset.mutate()
+                  }}
+                  disabled={consentReset.isPending}
+                  title="Revoke all envelopes at BoldSign and clear DB so consent can be re-sent">
+            <RefreshCw size={11} className={consentReset.isPending ? 'animate-spin' : ''} />
+            {consentReset.isPending ? 'Resetting…' : 'Reset consent'}
           </button>
         )}
       </div>
