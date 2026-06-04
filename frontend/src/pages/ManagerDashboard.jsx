@@ -245,7 +245,7 @@ function PainPointsSection({ rows, qc, days }) {
   return (
     <div className="card">
       <div className="mb-2">
-        <h2 className="text-sm font-semibold text-gray-800">Open pain points</h2>
+        <h2 className="text-sm font-semibold text-gray-800">Open Pain Points</h2>
         <p className="text-xs text-gray-500">Issues your direct reports flagged at the end of their checklist</p>
       </div>
       {rows.length === 0 ? (

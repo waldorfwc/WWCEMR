@@ -179,7 +179,7 @@ export default function Pellets() {
             <div className="card">
               <div className="flex items-center gap-1.5 mb-2">
                 <ArrowRightLeft size={14} className="text-blue-700" />
-                <h2 className="text-sm font-semibold text-gray-800">Transfers in chain of custody</h2>
+                <h2 className="text-sm font-semibold text-gray-800">Transfers in Chain of Custody</h2>
               </div>
               {(dash?.transfers_awaiting_pickup?.length ?? 0) > 0 && (
                 <>
@@ -667,7 +667,7 @@ function LotsCard({ types = [], onQuickTransfer }) {
       <div className="flex items-center justify-between px-3 py-2 bg-plum-50 border-b border-plum-100 gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
           <ClipboardList size={14} className="text-plum-700" />
-          <h2 className="text-sm font-semibold text-gray-800">Lots in inventory</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Lots in Inventory</h2>
           <span className="text-[11px] text-muted">
             ({groups.length} dose{groups.length === 1 ? '' : 's'} · {lots.length} lot{lots.length === 1 ? '' : 's'})
           </span>
@@ -2276,7 +2276,7 @@ function TransferDrawer({ onClose, initial }) {
       <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">Transfer between locations</h2>
+          <h2 className="font-serif font-semibold text-ink text-[16px]">Transfer Between Locations</h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">

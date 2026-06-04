@@ -128,7 +128,7 @@ export default function PelletPatientDetail() {
         <div className="card mb-3 bg-amber-50/50 border border-amber-200">
           <div className="flex items-baseline justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-gray-800">No active visit</h2>
+              <h2 className="text-sm font-semibold text-gray-800">No Active Visit</h2>
               <p className="text-[12px] text-gray-600 mt-1">
                 {visits.length === 0
                   ? 'This patient hasn\'t started a pellet visit yet.'

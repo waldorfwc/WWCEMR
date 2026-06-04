@@ -789,7 +789,7 @@ function KlaraPanel({ surgery }) {
     <div className="card !p-3">
       <div className="flex items-center gap-1.5 mb-2">
         <MessageSquare size={14} className="text-plum-700" />
-        <h3 className="text-sm font-semibold text-gray-800">Klara message drafter</h3>
+        <h3 className="text-sm font-semibold text-gray-800">Klara Message Drafter</h3>
       </div>
       <p className="text-[11px] text-gray-500 mb-2">
         Generate a templated message, copy to clipboard, paste into Klara. Logs the send so milestones advance.

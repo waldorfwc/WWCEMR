@@ -695,7 +695,7 @@ function RecallDrawer({ recallId, onClose }) {
 
             {/* Outcome form */}
             <div className="card">
-              <h3 className="text-sm font-semibold text-ink mb-2">Log call outcome</h3>
+              <h3 className="text-sm font-semibold text-ink mb-2">Log Call Outcome</h3>
               <div className="space-y-2">
                 <select className="input text-sm w-full"
                         value={outcome}

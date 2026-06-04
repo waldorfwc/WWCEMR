@@ -76,7 +76,7 @@ function StartCountForm({ onClose, onStarted, qc }) {
       <div className="relative w-full max-w-md bg-white shadow-xl"
            onClick={e => e.stopPropagation()}>
         <div className="px-5 py-3 border-b border-border-subtle flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">Start inventory count</h2>
+          <h2 className="font-serif font-semibold text-ink text-[16px]">Start Inventory Count</h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">
@@ -231,7 +231,7 @@ function ActiveCount({ countId, qc, onDone }) {
 
       {c.missing?.length > 0 && (
         <div className="card !p-3">
-          <h3 className="text-sm font-semibold text-gray-800 mb-1">Not yet scanned ({c.missing.length})</h3>
+          <h3 className="text-sm font-semibold text-gray-800 mb-1">Not Yet Scanned ({c.missing.length})</h3>
           <ul className="text-xs space-y-0.5 max-h-72 overflow-y-auto">
             {c.missing.map(d => (
               <li key={d.id} className="flex items-baseline gap-2">

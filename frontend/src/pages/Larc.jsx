@@ -265,7 +265,7 @@ export default function Larc() {
         <div className="card">
           <div className="flex items-center gap-1.5 mb-2">
             <Truck size={14} className="text-red-700" />
-            <h2 className="text-sm font-semibold text-gray-800">Overdue pharmacy orders</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Overdue Pharmacy Orders</h2>
             <span className="text-[11px] text-muted">(faxed &gt;14d ago, not received)</span>
           </div>
           {(dash?.overdue_pharmacy_orders || []).length === 0 ? (
