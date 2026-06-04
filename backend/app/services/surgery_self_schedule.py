@@ -187,8 +187,17 @@ def schedule_gate_for_surgery(surgery: Surgery) -> tuple[bool, Optional[str]]:
                         f"Outstanding balance: ${outstanding:.2f}.")
 
     consent = (surgery.consent_status or "not_required").lower()
-    if consent not in ("signed", "not_required"):
-        return False, ("Please sign your consent forms before booking a "
-                        "surgery date.")
+    if consent in ("signed", "not_required"):
+        return True, None
 
-    return True, None
+    # consent_status only flips to "signed" once the practice has also
+    # countersigned — but the patient should not be blocked from scheduling
+    # while waiting on the practice. Treat "patient-side fully signed" the
+    # same as "signed" for the purposes of the schedule gate.
+    envs = list(surgery.consent_envelopes or [])
+    active = [e for e in envs if (e.status or "").lower() not in ("voided", "declined")]
+    if active and all(getattr(e, "patient_signed_at", None) for e in active):
+        return True, None
+
+    return False, ("Please sign your consent forms before booking a "
+                    "surgery date.")
