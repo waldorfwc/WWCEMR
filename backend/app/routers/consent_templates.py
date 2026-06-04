@@ -190,7 +190,7 @@ def list_boldsign_templates(
         r = httpx.get("https://api.boldsign.com/v1/template/list",
                         headers={"X-API-KEY": api_key},
                         timeout=30,
-                        params={"Page": 1, "PageSize": 200})
+                        params={"Page": 1, "PageSize": 100})
     except Exception as exc:
         log.exception("BoldSign template list — httpx call failed")
         raise HTTPException(status_code=502,

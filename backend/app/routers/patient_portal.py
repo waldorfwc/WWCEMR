@@ -533,7 +533,11 @@ def portal_consent_resend(surgery_id: str, db: Session = Depends(get_db),
         send_consent_envelopes(db, s, sent_by="patient:portal:resend")
     except BoldSignEnvelopeError as e:
         # Service-level rejection (e.g. no matching templates) — surface
-        # the message to the patient.
+        # the message to the patient. Log the full detail so support can
+        # see what failed without relying on the patient's screen text.
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "Consent resend failed for surgery %s: %s", s.id, e)
         raise HTTPException(status_code=409, detail=str(e))
     # Re-fetch the consent payload so the frontend has fresh state.
     return portal_consent(surgery_id, db=db, _="ignored")
