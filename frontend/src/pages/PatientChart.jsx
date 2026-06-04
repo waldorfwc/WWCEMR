@@ -314,7 +314,7 @@ function DocumentsSection({ chartNumber, onBatchFax }) {
         </select>
         <span className="text-xs text-muted">{docs?.total || 0} documents</span>
         <div className="ml-auto flex items-center gap-3 text-xs">
-          <button onClick={selectUnsent} className="text-plum-700 underline">Select unsent</button>
+          <button onClick={selectUnsent} className="text-plum-700 underline">Select Unsent</button>
           {selected.size > 0 && (
             <>
               <button onClick={clearSelection} className="text-muted underline">

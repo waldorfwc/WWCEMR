@@ -102,7 +102,7 @@ function CreateGroupCard({ onClose }) {
   return (
     <div className="card mb-4 bg-plum-50/40">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold text-ink">Create new group</div>
+        <div className="text-sm font-semibold text-ink">Create New Group</div>
         <button className="text-muted hover:text-ink" onClick={onClose}><X size={14} /></button>
       </div>
       <div className="space-y-2">

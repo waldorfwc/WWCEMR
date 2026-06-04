@@ -117,7 +117,7 @@ export default function ImportFiles() {
               <span className="font-semibold text-red-700 text-sm">Upload failed</span>
             </div>
             <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{typeof bootstrapState.error.message === 'string' ? bootstrapState.error.message : JSON.stringify(bootstrapState.error.message)}</pre>
-            <button className="btn-secondary text-xs mt-2" onClick={() => setBootstrapState(null)}>Try another file</button>
+            <button className="btn-secondary text-xs mt-2" onClick={() => setBootstrapState(null)}>Try Another File</button>
           </div>
         )}
 
@@ -184,7 +184,7 @@ export default function ImportFiles() {
               <span className="font-semibold text-red-700 text-sm">Upload failed</span>
             </div>
             <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{typeof eraState.error.message === 'string' ? eraState.error.message : JSON.stringify(eraState.error.message)}</pre>
-            <button className="btn-secondary text-xs mt-2" onClick={() => setEraState(null)}>Try again</button>
+            <button className="btn-secondary text-xs mt-2" onClick={() => setEraState(null)}>Try Again</button>
           </div>
         )}
 
@@ -259,7 +259,7 @@ export default function ImportFiles() {
               <span className="font-semibold text-red-700 text-sm">Upload failed</span>
             </div>
             <pre className="text-xs text-red-600 mt-2 whitespace-pre-wrap">{chargeState.error.message}</pre>
-            <button className="btn-secondary text-xs mt-2" onClick={() => setChargeState(null)}>Try another file</button>
+            <button className="btn-secondary text-xs mt-2" onClick={() => setChargeState(null)}>Try Another File</button>
           </div>
         )}
 
@@ -450,8 +450,8 @@ function ChargeAnalysisSuccess({ result, onAgain }) {
       </div>
       {stats}
       <div className="flex justify-end gap-2">
-        <a href="/claims" className="btn-primary text-xs">View claims →</a>
-        <button className="btn-secondary text-xs" onClick={onAgain}>Import another file</button>
+        <a href="/claims" className="btn-primary text-xs">View Claims →</a>
+        <button className="btn-secondary text-xs" onClick={onAgain}>Import Another File</button>
       </div>
     </div>
   )
@@ -537,7 +537,7 @@ function BootstrapSuccess({ result, onAgain }) {
         <div>Conflicts: <span className="font-mono">{result.conflicts}</span></div>
       </div>
       <div className="flex gap-2">
-        <a href="/claims" className="btn-primary text-xs">View claims →</a>
+        <a href="/claims" className="btn-primary text-xs">View Claims →</a>
         <button className="btn-secondary text-xs" onClick={onAgain}>Upload another file</button>
       </div>
     </div>
@@ -644,7 +644,7 @@ function EraSuccess({ result, onAgain }) {
         </div>
       )}
       <div className="flex gap-2 mt-2">
-        <a href="/claims" className="btn-primary text-xs">View claims →</a>
+        <a href="/claims" className="btn-primary text-xs">View Claims →</a>
         <button className="btn-secondary text-xs" onClick={onAgain}>Upload more ERAs</button>
       </div>
     </div>

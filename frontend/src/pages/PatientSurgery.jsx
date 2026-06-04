@@ -699,7 +699,7 @@ function SlotPicker({ surgeryId, headers, status, onPicked, onBack, endpoint = '
         <div className="bg-white rounded-lg border border-plum-300 shadow p-5">
           <div className="flex items-center gap-2 mb-2 text-plum-700">
             <Calendar size={20} />
-            <h1 className="text-lg font-serif font-semibold">Confirm your surgery date</h1>
+            <h1 className="text-lg font-serif font-semibold">Confirm Your Surgery Date</h1>
           </div>
           <p className="text-sm text-gray-700 mb-3">
             Hi {status.patient_first_name}, please review the details below before confirming.

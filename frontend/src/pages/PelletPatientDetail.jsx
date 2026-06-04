@@ -1070,7 +1070,7 @@ function VisitCard({ visit, patient, qc }) {
         <div className="mt-3 border-t border-gray-100 pt-3 flex flex-wrap gap-2">
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => setConfirmInsertionOpen(true)}>
-            <CheckCircle2 size={12}/> Confirm what was inserted…
+            <CheckCircle2 size={12}/> Confirm What Was Inserted…
           </button>
           {hasPulled && visit.status === 'in_progress' && (
             <button className="text-sm flex items-center gap-1 px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700"
@@ -2575,7 +2575,7 @@ function PaymentBox({ visit, qc }) {
             <button className="btn-primary text-[12px] flex items-center gap-1"
                     onClick={() => collect.mutate()}
                     disabled={collect.isPending}>
-              <CheckCircle2 size={11}/> Mark payment collected
+              <CheckCircle2 size={11}/> Mark Payment Collected
             </button>
           </>
         )}

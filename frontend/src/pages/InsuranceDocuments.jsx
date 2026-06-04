@@ -727,7 +727,7 @@ function DocumentDrawer({ docId, onClose, picks }) {
                 {doc.status !== 'worked' && (
                   <button className="btn-primary text-[12px] flex items-center gap-1"
                           onClick={() => patchMut.mutate({ status: 'worked' })}>
-                    <Check size={12} /> Mark as worked
+                    <Check size={12} /> Mark as Worked
                   </button>
                 )}
               </div>

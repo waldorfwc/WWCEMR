@@ -291,7 +291,7 @@ function ScheduleForm({ onClose, qc }) {
 
   return (
     <div className="card">
-      <h3 className="text-sm font-semibold mb-2">New recurring schedule</h3>
+      <h3 className="text-sm font-semibold mb-2">New Recurring Schedule</h3>
       <div className="grid grid-cols-2 gap-3 text-sm">
         <Field label="Facility">
           <select className="input text-sm" value={form.facility}

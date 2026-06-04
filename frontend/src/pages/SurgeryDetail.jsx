@@ -141,7 +141,7 @@ export default function SurgeryDetail() {
               className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
               title="Open this patient's portal in a new tab (read-only)"
             >
-              <Eye size={11} /> View as patient
+              <Eye size={11} /> View as Patient
             </button>
             <button
               type="button"
@@ -157,7 +157,7 @@ export default function SurgeryDetail() {
               className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
               title="Email the patient their surgery portal login link"
             >
-              <Send size={11} /> Send portal access
+              <Send size={11} /> Send Portal Access
             </button>
             <button
               type="button"
@@ -183,7 +183,7 @@ export default function SurgeryDetail() {
                       onClick={() => patch.mutate({ status: 'new' })}
                       className="btn-primary text-xs flex items-center gap-1"
                       disabled={patch.isPending}>
-                <Check size={11} /> Mark as new (spawn milestones)
+                <Check size={11} /> Mark as New (spawn milestones)
               </button>
             )}
             {!s.scheduled_date && isCancelable && (

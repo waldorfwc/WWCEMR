@@ -69,7 +69,7 @@ export default function CodeHelperDenials() {
 
       {adding && (
         <div className="card mb-3">
-          <h2 className="text-sm font-semibold mb-2">New denial entry</h2>
+          <h2 className="text-sm font-semibold mb-2">New Denial Entry</h2>
           <div className="grid grid-cols-4 gap-2 text-sm">
             <input className="input" placeholder="Code (e.g. 97110)"
                     value={form.code} onChange={e => setForm({...form, code: e.target.value})} />

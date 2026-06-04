@@ -131,7 +131,7 @@ export default function ProviderMissingChargesPortal() {
                       if (window.confirm(`Mark "${c.patient_name}" on ${fmtDate(c.appointment_date)} as billed?`))
                         actionMut.mutate({ chargeId: c.id, action: 'billed' })
                     }}>
-                    <Check size={13} /> Mark as billed
+                    <Check size={13} /> Mark as Billed
                   </button>
                   <button
                     className="bg-red-100 hover:bg-red-200 text-red-800 text-sm font-medium px-3 py-1.5 rounded flex items-center gap-1"
