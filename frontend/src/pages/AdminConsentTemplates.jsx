@@ -307,13 +307,29 @@ export default function AdminConsentTemplates() {
   const [editing, setEditing] = useState(null)   // null | 'new' | template object
   const [filter, setFilter] = useState('')
 
+  // FastAPI 422s come back as { detail: [{loc, msg, type}, ...] } — passing
+  // that array to alert() yields '[object Object]'. Normalize to a readable
+  // string for any shape.
+  function fmtErr(err, fallback) {
+    const d = err?.response?.data?.detail
+    if (typeof d === 'string' && d) return d
+    if (Array.isArray(d)) {
+      return d.map(item =>
+        typeof item === 'string' ? item
+          : `${(item?.loc || []).slice(1).join('.')}: ${item?.msg || JSON.stringify(item)}`
+      ).join('\n') || fallback
+    }
+    if (d && typeof d === 'object') return d.message || JSON.stringify(d)
+    return err?.message || fallback
+  }
+
   const createMut = useMutation({
     mutationFn: (body) => api.post('/consent-templates', body).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['consent-templates'] })
       setEditing(null)
     },
-    onError: (err) => alert(err?.response?.data?.detail || 'Create failed'),
+    onError: (err) => alert(fmtErr(err, 'Create failed')),
   })
   const updateMut = useMutation({
     mutationFn: ({ id, body }) => api.put(`/consent-templates/${id}`, body).then(r => r.data),
@@ -321,12 +337,12 @@ export default function AdminConsentTemplates() {
       qc.invalidateQueries({ queryKey: ['consent-templates'] })
       setEditing(null)
     },
-    onError: (err) => alert(err?.response?.data?.detail || 'Save failed'),
+    onError: (err) => alert(fmtErr(err, 'Save failed')),
   })
   const deleteMut = useMutation({
     mutationFn: (id) => api.delete(`/consent-templates/${id}`).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['consent-templates'] }),
-    onError: (err) => alert(err?.response?.data?.detail || 'Delete failed'),
+    onError: (err) => alert(fmtErr(err, 'Delete failed')),
   })
 
   const filtered = useMemo(() => {

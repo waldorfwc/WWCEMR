@@ -180,29 +180,47 @@ def list_boldsign_templates(
     BoldSign endpoint: GET /v1/template/list
     Header: X-API-KEY.
     """
-    import os, httpx
+    import os, httpx, logging
+    log = logging.getLogger(__name__)
     api_key = os.environ.get("BOLDSIGN_API_KEY", "").strip()
     if not api_key:
         raise HTTPException(status_code=503,
                             detail="BoldSign API key not configured")
-    r = httpx.get("https://api.boldsign.com/v1/template/list",
-                    headers={"X-API-KEY": api_key},
-                    timeout=30,
-                    params={"Page": 1, "PageSize": 200})
+    try:
+        r = httpx.get("https://api.boldsign.com/v1/template/list",
+                        headers={"X-API-KEY": api_key},
+                        timeout=30,
+                        params={"Page": 1, "PageSize": 200})
+    except Exception as exc:
+        log.exception("BoldSign template list — httpx call failed")
+        raise HTTPException(status_code=502,
+                            detail=f"BoldSign request error: {exc}")
     if r.status_code != 200:
+        log.warning("BoldSign returned %s: %s", r.status_code, r.text[:400])
         raise HTTPException(status_code=502,
                             detail=f"BoldSign returned {r.status_code}: {r.text[:200]}")
-    data = r.json() or {}
+    try:
+        data = r.json() or {}
+    except Exception as exc:
+        log.exception("BoldSign returned non-JSON: %s", r.text[:200])
+        raise HTTPException(status_code=502,
+                            detail=f"BoldSign returned non-JSON: {exc}")
+    rows = data.get("result") or data.get("Result") or []
     out = []
-    for t in (data.get("result") or data.get("Result") or []):
-        out.append({
-            "template_id":   t.get("documentId") or t.get("templateId"),
-            "name":          t.get("title") or t.get("name"),
-            "owner":         (t.get("createdBy") or {}).get("name")
-                              if isinstance(t.get("createdBy"), dict)
-                              else t.get("createdBy"),
-            "last_modified": t.get("createdDate"),
-        })
+    for t in rows:
+        try:
+            cb = t.get("createdBy")
+            owner = (cb.get("name") if isinstance(cb, dict) else cb) or None
+            out.append({
+                "template_id":   t.get("documentId") or t.get("templateId"),
+                "name":          t.get("title") or t.get("messageTitle") or t.get("name"),
+                "owner":         owner,
+                "last_modified": t.get("createdDate"),
+            })
+        except Exception as exc:
+            log.exception("BoldSign row parse error; row=%s", t)
+            # keep going — return whatever we successfully parsed
+            continue
     return out
 
 
