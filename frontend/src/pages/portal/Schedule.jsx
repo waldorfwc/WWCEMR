@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
 import { CalendarDays, Lock, MapPin, Clock } from 'lucide-react'
 import { portalApi, isStaffPreview } from '../../lib/portal-api'
+import { fmt } from '../../utils/api'
 
 
 function GateBanner({ gate, sid }) {
@@ -51,7 +52,7 @@ function BlockDayList({ days, onPick }) {
             </div>
             <div className="min-w-0">
               <div className="font-serif text-[15px] text-plum-ink font-semibold leading-tight">
-                {d.weekday}, {d.block_date}
+                {d.weekday}, {fmt.date(d.block_date)}
               </div>
               <div className="text-[12px] text-plum-700/80 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="inline-flex items-center gap-1">
@@ -94,7 +95,7 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
         </h3>
         <div className="bg-plum-50/60 rounded-xl p-4 mt-4 space-y-1">
           <div className="text-[14px] text-plum-ink font-medium">
-            {day.weekday}, {day.block_date}
+            {day.weekday}, {fmt.date(day.block_date)}
           </div>
           <div className="text-[12px] text-plum-700/80 flex items-center gap-1">
             <Clock size={11} /> Arrive at {day.proposed_start_time}
