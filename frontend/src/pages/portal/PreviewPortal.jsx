@@ -212,7 +212,7 @@ function DashboardPreview() {
               title="Settle your balance"
               meta={`$${MOCK.balance.toFixed(2)} due`}
               body="Pay securely with your card, FSA, or HSA. Pre-payment is required before your surgery date can be scheduled."
-              cta="Pay now"
+              cta="Pay Now"
               urgent
             />
             <ActionCard
@@ -221,7 +221,7 @@ function DashboardPreview() {
               title="Sign your consent"
               meta={`${MOCK.consent.pending} envelope awaiting`}
               body="Review and electronically sign the consent forms for your procedure. Takes about three minutes."
-              cta="Open envelope"
+              cta="Open Envelope"
             />
             <ActionCard
               icon={CalendarDays}
@@ -229,7 +229,7 @@ function DashboardPreview() {
               title="Pick your surgery date"
               meta="Available after payment"
               body="Once your balance is settled, you'll see open dates for your procedure with Dr. Cooke at MedStar."
-              cta="See dates"
+              cta="See Dates"
               disabled
             />
             <ActionCard
@@ -238,7 +238,7 @@ function DashboardPreview() {
               title="Pre-op labs window"
               meta={MOCK.labs.window}
               body="Visit any Quest, LabCorp, or hospital lab in this window. We'll receive the results automatically."
-              cta="Find a lab"
+              cta="Find a Lab"
             />
           </div>
         </section>

@@ -147,7 +147,7 @@ export default function Dashboard() {
                 title="Settle your balance"
                 meta={`$${balance.toFixed(2)} due`}
                 body="Pay securely with your card, FSA, or HSA. Pre-payment is required before your surgery date is locked in."
-                cta="Pay now"
+                cta="Pay Now"
                 to={`/portal/s/${sid}/payments`}
               />
             )}
@@ -159,7 +159,7 @@ export default function Dashboard() {
                     title="Consent signed"
                     meta="✓ Your part is done"
                     body="We received your signature. Now waiting on the practice to countersign your consent forms — nothing else is needed from you."
-                    cta="View consent"
+                    cta="View Consent"
                     to={`/portal/s/${sid}/consent`}
                   />
                 : <ActionCard
@@ -168,7 +168,7 @@ export default function Dashboard() {
                     title="Sign your consent"
                     meta="Awaiting your signature"
                     body="Review and electronically sign the consent forms for your procedure. Takes about three minutes."
-                    cta="Open envelope"
+                    cta="Open Envelope"
                     to={`/portal/s/${sid}/consent`}
                   />
             )}
@@ -181,7 +181,7 @@ export default function Dashboard() {
                 body={surgery.facility
                   ? `Pick an open date for your procedure with ${surgery.surgeon || 'your surgeon'} at ${surgery.facility}.`
                   : 'Pick an open date once your facility is set. Our coordinator will reach out if anything needs your attention.'}
-                cta="See dates"
+                cta="See Dates"
                 to={`/portal/s/${sid}/schedule`}
                 disabled={balance > 0}
               />
@@ -193,7 +193,7 @@ export default function Dashboard() {
                 title="Pre-op labs window"
                 meta="4–7 days before your surgery"
                 body="Visit any Quest, LabCorp, or hospital lab in this window. Results come back to us automatically."
-                cta="View instructions"
+                cta="View Instructions"
                 to={`/portal/s/${sid}/documents`}
               />
             )}
@@ -215,7 +215,7 @@ export default function Dashboard() {
                 title="Everything is up to date"
                 meta="Nothing to do right now"
                 body="We'll reach out by text or email as soon as something needs your attention."
-                cta="Open documents"
+                cta="Open Documents"
                 to={`/portal/s/${sid}/documents`}
               />
             )}

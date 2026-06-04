@@ -162,7 +162,7 @@ function EnvelopeRow({ env, sid }) {
         {env.can_sign && !isStaffPreview() && (
           <button onClick={signNow} disabled={busy}
                   className="btn-primary text-sm">
-            {busy ? 'Opening…' : 'Sign now'}
+            {busy ? 'Opening…' : 'Sign Now'}
           </button>
         )}
         {env.can_download && <DownloadButton sid={sid} env={env} />}

@@ -56,7 +56,7 @@ function BalanceCard({ data, onPayClick }) {
         </p>
         {!isStaffPreview() && (
           <button onClick={onPayClick} className="btn-primary mt-5">
-            Pay now
+            Pay Now
           </button>
         )}
       </div>

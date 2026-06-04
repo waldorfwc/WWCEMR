@@ -104,7 +104,7 @@ function ConsentDocsCard({ sid, consents }) {
   if (!consents?.length) {
     return (
       <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-        <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
+        <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Consent Forms</h2>
         <p className="text-sm text-gray-600">
           Signed consent forms will appear here once everyone has signed.
         </p>
@@ -113,7 +113,7 @@ function ConsentDocsCard({ sid, consents }) {
   }
   return (
     <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
-      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Consent forms</h2>
+      <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">Consent Forms</h2>
       <ul className="divide-y divide-plum-50">
         {consents.map(c => (
           <li key={c.envelope_id}
@@ -384,7 +384,7 @@ function FmlaCard({ sid, fmla, refetchFmla }) {
   return (
     <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">FMLA paperwork</h2>
+        <h2 className="text-sm font-semibold text-gray-700">FMLA Paperwork</h2>
         <span className={`text-xs px-2 py-1 rounded ${badge}`}>
           {status || 'not started'}
         </span>
