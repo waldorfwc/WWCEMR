@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { CreditCard, CheckCircle2 } from 'lucide-react'
 import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
+import { fmt } from '../../utils/api'
 
 function fmtMoney(n) {
   return `$${Number(n || 0).toFixed(2)}`
@@ -80,7 +81,7 @@ function History({ rows }) {
           return (
             <li key={r.id} className="py-3 flex items-center justify-between text-[13px]">
               <span className="text-plum-700/80">
-                {(r.paid_at || r.requested_at || '').slice(0, 10)}
+                {fmt.date((r.paid_at || r.requested_at || '').slice(0, 10))}
               </span>
               <span className="text-plum-ink font-mono font-medium">
                 {fmtMoney(r.amount_paid)}

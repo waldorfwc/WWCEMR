@@ -5,6 +5,7 @@ import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
 import OfficeProcedureInstructions from '../../components/portal/OfficeProcedureInstructions'
 import HospitalProcedureInstructions from '../../components/portal/HospitalProcedureInstructions'
+import { fmt } from '../../utils/api'
 
 function fmtMoney(v) {
   return `$${Number(v).toFixed(2)}`
@@ -84,8 +85,7 @@ function EstimateCard({ sid, estimate }) {
             <div className="text-gray-800">{estimate.filename}</div>
             {estimate.uploaded_at && (
               <div className="text-[11px] text-gray-500 mt-0.5">
-                Prepared {new Date(estimate.uploaded_at).toLocaleDateString(
-                            undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                Prepared {fmt.date(estimate.uploaded_at.slice(0, 10))}
               </div>
             )}
           </div>
@@ -150,7 +150,7 @@ function ReceiptsCard({ receipts }) {
         {receipts.map(r => (
           <li key={r.id}
               className="py-2 flex items-center justify-between text-sm">
-            <span>{(r.paid_at || '').slice(0, 10)}</span>
+            <span>{fmt.date((r.paid_at || '').slice(0, 10))}</span>
             <span className="text-gray-900">{fmtMoney(r.amount)}</span>
           </li>
         ))}
@@ -172,8 +172,13 @@ function LabsAppointmentCard({ sid, labs, refetchDocs }) {
   const latest   = new Date(base); latest.setDate(latest.getDate() - 4)
   const isoE = earliest.toISOString().slice(0, 10)
   const isoL = latest.toISOString().slice(0, 10)
-  const longFmt = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString(
-    undefined, { weekday: 'long', month: 'long', day: 'numeric' })
+  // Weekday alongside the MM/DD/YYYY date so patients see both "Tuesday"
+  // and the date format the rest of the portal uses.
+  const longFmt = (iso) => {
+    const weekday = new Date(iso + 'T00:00:00')
+      .toLocaleDateString(undefined, { weekday: 'long' })
+    return `${weekday}, ${fmt.date(iso)}`
+  }
 
   async function save() {
     setBusy(true); setErr('')
@@ -225,7 +230,7 @@ function LabsAppointmentCard({ sid, labs, refetchDocs }) {
         <div className="text-xs text-gray-600">
           ✓ Reported: <strong>{longFmt(labs.appointment_date)}</strong>
           {labs.reported_at && (
-            <span className="text-gray-400"> · saved {labs.reported_at.slice(0, 10)}</span>
+            <span className="text-gray-400"> · saved {fmt.date(labs.reported_at.slice(0, 10))}</span>
           )}
         </div>
       )}
@@ -324,7 +329,7 @@ function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
                 <span className="truncate mr-2">
                   {u.filename}
                   <span className="text-xs text-gray-500 ml-2">
-                    {u.uploaded_at?.slice(0, 10)}
+                    {fmt.date(u.uploaded_at?.slice(0, 10))}
                   </span>
                 </span>
                 {u.download_url && (
