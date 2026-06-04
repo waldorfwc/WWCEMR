@@ -165,7 +165,7 @@ export default function Dashboard() {
                 ? <ActionCard
                     icon={ClipboardCheck}
                     tone="sky"
-                    title="Consent signed"
+                    title="Consent Signed"
                     meta="✓ Your part is done"
                     body="We received your signature. Now waiting on the practice to countersign your consent forms — nothing else is needed from you."
                     cta="View Consent"
