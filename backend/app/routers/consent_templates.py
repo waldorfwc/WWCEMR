@@ -26,12 +26,26 @@ class ConsentTemplateIn(BaseModel):
     name: str
     boldsign_template_id: str
     procedure_match: list[str] = []
-    facility_match: Optional[str] = None
+    # facility_match: accept a single code (legacy) or a list. The save handler
+    # normalises into a JSON list.
+    facility_match: Optional[object] = None
     insurance_match: list[str] = []
     is_supplemental: bool = False
     min_days_before_surgery: Optional[int] = None
     notes: Optional[str] = None
     is_active: bool = True
+
+
+def _normalize_facility_match(raw):
+    """Coerce facility_match payload into a JSON list of codes.
+    The Pydantic field accepts a single string (current FE dropdown) but the
+    matcher expects a list — wrap, and tolerate already-list input."""
+    if raw is None or raw == "":
+        return []
+    if isinstance(raw, list):
+        return [str(c).strip().lower() for c in raw if str(c).strip()]
+    s = str(raw).strip().lower()
+    return [s] if s else []
 
 
 def _to_dict(t: ConsentTemplate, in_use_count: int = 0) -> dict:
@@ -78,7 +92,8 @@ def create_template(payload: ConsentTemplateIn,
         name=payload.name.strip(),
         boldsign_template_id=bs_id,
         procedure_match=[p.strip().lower() for p in payload.procedure_match if p.strip()],
-        facility_match=(payload.facility_match or None) or None,
+        # facility_match is a JSON list of facility codes; empty list = any facility
+        facility_match=_normalize_facility_match(payload.facility_match),
         insurance_match=[p.strip().lower() for p in payload.insurance_match if p.strip()],
         is_supplemental=bool(payload.is_supplemental),
         min_days_before_surgery=payload.min_days_before_surgery,
@@ -103,7 +118,7 @@ def update_template(template_id: str, payload: ConsentTemplateIn,
     t.name = payload.name.strip()
     t.boldsign_template_id = bs_id
     t.procedure_match = [p.strip().lower() for p in payload.procedure_match if p.strip()]
-    t.facility_match = (payload.facility_match or None) or None
+    t.facility_match = _normalize_facility_match(payload.facility_match)
     t.insurance_match = [p.strip().lower() for p in payload.insurance_match if p.strip()]
     t.is_supplemental = bool(payload.is_supplemental)
     t.min_days_before_surgery = payload.min_days_before_surgery
