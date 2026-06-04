@@ -435,7 +435,17 @@ def seed_from_smartsheet(
     surgery_date_min — when set, skip rows whose Surgery Date is before
     this date (or is missing entirely). Used by the Completed-sheet
     importer to only pull recent + upcoming surgeries.
+
+    Disabled by default: surgeries are now created via the PDF order
+    upload + manual create flows, with surgery_number and patient_
+    directory populated by app.services.surgery_local_helpers. Re-enable
+    by setting SMARTSHEET_ENABLED=true if you need to run a one-off
+    backfill or sync.
     """
+    if os.environ.get("SMARTSHEET_ENABLED", "false").strip().lower() != "true":
+        raise RuntimeError(
+            "Smartsheet sync is disabled (SMARTSHEET_ENABLED is not 'true'). "
+            "Surgery creation is now upload/manual only.")
     sheet = _fetch_sheet(sheet_id)
     columns = {c["id"]: c["title"] for c in sheet["columns"]}
 

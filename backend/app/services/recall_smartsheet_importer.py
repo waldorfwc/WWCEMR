@@ -178,7 +178,13 @@ def import_patient_list_sheet(db: Session, sheet_id: str) -> ImportResult:
     to recall_suppressions and skips the active row. Existing entries
     matching (chart_number, recall_type='Est - Well-Woman Exam') get
     updated in place — natural dedupe across sheets.
+
+    Disabled by default since the WWC team moved off Smartsheet — set
+    SMARTSHEET_ENABLED=true to run a one-off import.
     """
+    if os.environ.get("SMARTSHEET_ENABLED", "false").strip().lower() != "true":
+        raise RuntimeError(
+            "Smartsheet sync is disabled (SMARTSHEET_ENABLED is not 'true').")
     result = ImportResult(sheet_id=sheet_id)
 
     sheet = _fetch_sheet(sheet_id)

@@ -417,6 +417,30 @@ def _apply_lightweight_migrations():
             conn.execute(text(
                 f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({cols_clause})"))
 
+    # SUR-numbering sequence. Smartsheet used to own the numbering; now
+    # the DB does. Create the sequence and prime it (once) to the highest
+    # existing SUR number + 1, so we keep going where Smartsheet left
+    # off. Postgres only — SQLite tests don't have surgery_number sequences.
+    if dialect == "postgresql" and "surgeries" in existing_tables:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "CREATE SEQUENCE IF NOT EXISTS surgery_number_seq"))
+            # Only prime when the sequence has never been touched. Once
+            # is_called flips to true, nextval()'s have been issued and
+            # we must NEVER setval backwards.
+            is_called = conn.execute(text(
+                "SELECT is_called FROM surgery_number_seq")).scalar()
+            if not is_called:
+                max_n = conn.execute(text(
+                    "SELECT COALESCE(MAX(SUBSTRING(surgery_number FROM 4)::int), 0) "
+                    "  FROM surgeries "
+                    " WHERE surgery_number ~ '^SUR[0-9]+$'"
+                )).scalar() or 0
+                # setval(seq, v, false) → next nextval() returns v.
+                conn.execute(text(
+                    "SELECT setval('surgery_number_seq', :v, false)"),
+                  {"v": max(int(max_n) + 1, 1)})
+
 
 def _migrate_template_targeting():
     """One-time: link each task template's legacy `role` value to the

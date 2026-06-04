@@ -842,6 +842,11 @@ async def upload_order(
                 size_bytes=len(contents),
                 uploaded_by=current_user.get("email"),
             ))
+            from app.services.surgery_local_helpers import (
+                upsert_patient_directory, maybe_assign_surgery_number,
+            )
+            maybe_assign_surgery_number(db, existing)
+            upsert_patient_directory(db, existing)
             db.commit(); db.refresh(existing)
             return {
                 "duplicate": False,
@@ -864,12 +869,17 @@ async def upload_order(
                         "Open it to add this order, or confirm to create a new one."),
         }
 
+    from app.services.surgery_local_helpers import (
+        upsert_patient_directory, maybe_assign_surgery_number,
+    )
     s = Surgery(
         **kwargs,
         order_pdf_path=pdf_key,
         created_by=current_user.get("email"),
     )
-    db.add(s); db.commit(); db.refresh(s)
+    db.add(s); db.flush()
+    maybe_assign_surgery_number(db, s)
+    upsert_patient_directory(db, s)
     # Also surface the order PDF in surgery_files so the detail page's
     # "Order PDF" card can link to it. order_pdf_path on the surgery row
     # is the source of truth; this row is a UI mirror.
@@ -882,7 +892,7 @@ async def upload_order(
         size_bytes=len(contents),
         uploaded_by=current_user.get("email"),
     ))
-    db.commit()
+    db.commit(); db.refresh(s)
     return {
         "duplicate": False,
         "id": str(s.id),
@@ -1018,7 +1028,13 @@ def create_manual(payload: ManualSurgeryIn,
         source="manual",
         created_by=current_user.get("email"),
     )
-    db.add(s); db.commit(); db.refresh(s)
+    db.add(s); db.flush()
+    from app.services.surgery_local_helpers import (
+        upsert_patient_directory, maybe_assign_surgery_number,
+    )
+    maybe_assign_surgery_number(db, s)
+    upsert_patient_directory(db, s)
+    db.commit(); db.refresh(s)
     return _surgery_dict(s, include_milestones=True)
 
 
