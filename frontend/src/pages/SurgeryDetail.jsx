@@ -4322,20 +4322,29 @@ function PostOpCallCardBody({ surgery, milestone }) {
   }
 
   const save = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone.kind}/done`,
+    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone?.kind}/done`,
                                 { notes: JSON.stringify(answers) }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
     },
   })
   const saveDraft = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone.kind}/start`,
+    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone?.kind}/start`,
                                 { notes: JSON.stringify(answers) }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
     },
   })
 
+  // Milestones are retired for new surgeries. When the post_op_call row
+  // doesn't exist yet, the buttons can't fire so the panel is a stub.
+  if (!milestone) {
+    return (
+      <div className="text-xs text-gray-500 italic">
+        Available after surgery completion.
+      </div>
+    )
+  }
   const isDone = milestone.status === 'done'
 
   return (
