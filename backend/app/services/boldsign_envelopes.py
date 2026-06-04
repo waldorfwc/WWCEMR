@@ -157,6 +157,48 @@ def _build_prefill_fields(s: Surgery) -> list[dict]:
     return out
 
 
+def _get_template_field_ids(template_id: str) -> set[str]:
+    """Fetch the form field IDs and Data Sync Tags on a BoldSign template.
+
+    BoldSign rejects send-from-template requests when the alias spam in
+    existingFormFields exceeds the number of fields the template actually
+    has. We introspect the template once per send and only push values for
+    IDs (or DataSyncTags) that exist.
+
+    Soft-fails to empty set on transport errors — caller treats that the
+    same as "no fields configured" and skips prefill.
+    """
+    if not _is_configured() or not template_id:
+        return set()
+    try:
+        with _http() as c:
+            r = c.get("/v1/template/properties",
+                       params={"templateId": template_id})
+        if r.status_code >= 300:
+            log.warning("BoldSign template properties %s: %s %s",
+                        template_id, r.status_code, r.text[:200])
+            return set()
+        data = r.json() or {}
+    except Exception as exc:
+        log.warning("BoldSign template properties %s: %s", template_id, exc)
+        return set()
+    out: set[str] = set()
+    # BoldSign returns the field list under different keys across api
+    # versions — formFields on send-from-template properties, documentFields
+    # on some account tiers. Walk both.
+    candidates = (data.get("formFields")
+                  or data.get("documentFields")
+                  or data.get("fields") or [])
+    for f in candidates:
+        if not isinstance(f, dict):
+            continue
+        for k in ("id", "fieldId", "name", "dataSyncTag", "tag"):
+            v = f.get(k) or f.get(k[0].upper() + k[1:])
+            if v:
+                out.add(str(v).strip())
+    return out
+
+
 def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
     """Build BoldSign roles list.
 
@@ -167,10 +209,15 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
 
     The patient role also carries existingFormFields so name / DOB /
     surgeon / procedure / surgery date populate the consent automatically.
-    BoldSign drops unknown field IDs silently, so it's safe to send the
-    full set and let each template pick what it needs.
+    BoldSign 400s when existingFormFields outnumbers the template's
+    actual fields, so we introspect the template first and keep only the
+    aliases that exist on it.
     """
-    prefill = _build_prefill_fields(s)
+    known_ids = _get_template_field_ids(template.boldsign_template_id)
+    prefill = [f for f in _build_prefill_fields(s) if f["id"] in known_ids]
+    log.info("BoldSign prefill for template %s: %d/%d fields applied",
+             template.boldsign_template_id, len(prefill),
+             len(known_ids))
     roles = [{
         "signerName": _format_patient_name(s),
         "signerEmail": s.email or "",
