@@ -460,10 +460,19 @@ def portal_slots(surgery_id: str, days_ahead: int = 180,
     # slot logic exactly. _token is unused by the function body.
     from app.routers.patient_surgery import patient_slots as _ms_slots
     raw = _ms_slots(surgery_id, days_ahead=days_ahead, db=db, _token="")
+    # Humanize the facility code on every block day so the picker shows
+    # 'MedStar' instead of the raw 'medstar' enum value (same convention
+    # the booked card uses).
+    days = [
+        {**d,
+         "facility": FACILITY_SHORT.get(d.get("facility") or "",
+                                          d.get("facility") or "")}
+        for d in (raw.get("days") or [])
+    ]
     return {
         "gate": {"allowed": True, "reason": None},
         "booked": booked,
-        "block_days": raw.get("days", []),
+        "block_days": days,
         "procedure_kind": raw.get("procedure_kind"),
         "duration_minutes": raw.get("duration_minutes"),
     }

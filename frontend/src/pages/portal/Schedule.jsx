@@ -6,6 +6,20 @@ import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import { fmt } from '../../utils/api'
 
 
+// "13:30" → "1:30 PM" for patient-friendly display. Backend keeps the
+// canonical 24-hour value on the wire; this helper formats at render time.
+function time12(t) {
+  if (!t || typeof t !== 'string') return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  const m = (mStr || '00').slice(0, 2)
+  if (!Number.isFinite(h)) return t
+  const period = h < 12 ? 'AM' : 'PM'
+  const h12 = (h % 12) || 12
+  return `${h12}:${m} ${period}`
+}
+
+
 function BookedCard({ booked }) {
   const dt = new Date(booked.date + 'T00:00:00')
   const weekday = dt.toLocaleDateString(undefined, { weekday: 'long' })
@@ -20,7 +34,7 @@ function BookedCard({ booked }) {
       <div className="mt-2 text-[13px] text-plum-700/80 flex flex-wrap items-center gap-x-4 gap-y-1">
         {booked.time && (
           <span className="inline-flex items-center gap-1">
-            <Clock size={12} /> Arrive at {booked.time}
+            <Clock size={12} /> Arrive at {time12(booked.time)}
           </span>
         )}
         {booked.facility && (
@@ -92,7 +106,7 @@ function BlockDayList({ days, onPick }) {
               </div>
               <div className="text-[12px] text-plum-700/80 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="inline-flex items-center gap-1">
-                  <Clock size={11} /> Arrive at {d.proposed_start_time}
+                  <Clock size={11} /> Arrive at {time12(d.proposed_start_time)}
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <MapPin size={11} /> {d.facility}
@@ -134,7 +148,7 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
             {day.weekday}, {fmt.date(day.block_date)}
           </div>
           <div className="text-[12px] text-plum-700/80 flex items-center gap-1">
-            <Clock size={11} /> Arrive at {day.proposed_start_time}
+            <Clock size={11} /> Arrive at {time12(day.proposed_start_time)}
           </div>
           <div className="text-[12px] text-plum-700/80 flex items-center gap-1">
             <MapPin size={11} /> {day.facility}
