@@ -198,7 +198,7 @@ export default function Schedule() {
           Surgery portal
         </div>
         <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
-          {data.booked ? 'Your surgery date' : 'Pick your date'}
+          {data.booked ? 'Your Surgery Date' : 'Pick Your Date'}
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">
           {data.booked

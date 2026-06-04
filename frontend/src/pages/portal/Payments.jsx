@@ -70,7 +70,7 @@ function History({ rows }) {
   return (
     <section className="bg-white rounded-2xl border border-plum-100 p-6 shadow-sm">
       <h2 className="font-serif text-[15px] text-plum-ink font-semibold tracking-tight mb-4">
-        Payment history
+        Payment History
       </h2>
       <ul className="divide-y divide-plum-50">
         {rows.map(r => {

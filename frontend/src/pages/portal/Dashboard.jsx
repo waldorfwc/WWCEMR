@@ -87,7 +87,16 @@ export default function Dashboard() {
   // Derived state for the action cards
   const balance = parseFloat(surgery.outstanding_balance ?? surgery.patient_responsibility ?? 0)
   const consentMs = mByKey['consent']
-  const consentPending = consentMs && !DONE_STATES.has(consentMs.status)
+  // Consent envelopes don't exist until after the patient picks a date —
+  // backend returns {status: 'todo'} with no `total` field when nothing
+  // has been sent yet. Don't show the "Sign your consent" CTA in that
+  // state; we'd be telling the patient to sign something that doesn't
+  // exist and the consent page itself would just render an empty state.
+  const consentNotSentYet = consentMs?.status === 'todo'
+                              && consentMs?.total === undefined
+  const consentPending = consentMs
+                          && !DONE_STATES.has(consentMs.status)
+                          && !consentNotSentYet
   const scheduleMs = mByKey['schedule']
   const labsMs = mByKey['labs']
   const labsDone = labsMs && DONE_STATES.has(labsMs.status)
@@ -124,7 +133,7 @@ export default function Dashboard() {
         <section className="mb-5">
           <div className="flex items-baseline justify-between mb-3 gap-3">
             <h2 className="font-serif text-[14px] md:text-[15px] text-plum-ink font-semibold tracking-tight">
-              Your care journey
+              Your Care Journey
             </h2>
             <div className="text-[11px] uppercase tracking-[0.16em] text-plum-600/70 shrink-0">
               {doneCount} of {JOURNEY.length} complete
@@ -136,7 +145,7 @@ export default function Dashboard() {
         {/* Action cards */}
         <section className="mb-5">
           <h2 className="font-serif text-[14px] md:text-[15px] text-plum-ink font-semibold tracking-tight mb-5">
-            What's next
+            What's Next
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {balance > 0 && (
@@ -144,7 +153,7 @@ export default function Dashboard() {
                 icon={CreditCard}
                 tone="rose"
                 urgent
-                title="Settle your balance"
+                title="Settle Your Balance"
                 meta={`$${balance.toFixed(2)} due`}
                 body="Pay securely with your card, FSA, or HSA. Pre-payment is required before your surgery date is locked in."
                 cta="Pay Now"
@@ -165,7 +174,7 @@ export default function Dashboard() {
                 : <ActionCard
                     icon={ClipboardCheck}
                     tone="amber"
-                    title="Sign your consent"
+                    title="Sign Your Consent"
                     meta="Awaiting your signature"
                     body="Review and electronically sign the consent forms for your procedure. Takes about three minutes."
                     cta="Open Envelope"
@@ -176,7 +185,7 @@ export default function Dashboard() {
               <ActionCard
                 icon={CalendarDays}
                 tone="sky"
-                title="Pick your surgery date"
+                title="Pick Your Surgery Date"
                 meta={balance > 0 ? 'Available after payment' : 'Open dates available'}
                 body={surgery.facility
                   ? `Pick an open date for your procedure with ${surgery.surgeon || 'your surgeon'} at ${surgery.facility}.`
@@ -362,14 +371,14 @@ function SelfReportRow({ milestones, sid, onDone }) {
   const labs = milestones['labs']
   const hosp = milestones['hospital_preop']
   const todo = []
-  if (labs && labs.status === 'todo') todo.push({ key: 'labs', label: 'Mark labs as done' })
-  if (hosp && hosp.status === 'todo') todo.push({ key: 'hospital_preop', label: 'Mark hospital call as done' })
+  if (labs && labs.status === 'todo') todo.push({ key: 'labs', label: 'Mark Labs as Done' })
+  if (hosp && hosp.status === 'todo') todo.push({ key: 'hospital_preop', label: 'Mark Hospital Call as Done' })
   if (todo.length === 0) return null
   return (
     <div className="bg-plum-50/80 border border-plum-100 rounded-xl p-4 flex flex-wrap items-center gap-3">
       <div className="flex items-center gap-2 text-[12px] text-plum-700">
         <HeartHandshake size={14} />
-        <span className="font-medium">Update us</span>
+        <span className="font-medium">Update Us</span>
       </div>
       {todo.map(t => (
         <SelfReportButton key={t.key} sid={sid} kind={t.key}

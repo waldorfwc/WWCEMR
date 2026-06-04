@@ -208,7 +208,7 @@ export default function Consent() {
           Surgery portal
         </div>
         <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
-          Consent forms
+          Consent Forms
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">
           Review and electronically sign the documents below. Each takes about
