@@ -47,7 +47,9 @@ function ChipList({ items }) {
 function TemplateForm({ initial, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
     name: initial?.name || '',
-    docusign_template_id: initial?.docusign_template_id || '',
+    boldsign_template_id: initial?.boldsign_template_id
+                            || initial?.docusign_template_id   // migrate legacy
+                            || '',
     procedure_match_text: (initial?.procedure_match || []).join(', '),
     facility_match: initial?.facility_match || '',
     insurance_match_text: (initial?.insurance_match || []).join(', '),
@@ -63,11 +65,12 @@ function TemplateForm({ initial, onClose, onSave }) {
   })
   const [testResult, setTestResult] = useState(null)
 
-  // List of available DocuSign templates (so admin can pick instead of typing)
-  const dsTemplates = useQuery({
-    queryKey: ['docusign-templates'],
-    queryFn: () => api.get('/consent-templates/docusign-templates').then(r => r.data),
+  // List of available BoldSign templates (so admin can pick instead of typing)
+  const bsTemplates = useQuery({
+    queryKey: ['boldsign-templates'],
+    queryFn: () => api.get('/consent-templates/boldsign-templates').then(r => r.data),
     staleTime: 60_000,
+    retry: false,
   })
 
   function applyMedicaidPreset() {
@@ -85,7 +88,7 @@ function TemplateForm({ initial, onClose, onSave }) {
     e.preventDefault()
     onSave({
       name: form.name,
-      docusign_template_id: form.docusign_template_id,
+      boldsign_template_id: form.boldsign_template_id,
       procedure_match: listFromCommaString(form.procedure_match_text),
       facility_match: form.facility_match || null,
       insurance_match: listFromCommaString(form.insurance_match_text),
@@ -110,7 +113,7 @@ function TemplateForm({ initial, onClose, onSave }) {
               {initial ? 'Edit consent template' : 'New consent template'}
             </h2>
             <div className="text-muted text-[11px]">
-              Maps a procedure (and optional facility / insurance) to a DocuSign template ID
+              Maps a procedure (and optional facility / insurance) to a BoldSign template ID
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-muted hover:text-ink">
@@ -131,28 +134,33 @@ function TemplateForm({ initial, onClose, onSave }) {
 
           <div>
             <label className="block text-[11px] font-medium text-gray-700 mb-1">
-              DocuSign template <span className="text-red-500">*</span>
+              BoldSign template <span className="text-red-500">*</span>
             </label>
-            {dsTemplates.data && (
+            {bsTemplates.data && bsTemplates.data.length > 0 && (
               <select className="input w-full text-[12px] mb-1"
-                      value={form.docusign_template_id}
-                      onChange={e => setForm({ ...form, docusign_template_id: e.target.value })}>
-                <option value="">— pick a DocuSign template —</option>
-                {dsTemplates.data.map(t => (
+                      value={form.boldsign_template_id}
+                      onChange={e => setForm({ ...form, boldsign_template_id: e.target.value })}>
+                <option value="">— pick a BoldSign template —</option>
+                {bsTemplates.data.map(t => (
                   <option key={t.template_id} value={t.template_id}>
-                    {t.name} ({t.template_id.slice(0, 8)}…)
+                    {t.name} ({(t.template_id || '').slice(0, 8)}…)
                   </option>
                 ))}
               </select>
             )}
             <input className="input w-full text-[12px] font-mono"
                    required
-                   value={form.docusign_template_id}
-                   onChange={e => setForm({ ...form, docusign_template_id: e.target.value })}
-                   placeholder="DocuSign template ID (GUID)" />
-            {dsTemplates.error && (
+                   value={form.boldsign_template_id}
+                   onChange={e => setForm({ ...form, boldsign_template_id: e.target.value })}
+                   placeholder="BoldSign template ID" />
+            {bsTemplates.isLoading && (
+              <div className="text-[11px] text-gray-500 mt-1">
+                Loading BoldSign templates…
+              </div>
+            )}
+            {bsTemplates.error && (
               <div className="text-[11px] text-amber-700 mt-1">
-                Couldn't list DocuSign templates: {dsTemplates.error.response?.data?.detail || 'API error'}
+                Couldn't list BoldSign templates ({bsTemplates.error?.response?.status || 'network'}) — paste the template ID manually below.
               </div>
             )}
           </div>
@@ -346,7 +354,7 @@ export default function AdminConsentTemplates() {
               Consent Templates
             </h1>
             <div className="text-muted text-[12px] mt-0.5">
-              Map each procedure to a DocuSign template. Supplemental forms (Medicaid sterilization, etc.)
+              Map each procedure to a BoldSign template. Supplemental forms (Medicaid sterilization, etc.)
               attach in addition to the primary.
             </div>
           </div>
@@ -391,7 +399,9 @@ export default function AdminConsentTemplates() {
               <tr key={t.id} className={`table-row ${!t.is_active ? 'opacity-50' : ''}`}>
                 <td className="table-td">
                   <div className="font-medium text-[13px]">{t.name}</div>
-                  <div className="text-[10px] text-gray-500 font-mono">{t.docusign_template_id?.slice(0, 12)}…</div>
+                  <div className="text-[10px] text-gray-500 font-mono">
+                    {(t.boldsign_template_id || t.docusign_template_id || '').slice(0, 12)}…
+                  </div>
                 </td>
                 <td className="table-td"><ChipList items={t.procedure_match} /></td>
                 <td className="table-td text-[11px]">

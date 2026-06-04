@@ -24,7 +24,11 @@ router = APIRouter(prefix="/consent-templates", tags=["consent-templates"])
 
 class ConsentTemplateIn(BaseModel):
     name: str
-    docusign_template_id: str
+    # Primary field (BoldSign). Legacy `docusign_template_id` still accepted
+    # so older clients don't 422 — it's mirrored into boldsign_template_id
+    # if the BoldSign field is missing.
+    boldsign_template_id: Optional[str] = None
+    docusign_template_id: Optional[str] = None
     procedure_match: list[str] = []
     facility_match: Optional[str] = None
     insurance_match: list[str] = []
@@ -38,6 +42,7 @@ def _to_dict(t: ConsentTemplate, in_use_count: int = 0) -> dict:
     return {
         "id": str(t.id),
         "name": t.name,
+        "boldsign_template_id": t.boldsign_template_id,
         "docusign_template_id": t.docusign_template_id,
         "procedure_match": t.procedure_match or [],
         "facility_match": t.facility_match,
@@ -70,11 +75,13 @@ def list_templates(db: Session = Depends(get_db),
 def create_template(payload: ConsentTemplateIn,
                      db: Session = Depends(get_db),
                      current_user: dict = Depends(require_permission("surgery:manage"))):
-    if not payload.name.strip() or not payload.docusign_template_id.strip():
-        raise HTTPException(status_code=400, detail="name and docusign_template_id are required")
+    bs_id = (payload.boldsign_template_id or payload.docusign_template_id or "").strip()
+    if not payload.name.strip() or not bs_id:
+        raise HTTPException(status_code=400,
+                            detail="name and boldsign_template_id are required")
     t = ConsentTemplate(
         name=payload.name.strip(),
-        docusign_template_id=payload.docusign_template_id.strip(),
+        boldsign_template_id=bs_id,
         procedure_match=[p.strip().lower() for p in payload.procedure_match if p.strip()],
         facility_match=(payload.facility_match or None) or None,
         insurance_match=[p.strip().lower() for p in payload.insurance_match if p.strip()],
@@ -94,8 +101,12 @@ def update_template(template_id: str, payload: ConsentTemplateIn,
     t = db.query(ConsentTemplate).filter(ConsentTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="template not found")
+    bs_id = (payload.boldsign_template_id or payload.docusign_template_id or "").strip()
+    if not bs_id:
+        raise HTTPException(status_code=400,
+                            detail="boldsign_template_id is required")
     t.name = payload.name.strip()
-    t.docusign_template_id = payload.docusign_template_id.strip()
+    t.boldsign_template_id = bs_id
     t.procedure_match = [p.strip().lower() for p in payload.procedure_match if p.strip()]
     t.facility_match = (payload.facility_match or None) or None
     t.insurance_match = [p.strip().lower() for p in payload.insurance_match if p.strip()]
@@ -164,14 +175,54 @@ def test_match(payload: TemplateTestPayload,
     return out
 
 
+@router.get("/boldsign-templates")
+def list_boldsign_templates(
+    current_user: dict = Depends(require_permission("surgery:manage"))
+):
+    """Pull the live list of templates from BoldSign so admins can pick a
+    templateId from a dropdown instead of hand-typing it.
+
+    BoldSign endpoint: GET /v1/template/list
+    Header: X-API-KEY.
+    """
+    import os, httpx
+    api_key = os.environ.get("BOLDSIGN_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503,
+                            detail="BoldSign API key not configured")
+    r = httpx.get("https://api.boldsign.com/v1/template/list",
+                    headers={"X-API-KEY": api_key},
+                    timeout=30,
+                    params={"Page": 1, "PageSize": 200})
+    if r.status_code != 200:
+        raise HTTPException(status_code=502,
+                            detail=f"BoldSign returned {r.status_code}: {r.text[:200]}")
+    data = r.json() or {}
+    out = []
+    for t in (data.get("result") or data.get("Result") or []):
+        out.append({
+            "template_id":   t.get("documentId") or t.get("templateId"),
+            "name":          t.get("title") or t.get("name"),
+            "owner":         (t.get("createdBy") or {}).get("name")
+                              if isinstance(t.get("createdBy"), dict)
+                              else t.get("createdBy"),
+            "last_modified": t.get("createdDate"),
+        })
+    return out
+
+
 @router.get("/docusign-templates")
 def list_docusign_templates(
     current_user: dict = Depends(require_permission("surgery:manage"))
 ):
-    """Pull the live list of templates from DocuSign so admins can pick a
-    template_id from a dropdown instead of hand-typing a GUID."""
+    """Legacy DocuSign listing. Kept so old client builds don't 404 while
+    the BoldSign-only UI rolls out. BoldSign is the primary surface — use
+    /boldsign-templates instead."""
     import httpx
-    from app.services.docusign_client import auth_headers, envelopes_base_url
+    try:
+        from app.services.docusign_client import auth_headers, envelopes_base_url
+    except Exception:
+        raise HTTPException(status_code=410, detail="DocuSign integration retired")
     r = httpx.get(f"{envelopes_base_url()}/templates", headers=auth_headers(),
                   timeout=30, params={"count": 200})
     if r.status_code != 200:
