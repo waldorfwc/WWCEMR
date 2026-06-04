@@ -113,12 +113,26 @@ function EnvelopeRow({ env, sid }) {
     }
   }
 
-  const tone =
-    env.status === 'signed' || env.status === 'completed'
-      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-      : env.status === 'declined' || env.status === 'voided' || env.status === 'failed'
-        ? 'bg-rose-50 text-rose-700 border-rose-200'
+  // Show "you're done · waiting for the practice" when the patient signed
+  // but the overall envelope isn't completed yet (surgeon/witness pending).
+  const patientDone = !!env.patient_signed_at || env.awaiting_countersignature
+  const fullyDone = env.status === 'signed' || env.status === 'completed'
+
+  const tone = fullyDone
+    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+    : env.status === 'declined' || env.status === 'voided' || env.status === 'failed'
+      ? 'bg-rose-50 text-rose-700 border-rose-200'
+      : patientDone
+        ? 'bg-sky-50 text-sky-700 border-sky-200'
         : 'bg-amber-50 text-amber-800 border-amber-200'
+
+  const label = fullyDone
+    ? 'signed'
+    : env.status === 'declined' ? 'declined'
+    : env.status === 'voided'   ? 'voided'
+    : env.status === 'failed'   ? 'failed'
+    : patientDone               ? '✓ Your part is done · awaiting practice countersignature'
+    : 'awaiting your signature'
 
   return (
     <div className="bg-white rounded-2xl border border-plum-100 p-5 shadow-sm
@@ -133,9 +147,12 @@ function EnvelopeRow({ env, sid }) {
           </div>
           <div className="text-[11px] text-plum-700/80 mt-2 flex items-center gap-2 flex-wrap">
             <span className={`uppercase tracking-wide px-2 py-0.5 rounded-full border ${tone}`}>
-              {env.status}
+              {label}
             </span>
             {env.sent_at && <span>sent {env.sent_at.slice(0, 10)}</span>}
+            {env.patient_signed_at && (
+              <span>you signed {env.patient_signed_at.slice(0, 10)}</span>
+            )}
           </div>
           {err && <div className="text-xs text-rose-700 mt-2">{err}</div>}
         </div>

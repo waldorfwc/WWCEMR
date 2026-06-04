@@ -354,6 +354,10 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
 
     BoldSign status values: InProgress | Completed | Declined | Expired |
     Revoked. Maps to the same status column used by the DocuSign version.
+
+    Also captures the patient's per-signer completion timestamp into
+    patient_signed_at — that's what the portal uses to distinguish
+    'awaiting your signature' from 'awaiting countersignature'.
     """
     raw_status = (env.get("status") or env.get("Status") or "").lower()
     mapping = {
@@ -381,6 +385,28 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
             _parse_dt(env.get("revokedDateTime") or env.get("revokedAt"))
             or datetime.utcnow()
         )
+
+    # Per-signer: look for the patient role (signerRole == "Patient" is the
+    # canonical match we send when creating the envelope). Fall back to the
+    # surgery's email if BoldSign sent that field. signerDetails uses the
+    # same status enum ("Completed" when done).
+    signers = env.get("signerDetails") or env.get("SignerDetails") or []
+    surgery_email = ((row.surgery.email or "").strip().lower()
+                      if row.surgery else "")
+    patient = None
+    for s in signers:
+        role = (s.get("signerRole") or s.get("SignerRole") or "").lower()
+        email = (s.get("signerEmail") or s.get("SignerEmail") or "").strip().lower()
+        if role == "patient" or (surgery_email and email == surgery_email):
+            patient = s
+            break
+    if patient and (patient.get("status") or patient.get("Status") or "").lower() == "completed":
+        if not row.patient_signed_at:
+            row.patient_signed_at = (
+                _parse_dt(patient.get("signedDateTime")
+                            or patient.get("completedDateTime"))
+                or datetime.utcnow()
+            )
 
 
 def reconcile_surgery_consent(db: Session, s: Surgery) -> None:

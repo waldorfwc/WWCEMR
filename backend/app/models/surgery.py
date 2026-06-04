@@ -760,6 +760,10 @@ class SurgeryConsentEnvelope(Base):
     status = Column(String(20), default="pending", nullable=False)
     sent_at = Column(DateTime, nullable=True)
     signed_at = Column(DateTime, nullable=True)
+    # When the PATIENT specifically completed their signing (vs the surgeon
+    # or witness). Lets the portal show "Awaiting countersignature" instead
+    # of "Awaiting your signature" once the patient's part is done.
+    patient_signed_at = Column(DateTime, nullable=True)
     declined_at = Column(DateTime, nullable=True)
     voided_at = Column(DateTime, nullable=True)
     last_synced_at = Column(DateTime, nullable=True)

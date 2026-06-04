@@ -270,6 +270,10 @@ def _apply_lightweight_migrations():
         ("surgeries", "billed_at", "DATETIME"),
         ("surgeries", "billed_by", "VARCHAR(120)"),
         ("surgeries", "billing_ai_notes", "TEXT"),
+        # Consent envelopes: capture patient-side signing timestamp so the
+        # portal can show 'awaiting countersignature' once the patient is
+        # done but the surgeon/witness haven't signed yet.
+        ("surgery_consent_envelopes", "patient_signed_at", "TIMESTAMP"),
         # Secondary insurance benefit fields + card-on-file metadata
         ("surgeries", "secondary_deductible",       "NUMERIC(10,2)"),
         ("surgeries", "secondary_deductible_met",   "NUMERIC(10,2)"),

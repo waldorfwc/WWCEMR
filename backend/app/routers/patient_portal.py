@@ -481,6 +481,8 @@ from app.models.surgery import SurgeryConsentEnvelope
 
 def _envelope_dict(env: SurgeryConsentEnvelope) -> dict:
     status = env.status or ""
+    patient_signed = env.patient_signed_at is not None
+    awaiting_counter = patient_signed and status not in ("signed", "completed")
     return {
         "id":               str(env.id),
         "template_name":    env.template.name if env.template else "",
@@ -488,7 +490,12 @@ def _envelope_dict(env: SurgeryConsentEnvelope) -> dict:
         "status":           status,
         "sent_at":          env.sent_at.isoformat() if env.sent_at else None,
         "signed_at":        env.signed_at.isoformat() if env.signed_at else None,
-        "can_sign":         status in ("sent", "delivered", "pending"),
+        "patient_signed_at": (env.patient_signed_at.isoformat()
+                                if env.patient_signed_at else None),
+        "awaiting_countersignature": awaiting_counter,
+        # Patient can't re-sign once their part is done
+        "can_sign":         (status in ("sent", "delivered", "pending")
+                              and not patient_signed),
         "can_download":     status in ("signed", "completed"),
     }
 
