@@ -183,19 +183,25 @@ def _get_template_field_ids(template_id: str) -> set[str]:
         log.warning("BoldSign template properties %s: %s", template_id, exc)
         return set()
     out: set[str] = set()
-    # BoldSign returns the field list under different keys across api
-    # versions — formFields on send-from-template properties, documentFields
-    # on some account tiers. Walk both.
-    candidates = (data.get("formFields")
-                  or data.get("documentFields")
-                  or data.get("fields") or [])
-    for f in candidates:
-        if not isinstance(f, dict):
-            continue
-        for k in ("id", "fieldId", "name", "dataSyncTag", "tag"):
-            v = f.get(k) or f.get(k[0].upper() + k[1:])
-            if v:
-                out.add(str(v).strip())
+    # BoldSign's /v1/template/properties response nests formFields INSIDE
+    # each roles[] entry. Older accounts also return a top-level fields
+    # list. Walk both shapes.
+    buckets: list[list] = []
+    for role in (data.get("roles") or data.get("Roles") or []):
+        if isinstance(role, dict):
+            buckets.append(role.get("formFields")
+                            or role.get("FormFields") or [])
+    buckets.append(data.get("formFields")
+                   or data.get("documentFields")
+                   or data.get("fields") or [])
+    for fields in buckets:
+        for f in fields or []:
+            if not isinstance(f, dict):
+                continue
+            for k in ("id", "fieldId", "name", "dataSyncTag", "tag"):
+                v = f.get(k) or f.get(k[0].upper() + k[1:])
+                if v:
+                    out.add(str(v).strip())
     return out
 
 
