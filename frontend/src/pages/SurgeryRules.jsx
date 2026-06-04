@@ -1211,13 +1211,13 @@ function EmailTemplatesTab() {
 
 
 const TABS = [
-  { k: 'milestones', label: 'Milestone rules',     icon: ListChecks },
+  { k: 'milestones', label: 'Milestone Rules',     icon: ListChecks },
   { k: 'thresholds', label: 'Thresholds',          icon: Sliders },
-  { k: 'recipients', label: 'Alert recipients',    icon: Mail },
+  { k: 'recipients', label: 'Alert Recipients',    icon: Mail },
   { k: 'facilities', label: 'Facilities',          icon: Building2 },
-  { k: 'templates',  label: 'Procedure templates', icon: Stethoscope },
-  { k: 'emails',     label: 'Email templates',     icon: Mail },
-  { k: 'sms',        label: 'SMS templates',       icon: MessageSquare },
+  { k: 'templates',  label: 'Procedure Templates', icon: Stethoscope },
+  { k: 'emails',     label: 'Email Templates',     icon: Mail },
+  { k: 'sms',        label: 'SMS Templates',       icon: MessageSquare },
 ]
 
 export default function SurgeryRules() {

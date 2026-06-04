@@ -44,7 +44,7 @@ export default function FaxLogPane() {
   return (
     <div className="bg-white border border-border-subtle rounded-lg overflow-hidden flex flex-col">
       <div className="px-4 py-2.5 border-b border-border-subtle flex justify-between items-center">
-        <div className="font-serif text-ink text-[15px] font-semibold">Recent faxes</div>
+        <div className="font-serif text-ink text-[15px] font-semibold">Recent Faxes</div>
         <div className="flex gap-2">
           <select className="input text-[11px] py-1 px-2 w-[130px]"
                   value={status} onChange={e => setStatus(e.target.value)}>

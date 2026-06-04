@@ -1611,7 +1611,7 @@ function HospitalReleaseTodo({ rows }) {
   const qc = useQueryClient()
   return (
     <div className="card !p-3 border bg-amber-50/40 border-amber-200">
-      <div className="text-sm font-semibold text-gray-800">Release back to hospital</div>
+      <div className="text-sm font-semibold text-gray-800">Release Back to Hospital</div>
       <div className="text-[11px] text-gray-600 mb-2">
         Hospital block days within 14 days with 0 cases booked. Check off each
         once you've called the hospital to release the day.
