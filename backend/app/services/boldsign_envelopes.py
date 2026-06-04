@@ -91,6 +91,72 @@ def select_template_id(s: Surgery, db: Optional[Session] = None) -> Optional[str
 
 # ─── Send flow ──────────────────────────────────────────────────────
 
+def _format_patient_name(s: Surgery) -> str:
+    """Surgery rows store names as 'Last, First [Middle]' (Smartsheet shape).
+    Consent forms want the friendly 'First Last' rendering."""
+    name = (s.patient_name or "").strip()
+    if "," in name:
+        last, _, rest = name.partition(",")
+        rest  = rest.strip()
+        last  = last.strip()
+        if rest and last:
+            return f"{rest} {last}"
+    return name or "Patient"
+
+
+def _build_prefill_fields(s: Surgery) -> list[dict]:
+    """Field values to push into the BoldSign template.
+
+    Each consent template in BoldSign should give its form fields one of
+    the supported IDs/labels (see the alias lists below). We send under
+    every alias so the coordinator can name a field "Patient Name" or
+    "patient_name" or "PatientName" and either will populate. BoldSign
+    ignores IDs that don't exist on the template.
+    """
+    first_proc = (s.procedures or [{}])[0]
+    procedure  = (first_proc.get("description")
+                  or first_proc.get("name") or "").strip()
+    values = {
+        "patient_name":   _format_patient_name(s),
+        "patient_dob":    s.dob.strftime("%m/%d/%Y") if s.dob else "",
+        "surgeon_name":   (s.surgeon_primary or "").strip(),
+        "surgery_date":   (s.scheduled_date.strftime("%m/%d/%Y")
+                            if s.scheduled_date else ""),
+        "procedure_name": procedure,
+        "facility":       (s.selected_facility or "").strip(),
+        "chart_number":   (s.chart_number or "").strip(),
+    }
+    aliases = {
+        "patient_name":   ["patient_name", "patientname", "PatientName",
+                            "Patient Name", "patient name", "name"],
+        "patient_dob":    ["patient_dob", "patientdob", "PatientDOB",
+                            "Patient DOB", "dob", "DOB",
+                            "Date of Birth", "date_of_birth", "DateOfBirth",
+                            "patient_date_of_birth"],
+        "surgeon_name":   ["surgeon_name", "surgeonname", "SurgeonName",
+                            "Surgeon Name", "surgeon", "Surgeon",
+                            "doctor_name", "DoctorName", "Doctor Name",
+                            "doctor", "physician", "Physician"],
+        "surgery_date":   ["surgery_date", "surgerydate", "SurgeryDate",
+                            "Surgery Date", "procedure_date", "ProcedureDate",
+                            "Procedure Date", "date_of_surgery"],
+        "procedure_name": ["procedure_name", "procedurename", "ProcedureName",
+                            "Procedure Name", "procedure", "Procedure"],
+        "facility":       ["facility", "Facility", "hospital", "Hospital",
+                            "location", "Location"],
+        "chart_number":   ["chart_number", "chartnumber", "ChartNumber",
+                            "Chart Number", "chart", "Chart",
+                            "mrn", "MRN"],
+    }
+    out: list[dict] = []
+    for key, value in values.items():
+        if not value:
+            continue
+        for alias in aliases.get(key, [key]):
+            out.append({"id": alias, "value": value})
+    return out
+
+
 def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
     """Build BoldSign roles list.
 
@@ -98,13 +164,21 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
     Witness optional (signerOrder=3).
     Field names follow BoldSign's send-from-template schema:
     signerName/signerEmail/signerOrder/roleIndex.
+
+    The patient role also carries existingFormFields so name / DOB /
+    surgeon / procedure / surgery date populate the consent automatically.
+    BoldSign drops unknown field IDs silently, so it's safe to send the
+    full set and let each template pick what it needs.
     """
+    prefill = _build_prefill_fields(s)
     roles = [{
-        "signerName": s.patient_name or "Patient",
+        "signerName": _format_patient_name(s),
         "signerEmail": s.email or "",
         "signerType": "Signer",
+        "signerRole": "Patient",
         "signerOrder": 1,
         "roleIndex": 1,
+        "existingFormFields": prefill,
     }]
     provider_email = os.environ.get("CONSENT_PROVIDER_EMAIL", "").strip()
     provider_name = os.environ.get("CONSENT_PROVIDER_NAME", "Dr. Aryian Cooke").strip()
@@ -113,8 +187,12 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
             "signerName": provider_name,
             "signerEmail": provider_email,
             "signerType": "Signer",
+            "signerRole": "Provider",
             "signerOrder": 2,
             "roleIndex": 2,
+            # Surgeon role gets the same prefill set so any provider-side
+            # fields (e.g. surgeon_name read-only label) populate too.
+            "existingFormFields": prefill,
         })
     witness_email = os.environ.get("CONSENT_WITNESS_EMAIL", "").strip()
     if witness_email:
@@ -122,6 +200,7 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
             "signerName": "Witness",
             "signerEmail": witness_email,
             "signerType": "Signer",
+            "signerRole": "Witness",
             "signerOrder": 3,
             "roleIndex": 3,
         })
