@@ -68,7 +68,7 @@ export default function StepUpPayFlow({ checkoutUrl, onCancel }) {
             <ExternalLink size={12} /> Re-open Stripe tab
           </a>
         )}
-        <button onClick={onCancel} className="btn-secondary">Back to portal</button>
+        <button onClick={onCancel} className="btn-secondary">Back to Portal</button>
       </div>
     </div>
   )

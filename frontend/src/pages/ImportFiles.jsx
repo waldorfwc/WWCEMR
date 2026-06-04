@@ -538,7 +538,7 @@ function BootstrapSuccess({ result, onAgain }) {
       </div>
       <div className="flex gap-2">
         <a href="/claims" className="btn-primary text-xs">View Claims →</a>
-        <button className="btn-secondary text-xs" onClick={onAgain}>Upload another file</button>
+        <button className="btn-secondary text-xs" onClick={onAgain}>Upload Another File</button>
       </div>
     </div>
   )
@@ -645,7 +645,7 @@ function EraSuccess({ result, onAgain }) {
       )}
       <div className="flex gap-2 mt-2">
         <a href="/claims" className="btn-primary text-xs">View Claims →</a>
-        <button className="btn-secondary text-xs" onClick={onAgain}>Upload more ERAs</button>
+        <button className="btn-secondary text-xs" onClick={onAgain}>Upload More ERAs</button>
       </div>
     </div>
   )

@@ -721,7 +721,7 @@ function CalendarCancelDialog({ visitId, patientName, qc, onClose }) {
       </div>
       {err && <div className="text-xs text-red-600">{err}</div>}
       <div className="flex gap-2 justify-end">
-        <button className="btn-secondary text-xs" onClick={onClose}>Keep visit</button>
+        <button className="btn-secondary text-xs" onClick={onClose}>Keep Visit</button>
         <button className="text-xs px-3 py-1.5 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
                 onClick={submit} disabled={busy || !reason.trim()}>
           {busy ? 'Cancelling…' : 'Cancel visit'}

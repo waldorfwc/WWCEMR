@@ -346,7 +346,7 @@ function TemplateForm({ initial, onClose, onSave }) {
         <div className="sticky bottom-0 bg-white border-t border-border-subtle px-6 py-3 flex justify-end gap-2">
           <button type="button" className="text-sm text-muted hover:underline" onClick={onClose}>Cancel</button>
           <button type="submit" className="btn-primary text-sm">
-            {initial ? 'Save changes' : 'Create template'}
+            {initial ? 'Save Changes' : 'Create Template'}
           </button>
         </div>
       </form>

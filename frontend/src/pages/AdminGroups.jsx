@@ -320,7 +320,7 @@ function EditGroupDrawer({ groupId, onClose }) {
               <p className="text-[11px] text-muted mb-3">
                 Members of this group inherit every permission checked below.
                 <span className="text-success ml-1">Member changes save instantly</span> —
-                the <strong>Save permissions</strong> button at the bottom only saves
+                the <strong>Save Permissions</strong> button at the bottom only saves
                 permission edits.
               </p>
               {memberFlash && (
@@ -433,7 +433,7 @@ function EditGroupDrawer({ groupId, onClose }) {
                   onClick={() => savePerms.mutate()}
                   disabled={!dirty || savePerms.isPending}
                 >
-                  {savePerms.isPending ? 'Saving…' : 'Save permissions'}
+                  {savePerms.isPending ? 'Saving…' : 'Save Permissions'}
                 </button>
               </div>
             </div>

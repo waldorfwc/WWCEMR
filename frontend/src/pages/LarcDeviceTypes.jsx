@@ -274,7 +274,7 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => mut.mutate()}
                   disabled={!form.name.trim() || mut.isPending}>
-            <Save size={12} /> {mut.isPending ? 'Saving…' : (initial ? 'Save changes' : 'Create type')}
+            <Save size={12} /> {mut.isPending ? 'Saving…' : (initial ? 'Save Changes' : 'Create Type')}
           </button>
         </div>
       </div>
