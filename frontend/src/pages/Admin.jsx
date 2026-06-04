@@ -869,7 +869,7 @@ export default function Admin() {
           <tbody>
             {adding && <AddUserForm onClose={() => setAdding(false)} onFlash={onFlash} />}
             {isLoading && (
-              <tr><td colSpan={7} className="table-td text-center text-muted py-8">Loading...</td></tr>
+              <tr><td colSpan={7} className="table-td text-center text-muted py-8">Loading…</td></tr>
             )}
             {!isLoading && visibleUsers?.map(u => (
               <UserRow key={u.email} u={u}

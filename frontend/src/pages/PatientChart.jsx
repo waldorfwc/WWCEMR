@@ -99,7 +99,7 @@ function FaxModal({ doc, docType, onClose, patient }) {
             className="btn-primary text-xs flex items-center gap-1 disabled:opacity-50"
           >
             {sending ? <Loader2 size={12} className="animate-spin" /> : <Phone size={12} />}
-            {sending ? 'Sending...' : 'Send Fax'}
+            {sending ? 'Sending…' : 'Send Fax'}
           </button>
         </div>
       </div>

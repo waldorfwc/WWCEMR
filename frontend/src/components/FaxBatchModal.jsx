@@ -90,7 +90,7 @@ export default function FaxBatchModal({
             <div className="mt-4 flex gap-2 justify-end">
               <button className="btn-secondary" onClick={onClose} disabled={busy}>Cancel</button>
               <button className="btn-primary" onClick={() => send.mutate()} disabled={busy || !dest}>
-                {busy ? 'Sending...' : `Send${docIds.length > 1 ? ` ${docIds.length}` : ''}`}
+                {busy ? 'Sending…' : `Send${docIds.length > 1 ? ` ${docIds.length}` : ''}`}
               </button>
             </div>
           </>

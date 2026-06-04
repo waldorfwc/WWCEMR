@@ -89,7 +89,7 @@ export default function FaxLogPane() {
               <tr><td colSpan={9} className="table-td text-center text-muted py-8">No faxes in this window.</td></tr>
             )}
             {q.isLoading && (
-              <tr><td colSpan={9} className="table-td text-center text-muted py-8">Loading...</td></tr>
+              <tr><td colSpan={9} className="table-td text-center text-muted py-8">Loading…</td></tr>
             )}
           </tbody>
         </table>

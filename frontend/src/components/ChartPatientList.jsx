@@ -68,7 +68,7 @@ export default function ChartPatientList({ activeChartNumber, perPage = 100 }) {
           {patients?.total?.toLocaleString() || 0} patients
         </div>
         {isLoading ? (
-          <div className="text-center text-muted text-[11px] py-8">Loading...</div>
+          <div className="text-center text-muted text-[11px] py-8">Loading…</div>
         ) : (
           patients?.patients?.map(p => {
             const isActive = String(p.chart_number) === String(activeChartNumber)
