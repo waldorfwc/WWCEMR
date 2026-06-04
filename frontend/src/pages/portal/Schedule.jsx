@@ -1,9 +1,45 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, Link } from 'react-router-dom'
-import { CalendarDays, Lock, MapPin, Clock } from 'lucide-react'
+import { CalendarDays, Lock, MapPin, Clock, CheckCircle2 } from 'lucide-react'
 import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import { fmt } from '../../utils/api'
+
+
+function BookedCard({ booked }) {
+  const dt = new Date(booked.date + 'T00:00:00')
+  const weekday = dt.toLocaleDateString(undefined, { weekday: 'long' })
+  return (
+    <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-emerald-800 text-[12px] font-semibold uppercase tracking-[0.16em]">
+        <CheckCircle2 size={14} /> Surgery scheduled
+      </div>
+      <div className="mt-3 font-serif text-[20px] text-plum-ink font-semibold tracking-tight leading-tight">
+        {weekday}, {fmt.date(booked.date)}
+      </div>
+      <div className="mt-2 text-[13px] text-plum-700/80 flex flex-wrap items-center gap-x-4 gap-y-1">
+        {booked.time && (
+          <span className="inline-flex items-center gap-1">
+            <Clock size={12} /> Arrive at {booked.time}
+          </span>
+        )}
+        {booked.facility && (
+          <span className="inline-flex items-center gap-1">
+            <MapPin size={12} /> {booked.facility}
+          </span>
+        )}
+      </div>
+      <p className="text-[12px] text-plum-700/70 mt-4">
+        Need to make a change? Please contact our surgical coordinator at{' '}
+        <a href="tel:2402527862" className="underline">240-252-7862</a>{' '}
+        or email{' '}
+        <a href="mailto:surgery@waldorfwomenscare.com" className="underline">
+          surgery@waldorfwomenscare.com
+        </a>.
+      </p>
+    </div>
+  )
+}
 
 
 function GateBanner({ gate, sid }) {
@@ -162,15 +198,18 @@ export default function Schedule() {
           Surgery portal
         </div>
         <h1 className="font-serif text-[24px] md:text-[30px] text-plum-ink font-semibold tracking-tight leading-tight">
-          Pick your date
+          {data.booked ? 'Your surgery date' : 'Pick your date'}
         </h1>
         <p className="text-[13px] md:text-[14px] text-plum-700/80 mt-2 max-w-xl">
-          Choose any open date below. Once you confirm, our coordinator will
-          send your full pre-op packet.
+          {data.booked
+            ? "Here's the date and location you're scheduled for. We'll send pre-op reminders as your date approaches."
+            : 'Choose any open date below. Once you confirm, our coordinator will send your full pre-op packet.'}
         </p>
       </header>
 
-      {!data.gate.allowed ? (
+      {data.booked ? (
+        <BookedCard booked={data.booked} />
+      ) : !data.gate.allowed ? (
         <GateBanner gate={data.gate} sid={sid} />
       ) : (
         <>

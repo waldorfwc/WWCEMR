@@ -437,10 +437,23 @@ def portal_slots(surgery_id: str, days_ahead: int = 180,
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
+    # If the surgery already has a confirmed date, surface that to the
+    # frontend so it can show a "you're scheduled for X on Y" view instead
+    # of an empty picker.
+    booked = None
+    if s.scheduled_date:
+        booked = {
+            "date":      s.scheduled_date.isoformat(),
+            "time":      (s.scheduled_start_time.strftime("%H:%M")
+                            if s.scheduled_start_time else None),
+            "facility":  FACILITY_SHORT.get(s.selected_facility or "",
+                                              s.selected_facility or ""),
+        }
     allowed, reason = schedule_gate_for_surgery(s)
     if not allowed:
         return {
             "gate": {"allowed": False, "reason": reason},
+            "booked": booked,
             "block_days": [],
         }
     # Direct function call (not via FastAPI deps) to share the magic-link
@@ -449,6 +462,7 @@ def portal_slots(surgery_id: str, days_ahead: int = 180,
     raw = _ms_slots(surgery_id, days_ahead=days_ahead, db=db, _token="")
     return {
         "gate": {"allowed": True, "reason": None},
+        "booked": booked,
         "block_days": raw.get("days", []),
         "procedure_kind": raw.get("procedure_kind"),
         "duration_minutes": raw.get("duration_minutes"),
@@ -709,6 +723,7 @@ def portal_documents(surgery_id: str, db: Session = Depends(get_db),
             .first())
 
     return {
+        "facility_code": s.selected_facility or "",
         "instructions": instructions,
         "consents":     consents,
         "receipts":     receipts,

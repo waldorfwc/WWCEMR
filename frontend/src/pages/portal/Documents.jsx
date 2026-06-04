@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import { portalApi, isStaffPreview } from '../../lib/portal-api'
 import StepUpPayFlow from '../../components/portal/StepUpPayFlow'
 import OfficeProcedureInstructions from '../../components/portal/OfficeProcedureInstructions'
+import HospitalProcedureInstructions from '../../components/portal/HospitalProcedureInstructions'
 
 function fmtMoney(v) {
   return `$${Number(v).toFixed(2)}`
@@ -41,13 +42,19 @@ function PdfDownloadButton({ url, filename, label }) {
   )
 }
 
-function InstructionsCard() {
+function InstructionsCard({ facilityCode }) {
+  // selected_facility values come from surgery rows. "office" → office
+  // handout; any hospital code (medstar, crmc, vhc, …) → hospital handout.
+  // Missing / unknown falls back to office to avoid a blank section.
+  const isHospital = !!facilityCode && facilityCode.toLowerCase() !== 'office'
   return (
     <section className="bg-white rounded-2xl border border-plum-100 shadow-sm p-5">
       <h2 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight mb-3">
         Instructions
       </h2>
-      <OfficeProcedureInstructions />
+      {isHospital
+        ? <HospitalProcedureInstructions />
+        : <OfficeProcedureInstructions />}
     </section>
   )
 }
@@ -506,7 +513,7 @@ export default function Documents() {
         </p>
       </header>
       <div className="space-y-4">
-        <InstructionsCard />
+        <InstructionsCard facilityCode={data.facility_code} />
         <EstimateCard sid={sid} estimate={data.estimate} />
         <ConsentDocsCard sid={sid} consents={data.consents} />
         <ReceiptsCard receipts={data.receipts} />
