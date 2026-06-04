@@ -226,13 +226,24 @@ def _consent_milestone(surgery: Surgery) -> dict:
     if not envs:
         return {"key": "consent", "label": "Consent forms signed",
                 "status": "todo"}
-    if all(e.status == "signed" for e in envs):
+    total = len(envs)
+    signed = sum(1 for e in envs if e.status == "signed")
+    patient_signed = sum(1 for e in envs if e.patient_signed_at is not None)
+    if signed == total:
         return {"key": "consent", "label": "Consent forms signed",
-                "status": "done", "count": len(envs)}
+                "status": "done", "count": total,
+                "patient_signed": patient_signed,
+                "awaiting_countersignature": False}
+    # Patient has signed every envelope they need to but the practice
+    # countersignature hasn't landed yet — surface that distinct state so
+    # the dashboard tile doesn't keep yelling 'Awaiting your signature'.
+    awaiting_counter = (patient_signed >= total) and signed < total
     return {"key": "consent", "label": "Consent forms signed",
             "status": "in_progress",
-            "signed": sum(1 for e in envs if e.status == "signed"),
-            "total": len(envs)}
+            "signed": signed,
+            "patient_signed": patient_signed,
+            "total": total,
+            "awaiting_countersignature": awaiting_counter}
 
 
 def _self_report_milestone(surgery, *, attr, label, key) -> dict:

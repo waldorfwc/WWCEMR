@@ -152,15 +152,25 @@ export default function Dashboard() {
               />
             )}
             {consentPending && (
-              <ActionCard
-                icon={ClipboardCheck}
-                tone="amber"
-                title="Sign your consent"
-                meta="Awaiting your signature"
-                body="Review and electronically sign the consent forms for your procedure. Takes about three minutes."
-                cta="Open envelope"
-                to={`/portal/s/${sid}/consent`}
-              />
+              consentMs?.awaiting_countersignature
+                ? <ActionCard
+                    icon={ClipboardCheck}
+                    tone="sky"
+                    title="Consent signed"
+                    meta="✓ Your part is done"
+                    body="We received your signature. Now waiting on the practice to countersign your consent forms — nothing else is needed from you."
+                    cta="View consent"
+                    to={`/portal/s/${sid}/consent`}
+                  />
+                : <ActionCard
+                    icon={ClipboardCheck}
+                    tone="amber"
+                    title="Sign your consent"
+                    meta="Awaiting your signature"
+                    body="Review and electronically sign the consent forms for your procedure. Takes about three minutes."
+                    cta="Open envelope"
+                    to={`/portal/s/${sid}/consent`}
+                  />
             )}
             {scheduleMs && !DONE_STATES.has(scheduleMs.status) && (
               <ActionCard
