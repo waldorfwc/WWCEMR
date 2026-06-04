@@ -274,6 +274,9 @@ def _apply_lightweight_migrations():
         # portal can show 'awaiting countersignature' once the patient is
         # done but the surgeon/witness haven't signed yet.
         ("surgery_consent_envelopes", "patient_signed_at", "TIMESTAMP"),
+        # Consent templates: CPT-code-based matching (primary). JSON list
+        # — when populated, the matcher prefers it over substring keywords.
+        ("consent_templates", "cpt_codes", "JSON"),
         # Secondary insurance benefit fields + card-on-file metadata
         ("surgeries", "secondary_deductible",       "NUMERIC(10,2)"),
         ("surgeries", "secondary_deductible_met",   "NUMERIC(10,2)"),

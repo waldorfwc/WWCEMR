@@ -48,6 +48,7 @@ function TemplateForm({ initial, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
     name: initial?.name || '',
     boldsign_template_id: initial?.boldsign_template_id || '',
+    cpt_codes_text: (initial?.cpt_codes || []).join(', '),
     procedure_match_text: (initial?.procedure_match || []).join(', '),
     facility_match: initial?.facility_match || '',
     insurance_match_text: (initial?.insurance_match || []).join(', '),
@@ -58,6 +59,7 @@ function TemplateForm({ initial, onClose, onSave }) {
   }))
   const [testInput, setTestInput] = useState({
     procedure: '',
+    cpt: '',
     facility: '',
     primary_insurance: '',
   })
@@ -87,6 +89,7 @@ function TemplateForm({ initial, onClose, onSave }) {
     onSave({
       name: form.name,
       boldsign_template_id: form.boldsign_template_id,
+      cpt_codes: listFromCommaString(form.cpt_codes_text),
       procedure_match: listFromCommaString(form.procedure_match_text),
       facility_match: form.facility_match || null,
       insurance_match: listFromCommaString(form.insurance_match_text),
@@ -165,14 +168,28 @@ function TemplateForm({ initial, onClose, onSave }) {
 
           <div>
             <label className="block text-[11px] font-medium text-gray-700 mb-1">
-              Procedure keywords <span className="text-red-500">*</span>
+              CPT codes <span className="text-gray-500 font-normal">(primary match)</span>
+            </label>
+            <input className="input w-full text-[12px] font-mono"
+                   value={form.cpt_codes_text}
+                   onChange={e => setForm({ ...form, cpt_codes_text: e.target.value })}
+                   placeholder="comma-separated, e.g. 58300, 58301" />
+            <div className="text-[10px] text-gray-500 mt-0.5">
+              Most reliable. One template can cover multiple CPTs (e.g. IUD insert/remove).
+              For same-CPT-different-form (D&amp;C office vs hospital), set Facility below.
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-gray-700 mb-1">
+              Procedure keywords <span className="text-gray-500 font-normal">(fallback)</span>
             </label>
             <input className="input w-full text-[12px]"
                    value={form.procedure_match_text}
                    onChange={e => setForm({ ...form, procedure_match_text: e.target.value })}
                    placeholder="comma-separated, e.g. d&c, dilation, dilatation" />
             <div className="text-[10px] text-gray-500 mt-0.5">
-              Substring match (case-insensitive) against each surgery procedure name.
+              Used only when CPT codes is empty. Substring match (case-insensitive) on the procedure name.
             </div>
           </div>
 
@@ -246,7 +263,10 @@ function TemplateForm({ initial, onClose, onSave }) {
               <ShieldCheck size={13} className="text-plum-600" />
               Test match
             </h3>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
+              <input className="input text-[11px] font-mono" placeholder="CPT"
+                     value={testInput.cpt}
+                     onChange={e => setTestInput({ ...testInput, cpt: e.target.value })} />
               <input className="input text-[11px]" placeholder="Procedure name"
                      value={testInput.procedure}
                      onChange={e => setTestInput({ ...testInput, procedure: e.target.value })} />
@@ -264,7 +284,7 @@ function TemplateForm({ initial, onClose, onSave }) {
             </div>
             <button type="button"
                     className="btn-secondary text-[11px] mt-2 flex items-center gap-1"
-                    disabled={!testInput.procedure || testMatch.isPending}
+                    disabled={(!testInput.cpt && !testInput.procedure) || testMatch.isPending}
                     onClick={() => testMatch.mutate()}>
               <RefreshCw size={11} className={testMatch.isPending ? 'animate-spin' : ''} />
               Run match
@@ -350,6 +370,7 @@ export default function AdminConsentTemplates() {
     if (!f) return templates || []
     return (templates || []).filter(t =>
       t.name.toLowerCase().includes(f)
+      || (t.cpt_codes || []).some(c => c.toLowerCase().includes(f))
       || (t.procedure_match || []).some(p => p.includes(f))
       || (t.insurance_match || []).some(i => i.includes(f))
     )
@@ -381,7 +402,7 @@ export default function AdminConsentTemplates() {
 
       <div className="mb-3">
         <input className="input w-full max-w-md text-[12px]"
-               placeholder="Filter by name, procedure keyword, or insurance"
+               placeholder="Filter by name, CPT, procedure keyword, or insurance"
                value={filter}
                onChange={e => setFilter(e.target.value)} />
       </div>
@@ -391,7 +412,8 @@ export default function AdminConsentTemplates() {
           <thead className="bg-plum-50">
             <tr>
               <th className="table-th">Name</th>
-              <th className="table-th">Procedures</th>
+              <th className="table-th">CPT codes</th>
+              <th className="table-th">Procedure keywords</th>
               <th className="table-th">Facility</th>
               <th className="table-th">Insurance filter</th>
               <th className="table-th text-center">Suppl</th>
@@ -402,10 +424,10 @@ export default function AdminConsentTemplates() {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={8} className="table-td text-center text-muted py-8">Loading…</td></tr>
+              <tr><td colSpan={9} className="table-td text-center text-muted py-8">Loading…</td></tr>
             )}
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={8} className="table-td text-center text-muted py-8">
+              <tr><td colSpan={9} className="table-td text-center text-muted py-8">
                 No templates yet. Click "New template" to register one.
               </td></tr>
             )}
@@ -417,6 +439,7 @@ export default function AdminConsentTemplates() {
                     {(t.boldsign_template_id || '').slice(0, 12)}…
                   </div>
                 </td>
+                <td className="table-td"><ChipList items={t.cpt_codes} /></td>
                 <td className="table-td"><ChipList items={t.procedure_match} /></td>
                 <td className="table-td text-[11px]">
                   {t.facility_match || <span className="text-gray-400 italic">any</span>}

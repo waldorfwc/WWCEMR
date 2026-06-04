@@ -716,7 +716,13 @@ class ConsentTemplate(Base):
     name = Column(String(200), nullable=False)
     docusign_template_id = Column(String(80), nullable=True)
     boldsign_template_id = Column(String(80), nullable=True)
-    # JSON list of substrings, e.g. ["d&c", "dilation", "dilatation"]
+    # CPT-code primary match (most reliable). JSON list of CPT strings,
+    # e.g. ["58300","58301"] for an IUD insert/remove consent. When set,
+    # the matcher prefers CPT membership over the legacy substring keywords.
+    cpt_codes = Column(JSON, nullable=False, default=list)
+    # JSON list of substrings, e.g. ["d&c", "dilation", "dilatation"].
+    # Used as a fallback when cpt_codes is empty, or to backstop edge cases
+    # where the CPT isn't entered on the surgery row yet.
     procedure_match = Column(JSON, nullable=False, default=list)
     facility_match = Column(JSON, nullable=False, default=list)
     # JSON list of facility codes. Empty list = matches any facility.

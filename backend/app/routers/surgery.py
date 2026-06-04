@@ -3477,6 +3477,7 @@ def consent_template_matches(surgery_id: str,
             {
                 "template_id": str(m.template.id),
                 "template_name": m.template.name,
+                "boldsign_template_id": m.template.boldsign_template_id,
                 "docusign_template_id": m.template.docusign_template_id,
                 "matched_procedure": m.matched_procedure,
                 "is_supplemental": m.is_supplemental,

@@ -25,6 +25,12 @@ router = APIRouter(prefix="/consent-templates", tags=["consent-templates"])
 class ConsentTemplateIn(BaseModel):
     name: str
     boldsign_template_id: str
+    # CPT-based primary match — most reliable. When set, the matcher uses CPT
+    # membership instead of substring keywords. Same CPT at different facilities
+    # (D&C office vs hospital) resolves through facility_match.
+    cpt_codes: list[str] = []
+    # Substring keywords on the procedure description. Used as a fallback when
+    # cpt_codes is empty.
     procedure_match: list[str] = []
     # facility_match: accept a single code (legacy) or a list. The save handler
     # normalises into a JSON list.
@@ -34,6 +40,23 @@ class ConsentTemplateIn(BaseModel):
     min_days_before_surgery: Optional[int] = None
     notes: Optional[str] = None
     is_active: bool = True
+
+
+def _normalize_cpt_codes(raw) -> list[str]:
+    """CPT codes are short numeric/alphanumeric strings — coerce a list (or
+    single string) into a deduplicated list of trimmed values."""
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        raw = [c for c in raw.replace(",", " ").split() if c.strip()]
+    seen: set[str] = set()
+    out: list[str] = []
+    for c in raw:
+        v = str(c).strip()
+        if v and v not in seen:
+            seen.add(v)
+            out.append(v)
+    return out
 
 
 def _normalize_facility_match(raw):
@@ -53,6 +76,7 @@ def _to_dict(t: ConsentTemplate, in_use_count: int = 0) -> dict:
         "id": str(t.id),
         "name": t.name,
         "boldsign_template_id": t.boldsign_template_id,
+        "cpt_codes": t.cpt_codes or [],
         "procedure_match": t.procedure_match or [],
         "facility_match": t.facility_match,
         "insurance_match": t.insurance_match or [],
@@ -91,6 +115,7 @@ def create_template(payload: ConsentTemplateIn,
     t = ConsentTemplate(
         name=payload.name.strip(),
         boldsign_template_id=bs_id,
+        cpt_codes=_normalize_cpt_codes(payload.cpt_codes),
         procedure_match=[p.strip().lower() for p in payload.procedure_match if p.strip()],
         # facility_match is a JSON list of facility codes; empty list = any facility
         facility_match=_normalize_facility_match(payload.facility_match),
@@ -117,6 +142,7 @@ def update_template(template_id: str, payload: ConsentTemplateIn,
                             detail="boldsign_template_id is required")
     t.name = payload.name.strip()
     t.boldsign_template_id = bs_id
+    t.cpt_codes = _normalize_cpt_codes(payload.cpt_codes)
     t.procedure_match = [p.strip().lower() for p in payload.procedure_match if p.strip()]
     t.facility_match = _normalize_facility_match(payload.facility_match)
     t.insurance_match = [p.strip().lower() for p in payload.insurance_match if p.strip()]
@@ -150,7 +176,8 @@ def delete_template(template_id: str,
 
 
 class TemplateTestPayload(BaseModel):
-    procedure: str
+    procedure: str = ""
+    cpt: Optional[str] = None
     facility: Optional[str] = None
     primary_insurance: Optional[str] = None
 
@@ -168,9 +195,11 @@ def test_match(payload: TemplateTestPayload,
     )
     rows = (db.query(ConsentTemplate)
               .filter(ConsentTemplate.is_active.is_(True)).all())
+    proc = {"cpt": (payload.cpt or "").strip(),
+            "description": (payload.procedure or "").strip()}
     out = []
     for t in rows:
-        p_ok = _procedure_template_matches(t, payload.procedure)
+        p_ok = _procedure_template_matches(t, proc)
         f_ok = _facility_template_matches(t, payload.facility)
         i_ok = _insurance_template_matches(t, payload.primary_insurance)
         out.append({

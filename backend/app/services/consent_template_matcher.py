@@ -29,7 +29,7 @@ from app.models.surgery import ConsentTemplate, Surgery
 @dataclass
 class TemplateMatch:
     template: ConsentTemplate
-    matched_procedure: Optional[str]   # which surgery procedure triggered this match (None for supplemental)
+    matched_procedure: Optional[dict]   # {cpt, description} of the triggering procedure
     is_supplemental: bool
     warning: Optional[str] = None
 
@@ -38,20 +38,49 @@ def _lc(s) -> str:
     return (s or "").lower()
 
 
-def _procs_list(s: Surgery) -> list[str]:
+def _procs_list(s: Surgery) -> list[dict]:
+    """Return the surgery's procedures as a list of {cpt, description} dicts.
+    Older rows sometimes stored a JSON-encoded string instead of a list — we
+    decode either shape so the matcher can read both `cpt` and a free-text
+    description."""
     procs = s.procedures or []
     if isinstance(procs, str):
         try:
             procs = json.loads(procs)
         except Exception:
-            procs = [procs]
-    return [str(p) for p in procs if p]
+            procs = [{"description": procs}]
+    out: list[dict] = []
+    for p in procs:
+        if isinstance(p, dict):
+            out.append({
+                "cpt":         str(p.get("cpt") or "").strip(),
+                "description": str(p.get("description") or "").strip(),
+            })
+        elif p:
+            out.append({"cpt": "", "description": str(p)})
+    return out
 
 
-def _procedure_template_matches(t: ConsentTemplate, procedure_text: str) -> bool:
+def _procedure_label(proc: dict) -> str:
+    """Human label for error messages / 'unmatched' lists."""
+    cpt  = (proc.get("cpt") or "").strip()
+    desc = (proc.get("description") or "").strip()
+    if cpt and desc:
+        return f"{cpt} · {desc}"
+    return cpt or desc or "(unknown procedure)"
+
+
+def _procedure_template_matches(t: ConsentTemplate, proc: dict) -> bool:
+    """Primary: CPT membership when the template lists CPTs.
+    Fallback: case-insensitive substring on the procedure description against
+    the template's procedure_match keywords (legacy behaviour).
+    """
+    cpts = [str(c).strip() for c in (t.cpt_codes or []) if str(c).strip()]
+    if cpts:
+        return (proc.get("cpt") or "").strip() in cpts
     if not t.procedure_match:
         return False
-    needle = procedure_text.lower()
+    needle = (proc.get("description") or "").lower()
     return any(kw and kw.lower() in needle for kw in t.procedure_match)
 
 
@@ -149,8 +178,11 @@ def match_templates_for_surgery(db: Session, surgery: Surgery,
 
 
 def unmatched_procedures(db: Session, surgery: Surgery) -> list[str]:
-    """List procedures on the surgery that no primary template covers.
+    """Labels for procedures on the surgery that no primary template covers.
     Useful for telling staff what they still need to register a template for."""
     matches = match_templates_for_surgery(db, surgery)
-    matched_procs = {m.matched_procedure for m in matches if not m.is_supplemental}
-    return [p for p in _procs_list(surgery) if p not in matched_procs]
+    matched_labels = {_procedure_label(m.matched_procedure)
+                      for m in matches
+                      if not m.is_supplemental and m.matched_procedure}
+    return [_procedure_label(p) for p in _procs_list(surgery)
+            if _procedure_label(p) not in matched_labels]
