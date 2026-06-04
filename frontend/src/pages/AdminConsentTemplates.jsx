@@ -47,9 +47,7 @@ function ChipList({ items }) {
 function TemplateForm({ initial, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
     name: initial?.name || '',
-    boldsign_template_id: initial?.boldsign_template_id
-                            || initial?.docusign_template_id   // migrate legacy
-                            || '',
+    boldsign_template_id: initial?.boldsign_template_id || '',
     procedure_match_text: (initial?.procedure_match || []).join(', '),
     facility_match: initial?.facility_match || '',
     insurance_match_text: (initial?.insurance_match || []).join(', '),
@@ -400,7 +398,7 @@ export default function AdminConsentTemplates() {
                 <td className="table-td">
                   <div className="font-medium text-[13px]">{t.name}</div>
                   <div className="text-[10px] text-gray-500 font-mono">
-                    {(t.boldsign_template_id || t.docusign_template_id || '').slice(0, 12)}…
+                    {(t.boldsign_template_id || '').slice(0, 12)}…
                   </div>
                 </td>
                 <td className="table-td"><ChipList items={t.procedure_match} /></td>
