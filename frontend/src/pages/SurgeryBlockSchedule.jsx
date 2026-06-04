@@ -169,7 +169,7 @@ function SchedulesTab({ schedules, qc }) {
       {!adding && (
         <button className="btn-primary text-sm flex items-center gap-1"
                 onClick={() => setAdding(true)}>
-          <Plus size={13} /> Add recurring schedule
+          <Plus size={13} /> Add Recurring Schedule
         </button>
       )}
       {adding && <ScheduleForm onClose={() => setAdding(false)} qc={qc} />}
@@ -572,7 +572,7 @@ function BlackoutForm({ onClose, qc }) {
 
   return (
     <div className="card">
-      <h3 className="text-sm font-semibold mb-2">Add blackout</h3>
+      <h3 className="text-sm font-semibold mb-2">Add Blackout</h3>
       <div className="grid grid-cols-2 gap-3 text-sm">
         <Field label="Date(s)">
           <div className="space-y-2">

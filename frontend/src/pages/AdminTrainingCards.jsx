@@ -267,7 +267,7 @@ function TaskCard({ task, allGroups, qc }) {
             <a href={`/admin/templates?edit=${t.id}`} target="_blank" rel="noreferrer"
                 className="text-[10px] text-plum-700 hover:underline inline-flex items-center gap-0.5"
                 title="Edit this task's template (opens in a new tab)">
-              <Edit3 size={10}/> Edit task <ExternalLink size={9}/>
+              <Edit3 size={10}/> Edit Task <ExternalLink size={9}/>
             </a>
           </div>
           {t.training_material_url && (

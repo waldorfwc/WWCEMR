@@ -34,7 +34,7 @@ export default function PatientDetail() {
             className="btn-primary text-xs flex items-center gap-1"
             onClick={() => window.open(`/api/patients/${id}/ledger/pdf`, '_blank')}
           >
-            <FileDown size={14} /> Download full ledger PDF
+            <FileDown size={14} /> Download Full Ledger PDF
           </button>
         </div>
       </div>

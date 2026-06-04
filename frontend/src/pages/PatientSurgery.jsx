@@ -342,7 +342,7 @@ function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedul
         <button type="button"
                 onClick={onCancel}
                 className="text-sm py-2 flex items-center justify-center gap-1.5 border border-red-200 text-red-700 hover:bg-red-50 rounded">
-          <XCircle size={14} /> Cancel surgery
+          <XCircle size={14} /> Cancel Surgery
         </button>
       </div>
 
@@ -458,7 +458,7 @@ function CancelConfirmScreen({ surgeryId, headers, status, onBack, onCancelled }
     <div className="bg-white rounded-lg border border-red-200 shadow-sm p-6">
       <div className="flex items-center gap-2 mb-3 text-red-700">
         <XCircle size={20} />
-        <h1 className="text-lg font-serif font-semibold">Cancel your surgery?</h1>
+        <h1 className="text-lg font-serif font-semibold">Cancel Your Surgery?</h1>
       </div>
       <p className="text-sm text-gray-700 mb-3">
         Hi {status.patient_first_name}, you're about to cancel your surgery scheduled

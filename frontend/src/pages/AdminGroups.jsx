@@ -421,7 +421,7 @@ function EditGroupDrawer({ groupId, onClose }) {
                     disabled={remove.isPending || group.member_count > 0}
                     title={group.member_count > 0 ? 'Remove all members first' : 'Delete this group'}
                   >
-                    <Trash2 size={12} /> Delete group
+                    <Trash2 size={12} /> Delete Group
                   </button>
                 )}
               </div>

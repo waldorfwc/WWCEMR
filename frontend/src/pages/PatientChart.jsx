@@ -18,10 +18,10 @@ function FaxModal({ doc, docType, onClose, patient }) {
 
   const patientInfo = patient ? [
     `Patient: ${patient.patient_name || ''}`,
-    patient.dob ? `DOB: ${patient.dob}` : '',
+    patient.dob ? `DOB: ${fmt.date(patient.dob)}` : '',
     patient.chart_number ? `Chart #: ${patient.chart_number}` : '',
     `Document Type: ${doc.doc_type || doc.doc_category || doc.filename || ''}`,
-    doc.doc_date ? `Document Date: ${doc.doc_date}` : '',
+    doc.doc_date ? `Document Date: ${fmt.date(doc.doc_date)}` : '',
   ].filter(Boolean).join('\n') : ''
 
   const [coverText, setCoverText] = useState(patientInfo)
@@ -445,7 +445,7 @@ export default function PatientChart() {
         <h1 className="text-2xl font-bold text-gray-900">{d.patient_name}</h1>
         <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
           <span className="font-mono">Chart #{d.chart_number}</span>
-          {d.dob && <span>DOB: {d.dob}</span>}
+          {d.dob && <span>DOB: {fmt.date(d.dob)}</span>}
           {d.gender && <span>{d.gender}</span>}
         </div>
         <div className="mt-1.5 text-xs text-gray-500 space-y-0.5">

@@ -832,7 +832,7 @@ export default function Admin() {
           </Link>
           {!adding && (
             <button className="btn-primary text-sm" onClick={() => setAdding(true)}>
-              <Plus size={13} className="inline -mt-0.5" /> Add user
+              <Plus size={13} className="inline -mt-0.5" /> Add User
             </button>
           )}
         </div>

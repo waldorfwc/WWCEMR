@@ -1077,7 +1077,7 @@ function ApptUploadDrawer({ onClose }) {
                   </div>
                   <ul className="text-[10px] text-gray-700 list-disc pl-5">
                     {result.cancelled_visits?.slice(0, 6).map((c, i) => (
-                      <li key={i}>{c.patient_name} · {c.scheduled_date}</li>
+                      <li key={i}>{c.patient_name} · {fmt.date(c.scheduled_date)}</li>
                     ))}
                     {result.cancelled_visits?.length > 6 && (
                       <li>+{result.cancelled_visits.length - 6} more</li>

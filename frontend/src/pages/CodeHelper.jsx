@@ -113,7 +113,7 @@ export default function CodeHelper() {
           >
             {generate.isPending
               ? <><Loader2 size={13} className="animate-spin" /> Calling Claude…</>
-              : <><Wand2 size={13} /> Generate codes</>}
+              : <><Wand2 size={13} /> Generate Codes</>}
           </button>
         </div>
       </div>
@@ -146,7 +146,7 @@ export default function CodeHelper() {
             <button className="btn-secondary text-xs ml-auto"
                     onClick={() => savePatient.mutate()}
                     disabled={savePatient.isPending}>
-              <Save size={11} className="inline" /> Save patient
+              <Save size={11} className="inline" /> Save Patient
             </button>
           </div>
 

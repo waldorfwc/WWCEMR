@@ -535,7 +535,7 @@ function PatientCard({ claim }) {
       </div>
       {claim.patient_external_id && (
         <a href={`/chart/${claim.patient_external_id}`} className="text-xs text-primary-500 hover:underline flex items-center gap-1 mt-1">
-          <ExternalLink size={11} /> Open chart
+          <ExternalLink size={11} /> Open Chart
         </a>
       )}
     </div>

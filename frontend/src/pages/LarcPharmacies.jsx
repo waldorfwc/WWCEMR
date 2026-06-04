@@ -26,7 +26,7 @@ export default function LarcPharmacies() {
         </h1>
         <button className="btn-primary text-sm flex items-center gap-1"
                 onClick={() => setAdding(true)}>
-          <Plus size={13} /> Add pharmacy
+          <Plus size={13} /> Add Pharmacy
         </button>
       </div>
       <p className="text-sm text-gray-500 mb-4">
@@ -114,7 +114,7 @@ function AddPharmacyForm({ onClose, qc }) {
       <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">Add pharmacy</h2>
+          <h2 className="font-serif font-semibold text-ink text-[16px]">Add Pharmacy</h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">

@@ -1004,7 +1004,7 @@ function TemplateDrawer({ templateId, onClose }) {
                   }}
                   disabled={remove.isPending}
                 >
-                  <Trash2 size={12} /> Delete template
+                  <Trash2 size={12} /> Delete Template
                 </button>
               )}
             </div>

@@ -459,7 +459,7 @@ export default function ActiveAR() {
           onClick={() => setSavingPreset(true)}
           title="Save current filters as a named preset"
         >
-          <Save size={11} /> Save preset
+          <Save size={11} /> Save Preset
         </button>
         <div className="flex border border-gray-200 rounded overflow-hidden">
           <button

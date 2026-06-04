@@ -413,7 +413,7 @@ export default function Surgery() {
           <button type="button"
                   onClick={() => setSavingPreset(true)}
                   className="text-[11px] text-plum-700 hover:underline flex items-center gap-0.5 mb-1">
-            <Save size={11}/> Save as preset
+            <Save size={11}/> Save as Preset
           </button>
         </div>
 
@@ -846,7 +846,7 @@ function ToDoPanel({ todos, hospitalUnbooked = [], officeUnderbooked = [],
                     <button onClick={() => onOpen(c.surgery_id)}
                             className="text-left text-[12px] flex-1 hover:underline">
                       <strong className="text-red-800">{c.patient_name}</strong>
-                      <span className="text-gray-600"> · {c.scheduled_date} · {c.facility || '—'}</span>
+                      <span className="text-gray-600"> · {fmt.date(c.scheduled_date)} · {c.facility || '—'}</span>
                       <div className="text-[11px] text-gray-500">
                         Blocked: {c.blackout_label || c.blackout_reason} ({c.blackout_scope})
                       </div>
@@ -1056,7 +1056,7 @@ function UploadDrawer({ onClose }) {
       <div className="relative w-full max-w-xl bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-6 py-4 flex items-center justify-between z-10">
-          <h2 className="font-serif font-semibold text-ink text-[18px]">Upload surgery order</h2>
+          <h2 className="font-serif font-semibold text-ink text-[18px]">Upload Surgery Order</h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
 
