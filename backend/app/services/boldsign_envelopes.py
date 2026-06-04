@@ -225,11 +225,9 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
     patient_prefill  = _for("Patient")
     provider_prefill = _for("Provider")
     log.info(
-        "BoldSign prefill for template %s: Patient=%d, Provider=%d "
-        "(role ids: %s)",
+        "BoldSign prefill for template %s: Patient=%d, Provider=%d",
         template.boldsign_template_id,
         len(patient_prefill), len(provider_prefill),
-        {k: len(v) for k, v in role_ids.items()},
     )
 
     roles = [{
@@ -241,8 +239,15 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
         "roleIndex": 1,
         "existingFormFields": patient_prefill,
     }]
-    provider_email = os.environ.get("CONSENT_PROVIDER_EMAIL", "").strip()
-    provider_name = os.environ.get("CONSENT_PROVIDER_NAME", "Dr. Aryian Cooke").strip()
+    # Provider / Witness sender contact is provisioned via env vars. The
+    # Cloud Run service still has the legacy DOCUSIGN_* names; preferred
+    # going forward is CONSENT_*. Read both so we don't have to coordinate
+    # a renaming.
+    provider_email = (os.environ.get("CONSENT_PROVIDER_EMAIL")
+                      or os.environ.get("DOCUSIGN_PROVIDER_EMAIL") or "").strip()
+    provider_name = (os.environ.get("CONSENT_PROVIDER_NAME")
+                      or os.environ.get("DOCUSIGN_PROVIDER_NAME")
+                      or "Dr. Aryian Cooke").strip()
     if provider_email:
         roles.append({
             "signerName": provider_name,
@@ -253,10 +258,14 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
             "roleIndex": 2,
             "existingFormFields": provider_prefill,
         })
-    witness_email = os.environ.get("CONSENT_WITNESS_EMAIL", "").strip()
+    witness_email = (os.environ.get("CONSENT_WITNESS_EMAIL")
+                      or os.environ.get("DOCUSIGN_WITNESS_EMAIL") or "").strip()
+    witness_name = (os.environ.get("CONSENT_WITNESS_NAME")
+                     or os.environ.get("DOCUSIGN_WITNESS_NAME")
+                     or "Witness").strip()
     if witness_email:
         roles.append({
-            "signerName": "Witness",
+            "signerName": witness_name,
             "signerEmail": witness_email,
             "signerType": "Signer",
             "signerRole": "Witness",
