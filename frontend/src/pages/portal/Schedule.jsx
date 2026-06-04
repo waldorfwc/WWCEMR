@@ -108,7 +108,7 @@ function BlockDayList({ days, onPick }) {
           {!isStaffPreview() && (
             <button onClick={() => onPick(d)}
                     className="btn-primary text-sm shrink-0">
-              Pick this date
+              Pick This Date
             </button>
           )}
         </li>
@@ -127,7 +127,7 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
           Confirm
         </div>
         <h3 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight">
-          Lock in your surgery date
+          Lock in Your Surgery Date
         </h3>
         <div className="bg-plum-50/60 rounded-xl p-4 mt-4 space-y-1">
           <div className="text-[14px] text-plum-ink font-medium">
@@ -148,7 +148,7 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
           <button onClick={onCancel} className="btn-secondary">Cancel</button>
           {!isStaffPreview() && (
             <button onClick={onConfirm} disabled={busy} className="btn-primary">
-              {busy ? 'Booking…' : 'Confirm date'}
+              {busy ? 'Booking…' : 'Confirm Date'}
             </button>
           )}
         </div>
