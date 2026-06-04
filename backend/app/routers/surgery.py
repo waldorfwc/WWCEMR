@@ -3223,6 +3223,19 @@ class BenefitsPayload(BaseModel):
     save: bool = True   # set False to preview without persisting
 
 
+# Coordinators historically typed sentinel strings ("No Secondary", "None",
+# "N/A") in the secondary_insurance column to mean "no policy". Anything in
+# this set should NOT trigger the secondary-payer math; the empty string is
+# the genuine empty case.
+_NO_SECONDARY_SENTINELS = {
+    "", "no secondary", "none", "n/a", "na", "no", "-", "--",
+}
+
+
+def _has_real_secondary(secondary_insurance: Optional[str]) -> bool:
+    return (secondary_insurance or "").strip().lower() not in _NO_SECONDARY_SENTINELS
+
+
 def _one_payer_share(*, base: float, deductible: float, deductible_met: float,
                        copay: float, coinsurance_pct: float,
                        oop_max: float, oop_met: float) -> dict:
@@ -3330,7 +3343,7 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
         existing = getattr(s, attr or field)
         return float(existing or 0)
 
-    has_secondary = bool((s.secondary_insurance or "").strip())
+    has_secondary = _has_real_secondary(s.secondary_insurance)
 
     breakdown = _calc_patient_responsibility(
         allowed_amount=_g("allowed_amount"),

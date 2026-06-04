@@ -5106,7 +5106,7 @@ function BenefitsPanel({ surgery }) {
   })
   const [manual, setManual] = useState({ method: 'modpay', amount: '', note: '' })
   const [manualError, setManualError] = useState(null)
-  const hasSecondary = !!(surgery.secondary_insurance || '').trim()
+  const hasSecondary = hasRealSecondary(surgery.secondary_insurance)
   const [savedFlash, setSavedFlash] = useState(false)
   const [lastPdfUrl, setLastPdfUrl] = useState(null)
 
@@ -5456,6 +5456,18 @@ function numOrNull(v) {
   if (v === '' || v === null || v === undefined) return null
   const n = parseFloat(v)
   return Number.isFinite(n) ? n : null
+}
+
+
+// Coordinators type sentinel strings like "No Secondary" / "None" / "N/A" in
+// the secondary_insurance field to mean "no policy". Treat these as no
+// secondary so the benefits calc doesn't run a phantom secondary pass that
+// zeros out the patient share.
+const _NO_SECONDARY_SENTINELS = new Set([
+  '', 'no secondary', 'none', 'n/a', 'na', 'no', '-', '--',
+])
+function hasRealSecondary(s) {
+  return !_NO_SECONDARY_SENTINELS.has((s || '').trim().toLowerCase())
 }
 
 
