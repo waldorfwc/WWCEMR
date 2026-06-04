@@ -134,7 +134,7 @@ export default function AdminGoogleSync() {
         <div className="card mb-4">
           <div className="flex items-baseline justify-between mb-2">
             <div>
-              <h2 className="text-sm font-semibold text-gray-800">Pending creation</h2>
+              <h2 className="text-sm font-semibold text-gray-800">Pending Creation</h2>
               <p className="text-[11px] text-muted">
                 Google emails not yet in this system and not on the exclusion list.
                 Add to exclusions to prevent the next sync from creating them.

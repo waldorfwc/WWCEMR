@@ -238,7 +238,7 @@ export default function Larc() {
         <div className="card">
           <div className="flex items-center gap-1.5 mb-2">
             <Clock size={14} className="text-red-700" />
-            <h2 className="text-sm font-semibold text-gray-800">Expiring within 365 days</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Expiring Within 365 Days</h2>
             <span className="text-[11px] text-muted">(move to unallocated)</span>
           </div>
           {(dash?.expiring_soon || []).length === 0 ? (
@@ -286,7 +286,7 @@ export default function Larc() {
         <div className="card">
           <div className="flex items-center gap-1.5 mb-2">
             <AlertTriangle size={14} className="text-red-700" />
-            <h2 className="text-sm font-semibold text-gray-800">Unacknowledged checkouts</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Unacknowledged Checkouts</h2>
             <span className="text-[11px] text-muted">(&gt;24h after request)</span>
           </div>
           {(dash?.unacknowledged_checkouts || []).length === 0 ? (

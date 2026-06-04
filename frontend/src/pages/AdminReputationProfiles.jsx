@@ -53,7 +53,7 @@ export default function AdminReputationProfiles() {
   return (
     <div className="p-4 max-w-5xl">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Reputation profiles</h1>
+        <h1 className="text-2xl font-semibold">Reputation Profiles</h1>
         <button onClick={() => setEditing({ display_name: '', role_label: '', user_email: '' })}
                  className="btn-primary text-sm">+ New employee</button>
       </div>

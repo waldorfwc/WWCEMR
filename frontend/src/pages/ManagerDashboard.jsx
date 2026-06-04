@@ -166,7 +166,7 @@ function UnassignedSection({ rows }) {
   return (
     <div className="card">
       <div className="mb-2">
-        <h2 className="text-sm font-semibold text-gray-800">Unassigned templates</h2>
+        <h2 className="text-sm font-semibold text-gray-800">Unassigned Templates</h2>
         <p className="text-xs text-gray-500">
           Templates with zero matching users today — these will not generate any tasks.
           Listed because you're the escalation owner, or (for super admins) the template has no owner.

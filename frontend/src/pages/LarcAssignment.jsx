@@ -1051,7 +1051,7 @@ function ReplacementChainCard({ a }) {
     <div className="card !p-3 bg-red-50/40 border border-red-200 mb-3">
       <div className="flex items-center gap-1.5 mb-2">
         <AlertTriangle size={14} className="text-red-700" />
-        <h2 className="text-sm font-semibold text-red-800">Defective device — replacement chain</h2>
+        <h2 className="text-sm font-semibold text-red-800">Defective Device — Replacement Chain</h2>
       </div>
       <div className="text-[11px] text-gray-700 mb-2">
         Device <span className="font-mono">{a.device_our_id}</span> failed insertion and is presumed defective.

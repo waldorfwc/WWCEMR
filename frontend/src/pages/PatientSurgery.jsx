@@ -545,7 +545,7 @@ function BalanceDueScreen({ status, token, id }) {
     <div className="bg-white rounded-lg border border-border-subtle shadow-sm p-6">
       <div className="flex items-center gap-2 mb-3 text-amber-700">
         <CreditCard size={20} />
-        <h1 className="text-lg font-serif font-semibold">Balance due — please pay first</h1>
+        <h1 className="text-lg font-serif font-semibold">Balance Due — Please Pay First</h1>
       </div>
       <p className="text-sm text-gray-700 mb-3">
         Hi {status.patient_first_name},
@@ -849,7 +849,7 @@ function ConfirmationScreen({ status, confirmation }) {
     <div className="bg-white rounded-lg border border-green-300 shadow-sm p-6">
       <div className="flex items-center gap-2 mb-3 text-green-700">
         <CheckCircle2 size={24} />
-        <h1 className="text-lg font-serif font-semibold">Surgery date confirmed!</h1>
+        <h1 className="text-lg font-serif font-semibold">Surgery Date Confirmed!</h1>
       </div>
       <p className="text-sm text-gray-700 mb-3">
         Thank you, {status.patient_first_name}. Your surgery is scheduled:

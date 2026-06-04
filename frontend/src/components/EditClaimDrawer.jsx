@@ -74,7 +74,7 @@ export default function EditClaimDrawer({ claim, onClose }) {
       <div className="absolute inset-0 bg-ink/20" onClick={saving ? undefined : onClose} />
       <aside className="relative w-[520px] max-w-full bg-white h-full shadow-xl overflow-y-auto flex flex-col">
         <header className="px-5 py-4 border-b flex items-center justify-between sticky top-0 bg-white">
-          <h2 className="font-serif font-semibold text-ink text-[18px]">Edit claim {claim.claim_number || ''}</h2>
+          <h2 className="font-serif font-semibold text-ink text-[18px]">Edit Claim {claim.claim_number || ''}</h2>
           <button className="text-muted text-[13px]" onClick={onClose} disabled={saving}>✕ Close</button>
         </header>
 

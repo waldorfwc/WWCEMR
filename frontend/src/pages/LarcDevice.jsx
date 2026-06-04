@@ -145,7 +145,7 @@ export default function LarcDevice() {
       <div className="card mb-4">
         <div className="flex items-center gap-1.5 mb-2">
           <User size={14} className="text-plum-700" />
-          <h2 className="text-sm font-semibold text-gray-800">Assignment history</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Assignment History</h2>
           <span className="text-[11px] text-muted">({(d.assignments || []).length})</span>
         </div>
         {(d.assignments || []).length === 0 ? (
@@ -174,7 +174,7 @@ export default function LarcDevice() {
       <div className="card">
         <div className="flex items-center gap-1.5 mb-2">
           <FileText size={14} className="text-plum-700" />
-          <h2 className="text-sm font-semibold text-gray-800">Audit trail</h2>
+          <h2 className="text-sm font-semibold text-gray-800">Audit Trail</h2>
           <span className="text-[11px] text-muted">({audit?.total || 0})</span>
         </div>
         {(audit?.events || []).length === 0 ? (

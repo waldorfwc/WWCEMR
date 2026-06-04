@@ -142,7 +142,7 @@ export default function Pellets() {
         <div className="card">
           <div className="flex items-center gap-1.5 mb-2">
             <Clock size={14} className="text-red-700" />
-            <h2 className="text-sm font-semibold text-gray-800">Expiring within 90 days</h2>
+            <h2 className="text-sm font-semibold text-gray-800">Expiring Within 90 Days</h2>
           </div>
           {(dash?.expiring_soon || []).length === 0 ? (
             <div className="text-xs text-gray-400 italic">No lots expiring in the next 90 days.</div>

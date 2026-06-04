@@ -5243,7 +5243,7 @@ function BenefitsPanel({ surgery }) {
     <div className="card !p-3 mt-3">
       <div className="flex items-center gap-1.5 mb-2 flex-wrap">
         <Calculator size={14} className="text-emerald-700" />
-        <h3 className="text-sm font-semibold text-gray-800">Benefits calculator</h3>
+        <h3 className="text-sm font-semibold text-gray-800">Benefits Calculator</h3>
         <span className="text-[11px] text-gray-500">Patient responsibility for this surgery</span>
         <span className="flex-1" />
         <FeeScheduleButton
