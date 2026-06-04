@@ -15,6 +15,26 @@ const FACILITIES = [
   { v: 'office',  label: 'Office' },
 ]
 
+// Multi-select options for the template form. "Any facility" is the implicit
+// default when nothing is checked, so it's not a checkbox itself.
+const FACILITY_OPTIONS = FACILITIES.filter(f => f.v)
+
+
+function facilityListFromInitial(raw) {
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw.map(s => String(s).toLowerCase()).filter(Boolean)
+  return [String(raw).toLowerCase()]
+}
+
+
+function facilityLabel(raw) {
+  const list = facilityListFromInitial(raw)
+  if (!list.length) return null  // means "any"
+  return list.map(code =>
+    FACILITY_OPTIONS.find(f => f.v === code)?.label.replace(/ \(.*\)/, '') || code
+  ).join(', ')
+}
+
 const MEDICAID_MCO_PRESETS = [
   'priority partners',
   'maryland physicians care',
@@ -50,7 +70,7 @@ function TemplateForm({ initial, onClose, onSave }) {
     boldsign_template_id: initial?.boldsign_template_id || '',
     cpt_codes_text: (initial?.cpt_codes || []).join(', '),
     procedure_match_text: (initial?.procedure_match || []).join(', '),
-    facility_match: initial?.facility_match || '',
+    facility_match: facilityListFromInitial(initial?.facility_match),
     insurance_match_text: (initial?.insurance_match || []).join(', '),
     is_supplemental: !!initial?.is_supplemental,
     min_days_before_surgery: initial?.min_days_before_surgery ?? '',
@@ -91,7 +111,8 @@ function TemplateForm({ initial, onClose, onSave }) {
       boldsign_template_id: form.boldsign_template_id,
       cpt_codes: listFromCommaString(form.cpt_codes_text),
       procedure_match: listFromCommaString(form.procedure_match_text),
-      facility_match: form.facility_match || null,
+      // Send a list of facility codes — backend normalises empty as "any facility".
+      facility_match: form.facility_match,
       insurance_match: listFromCommaString(form.insurance_match_text),
       is_supplemental: form.is_supplemental,
       min_days_before_surgery: form.min_days_before_surgery === ''
@@ -198,13 +219,29 @@ function TemplateForm({ initial, onClose, onSave }) {
               <label className="block text-[11px] font-medium text-gray-700 mb-1">
                 Facility (optional)
               </label>
-              <select className="input w-full text-[12px]"
-                      value={form.facility_match}
-                      onChange={e => setForm({ ...form, facility_match: e.target.value })}>
-                {FACILITIES.map(f => (
-                  <option key={f.v} value={f.v}>{f.label}</option>
-                ))}
-              </select>
+              <div className="space-y-1">
+                {FACILITY_OPTIONS.map(f => {
+                  const checked = form.facility_match.includes(f.v)
+                  return (
+                    <label key={f.v} className="flex items-center gap-2 text-[12px]">
+                      <input type="checkbox"
+                             checked={checked}
+                             onChange={() => {
+                               const next = checked
+                                 ? form.facility_match.filter(v => v !== f.v)
+                                 : [...form.facility_match, f.v]
+                               setForm({ ...form, facility_match: next })
+                             }} />
+                      {f.label}
+                    </label>
+                  )
+                })}
+              </div>
+              <div className="text-[10px] text-gray-500 mt-1">
+                {form.facility_match.length === 0
+                  ? 'Matches any facility.'
+                  : 'Matches only the checked facility/facilities.'}
+              </div>
             </div>
             <div>
               <label className="block text-[11px] font-medium text-gray-700 mb-1">
@@ -442,7 +479,7 @@ export default function AdminConsentTemplates() {
                 <td className="table-td"><ChipList items={t.cpt_codes} /></td>
                 <td className="table-td"><ChipList items={t.procedure_match} /></td>
                 <td className="table-td text-[11px]">
-                  {t.facility_match || <span className="text-gray-400 italic">any</span>}
+                  {facilityLabel(t.facility_match) || <span className="text-gray-400 italic">any</span>}
                 </td>
                 <td className="table-td"><ChipList items={t.insurance_match} /></td>
                 <td className="table-td text-center">
