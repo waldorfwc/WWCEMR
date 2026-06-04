@@ -157,19 +157,20 @@ def _build_prefill_fields(s: Surgery) -> list[dict]:
     return out
 
 
-def _get_template_field_ids(template_id: str) -> set[str]:
-    """Fetch the form field IDs and Data Sync Tags on a BoldSign template.
+def _get_template_field_ids_by_role(template_id: str) -> dict[str, set[str]]:
+    """Map each role name on a BoldSign template to the set of form field
+    IDs / Data Sync Tags / names assigned to it.
 
-    BoldSign rejects send-from-template requests when the alias spam in
-    existingFormFields exceeds the number of fields the template actually
-    has. We introspect the template once per send and only push values for
-    IDs (or DataSyncTags) that exist.
+    BoldSign filters prefill silently per role: an entry in
+    existingFormFields whose id doesn't belong to that role is dropped on
+    receive, and any field it overshadows stays blank. So we must
+    introspect per role and filter each role's prefill separately.
 
-    Soft-fails to empty set on transport errors — caller treats that the
-    same as "no fields configured" and skips prefill.
+    Returns {} on transport error — caller treats that as "no prefill" and
+    sends the envelope through anyway.
     """
     if not _is_configured() or not template_id:
-        return set()
+        return {}
     try:
         with _http() as c:
             r = c.get("/v1/template/properties",
@@ -177,31 +178,27 @@ def _get_template_field_ids(template_id: str) -> set[str]:
         if r.status_code >= 300:
             log.warning("BoldSign template properties %s: %s %s",
                         template_id, r.status_code, r.text[:200])
-            return set()
+            return {}
         data = r.json() or {}
     except Exception as exc:
         log.warning("BoldSign template properties %s: %s", template_id, exc)
-        return set()
-    out: set[str] = set()
-    # BoldSign's /v1/template/properties response nests formFields INSIDE
-    # each roles[] entry. Older accounts also return a top-level fields
-    # list. Walk both shapes.
-    buckets: list[list] = []
+        return {}
+    out: dict[str, set[str]] = {}
     for role in (data.get("roles") or data.get("Roles") or []):
-        if isinstance(role, dict):
-            buckets.append(role.get("formFields")
-                            or role.get("FormFields") or [])
-    buckets.append(data.get("formFields")
-                   or data.get("documentFields")
-                   or data.get("fields") or [])
-    for fields in buckets:
-        for f in fields or []:
+        if not isinstance(role, dict):
+            continue
+        role_name = (role.get("name") or role.get("Name") or "").strip()
+        fields = role.get("formFields") or role.get("FormFields") or []
+        ids: set[str] = set()
+        for f in fields:
             if not isinstance(f, dict):
                 continue
             for k in ("id", "fieldId", "name", "dataSyncTag", "tag"):
                 v = f.get(k) or f.get(k[0].upper() + k[1:])
                 if v:
-                    out.add(str(v).strip())
+                    ids.add(str(v).strip())
+        if role_name:
+            out[role_name] = ids
     return out
 
 
@@ -213,17 +210,28 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
     Field names follow BoldSign's send-from-template schema:
     signerName/signerEmail/signerOrder/roleIndex.
 
-    The patient role also carries existingFormFields so name / DOB /
-    surgeon / procedure / surgery date populate the consent automatically.
-    BoldSign 400s when existingFormFields outnumbers the template's
-    actual fields, so we introspect the template first and keep only the
-    aliases that exist on it.
+    Each role's existingFormFields is filtered to ONLY the field IDs that
+    belong to that role on the template — BoldSign silently drops prefill
+    entries assigned to other roles, and any overshadowed valid entry
+    fails to populate. So we introspect per role.
     """
-    known_ids = _get_template_field_ids(template.boldsign_template_id)
-    prefill = [f for f in _build_prefill_fields(s) if f["id"] in known_ids]
-    log.info("BoldSign prefill for template %s: %d/%d fields applied",
-             template.boldsign_template_id, len(prefill),
-             len(known_ids))
+    role_ids = _get_template_field_ids_by_role(template.boldsign_template_id)
+    all_prefill = _build_prefill_fields(s)
+
+    def _for(role: str) -> list[dict]:
+        ids = role_ids.get(role) or set()
+        return [f for f in all_prefill if f["id"] in ids]
+
+    patient_prefill  = _for("Patient")
+    provider_prefill = _for("Provider")
+    log.info(
+        "BoldSign prefill for template %s: Patient=%d, Provider=%d "
+        "(role ids: %s)",
+        template.boldsign_template_id,
+        len(patient_prefill), len(provider_prefill),
+        {k: len(v) for k, v in role_ids.items()},
+    )
+
     roles = [{
         "signerName": _format_patient_name(s),
         "signerEmail": s.email or "",
@@ -231,7 +239,7 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
         "signerRole": "Patient",
         "signerOrder": 1,
         "roleIndex": 1,
-        "existingFormFields": prefill,
+        "existingFormFields": patient_prefill,
     }]
     provider_email = os.environ.get("CONSENT_PROVIDER_EMAIL", "").strip()
     provider_name = os.environ.get("CONSENT_PROVIDER_NAME", "Dr. Aryian Cooke").strip()
@@ -243,9 +251,7 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
             "signerRole": "Provider",
             "signerOrder": 2,
             "roleIndex": 2,
-            # Surgeon role gets the same prefill set so any provider-side
-            # fields (e.g. surgeon_name read-only label) populate too.
-            "existingFormFields": prefill,
+            "existingFormFields": provider_prefill,
         })
     witness_email = os.environ.get("CONSENT_WITNESS_EMAIL", "").strip()
     if witness_email:
