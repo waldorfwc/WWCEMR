@@ -314,7 +314,7 @@ export default function SurgeryDetail() {
                      onChange={e => patch.mutate({ sms_consent: e.target.checked })} />
               <span>
                 {s.sms_consent
-                  ? `Opted in${s.sms_consented_at ? ' on ' + s.sms_consented_at.slice(0,10) : ''}`
+                  ? `Opted in${s.sms_consented_at ? ' on ' + fmt.date(s.sms_consented_at.slice(0,10)) : ''}`
                   : 'Not opted in — SMS sends will skip'}
               </span>
             </label>
@@ -331,7 +331,7 @@ export default function SurgeryDetail() {
             {s.schedule_gate_override && s.schedule_gate_override_by && (
               <div className="text-[10px] text-gray-400 mt-0.5">
                 Set by {s.schedule_gate_override_by}
-                {s.schedule_gate_override_at ? ' on ' + s.schedule_gate_override_at.slice(0, 10) : ''}
+                {s.schedule_gate_override_at ? ' on ' + fmt.date(s.schedule_gate_override_at.slice(0, 10)) : ''}
               </div>
             )}
           </Field>
@@ -514,7 +514,7 @@ function PaymentsSection({ surgery, flat = false }) {
                   }`}>{p.status}</span>
                 </td>
                 <td className="py-1.5 font-mono">{fmtMoney(p.amount_requested)}</td>
-                <td className="py-1.5">{(p.requested_at || '').slice(0, 10)}</td>
+                <td className="py-1.5">{fmt.date((p.requested_at || '').slice(0, 10))}</td>
                 <td className="py-1.5">{p.description || '—'}</td>
                 <td className="py-1.5">
                   {p.checkout_url && p.status === 'requested' ? (
@@ -4249,7 +4249,7 @@ function LabsCardBody({ surgery }) {
                 : reportedBy ? `entered ${reportedBy.replace('staff:', 'by ')}`
                 : ''}
               {surgery.lab_appointment_reported_at &&
-                ` · ${surgery.lab_appointment_reported_at.slice(0, 10)}`}
+                ` · ${fmt.date(surgery.lab_appointment_reported_at.slice(0, 10))}`}
             </div>
           )}
           <button className="text-[11px] text-plum-700 hover:underline"

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import axios from 'axios'
+import { fmt } from '../../utils/api'
 
 const api = axios.create()
 
@@ -49,7 +50,7 @@ export default function Embed() {
                      strokeWidth={1.5} />
             ))}
             <span className="ml-2 text-xs opacity-60">
-              {r.submitted_at?.slice(0, 10)}
+              {fmt.date(r.submitted_at?.slice(0, 10))}
             </span>
           </div>
           {r.body && (
