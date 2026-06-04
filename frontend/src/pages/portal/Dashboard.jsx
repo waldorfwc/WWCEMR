@@ -27,7 +27,7 @@ const JOURNEY = [
   { key: 'payment',          label: 'Payment' },
   { key: 'consent',          label: 'Consent' },
   { key: 'schedule',         label: 'Schedule' },
-  { key: 'labs',             label: 'Pre-op labs' },
+  { key: 'labs',             label: 'Pre-Op Labs' },
   { key: 'hospital_preop',   label: 'Hospital call' },
   { key: 'surgery',          label: 'Surgery' },
 ]
@@ -199,7 +199,7 @@ export default function Dashboard() {
               <ActionCard
                 icon={Stethoscope}
                 tone="emerald"
-                title="Pre-op labs window"
+                title="Pre-Op Labs Window"
                 meta="4–7 days before your surgery"
                 body="Visit any Quest, LabCorp, or hospital lab in this window. Results come back to us automatically."
                 cta="View Instructions"
