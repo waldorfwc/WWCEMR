@@ -5107,6 +5107,15 @@ function BenefitsPanel({ surgery }) {
   const [manual, setManual] = useState({ method: 'modpay', amount: '', note: '' })
   const [manualError, setManualError] = useState(null)
   const hasSecondary = hasRealSecondary(surgery.secondary_insurance)
+  // If a real secondary is on file but the coordinator hasn't entered any
+  // secondary benefit terms yet, the calc silently treats it as "secondary
+  // covers everything" and zeros out the patient share — a footgun. We
+  // flag it instead of silently changing the math: the warning banner
+  // (below) tells the coordinator to fill the secondary fields in.
+  const secondaryUnconfigured = hasSecondary && [
+    form.secondary_deductible, form.secondary_copay,
+    form.secondary_coinsurance_pct, form.secondary_oop_max,
+  ].every(v => v === '' || v === null || v === undefined || Number(v) === 0)
   const [savedFlash, setSavedFlash] = useState(false)
   const [lastPdfUrl, setLastPdfUrl] = useState(null)
 
@@ -5338,6 +5347,21 @@ function BenefitsPanel({ surgery }) {
           {manualError && <div className="text-[11px] text-red-700 mt-1">{manualError}</div>}
         </div>
       </div>
+
+      {secondaryUnconfigured && (
+        <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs mb-3 flex items-start gap-2">
+          <AlertTriangle size={14} className="text-amber-700 mt-0.5 shrink-0" />
+          <div className="text-amber-800">
+            <strong>Secondary insurance on file but no benefit terms entered.</strong>{' '}
+            "{surgery.secondary_insurance}" is set as the secondary, but its
+            deductible / copay / coinsurance / OOP max are all blank.
+            The calculator will treat that as "secondary covers everything"
+            and the patient owes <strong>$0</strong>. Fill in the secondary
+            terms below — or change the secondary insurance to{' '}
+            <em>No Secondary</em> — for an accurate estimate.
+          </div>
+        </div>
+      )}
 
       {/* Live breakdown — 'patient owes' subtracts amount already paid (manual + Stripe) */}
       <div className="bg-plum-50/40 border border-plum-100 rounded p-3 text-xs mb-3">
