@@ -29,6 +29,7 @@ from app.models.billing_document import (
 from app.routers.auth import require_permission
 from app.services import billing_doc_storage as storage
 from app.services import billing_doc_classify as classifier
+from app.services.audit_service import log_action
 
 
 router = APIRouter(prefix="/billing/documents", tags=["billing-documents"])
@@ -377,6 +378,18 @@ def delete_document(doc_id: str,
     d = _load(db, doc_id)
     storage_name = d.storage_filename
     original = d.original_filename
+    # Audit BEFORE delete so the row survives the cascade. The
+    # billing_document_access rows for this doc are wiped along with
+    # the FK; audit_logs is the only durable trail.
+    log_action(
+        db,
+        action="DELETE",
+        resource_type="billing_document",
+        resource_id=str(d.id),
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=f"Hard-deleted billing document '{original}' ({storage_name})",
+    )
     db.delete(d)
     db.commit()
     # Best-effort file delete; don't crash the request if the drive is

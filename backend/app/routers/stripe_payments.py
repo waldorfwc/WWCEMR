@@ -27,6 +27,7 @@ from app.models.surgery import Surgery
 from app.routers.auth import require_permission
 from app.routers.patient_surgery import require_patient_token
 from app.services import stripe_payments as svc
+from app.services.audit_service import log_action
 from app.services.patient_email import send_patient_email
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,17 @@ def request_payment(
         sent_by=actor,
     )
 
+    log_action(
+        db,
+        action="PAYMENT_REQUESTED",
+        resource_type="surgery_payment",
+        resource_id=str(pay.id),
+        patient_id=s.chart_number or None,
+        user_id=(actor or "").lower() or None,
+        user_name=actor,
+        description=f"Stripe checkout for ${amount:.2f} on surgery {s.id}",
+    )
+
     return _payment_dict(pay)
 
 
@@ -158,6 +170,16 @@ def refund(
                 "amount": str(payload.amount) if payload.amount else "full",
                 "reason": payload.reason},
     ))
+    log_action(
+        db,
+        action="REFUND",
+        resource_type="surgery_payment",
+        resource_id=str(p.id),
+        user_id=(actor or "").lower() or None,
+        user_name=actor,
+        description=(f"Refund {payload.amount or 'full'} on payment {p.id}"
+                     + (f" — {payload.reason}" if payload.reason else "")),
+    )
     db.commit()
     return {"ok": True, "refund_id": ref.get("id"),
             "amount": str(payload.amount) if payload.amount else "full"}

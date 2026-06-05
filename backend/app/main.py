@@ -31,9 +31,16 @@ USER_MANAGE         = [Depends(auth.require_permission("user:manage"))]
 AUDIT_READ          = [Depends(auth.require_permission("audit:read"))]
 BANKRECON_READ      = [Depends(auth.require_permission("bankrecon:read"))]
 REPORT_FINANCIAL    = [Depends(auth.require_permission("report:financial"))]
+PATIENT_READ        = [Depends(auth.require_permission("patient:read"))]
+DOCUMENT_READ       = [Depends(auth.require_permission("document:read"))]
+CHART_READ          = [Depends(auth.require_permission("chart:read"))]
+INTAKE_READ         = [Depends(auth.require_permission("intake:read"))]
+FAX_READ            = [Depends(auth.require_permission("fax:read"))]
 # Authentication only — requires a valid session (cookie or bearer) but no
-# specific permission. Closes anonymous access to PHI routers without locking
-# out any logged-in user. Cookie-based so window.open/iframe doc views work.
+# specific permission. Use sparingly; only for routers that are truly
+# permission-less (auth/me, etc.). PHI routers should pick a *_READ above
+# so role-less accounts (shared mailboxes, ghost auto-provisioned users)
+# can't read patient data.
 AUTH_ONLY           = [Depends(auth.get_current_user)]
 
 
@@ -107,17 +114,17 @@ app.include_router(service_line_adjustments.router, prefix="/api", dependencies=
 app.include_router(charge_imports.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(claim_id_bootstrap.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(era_posting.router, prefix="/api", dependencies=BILLING_READ)
-app.include_router(patients.router, prefix="/api", dependencies=AUTH_ONLY)
+app.include_router(patients.router, prefix="/api", dependencies=PATIENT_READ)
 app.include_router(denials.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(appeals.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(eob.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(audit.router, prefix="/api", dependencies=AUDIT_READ)
 app.include_router(waystar.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(ar.router, prefix="/api", dependencies=BILLING_READ)
-app.include_router(documents.router, prefix="/api", dependencies=AUTH_ONLY)
-app.include_router(intake.router, prefix="/api", dependencies=AUTH_ONLY)
-app.include_router(chart.router, prefix="/api", dependencies=AUTH_ONLY)
-app.include_router(fax.router, prefix="/api", dependencies=AUTH_ONLY)
+app.include_router(documents.router, prefix="/api", dependencies=DOCUMENT_READ)
+app.include_router(intake.router, prefix="/api", dependencies=INTAKE_READ)
+app.include_router(chart.router, prefix="/api", dependencies=CHART_READ)
+app.include_router(fax.router, prefix="/api", dependencies=FAX_READ)
 app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api", dependencies=REPORT_FINANCIAL)
 app.include_router(fax_batch.router, prefix="/api")

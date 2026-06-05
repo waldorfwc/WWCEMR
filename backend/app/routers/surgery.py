@@ -3547,6 +3547,17 @@ def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
     ))
     db.commit(); db.refresh(s); db.refresh(pay)
 
+    log_action(
+        db,
+        action="PAYMENT_RECORDED",
+        resource_type="surgery_payment",
+        resource_id=str(pay.id),
+        patient_id=s.chart_number or None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=f"Manual payment ${amt:.2f} via {pretty} on surgery {s.id}",
+    )
+
     outstanding = float(s.patient_responsibility or 0) - float(s.amount_paid or 0)
     return {
         "payment_id":   str(pay.id),

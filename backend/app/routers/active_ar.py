@@ -29,6 +29,7 @@ from app.models.patient_directory import IntakeDocument
 from app.models.user import User
 from app.routers.auth import get_current_user, require_permission
 from app.services.active_ar_importer import import_unpaid_claims
+from app.services.audit_service import log_action
 from app.services.appeal_letter_pdf import render_pdf
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 from app.services.timely_filing import timely_filing_info
@@ -600,6 +601,17 @@ def post_insurance_payment(payload: PaymentCreate,
         affected.append(str(c.id))
 
     db.commit()
+    log_action(
+        db,
+        action="PAYMENT_POSTED",
+        resource_type="insurance_payment",
+        resource_id=str(pmt.id),
+        user_id=(user or "").lower() or None,
+        user_name=user,
+        description=(f"Posted {payload.payer_name} check "
+                     f"#{payload.check_number or '—'} ${payload.total_amount}, "
+                     f"allocated to {len(affected)} claim(s)"),
+    )
     return {
         "payment_id": str(pmt.id),
         "total_amount": float(pmt.total_amount),

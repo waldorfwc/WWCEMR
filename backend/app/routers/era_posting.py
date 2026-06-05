@@ -18,6 +18,7 @@ from app.routers.auth import get_current_user, require_permission
 from app.services.idempotency import idempotency_for
 from app.services import import_sessions
 from app.services.era_poster import EraFilePreview, build_preview
+from app.services.audit_service import log_action
 
 
 router = APIRouter(prefix="/imports", tags=["era-posting"])
@@ -220,5 +221,17 @@ def commit_eras(
     # Cache the response so a retry with the same Idempotency-Key returns
     # this body instead of re-running the post loop.
     idem.store(response)
+    log_action(
+        db,
+        action="ERA_COMMIT",
+        resource_type="era_session",
+        resource_id=session_id,
+        user_id=(user_email or "").lower() or None,
+        user_name=user_email,
+        description=(f"ERA commit: {len(previews)} files, "
+                     f"{totals['claims_posted']} claims posted, "
+                     f"{totals['payments_created']} payments, "
+                     f"{totals['denials_created']} denials"),
+    )
     db.commit()   # persist the idempotency row alongside the era results
     return response

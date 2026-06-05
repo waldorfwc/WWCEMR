@@ -16,7 +16,7 @@ from app.models.clinical import (
 )
 from app.models.document import PatientDocument
 from app.models.patient_directory import IntakeDocument
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, require_permission
 from app.services.audit_service import log_action, log_view
 
 router = APIRouter(prefix="/chart", tags=["chart"])
@@ -177,7 +177,8 @@ def get_chart(chart_number: str, db: Session = Depends(get_db),
 
 
 @router.post("/import-clinical")
-def import_clinical_data(background_tasks: BackgroundTasks):
+def import_clinical_data(background_tasks: BackgroundTasks,
+                          _: dict = Depends(require_permission("user:manage"))):
     """Import all clinical data from the PrimeSuite export on the external drive."""
     import os
     if not os.path.isdir("/Volumes/OWC External/400387"):
