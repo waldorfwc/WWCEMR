@@ -146,7 +146,7 @@ export default function ManagerDashboard() {
             </div>
             <div className="text-[11px] text-gray-400 shrink-0 flex items-center gap-1">
               <Clock size={11} />
-              {it.escalation_sent_at ? `notified ${it.escalation_sent_at.slice(0,16)}` : 'not yet notified'}
+              {it.escalation_sent_at ? `notified ${fmt.dateTime(it.escalation_sent_at)}` : 'not yet notified'}
             </div>
           </div>
         )}

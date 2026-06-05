@@ -23,6 +23,7 @@ from app.models.surgery import (
     Surgery, SurgeryMilestone, BlockSchedule, BlockDay, SurgerySlot,
     SurgeryBlackoutDay, SurgeryWaitlist, SURGERY_URGENCY_VALUES,
     SURGERY_COMPLEXITY_VALUES, SURGERY_DURATION_SOURCES,
+    SURGERY_STATUS_VALUES, SURGERY_FACILITY_VALUES, SURGERY_MAX_MINUTES,
 )
 from app.routers.auth import get_current_user, require_permission
 from app.services.surgery_slot_conflict import overlapping_slot
@@ -1238,6 +1239,21 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         if data["complexity"] not in SURGERY_COMPLEXITY_VALUES:
             raise HTTPException(status_code=422,
                                 detail=f"unknown complexity: {data['complexity']}")
+    if "status" in data:
+        if data["status"] not in SURGERY_STATUS_VALUES:
+            raise HTTPException(status_code=422,
+                                detail=f"unknown status: {data['status']}")
+    if "selected_facility" in data and data["selected_facility"] is not None:
+        if data["selected_facility"] not in SURGERY_FACILITY_VALUES:
+            raise HTTPException(status_code=422,
+                                detail=f"unknown facility: {data['selected_facility']}")
+    if "estimated_minutes" in data and data["estimated_minutes"] is not None:
+        m = data["estimated_minutes"]
+        if m <= 0 or m > SURGERY_MAX_MINUTES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"estimated_minutes must be 1..{SURGERY_MAX_MINUTES}",
+            )
     if "duration_minutes" in data:
         if data["duration_minutes"] is not None and data["duration_minutes"] <= 0:
             raise HTTPException(status_code=422, detail="duration_minutes must be > 0")

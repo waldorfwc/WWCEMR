@@ -443,7 +443,7 @@ def send_consent_envelopes(
     if sent:
         send_patient_email(
             db,
-            kind="docusign_consent_sent",
+            kind="boldsign_consent_sent",
             to_email=s.email,
             context={
                 "patient_name": s.patient_name or "Patient",

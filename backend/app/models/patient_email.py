@@ -35,7 +35,9 @@ EMAIL_TEMPLATE_KINDS = (
     "stripe_payment_receipt",
     "surgery_confirmation",
     "surgery_reminder",
-    "docusign_consent_sent",
+    "boldsign_consent_sent",
+    "docusign_consent_sent",  # legacy — historical patient_emails rows still
+                              # reference this; superseded by boldsign_*.
     "generic_patient_message",
     "surgery_post_op_followup",
 )

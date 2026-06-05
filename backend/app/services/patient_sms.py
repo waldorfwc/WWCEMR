@@ -70,10 +70,20 @@ def build_sms_context(surgery: Surgery, **extras) -> dict:
             surgery.selected_facility, surgery.selected_facility
         )
 
+    # Single "when" string so templates don't have to glue date+time
+    # themselves. Time is optional — when blank, surgery_when is just
+    # the date so the rendered SMS doesn't end up with "at ," literals.
+    surgery_when = surgery_date
+    if surgery_date and surgery_time:
+        surgery_when = f"{surgery_date} at {surgery_time}"
+    elif surgery_time:
+        surgery_when = surgery_time
+
     ctx = {
         "patient_name":   first,
         "surgery_date":   surgery_date,
         "surgery_time":   surgery_time,
+        "surgery_when":   surgery_when,
         "facility_name":  facility_name,
         "practice_phone": os.environ.get("WWC_PRACTICE_PHONE", "").strip(),
     }
@@ -168,12 +178,12 @@ def send_patient_sms(
 
     segments = _segments(body)
     try:
-        ok = send_sms(phone, body)
+        sid = send_sms(phone, body)
     except Exception as e:
         log.warning("patient sms Twilio raised: %s", e)
-        ok = False
-    status = "sent" if ok else "failed"
-    failure_reason = None if ok else "Twilio send returned False (check TWILIO_* config)"
+        sid = None
+    status = "sent" if sid is not None else "failed"
+    failure_reason = None if sid is not None else "Twilio send returned None (check TWILIO_* config)"
 
     return _record(db,
         surgery_id=(surgery.id if surgery else None),
@@ -181,10 +191,7 @@ def send_patient_sms(
         to_phone=phone, kind=kind, body=body,
         status=status, failure_reason=failure_reason,
         sent_by=sent_by, context=context,
-        segments=str(segments), twilio_sid=None,
-        # twilio_sid: we don't currently capture the Twilio Message SID
-        # because send_sms returns a bool. If we extend send_sms to
-        # return the SID later, plumb it through here.
+        segments=str(segments), twilio_sid=(sid or None),
     )
 
 

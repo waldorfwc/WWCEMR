@@ -112,13 +112,13 @@ those as soon as possible. Reply to this email or call us with any questions.</p
 """,
     },
     {
-        "kind": "docusign_consent_sent",
-        "label": "DocuSign — consent forms ready to sign",
+        "kind": "boldsign_consent_sent",
+        "label": "BoldSign — consent forms ready to sign",
         "subject": "Please sign your surgery consent forms",
         "html_body": """\
 <p>Hi {{patient_name}},</p>
 <p>Your surgery consent forms are ready for your signature. You'll receive
-a separate email from DocuSign with the signing link.</p>
+a separate email from BoldSign with the signing link.</p>
 <p>Please sign at your earliest convenience — we need the signed forms on
 file before your surgery on {{surgery_date}}.</p>
 <p>&mdash; WWC Gynecology &amp; Aesthetics</p>

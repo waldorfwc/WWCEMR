@@ -32,6 +32,17 @@ from app.models.guid import GUID, new_uuid
 SURGERY_URGENCY_VALUES    = ("routine", "expedited", "urgent")
 SURGERY_COMPLEXITY_VALUES = ("standard", "complex")
 SURGERY_DURATION_SOURCES  = ("coordinator", "template", "order_extract")
+SURGERY_STATUS_VALUES     = (
+    "incomplete", "new", "in_progress", "confirmed",
+    "completed", "cancelled", "hold", "unresponsive",
+)
+SURGERY_FACILITY_VALUES   = (
+    "medstar", "crmc", "office", "wwc_office_white_plains",
+)
+# Sane upper bound on a single surgery slot (8 hours). Patient sees
+# the value via estimated_minutes on the dashboard; reject anything
+# absurd before it lands in PDFs and calendar invites.
+SURGERY_MAX_MINUTES       = 480
 
 # ─── Surgery (the main row) ──────────────────────────────────────────
 

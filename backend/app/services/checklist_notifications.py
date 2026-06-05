@@ -167,17 +167,19 @@ def _normalize_phone(raw: str) -> str:
     return ""
 
 
-def send_sms(to_phone: str, body: str) -> bool:
-    """Send an SMS via Twilio. Returns True on success.
-    Body is truncated/clipped to 320 chars (~2 SMS segments) to keep costs sane."""
+def send_sms(to_phone: str, body: str) -> Optional[str]:
+    """Send an SMS via Twilio. Returns the Twilio Message SID on success
+    (a truthy string), or None on any failure. Callers that just want a
+    bool can `if send_sms(...)`. Body is clipped to 320 chars (~2 SMS
+    segments) to keep costs sane."""
     cfg = _twilio_settings()
     if not (cfg["sid"] and cfg["token"] and cfg["from"]):
         log.info("SMS (no Twilio configured) to=%s: %s", to_phone, body[:120])
-        return False
+        return None
     to_e164 = _normalize_phone(to_phone)
     if not to_e164:
         log.info("SMS skipped — invalid phone %r", to_phone)
-        return False
+        return None
 
     # Cap body — receivers see the leading text either way; helps cost
     body = body if len(body) <= 320 else body[:317] + "…"
@@ -189,13 +191,16 @@ def send_sms(to_phone: str, body: str) -> bool:
             timeout=15,
         )
         if 200 <= r.status_code < 300:
-            return True
+            try:
+                return r.json().get("sid") or ""
+            except Exception:
+                return ""
         log.warning("Twilio SMS failed [%s] to=%s: %s",
                     r.status_code, to_e164, r.text[:200])
-        return False
+        return None
     except Exception as exc:
         log.warning("Twilio SMS error to=%s: %s", to_e164, exc)
-        return False
+        return None
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -303,7 +308,7 @@ def send_morning_digest(user: User, instances: list,
             f"{'s' if len(instances) != 1 else ''} for today. "
             f"Open: https://gw.waldorfwomenscare.com/checklist"
         )
-        sms_ok = send_sms(user.phone_number, sms_body)
+        sms_ok = bool(send_sms(user.phone_number, sms_body))
 
     return {"sent": email_ok or slack_ok or sms_ok,
             "email": email_ok, "slack": slack_ok, "sms": sms_ok}
@@ -349,7 +354,7 @@ def send_eod_overdue_nudge(user: User, overdue: list,
             f"{'s' if len(overdue) != 1 else ''} still open at EOD. "
             f"https://gw.waldorfwomenscare.com/checklist"
         )
-        sms_ok = send_sms(user.phone_number, sms_body)
+        sms_ok = bool(send_sms(user.phone_number, sms_body))
     return {"sent": email_ok or slack_ok or sms_ok,
             "email": email_ok, "slack": slack_ok, "sms": sms_ok}
 
