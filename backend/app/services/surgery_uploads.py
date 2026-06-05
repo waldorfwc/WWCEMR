@@ -1,9 +1,9 @@
 """Patient-uploaded document storage in GCS, plus the static-PDF read
 path used by the clearance template endpoint.
 
-Bucket: gs://wwc-documents (same as the P4 instructions library).
-Patient uploads live under:
-    gs://wwc-documents/surgery-uploads/{surgery_id}/{kind}/{ts}_{safe_name}.{ext}
+Bucket: configured via DOCUMENTS_GCS_BUCKET env var (same lookup as
+app.services.storage); default `wwc-app-docs`. Patient uploads live
+under: gs://{bucket}/surgery-uploads/{surgery_id}/{kind}/{ts}_{safe}.
 
 Validation:
   - Max 10 MB per upload
@@ -14,6 +14,7 @@ Validation:
 from __future__ import annotations
 
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from typing import Optional
@@ -25,7 +26,7 @@ from app.models.surgery import Surgery, SurgeryDocument
 
 log = logging.getLogger(__name__)
 
-BUCKET = "wwc-documents"
+BUCKET = os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
 ALLOWED_MIME = (
     "application/pdf",
     "image/jpeg",

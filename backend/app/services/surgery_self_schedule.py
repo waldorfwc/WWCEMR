@@ -121,6 +121,16 @@ def claim_slot_for_patient(
             status_code=409,
         )
 
+    # Release any prior slot for this surgery so a rebook doesn't leave
+    # orphan rows. The surgery row's scheduled_date is overwritten below;
+    # without this the old slot keeps inflating cases_already_booked on
+    # the abandoned block day.
+    prior = db.query(SurgerySlot).filter(
+        SurgerySlot.surgery_id == surgery.id
+    ).all()
+    for old in prior:
+        db.delete(old)
+
     slot = SurgerySlot(
         block_day_id=bd.id, surgery_id=surgery.id,
         start_time=start, duration_minutes=duration,

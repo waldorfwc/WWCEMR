@@ -73,7 +73,7 @@ export default function MyChecklist() {
             {data?.user?.display_name || data?.user?.email?.split('@')[0]}
             {role && <> · <span className="font-medium">{ROLE_LABELS[role] || role}</span></>}
             {!role && <> · <span className="text-amber-600">No role assigned</span></>}
-            <span className="text-gray-400 ml-2">· {data?.date}</span>
+            <span className="text-gray-400 ml-2">· {fmt.date(data?.date)}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
