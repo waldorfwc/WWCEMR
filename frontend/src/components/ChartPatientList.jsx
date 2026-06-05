@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { Search } from 'lucide-react'
-import api from '../utils/api'
+import api, { fmt } from '../utils/api'
 import { useChartFaxSummary } from '../hooks/useChartFaxSummary'
 
 const TODAY_ISO = () => {
@@ -86,7 +86,7 @@ export default function ChartPatientList({ activeChartNumber, perPage = 100 }) {
                   </div>
                   <div className="text-muted text-[10px] truncate">
                     #{p.chart_number}
-                    {p.dob && <> · DOB {p.dob}</>}
+                    {p.dob && <> · DOB {fmt.date(p.dob)}</>}
                     {' · '}{p.document_count}d
                   </div>
                 </div>

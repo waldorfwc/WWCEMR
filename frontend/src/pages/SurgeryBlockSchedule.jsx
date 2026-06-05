@@ -102,6 +102,7 @@ function UpcomingTab({ days }) {
 
 
 function BlockDayRow({ d }) {
+  const { labelOf } = useFacilities()
   const slots = d.slots || []
   const cap = capacitySummary(d, slots)
   return (
@@ -179,6 +180,7 @@ function SchedulesTab({ schedules, qc }) {
 
 
 function ScheduleRow({ s, qc }) {
+  const { labelOf } = useFacilities()
   const remove = useMutation({
     mutationFn: () => api.delete(`/surgery/admin/block-schedules/${s.id}`).then(r => r.data),
     onSuccess: () => {
@@ -477,6 +479,7 @@ function BlackoutsTab({ blackouts, qc }) {
 
 
 function BlackoutRow({ b, qc }) {
+  const { labelOf } = useFacilities()
   const remove = useMutation({
     mutationFn: () => api.delete(`/surgery/admin/blackouts/${b.id}`).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery-blackouts'] }),
