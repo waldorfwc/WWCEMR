@@ -97,7 +97,7 @@ export default function SurgeryWaitlist() {
             {list.length} patient{list.length === 1 ? '' : 's'} waiting for an earlier slot. Pick a day below to find who could fill it.
           </p>
         </div>
-        <select className="input text-sm" value={facilityFilter}
+        <select className="input text-sm" aria-label="Facility filter" value={facilityFilter}
                 onChange={e => setFacilityFilter(e.target.value)}>
           <option value="">All facilities</option>
           <option value="medstar">MedStar</option>

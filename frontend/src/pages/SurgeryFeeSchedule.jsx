@@ -121,7 +121,7 @@ function FeeTable() {
           {editingId ? 'Edit allowed amount' : 'Add allowed amount'}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-[1fr_120px_120px_1fr_auto] gap-2 items-end">
-          <select className="input text-sm" value={form.insurance_name}
+          <select className="input text-sm" aria-label="Insurance" value={form.insurance_name}
                    onChange={e => setForm({ ...form, insurance_name: e.target.value })}>
             <option value="">— select insurance —</option>
             {(picks?.insurance_companies || []).map(n => (

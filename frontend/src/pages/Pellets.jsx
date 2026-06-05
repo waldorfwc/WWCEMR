@@ -679,13 +679,13 @@ function LotsCard({ types = [], onQuickTransfer }) {
                                                   : new Set(groups.map(g => g.dose_type_id)))}>
             {allCollapsed ? 'Expand all' : 'Collapse all'}
           </button>
-          <select className="input text-[11px] py-0.5" value={hormone}
+          <select className="input text-[11px] py-0.5" aria-label="Hormone filter" value={hormone}
                    onChange={e => setHormone(e.target.value)}>
             <option value="">Both hormones</option>
             <option value="estradiol">Estradiol</option>
             <option value="testosterone">Testosterone</option>
           </select>
-          <select className="input text-[11px] py-0.5" value={locationFilter}
+          <select className="input text-[11px] py-0.5" aria-label="Location filter" value={locationFilter}
                    onChange={e => setLocationFilter(e.target.value)}>
             <option value="">All locations</option>
             <option value="white_plains">White Plains only</option>

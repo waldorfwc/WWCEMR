@@ -92,7 +92,7 @@ export default function LarcDevices() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Category</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Category"
                     value={filters.category}
                     onChange={e => setFilters({ ...filters, category: e.target.value, device_type_id: '' })}>
               <option value="">All categories</option>
@@ -102,7 +102,7 @@ export default function LarcDevices() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Device type</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Device type"
                     value={filters.device_type_id}
                     onChange={e => setFilters({ ...filters, device_type_id: e.target.value })}>
               <option value="">All types</option>
@@ -112,7 +112,7 @@ export default function LarcDevices() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Status</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Status"
                     value={filters.status}
                     onChange={e => setFilters({ ...filters, status: e.target.value })}>
               <option value="">
@@ -137,7 +137,7 @@ export default function LarcDevices() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Location"
                     value={filters.location}
                     onChange={e => setFilters({ ...filters, location: e.target.value })}>
               <option value="">All</option>
@@ -148,7 +148,7 @@ export default function LarcDevices() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Ownership</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Ownership"
                     value={filters.ownership}
                     onChange={e => setFilters({ ...filters, ownership: e.target.value })}>
               <option value="">All</option>
@@ -176,6 +176,7 @@ export default function LarcDevices() {
             <tr>
               <th className="table-th w-8">
                 <input type="checkbox"
+                       aria-label="Select all devices on this page"
                        checked={devices.length > 0 && selected.size === devices.length}
                        onChange={e => {
                          if (e.target.checked) setSelected(new Set(devices.map(d => d.id)))
@@ -206,6 +207,7 @@ export default function LarcDevices() {
                 <tr key={d.id} className="hover:bg-plum-50/40">
                   <td className="table-td">
                     <input type="checkbox" checked={checked}
+                           aria-label={`Select device ${d.our_id || d.id}`}
                            onClick={e => e.stopPropagation()}
                            onChange={() => {
                              const next = new Set(selected)

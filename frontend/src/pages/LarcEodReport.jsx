@@ -38,7 +38,7 @@ export default function LarcEodReport() {
         <div className="flex items-center gap-1">
           <button onClick={() => setDate(shiftDay(date, -1))}
                   className="btn-secondary text-xs"><ChevronLeft size={12}/></button>
-          <input type="date" className="input text-sm" value={date}
+          <input type="date" className="input text-sm" aria-label="Report date" value={date}
                  onChange={e => setDate(e.target.value)} />
           <button onClick={() => setDate(shiftDay(date, 1))}
                   className="btn-secondary text-xs"><ChevronRight size={12}/></button>

@@ -35,13 +35,13 @@ export default function AuditLog() {
       </div>
 
       <div className="card mb-4 flex gap-3 flex-wrap">
-        <select className="input w-44" value={action} onChange={e => setAction(e.target.value)}>
+        <select className="input w-44" aria-label="Action filter" value={action} onChange={e => setAction(e.target.value)}>
           <option value="">All Actions</option>
           {['VIEW','CREATE','UPDATE','DELETE','EXPORT','IMPORT','GENERATE_EOB','GENERATE_APPEAL'].map(a => (
             <option key={a} value={a}>{a}</option>
           ))}
         </select>
-        <select className="input w-36" value={resource} onChange={e => setResource(e.target.value)}>
+        <select className="input w-36" aria-label="Resource filter" value={resource} onChange={e => setResource(e.target.value)}>
           <option value="">All Resources</option>
           {['patient','claim','denial','appeal','era_file','ledger','file'].map(r => (
             <option key={r} value={r}>{r}</option>

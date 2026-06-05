@@ -246,7 +246,7 @@ export default function AdminTemplates() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-muted block mb-1">Category</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Category filter"
                     value={filters.category}
                     onChange={e => setFilters({ ...filters, category: e.target.value })}>
               <option value="">All categories</option>
