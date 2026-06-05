@@ -113,7 +113,16 @@ def _date_str(d) -> str:
         return ""
     if hasattr(d, "strftime"):
         return d.strftime("%m/%d/%Y")
-    s = str(d)
+    s = str(d).strip()
+    # Many upstream callers stringify dates as ISO ("1996-05-10") before
+    # handing them off. Convert to the MM/DD/YYYY convention so the PDF
+    # doesn't leak the database format to the patient.
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        try:
+            from datetime import datetime
+            return datetime.strptime(s[:10], "%Y-%m-%d").strftime("%m/%d/%Y")
+        except ValueError:
+            pass
     return s
 
 

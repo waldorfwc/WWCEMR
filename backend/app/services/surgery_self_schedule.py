@@ -96,7 +96,15 @@ def claim_slot_for_patient(
 
     Returns: {slot_id, block_day_id, start_time, duration_minutes}
     """
-    bd = db.query(BlockDay).filter(BlockDay.id == block_day_id).first()
+    # SELECT FOR UPDATE on the block_day row to serialize concurrent
+    # claims targeting the same day. Without this, two parallel POSTs
+    # at the same start_time can both pass the overlap check (which
+    # reads surgery_slots in this transaction) and both insert a slot —
+    # ending up with two cases at the same time on the same block day.
+    bd = (db.query(BlockDay)
+            .filter(BlockDay.id == block_day_id)
+            .with_for_update()
+            .first())
     if not bd:
         raise SelfScheduleError("Block day not found", status_code=404)
 
