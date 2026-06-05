@@ -53,6 +53,12 @@ _PUBLIC_ALLOWLIST = {
     # DocuSign + Calendly webhooks — HMAC-signed payloads
     "/api/docusign/webhook",
     "/api/calendly/webhook",
+    # Stripe + BoldSign webhooks — HMAC-signed payloads (signature
+    # check is inside the handler; token IS the gate)
+    "/api/stripe/webhook",
+    "/api/boldsign/webhook",
+    # Public Google-review wall (no PHI — stars + first name only)
+    "/api/reviews/public",
 }
 
 # Prefix allowlist — anything under these prefixes is presumed token-gated
@@ -60,6 +66,7 @@ _PUBLIC_ALLOWLIST = {
 _PUBLIC_PREFIX_ALLOWLIST = (
     "/api/p/",              # patient-facing portal (require_patient_token)
     "/api/patient/portal/", # patient self-service portal (require_portal_token)
+    "/api/r/",              # post-op review portal — token in URL is the gate
 )
 
 

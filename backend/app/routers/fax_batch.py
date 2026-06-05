@@ -16,7 +16,7 @@ from app.models.fax_log import FaxLog, FaxLogStatus, GroupingMode
 from app.services.fax_service import send_fax
 from app.services.pdf_merge import merge_pdfs
 from app.services.audit_service import log_action
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, require_permission
 
 router = APIRouter(prefix="/fax", tags=["fax-batch"])
 log_router = APIRouter(prefix="/fax-log", tags=["fax-log"])
@@ -97,7 +97,7 @@ def _send_one_and_log(
 def send_batch(
     payload: SendBatchPayload,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_permission("fax:send")),
 ):
     return _send_batch_core(payload, db, sent_by=current_user.get("email"))
 
@@ -337,7 +337,7 @@ def fax_by_chart(chart_number: str, db: Session = Depends(get_db)):
 def fax_retry(
     fax_log_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_permission("fax:send")),
 ):
     """Resend a fax with the same doc_ids / dest / grouping as the original.
     Creates a new FaxLog row that points back to the original via retry_of.
