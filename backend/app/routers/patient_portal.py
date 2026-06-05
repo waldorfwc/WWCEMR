@@ -281,11 +281,13 @@ def dashboard(surgery_id: str, db: Session = Depends(get_db),
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
-    first_proc = (s.procedures or [{}])[0]
+    procedures = [(p.get("description") or p.get("name") or "").strip()
+                    for p in (s.procedures or []) if p]
+    procedure_label = "; ".join(p for p in procedures if p)
     summary = {
         "patient_name":  s.patient_name or "",
         "chart_number":  s.chart_number or "",
-        "procedure":     first_proc.get("description") or first_proc.get("name") or "",
+        "procedure":     procedure_label,
         "surgeon":       s.surgeon_primary or "",
         "surgery_date":  s.scheduled_date.isoformat() if s.scheduled_date else None,
         "surgery_time":  s.scheduled_start_time.strftime("%H:%M")

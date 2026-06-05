@@ -349,8 +349,12 @@ function ActionCard({ icon: Icon, tone, title, meta, body, cta, urgent, disabled
 
 
 function FactCard({ icon: Icon, label, value }) {
+  const items = typeof value === 'string' && value.includes('; ')
+    ? value.split('; ').filter(Boolean)
+    : [value]
+  const multi = items.length > 1
   return (
-    <div className="bg-white rounded-xl border border-plum-100 p-4 flex items-center gap-3">
+    <div className={`bg-white rounded-xl border border-plum-100 p-4 flex gap-3 ${multi ? 'items-start' : 'items-center'}`}>
       <div className="w-10 h-10 rounded-lg bg-plum-50 grid place-items-center text-plum-700 shrink-0">
         <Icon size={16} />
       </div>
@@ -358,9 +362,15 @@ function FactCard({ icon: Icon, label, value }) {
         <div className="text-[10px] uppercase tracking-[0.16em] text-plum-600/70">
           {label}
         </div>
-        <div className="text-[13px] text-plum-ink font-medium truncate">
-          {value}
-        </div>
+        {multi ? (
+          <ul className="text-[13px] text-plum-ink font-medium space-y-0.5 mt-1 list-disc list-inside marker:text-plum-400">
+            {items.map((p, i) => <li key={i}>{p}</li>)}
+          </ul>
+        ) : (
+          <div className="text-[13px] text-plum-ink font-medium truncate">
+            {items[0]}
+          </div>
+        )}
       </div>
     </div>
   )

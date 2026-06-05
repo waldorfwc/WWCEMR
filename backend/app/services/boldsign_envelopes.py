@@ -113,9 +113,9 @@ def _build_prefill_fields(s: Surgery) -> list[dict]:
     "patient_name" or "PatientName" and either will populate. BoldSign
     ignores IDs that don't exist on the template.
     """
-    first_proc = (s.procedures or [{}])[0]
-    procedure  = (first_proc.get("description")
-                  or first_proc.get("name") or "").strip()
+    procedures = [(p.get("description") or p.get("name") or "").strip()
+                    for p in (s.procedures or []) if p]
+    procedure  = "; ".join(p for p in procedures if p)
     values = {
         "patient_name":   _format_patient_name(s),
         "patient_dob":    s.dob.strftime("%m/%d/%Y") if s.dob else "",

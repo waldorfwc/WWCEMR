@@ -86,9 +86,20 @@ export default function PortalShell() {
             </div>
           )}
           {patient.procedure && (
-            <div className="text-[11px] text-plum-700 mt-3">
-              {patient.procedure}
-            </div>
+            (() => {
+              const procs = patient.procedure.includes('; ')
+                ? patient.procedure.split('; ').filter(Boolean)
+                : [patient.procedure]
+              return procs.length > 1 ? (
+                <ul className="text-[11px] text-plum-700 mt-3 space-y-0.5 list-disc list-inside marker:text-plum-400">
+                  {procs.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              ) : (
+                <div className="text-[11px] text-plum-700 mt-3">
+                  {procs[0]}
+                </div>
+              )
+            })()
           )}
           {patient.facility && (
             <div className="text-[11px] text-plum-600/80 mt-0.5">
