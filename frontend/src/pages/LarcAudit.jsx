@@ -67,12 +67,12 @@ export default function LarcAudit() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Patient chart #</label>
-            <input className="input text-sm font-mono" value={filters.chart_number}
+            <input className="input text-sm font-mono" aria-label="Patient chart number" value={filters.chart_number}
                    onChange={e => set('chart_number', e.target.value)} />
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Action</label>
-            <select className="input text-sm" value={filters.action}
+            <select className="input text-sm" aria-label="Action filter" value={filters.action}
                     onChange={e => set('action', e.target.value)}>
               <option value="">Any</option>
               <option value="device_added">device_added</option>

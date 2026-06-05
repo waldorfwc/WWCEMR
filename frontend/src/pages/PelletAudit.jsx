@@ -100,7 +100,7 @@ export default function PelletAudit() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Action</label>
-            <select className="input text-sm w-full" value={filters.action}
+            <select className="input text-sm w-full" aria-label="Action filter" value={filters.action}
                     onChange={e => set('action', e.target.value)}>
               <option value="">All actions</option>
               {Object.entries(ACTION_LABELS).map(([k, v]) => (
@@ -110,7 +110,7 @@ export default function PelletAudit() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
-            <select className="input text-sm w-full" value={filters.location}
+            <select className="input text-sm w-full" aria-label="Location filter" value={filters.location}
                     onChange={e => set('location', e.target.value)}>
               <option value="">All locations</option>
               {Object.entries(LOC_LABEL).map(([k, v]) => (
@@ -136,7 +136,7 @@ export default function PelletAudit() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Window</label>
-            <select className="input text-sm w-full" value={filters.days}
+            <select className="input text-sm w-full" aria-label="Time window" value={filters.days}
                     onChange={e => set('days', Number(e.target.value))}>
               <option value="7">Last 7 days</option>
               <option value="30">Last 30 days</option>

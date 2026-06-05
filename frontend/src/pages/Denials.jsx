@@ -115,7 +115,7 @@ export default function Denials() {
 
       {/* Filters */}
       <div className="card mb-4 flex flex-wrap gap-3 items-center">
-        <select className="input w-36" value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="input w-36" aria-label="Status filter" value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">All Statuses</option>
           <option value="open">Open</option>
           <option value="appealing">Appealing</option>

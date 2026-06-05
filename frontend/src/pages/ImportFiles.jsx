@@ -98,6 +98,7 @@ export default function ImportFiles() {
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleBootstrapFile(f) }}
           >
             <input ref={bootstrapInputRef} type="file" accept=".xls,.xlsx" className="hidden"
+                   aria-label="Patient bootstrap file"
                    onChange={e => e.target.files[0] && handleBootstrapFile(e.target.files[0])} />
             <p className="text-sm text-gray-700">📄 Drop <code>.xls</code> here or click to browse</p>
           </div>
@@ -165,6 +166,7 @@ export default function ImportFiles() {
             onDrop={e => { e.preventDefault(); handleEraFiles(e.dataTransfer.files) }}
           >
             <input ref={eraInputRef} type="file" accept=".835,.x12,.edi" multiple className="hidden"
+                   aria-label="ERA 835 files"
                    onChange={e => handleEraFiles(e.target.files)} />
             <p className="text-sm text-gray-700">📋 Drop one or more <code>.835</code> files here or click to browse</p>
           </div>
@@ -239,6 +241,7 @@ export default function ImportFiles() {
               type="file"
               accept=".xls,.xlsx"
               className="hidden"
+              aria-label="Charge import file"
               onChange={e => e.target.files[0] && handleChargeFile(e.target.files[0])}
             />
             <p className="text-sm text-gray-700">📊 Drop <code>.xls</code> here or click to browse</p>
