@@ -26,6 +26,7 @@ from app.models.surgery import (
     SURGERY_STATUS_VALUES, SURGERY_FACILITY_VALUES, SURGERY_MAX_MINUTES,
 )
 from app.routers.auth import get_current_user, require_permission
+from app.services.audit_service import log_action
 from app.services.surgery_slot_conflict import overlapping_slot
 from app.services.surgery_blackout_conflict import is_date_blacked_out
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
@@ -1559,6 +1560,45 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+
+    # Void any still-live BoldSign consent envelopes so the patient
+    # can't sign a consent that no longer applies. Skip terminal
+    # statuses (signed/completed/voided/declined/expired) — those are
+    # already settled and BoldSign rejects voids on completed docs.
+    if payload.reason != "hold":
+        from app.services.boldsign_envelopes import (
+            void_envelope_row, BoldSignEnvelopeError,
+        )
+        TERMINAL = {"signed", "completed", "voided", "declined", "expired"}
+        for env in (s.consent_envelopes or []):
+            if (env.status or "").lower() in TERMINAL:
+                continue
+            try:
+                void_envelope_row(
+                    db, env,
+                    reason=f"Surgery cancelled ({payload.reason})",
+                )
+            except (BoldSignEnvelopeError, Exception) as ve:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "BoldSign void failed for envelope %s: %s", env.id, ve)
+
+    # HIPAA audit row alongside the SurgeryCancellation table so the
+    # central audit_logs view (used by /audit + reporting) sees who
+    # cancelled what and when, not just the cancellation-specific
+    # table.
+    actor_email = (current_user.get("email") or "").lower().strip() or None
+    log_action(
+        db,
+        action="CANCEL", resource_type="surgery",
+        resource_id=str(s.id), patient_id=s.chart_number,
+        user_id=actor_email, user_name=current_user.get("name") or actor_email,
+        description=(
+            f"Surgery {new_status} (reason: {payload.reason}, "
+            f"fee_required: {fee_required}, refund_required: {refund_required})"
+        ),
+    )
+
     return {
         "id": str(s.id),
         "status": s.status,
