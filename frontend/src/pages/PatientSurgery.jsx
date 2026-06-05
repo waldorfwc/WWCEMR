@@ -12,8 +12,8 @@ import logoMark from '../assets/wwc-logo.png'
 // since most patients click in from a Klara link on their phone.
 
 const FACILITY_LABEL = {
-  medstar: 'MedStar Southern Maryland Hospital',
-  crmc:    'University of MD Charles Regional',
+  medstar: 'MedStar Southern Maryland Hospital Center',
+  crmc:    'University of Maryland Charles Regional Medical Center',
   office:  'Waldorf Women\'s Care — White Plains office',
 }
 

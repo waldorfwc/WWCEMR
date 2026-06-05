@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -79,11 +80,22 @@ def build_sms_context(surgery: Surgery, **extras) -> dict:
     elif surgery_time:
         surgery_when = surgery_time
 
+    # Patient-facing arrival time (24h source → "1:30 PM"-style render).
+    # Hospitals = surgery − 2h, office = surgery − 15min.
+    from app.services.surgery_klara_drafter import arrival_time_str as _arr
+    arrival_24 = _arr(surgery.scheduled_start_time, surgery.selected_facility)
+    arrival_time = ""
+    if arrival_24:
+        hh, mm = (int(p) for p in arrival_24.split(":"))
+        arrival_time = (datetime.min.replace(hour=hh, minute=mm)
+                         .strftime("%-I:%M %p"))
+
     ctx = {
         "patient_name":   first,
         "surgery_date":   surgery_date,
         "surgery_time":   surgery_time,
         "surgery_when":   surgery_when,
+        "arrival_time":   arrival_time,
         "facility_name":  facility_name,
         "practice_phone": os.environ.get("WWC_PRACTICE_PHONE", "").strip(),
     }

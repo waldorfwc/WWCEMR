@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.surgery import PatientAuthAttempt, Surgery
 from app.services import patient_portal_auth as auth
-from app.services.surgery_klara_drafter import FACILITY_SHORT
+from app.services.surgery_klara_drafter import FACILITY_SHORT, arrival_time_str
 
 router = APIRouter(prefix="/patient/portal", tags=["patient-portal"])
 
@@ -481,11 +481,13 @@ def portal_slots(surgery_id: str, days_ahead: int = 180,
     booked = None
     if s.scheduled_date:
         booked = {
-            "date":      s.scheduled_date.isoformat(),
-            "time":      (s.scheduled_start_time.strftime("%H:%M")
-                            if s.scheduled_start_time else None),
-            "facility":  FACILITY_SHORT.get(s.selected_facility or "",
-                                              s.selected_facility or ""),
+            "date":         s.scheduled_date.isoformat(),
+            "time":         (s.scheduled_start_time.strftime("%H:%M")
+                              if s.scheduled_start_time else None),
+            "arrival_time": arrival_time_str(s.scheduled_start_time,
+                                                s.selected_facility),
+            "facility":     FACILITY_SHORT.get(s.selected_facility or "",
+                                                 s.selected_facility or ""),
         }
     allowed, reason = schedule_gate_for_surgery(s)
     if not allowed:
@@ -503,6 +505,8 @@ def portal_slots(surgery_id: str, days_ahead: int = 180,
     # the booked card uses).
     days = [
         {**d,
+         "arrival_time": arrival_time_str(d.get("proposed_start_time"),
+                                            d.get("facility") or ""),
          "facility": FACILITY_SHORT.get(d.get("facility") or "",
                                           d.get("facility") or "")}
         for d in (raw.get("days") or [])

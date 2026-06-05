@@ -55,8 +55,8 @@ def _configured_recipients(db, alert_kind: str) -> list[str]:
 
 
 FACILITY_LABEL = {
-    "medstar": "MedStar Southern Maryland",
-    "crmc":    "Charles Regional",
+    "medstar": "MedStar SMHC",
+    "crmc":    "UM Charles Regional",
     "office":  "White Plains Office",
 }
 

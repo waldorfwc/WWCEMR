@@ -5,7 +5,7 @@ import {
   ArrowLeft, RefreshCw, Plus, Trash2, AlertCircle, CheckCircle2,
   EyeOff, Clock,
 } from 'lucide-react'
-import api from '../utils/api'
+import api, { fmt } from '../utils/api'
 
 
 export default function AdminGoogleSync() {
@@ -83,7 +83,7 @@ export default function AdminGoogleSync() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
           <Tile
             label="Last run"
-            value={last ? last.started_at?.slice(0, 16) : '— never —'}
+            value={last ? fmt.dateTime(last.started_at) : '— never —'}
             sub={last?.status}
             icon={<Clock size={16} />}
           />
@@ -170,7 +170,7 @@ export default function AdminGoogleSync() {
               <div className="min-w-0">
                 <div className="text-sm font-mono">{e.email}</div>
                 {e.reason && <div className="text-[11px] text-muted">{e.reason}</div>}
-                <div className="text-[10px] text-muted">added {e.added_at?.slice(0, 16)} by {e.added_by || '—'}</div>
+                <div className="text-[10px] text-muted">added {fmt.dateTime(e.added_at)} by {e.added_by || '—'}</div>
               </div>
               <RemoveExclusionButton email={e.email} qc={qc} />
             </li>

@@ -128,8 +128,8 @@ def _block_kind_to_proc_kind(block_kind: str) -> Optional[str]:
 def klara_blast_text(facility: str, block_date: date,
                        procedure_kind: Optional[str] = None) -> str:
     facility_label = {
-        "medstar": "MedStar Southern Maryland Hospital",
-        "crmc":    "University of MD Charles Regional",
+        "medstar": "MedStar Southern Maryland Hospital Center",
+        "crmc":    "University of Maryland Charles Regional Medical Center",
         "office":  "our White Plains office",
     }.get(facility, facility)
     proc_label = (procedure_kind or "").replace("_", " ") if procedure_kind else "surgery"

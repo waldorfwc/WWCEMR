@@ -22,16 +22,47 @@ from app.models.surgery import Surgery
 
 
 FACILITY_LABEL = {
-    "medstar": "MedStar Southern Maryland Hospital",
-    "crmc":    "University of MD Charles Regional Medical Center",
+    "medstar": "MedStar Southern Maryland Hospital Center",
+    "crmc":    "University of Maryland Charles Regional Medical Center",
     "office":  "our White Plains office",
 }
 
 FACILITY_SHORT = {
-    "medstar": "MedStar",
-    "crmc":    "Charles Regional",
+    "medstar": "MedStar SMHC",
+    "crmc":    "UM Charles Regional",
     "office":  "the office",
 }
+
+# Minutes before the scheduled surgery/procedure time that the patient
+# needs to physically arrive. Hospitals need 2 hours of pre-op prep;
+# the in-office procedure rooms only need a 15-minute check-in.
+ARRIVAL_OFFSET_MIN = {
+    "medstar": 120,
+    "crmc":    120,
+    "office":  15,
+}
+
+
+def arrival_time_str(start_hhmm, facility_code) -> str:
+    """Return the patient's arrival time as 'HH:MM' (24h), or '' if
+    either the time or the facility is missing/unknown. Accepts a
+    datetime.time or a 'HH:MM' string."""
+    if not start_hhmm or not facility_code:
+        return ""
+    offset = ARRIVAL_OFFSET_MIN.get(facility_code)
+    if offset is None:
+        return ""
+    from datetime import datetime, date, timedelta, time as _time
+    if hasattr(start_hhmm, "hour"):
+        st = start_hhmm
+    else:
+        try:
+            hh, mm = (int(p) for p in str(start_hhmm).split(":")[:2])
+            st = _time(hh, mm)
+        except Exception:
+            return ""
+    dt = datetime.combine(date.today(), st) - timedelta(minutes=offset)
+    return dt.strftime("%H:%M")
 
 
 def _first_name(s: Surgery) -> str:

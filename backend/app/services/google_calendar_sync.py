@@ -59,12 +59,28 @@ def _build_calendar_client():
 
 # ─── Event shape ────────────────────────────────────────────────────
 
-def _event_body(surgery: Surgery, slot: SurgerySlot, facility_label: Optional[str] = None) -> dict:
-    """Compose the Google Calendar event payload from a Surgery + Slot."""
-    # Start/end in America/New_York (the practice's local TZ).
+def _event_body(surgery: Surgery, slot: Optional[SurgerySlot] = None,
+                  facility_label: Optional[str] = None) -> dict:
+    """Compose the Google Calendar event payload from a Surgery (+ optional
+    Slot). When no Slot row exists, fall back to the surgery's own
+    scheduled_start_time and estimated_minutes."""
     tz = "America/New_York"
-    start_dt = datetime.combine(surgery.scheduled_date, slot.start_time)
-    end_dt   = start_dt + timedelta(minutes=slot.duration_minutes or 60)
+    start_time = (slot.start_time if slot else None) or surgery.scheduled_start_time
+    duration   = (slot.duration_minutes if slot else None) or surgery.estimated_minutes or 60
+    start_dt = datetime.combine(surgery.scheduled_date, start_time)
+    end_dt   = start_dt + timedelta(minutes=duration)
+
+    # Patient-friendly facility label (used inside the title) — fall back to
+    # the short label from FACILITY_SHORT when the caller didn't pass one in,
+    # so the calendar title doesn't read "medstar" or "crmc".
+    facility_summary = facility_label
+    if not facility_summary and surgery.selected_facility:
+        try:
+            from app.services.surgery_klara_drafter import FACILITY_SHORT
+            facility_summary = FACILITY_SHORT.get(surgery.selected_facility,
+                                                     surgery.selected_facility)
+        except Exception:
+            facility_summary = surgery.selected_facility
 
     summary = f"{surgery.patient_name} — "
     if surgery.procedures:
@@ -72,8 +88,8 @@ def _event_body(surgery: Surgery, slot: SurgerySlot, facility_label: Optional[st
         summary += proc.get("name", "Surgery")
     else:
         summary += "Surgery"
-    if surgery.selected_facility:
-        summary += f" — {(facility_label or surgery.selected_facility).strip()}"
+    if facility_summary:
+        summary += f" — {facility_summary.strip()}"
 
     description_lines = [
         f"Patient: {surgery.patient_name}",
@@ -86,19 +102,17 @@ def _event_body(surgery: Surgery, slot: SurgerySlot, facility_label: Optional[st
         description_lines.append("Complexity: COMPLEX")
     if surgery.urgency == "urgent":
         description_lines.append("Urgency: URGENT")
-    description_lines.append(f"Duration: {slot.duration_minutes} min")
+    description_lines.append(f"Duration: {duration} min")
 
+    private = {"surgery_id": str(surgery.id)}
+    if slot is not None:
+        private["slot_id"] = str(slot.id)
     body = {
         "summary": summary,
         "description": "\n".join(description_lines),
         "start": {"dateTime": start_dt.isoformat(), "timeZone": tz},
         "end":   {"dateTime": end_dt.isoformat(),   "timeZone": tz},
-        "extendedProperties": {
-            "private": {
-                "surgery_id": str(surgery.id),
-                "slot_id":    str(slot.id),
-            },
-        },
+        "extendedProperties": {"private": private},
     }
     owner = _owner_email().lower()
     if surgery.surgeon_email and surgery.surgeon_email.lower() != owner:
@@ -115,12 +129,17 @@ def upsert_event_for_surgery(db: Session, surgery: Surgery, facility_label: Opti
     Soft-fail: stamps sync_status on success or failure."""
     if not _is_configured():
         return
+    if surgery.scheduled_date is None:
+        return  # nothing to sync until the surgery has a date
     slot = (db.query(SurgerySlot)
               .filter(SurgerySlot.surgery_id == surgery.id)
               .order_by(SurgerySlot.start_time.asc())
               .first())
-    if slot is None or surgery.scheduled_date is None:
-        return  # no slot to sync
+    # If no slot exists (e.g., surgery seeded directly without going
+    # through the self-schedule path), _event_body falls back to the
+    # surgery's own scheduled_start_time + estimated_minutes.
+    if slot is None and surgery.scheduled_start_time is None:
+        return  # no time anywhere to sync
 
     try:
         client = _build_calendar_client()

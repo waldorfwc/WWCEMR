@@ -15,10 +15,10 @@ from app.models.patient_sms import SmsTemplate
 DEFAULT_FACILITIES = [
     {"code": "office",  "label": "WWC Office — White Plains",
      "address": "White Plains, MD", "sort_order": 1},
-    {"code": "medstar", "label": "MedStar Southern Maryland Hospital",
-     "address": "7503 Surratts Rd, Clinton, MD", "sort_order": 2},
-    {"code": "crmc",    "label": "University of MD Charles Regional",
-     "address": "5 Garrett Ave, La Plata, MD", "sort_order": 3},
+    {"code": "medstar", "label": "MedStar Southern Maryland Hospital Center",
+     "address": "7503 Surratts Road, Clinton, MD 20735", "sort_order": 2},
+    {"code": "crmc",    "label": "University of Maryland Charles Regional Medical Center",
+     "address": "5 Garrett Avenue, La Plata, MD 20646", "sort_order": 3},
 ]
 
 

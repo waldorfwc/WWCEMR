@@ -32,9 +32,9 @@ function BookedCard({ booked }) {
         {weekday}, {fmt.date(booked.date)}
       </div>
       <div className="mt-2 text-[13px] text-plum-700/80 flex flex-wrap items-center gap-x-4 gap-y-1">
-        {booked.time && (
+        {(booked.arrival_time || booked.time) && (
           <span className="inline-flex items-center gap-1">
-            <Clock size={12} /> Arrive at {time12(booked.time)}
+            <Clock size={12} /> Arrive at {time12(booked.arrival_time || booked.time)}
           </span>
         )}
         {booked.facility && (
@@ -106,7 +106,7 @@ function BlockDayList({ days, onPick }) {
               </div>
               <div className="text-[12px] text-plum-700/80 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="inline-flex items-center gap-1">
-                  <Clock size={11} /> Arrive at {time12(d.proposed_start_time)}
+                  <Clock size={11} /> Arrive at {time12(d.arrival_time || d.proposed_start_time)}
                 </span>
                 <span className="inline-flex items-center gap-1">
                   <MapPin size={11} /> {d.facility}
@@ -148,7 +148,7 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
             {day.weekday}, {fmt.date(day.block_date)}
           </div>
           <div className="text-[12px] text-plum-700/80 flex items-center gap-1">
-            <Clock size={11} /> Arrive at {time12(day.proposed_start_time)}
+            <Clock size={11} /> Arrive at {time12(day.arrival_time || day.proposed_start_time)}
           </div>
           <div className="text-[12px] text-plum-700/80 flex items-center gap-1">
             <MapPin size={11} /> {day.facility}

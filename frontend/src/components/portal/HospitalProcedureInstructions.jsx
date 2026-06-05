@@ -458,8 +458,8 @@ export default function HospitalProcedureInstructions() {
 function HospitalContactTable() {
   const rows = [
     {
-      name: 'UM Charles Regional Medical Center',
-      addr: ['5 Garret Ave', 'La Plata, MD 20646'],
+      name: 'University of Maryland Charles Regional Medical Center',
+      addr: ['5 Garrett Avenue', 'La Plata, MD 20646'],
       phones: [
         ['General', '301-609-4000'],
         ['Same-Day Surgery', '301-609-4165'],
@@ -467,7 +467,7 @@ function HospitalContactTable() {
     },
     {
       name: 'MedStar Southern Maryland Hospital Center',
-      addr: ['7403 Surratts Rd', 'Clinton, MD 20735'],
+      addr: ['7503 Surratts Road', 'Clinton, MD 20735'],
       phones: [['General', '301-868-8000']],
     },
     {

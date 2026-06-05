@@ -118,9 +118,9 @@ function MilestoneRulesTab() {
         <p>Three facilities. The patient picks among the ones their surgery is eligible for
           (set on the Surgery's <code>eligible_facilities</code> list).</p>
         <ul className="list-disc pl-5 space-y-1.5">
-          <li><strong>MedStar Southern Maryland</strong> (hospital) — robotic + major minimally-invasive cases.
+          <li><strong>MedStar SMHC</strong> (MedStar Southern Maryland Hospital Center) — robotic + major minimally-invasive cases.
             Block hours typically 7:30 AM – 3:30 PM.</li>
-          <li><strong>CRMC (UM Charles Regional)</strong> (hospital) — minor outpatient OR major open cases.
+          <li><strong>UM Charles Regional</strong> (University of Maryland Charles Regional Medical Center) — minor outpatient OR major open cases.
             Block hours typically 7:30 AM – 12:30 PM (short day) or longer when scheduled.</li>
           <li><strong>WWC Office Procedure Suite</strong> — every Thursday. In-office procedures only.</li>
         </ul>

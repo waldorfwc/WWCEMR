@@ -1389,6 +1389,23 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                     m.completed_at = None
 
     db.commit(); db.refresh(s)
+
+    # If the staff just changed anything that drives the calendar event
+    # (date, start time, facility, surgeon), re-push so the event on the
+    # surgeon's calendar matches the DB. Soft-fail; never block the PATCH
+    # if the Google call hiccups.
+    calendar_keys = {"scheduled_date", "scheduled_start_time",
+                     "selected_facility", "surgeon_primary",
+                     "surgeon_email", "estimated_minutes"}
+    if s.google_calendar_event_id and (data.keys() & calendar_keys):
+        try:
+            from app.services.google_calendar_sync import upsert_event_for_surgery
+            upsert_event_for_surgery(db, s)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(
+                "calendar resync after PATCH failed for %s: %s", s.id, e)
+
     return _surgery_dict(s, include_milestones=True)
 
 
