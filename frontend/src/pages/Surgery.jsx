@@ -359,7 +359,7 @@ export default function Surgery() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Status</label>
-            <select className="input text-sm" value={filters.status}
+            <select className="input text-sm" aria-label="Status" value={filters.status}
                     onChange={e => setF({ status: e.target.value })}>
               <option value="">All</option>
               <option value="incomplete">Incomplete</option>
@@ -374,7 +374,7 @@ export default function Surgery() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Facility</label>
-            <select className="input text-sm" value={filters.facility}
+            <select className="input text-sm" aria-label="Facility" value={filters.facility}
                     onChange={e => setF({ facility: e.target.value })}>
               <option value="">All</option>
               <option value="medstar">MedStar</option>
@@ -469,12 +469,14 @@ export default function Surgery() {
             </div>
             <div>
               <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Surgery date ≥</label>
-              <input type="date" className="input text-sm w-full" value={filters.date_from}
+              <input type="date" className="input text-sm w-full" aria-label="Surgery date from"
+                     value={filters.date_from}
                      onChange={e => setF({ date_from: e.target.value })} />
             </div>
             <div>
               <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Surgery date ≤</label>
-              <input type="date" className="input text-sm w-full" value={filters.date_to}
+              <input type="date" className="input text-sm w-full" aria-label="Surgery date to"
+                     value={filters.date_to}
                      onChange={e => setF({ date_to: e.target.value })} />
             </div>
             <div>

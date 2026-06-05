@@ -123,6 +123,7 @@ export function WeeklyCalendar({ compact = false }) {
         <div className="ml-auto flex items-center gap-2">
           <label className="text-[11px] text-gray-600">Jump to:</label>
           <input type="date"
+                 aria-label="Jump to week starting"
                  value={start}
                  onChange={e => e.target.value && setStart(mondayOf(e.target.value))}
                  className="input text-xs" />
