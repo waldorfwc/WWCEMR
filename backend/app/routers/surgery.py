@@ -1397,8 +1397,12 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     # if the Google call hiccups.
     calendar_keys = {"scheduled_date", "scheduled_start_time",
                      "selected_facility", "surgeon_primary",
-                     "surgeon_email", "estimated_minutes"}
-    if s.google_calendar_event_id and (data.keys() & calendar_keys):
+                     "surgeon_email", "estimated_minutes", "status"}
+    # Resync whenever a calendar-relevant field changes. We used to require
+    # an existing event_id, but that prevented un-cancellation (cancel clears
+    # the id, so the restore PATCH couldn't recreate the event). upsert handles
+    # both insert and update.
+    if (data.keys() & calendar_keys) and (s.status or "").lower() != "cancelled":
         try:
             from app.services.google_calendar_sync import upsert_event_for_surgery
             upsert_event_for_surgery(db, s)
