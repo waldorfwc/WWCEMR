@@ -211,6 +211,7 @@ function LabsAppointmentCard({ sid, labs, refetchDocs }) {
       </p>
       <div className="flex items-center gap-2 flex-wrap">
         <input type="date"
+               aria-label="Date you completed your pre-op labs"
                min={isoE} max={isoL}
                value={date}
                onChange={e => setDate(e.target.value)}
