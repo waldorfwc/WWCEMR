@@ -252,14 +252,26 @@ def _self_report_milestone(surgery, *, attr, label, key) -> dict:
             "status": "done" if val else "todo"}
 
 
+_NEXT_ACTION_COPY = {
+    "payment":       ("Pay your balance",                  "Pay Now"),
+    "schedule":      ("Pick your surgery date",            "Choose Date"),
+    "consent":       ("Sign your consent forms",           "Open Envelope"),
+    "fmla":          ("Submit FMLA paperwork",             "Open Documents"),
+    "labs":          ("Mark your pre-op labs complete",    "Update Status"),
+    "hospital_preop":("Confirm your hospital pre-op call", "Update Status"),
+}
+
+
 def _next_action(milestones: list[dict]) -> dict | None:
-    """First non-done milestone wins; map to a CTA stub."""
+    """First non-done milestone wins; return CTA-shaped copy."""
     priority = ["payment", "schedule", "consent",
                  "fmla", "labs", "hospital_preop"]
     for key in priority:
         m = next((x for x in milestones if x["key"] == key), None)
         if m and m.get("status") in ("todo", "in_progress"):
-            return {"key": key, "label": m["label"]}
+            body, cta = _NEXT_ACTION_COPY.get(key, (m["label"], "Open"))
+            return {"key": key, "label": m["label"],
+                    "body": body, "cta": cta}
     return None
 
 
@@ -338,6 +350,8 @@ def portal_payments(surgery_id: str, db: Session = Depends(get_db),
             "requested_at":     p.requested_at.isoformat() if p.requested_at else None,
             "paid_at":          p.paid_at.isoformat() if p.paid_at else None,
             "checkout_url":     p.checkout_url,
+            "has_receipt":      bool(p.status == "paid"
+                                       and p.stripe_payment_intent_id),
         })
     return {
         "due":     due,
@@ -351,6 +365,28 @@ def portal_payments(surgery_id: str, db: Session = Depends(get_db),
 
 import logging
 from app.services import stripe_payments as stripe_svc
+
+
+@router.get("/{surgery_id}/payments/{payment_id}/receipt")
+def portal_payment_receipt(
+    surgery_id: str,
+    payment_id: str,
+    db: Session = Depends(get_db),
+    _: str = Depends(require_portal_token),
+):
+    """Return the Stripe-hosted receipt URL for a paid payment so the
+    frontend can window.open() it. We don't persist — Stripe generates
+    receipts on demand and the patient hits this rarely."""
+    p = (db.query(SurgeryPayment)
+            .filter(SurgeryPayment.id == payment_id,
+                    SurgeryPayment.surgery_id == surgery_id)
+            .first())
+    if p is None or p.status != "paid":
+        raise HTTPException(status_code=404, detail="receipt unavailable")
+    url = stripe_svc.get_receipt_url(p)
+    if not url:
+        raise HTTPException(status_code=404, detail="receipt unavailable")
+    return {"receipt_url": url}
 
 
 @router.post("/{surgery_id}/payments/step-up")

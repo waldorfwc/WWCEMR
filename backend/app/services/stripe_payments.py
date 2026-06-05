@@ -170,6 +170,24 @@ def create_checkout_session(
     return pay
 
 
+# ─── Receipts ───────────────────────────────────────────────────────
+
+def get_receipt_url(payment: SurgeryPayment) -> Optional[str]:
+    if not payment.stripe_payment_intent_id:
+        return None
+    try:
+        s = _client()
+        pi = s.PaymentIntent.retrieve(
+            payment.stripe_payment_intent_id,
+            expand=["latest_charge"],
+        )
+        charge = pi.get("latest_charge") or {}
+        return charge.get("receipt_url")
+    except Exception as exc:
+        log.warning("get_receipt_url failed for %s: %s", payment.id, exc)
+        return None
+
+
 # ─── Refunds ────────────────────────────────────────────────────────
 
 def refund_payment(

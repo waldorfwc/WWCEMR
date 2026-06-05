@@ -65,8 +65,16 @@ function BalanceCard({ data, onPayClick }) {
 }
 
 
-function History({ rows }) {
+function History({ rows, sid }) {
   if (!rows?.length) return null
+  const openReceipt = async (paymentId) => {
+    try {
+      const { data } = await portalApi.get(`/${sid}/payments/${paymentId}/receipt`)
+      if (data?.receipt_url) window.open(data.receipt_url, '_blank', 'noopener')
+    } catch {
+      alert('Receipt is not available yet. Please try again in a moment.')
+    }
+  }
   return (
     <section className="bg-white rounded-2xl border border-plum-100 p-6 shadow-sm">
       <h2 className="font-serif text-[15px] text-plum-ink font-semibold tracking-tight mb-4">
@@ -79,7 +87,7 @@ function History({ rows }) {
             : r.status === 'failed' ? 'bg-rose-50 text-rose-700 border-rose-200'
             : 'bg-plum-50 text-plum-700 border-plum-100'
           return (
-            <li key={r.id} className="py-3 flex items-center justify-between text-[13px]">
+            <li key={r.id} className="py-3 grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center text-[13px]">
               <span className="text-plum-700/80">
                 {fmt.date((r.paid_at || r.requested_at || '').slice(0, 10))}
               </span>
@@ -89,6 +97,12 @@ function History({ rows }) {
               <span className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded-full border ${tone}`}>
                 {r.status}
               </span>
+              {r.has_receipt ? (
+                <button onClick={() => openReceipt(r.id)}
+                          className="text-[12px] text-plum-700 hover:underline">
+                  Receipt
+                </button>
+              ) : <span />}
             </li>
           )
         })}
@@ -146,7 +160,7 @@ export default function Payments() {
             checkoutUrl={`/${sid}/payments/checkout`}
             onCancel={() => setShowFlow(false)} />
         )}
-        <History rows={data.history} />
+        <History rows={data.history} sid={sid} />
       </div>
     </div>
   )

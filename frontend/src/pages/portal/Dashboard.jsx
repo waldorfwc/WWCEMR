@@ -210,10 +210,10 @@ export default function Dashboard() {
               <ActionCard
                 icon={HeartHandshake}
                 tone="emerald"
-                title="You're all set"
-                meta="Next step"
-                body={next_action.label}
-                cta="Open"
+                title="One More Thing"
+                meta="Quick self-report"
+                body={next_action.body || next_action.label}
+                cta={next_action.cta || 'Open Documents'}
                 to={`/portal/s/${sid}/documents`}
               />
             )}

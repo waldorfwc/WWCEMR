@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { MessageSquare, Send } from 'lucide-react'
 import { portalApi, isStaffPreview } from '../../lib/portal-api'
+import { fmt } from '../../utils/api'
 
 
 export default function Messages() {
@@ -66,7 +67,7 @@ export default function Messages() {
                   : 'bg-plum-50 text-plum-ink rounded-bl-sm border border-plum-100'
               }`}>
                 <div className={`text-[10px] mb-1 ${mine ? 'text-white/70' : 'text-plum-600/70'}`}>
-                  {m.author_label} · {m.sent_at?.slice(0, 16).replace('T', ' ')}
+                  {m.author_label} · {fmt.dateTime(m.sent_at)}
                 </div>
                 <div className="whitespace-pre-wrap leading-relaxed">{m.body}</div>
               </div>
