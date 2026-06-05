@@ -15,6 +15,7 @@ named so the user can come tell us how they want the wording tuned.
 """
 from __future__ import annotations
 
+import os
 from decimal import Decimal
 from typing import Optional
 
@@ -106,8 +107,15 @@ def _money(v) -> str:
 
 
 def _patient_link(s: Surgery) -> str:
-    """Patient portal entry point. They sign in with DOB + last 4 of phone."""
-    return "https://gw.waldorfwomenscare.com/portal/login"
+    """Patient portal entry point. They sign in with DOB + last 4 of phone.
+    The base URL is configurable via PATIENT_PORTAL_URL so we can flip from
+    the legacy tunnel host to a Cloud Run / custom-domain URL without a
+    code change."""
+    base = os.environ.get(
+        "PATIENT_PORTAL_URL",
+        "https://gw.waldorfwomenscare.com",
+    ).rstrip("/")
+    return f"{base}/portal/login"
 
 
 # ─── Templates ───────────────────────────────────────────────────
@@ -134,7 +142,7 @@ We're getting your {proc} scheduled at {facility}. Here's what's coming next:
    {link}
    You'll need your DOB and the last 4 digits of your phone to verify.
 
-3. After you pick a date, we'll send the consent forms via DocuSign.
+3. After you pick a date, we'll send the consent forms via BoldSign.
 """
 
     if s.clearance_required:
