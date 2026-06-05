@@ -43,7 +43,7 @@ export default function ManagerDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <select className="input text-xs" value={days} onChange={e => setDays(parseInt(e.target.value))}>
+          <select className="input text-xs" aria-label="Time window" value={days} onChange={e => setDays(parseInt(e.target.value))}>
             <option value={1}>last 24h</option>
             <option value={7}>last 7 days</option>
             <option value={14}>last 14 days</option>

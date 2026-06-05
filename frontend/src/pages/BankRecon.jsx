@@ -143,6 +143,7 @@ export default function BankRecon() {
           <div className="flex items-center gap-3">
             <input
               ref={fileRef} type="file" accept=".csv,.txt"
+              aria-label="Bank CSV file"
               onChange={handlePreview} className="hidden"
             />
             <button

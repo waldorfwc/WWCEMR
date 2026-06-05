@@ -177,7 +177,7 @@ export default function InsuranceDocuments() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Classification</label>
-            <select className="input text-sm w-full" value={filters.classification}
+            <select className="input text-sm w-full" aria-label="Classification" value={filters.classification}
                     onChange={e => setFilters({ ...filters, classification: e.target.value })}>
               <option value="">All</option>
               {picks?.classifications?.map(c => (

@@ -141,7 +141,7 @@ export default function Recalls() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Status</label>
-            <select className="input text-sm" value={statusFilter}
+            <select className="input text-sm" aria-label="Status" value={statusFilter}
                     onChange={e => { setStatusFilter(e.target.value); setPage(1) }}>
               <option value="active">Active queue</option>
               <option value="completed">Completed (not due)</option>
@@ -158,7 +158,7 @@ export default function Recalls() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Sort</label>
-            <select className="input text-sm" value={sort}
+            <select className="input text-sm" aria-label="Sort recalls by" value={sort}
                     onChange={e => setSort(e.target.value)}>
               <option value="recently_due_desc">Recently due first</option>
               <option value="overdue_desc">Most overdue first</option>

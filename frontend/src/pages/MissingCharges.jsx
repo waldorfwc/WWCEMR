@@ -169,7 +169,7 @@ export default function MissingCharges() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Appointment</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Appointment type"
                     value={filters.appointment}
                     onChange={e => setFilters({ ...filters, appointment: e.target.value })}>
               <option value="">All appointment types</option>
@@ -180,7 +180,7 @@ export default function MissingCharges() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Provider</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Provider"
                     value={filters.provider}
                     onChange={e => setFilters({ ...filters, provider: e.target.value })}>
               <option value="">All providers</option>
@@ -191,7 +191,7 @@ export default function MissingCharges() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Payer</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Payer"
                     value={filters.payer}
                     onChange={e => setFilters({ ...filters, payer: e.target.value })}>
               <option value="">All payers</option>
@@ -202,7 +202,7 @@ export default function MissingCharges() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Status</label>
-            <select className="input text-sm w-full"
+            <select className="input text-sm w-full" aria-label="Status"
                     value={filters.status}
                     onChange={e => setFilters({ ...filters, status: e.target.value, open_only: false })}>
               <option value="">All statuses</option>
@@ -213,13 +213,13 @@ export default function MissingCharges() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">DOS from</label>
-            <input type="date" className="input text-sm w-full"
+            <input type="date" className="input text-sm w-full" aria-label="DOS from"
                    value={filters.date_from}
                    onChange={e => setFilters({ ...filters, date_from: e.target.value })} />
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">DOS to</label>
-            <input type="date" className="input text-sm w-full"
+            <input type="date" className="input text-sm w-full" aria-label="DOS to"
                    value={filters.date_to}
                    onChange={e => setFilters({ ...filters, date_to: e.target.value })} />
           </div>

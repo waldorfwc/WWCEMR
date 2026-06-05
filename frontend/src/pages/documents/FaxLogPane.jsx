@@ -47,10 +47,12 @@ export default function FaxLogPane() {
         <div className="font-serif text-ink text-[15px] font-semibold">Recent Faxes</div>
         <div className="flex gap-2">
           <select className="input text-[11px] py-1 px-2 w-[130px]"
+                  aria-label="Fax status filter"
                   value={status} onChange={e => setStatus(e.target.value)}>
             {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
           <select className="input text-[11px] py-1 px-2 w-[130px]"
+                  aria-label="Fax time window"
                   value={window} onChange={e => setWindow(Number(e.target.value))}>
             {WINDOWS.map(w => <option key={w.value} value={w.value}>{w.label}</option>)}
           </select>

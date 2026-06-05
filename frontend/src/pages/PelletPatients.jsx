@@ -185,7 +185,7 @@ export default function PelletPatients() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Patient type</label>
-            <select className="input text-sm w-full" value={filters.patient_type}
+            <select className="input text-sm w-full" aria-label="Patient type" value={filters.patient_type}
                     onChange={e => setFilters({ ...filters, patient_type: e.target.value })}>
               <option value="">All</option>
               <option value="new">New ($500)</option>
@@ -197,7 +197,7 @@ export default function PelletPatients() {
               <span>Status</span>
               <ActiveMonthsControl />
             </label>
-            <select className="input text-sm w-full" value={filters.status}
+            <select className="input text-sm w-full" aria-label="Patient status" value={filters.status}
                     onChange={e => setFilters({ ...filters, status: e.target.value })}>
               <option value="">All</option>
               <option value="active">Active (seen recently)</option>
@@ -207,7 +207,7 @@ export default function PelletPatients() {
           </div>
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
-            <select className="input text-sm w-full" value={filters.location}
+            <select className="input text-sm w-full" aria-label="Location" value={filters.location}
                     onChange={e => setFilters({ ...filters, location: e.target.value })}>
               <option value="">All locations</option>
               <option value="white_plains">White Plains</option>
@@ -423,6 +423,7 @@ function UpcomingCalendar({ onOpen, location }) {
         <div className="flex items-center gap-1">
           <label className="text-[11px] text-gray-500">Jump to:</label>
           <input type="date" className="input text-xs py-1"
+                  aria-label="Jump to week starting"
                   value={toISO(start)}
                   onChange={e => {
                     const v = e.target.value

@@ -430,7 +430,7 @@ export default function ActiveAR() {
             onChange={e => { setSearch(e.target.value); setPage(1) }}
           />
         </div>
-        <select className="input text-sm py-1.5 w-44" value={assignedTo} onChange={e => { setAssignedTo(e.target.value); setPage(1) }}>
+        <select className="input text-sm py-1.5 w-44" aria-label="Assignee filter" value={assignedTo} onChange={e => { setAssignedTo(e.target.value); setPage(1) }}>
           <option value="">All assignees</option>
           {me && <option value={me}>👤 Mine ({me.split('@')[0]})</option>}
           <option value="__none__">— Unassigned —</option>
@@ -438,7 +438,7 @@ export default function ActiveAR() {
             <option key={a.email} value={a.email}>{(a.display_name || a.email).slice(0, 28)}</option>
           ))}
         </select>
-        <select className="input text-sm py-1.5 w-44" value={sort} onChange={e => setSort(e.target.value)} disabled={view === 'dos'}>
+        <select className="input text-sm py-1.5 w-44" aria-label="Sort claims by" value={sort} onChange={e => setSort(e.target.value)} disabled={view === 'dos'}>
           {SORTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
         <button
