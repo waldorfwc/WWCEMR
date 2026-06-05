@@ -99,6 +99,7 @@ def get_ledger(
     patient_id: str,
     window_years: int = 5,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """Return the patient ledger.
     `window_years` defaults to 5; pass 0 for full history."""
@@ -106,7 +107,9 @@ def get_ledger(
     ledger = get_patient_ledger(db, patient_id, window_years=window_years or None)
     if not ledger:
         raise HTTPException(status_code=404, detail="Patient not found")
+    email = (current_user.get("email") or "").lower().strip() or None
     log_action(db, "VIEW", "ledger", resource_id=patient_id, patient_id=patient_id,
+               user_id=email, user_name=current_user.get("name") or email,
                description="Patient ledger viewed")
     return ledger
 
@@ -117,6 +120,7 @@ def get_ledger_pdf(
     window_years: int = 5,
     visit_id: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """Generate a PDF: full ledger by default, single-visit statement if
     `visit_id` is provided."""
@@ -141,8 +145,10 @@ def get_ledger_pdf(
         log_desc = f"Full ledger PDF generated ({window_years}y window)"
         filename_suffix = ""
 
+    email = (current_user.get("email") or "").lower().strip() or None
     log_action(
         db, "EXPORT", kind, resource_id=patient_id, patient_id=patient_id,
+        user_id=email, user_name=current_user.get("name") or email,
         description=log_desc,
     )
 
