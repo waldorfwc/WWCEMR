@@ -71,6 +71,13 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
                    resource_id=email,
                    user_name=email,
                    description=f"Auto-created with default group clinical")
+        # Auto-join Default Staff so new hires get the baseline tiers
+        # (Chart View + My Checklist Work) without admin intervention.
+        from app.services.default_staff_group import (
+            auto_join_default_staff, ensure_default_staff_group,
+        )
+        ensure_default_staff_group(db)
+        auto_join_default_staff(db, email)
 
     # Active-user gate (Phase 7) — refuse access for suspended accounts
     if not user_row.is_active:
