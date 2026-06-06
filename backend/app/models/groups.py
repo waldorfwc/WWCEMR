@@ -48,12 +48,6 @@ class Group(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    permissions = relationship(
-        "GroupPermission",
-        back_populates="group",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
     # Reverse side of the M2M defined on User.groups
     members = relationship(
         "User",
@@ -61,21 +55,3 @@ class Group(Base):
         back_populates="groups",
         lazy="selectin",
     )
-
-
-class GroupPermission(Base):
-    """One row per (group, permission_string) pair."""
-    __tablename__ = "group_permissions"
-    __table_args__ = (
-        UniqueConstraint("group_id", "permission", name="uq_group_permission"),
-    )
-
-    id = Column(String(36), primary_key=True, default=_uuid)
-    group_id = Column(String(36),
-                      ForeignKey("groups.id", ondelete="CASCADE"),
-                      nullable=False, index=True)
-    permission = Column(String(80), nullable=False, index=True)
-    granted_at = Column(DateTime, default=datetime.utcnow)
-    granted_by = Column(String(200), nullable=True)
-
-    group = relationship("Group", back_populates="permissions")

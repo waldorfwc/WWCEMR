@@ -49,11 +49,6 @@ class User(Base):
     notify_slack = Column(Boolean, default=True)
     notify_sms = Column(Boolean, default=False)
 
-    # RBAC overrides (Phase 1). JSON list of permission strings.
-    # Effective permissions = union(group perms) | extras − revoked.
-    permissions_extra = Column(JSON, nullable=True)
-    permissions_revoked = Column(JSON, nullable=True)
-
     # RingCentral identity for click-to-dial. user_id is the platform-level
     # ID; extension is the human-readable extension number; callback_number
     # is the actual PSTN phone RC dials first (must be different from the

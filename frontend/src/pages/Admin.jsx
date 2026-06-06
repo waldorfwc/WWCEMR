@@ -83,20 +83,12 @@ function UserRow({ u, allGroups, onFlash, onViewPerms, flashKind, flashText }) {
         />
       </td>
       <td className="table-td">
-        <div className="flex flex-col gap-0.5">
-          <button
-            className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
-            onClick={() => onViewPerms(u.email)}
-          >
-            <Eye size={11} /> View
-          </button>
-          <Link
-            to={`/admin/users/${encodeURIComponent(u.email)}/tiers`}
-            className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
-          >
-            <Settings size={11} /> Tiers
-          </Link>
-        </div>
+        <Link
+          to={`/admin/users/${encodeURIComponent(u.email)}/tiers`}
+          className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
+        >
+          <Settings size={11} /> Tiers
+        </Link>
       </td>
       <td className="table-td">
         <RingCentralCell user={u} />
@@ -146,7 +138,7 @@ function UserGroupsCell({ user, allGroups, editing, onEdit, onCancel, onSave, sa
   // Lazily pull this user's current group memberships when editor opens
   const { data: perms } = useQuery({
     queryKey: ['admin-user-perms', user.email],
-    queryFn: () => api.get(`/admin/users/${encodeURIComponent(user.email)}/effective-permissions`).then(r => r.data),
+    queryFn: () => api.get(`/admin/users/${encodeURIComponent(user.email)}/groups`).then(r => r.data),
     enabled: editing,
   })
 
@@ -367,7 +359,7 @@ function OverrideToggle({ user, patch }) {
 function UserGroupChips({ email }) {
   const { data } = useQuery({
     queryKey: ['admin-user-perms', email],
-    queryFn: () => api.get(`/admin/users/${encodeURIComponent(email)}/effective-permissions`).then(r => r.data),
+    queryFn: () => api.get(`/admin/users/${encodeURIComponent(email)}/groups`).then(r => r.data),
     staleTime: 30_000,
   })
   const groups = data?.groups || []
@@ -387,211 +379,6 @@ function UserGroupChips({ email }) {
 }
 
 
-function PermissionsDrawer({ email, onClose }) {
-  const qc = useQueryClient()
-  const { data } = useQuery({
-    queryKey: ['admin-user-perms', email],
-    queryFn: () => api.get(`/admin/users/${encodeURIComponent(email)}/effective-permissions`).then(r => r.data),
-  })
-  const { data: catalog } = useQuery({
-    queryKey: ['perm-catalog'],
-    queryFn: () => api.get('/admin/permissions-catalog').then(r => r.data),
-  })
-
-  const [extras, setExtras] = useState(new Set())
-  const [revoked, setRevoked] = useState(new Set())
-  const [hydrated, setHydrated] = useState(false)
-
-  useEffect(() => {
-    if (data && !hydrated) {
-      setExtras(new Set(data.permissions_extra || []))
-      setRevoked(new Set(data.permissions_revoked || []))
-      setHydrated(true)
-    }
-  }, [data, hydrated])
-
-  const save = useMutation({
-    mutationFn: () =>
-      api.put(`/admin/users/${encodeURIComponent(email)}/permissions-override`, {
-        permissions_extra: [...extras],
-        permissions_revoked: [...revoked],
-      }).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-user-perms', email] })
-    },
-  })
-
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-2xl bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-6 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="font-serif font-semibold text-ink text-[18px]">Permissions</h2>
-            <div className="text-muted text-[11px] font-mono">{email}</div>
-          </div>
-          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
-        </div>
-
-        {!data && <div className="p-6 text-muted">Loading…</div>}
-
-        {data && (
-          <div className="p-6 space-y-5">
-            <section>
-              <h3 className="text-sm font-semibold text-ink mb-2">Groups ({data.groups.length})</h3>
-              {data.groups.length === 0 ? (
-                <div className="text-[12px] text-amber-700 italic">No groups assigned.</div>
-              ) : (
-                <ul className="space-y-2">
-                  {data.groups.map(g => (
-                    <li key={g.id} className="border-l-2 border-plum-200 pl-3">
-                      <div className="text-[13px] font-medium">{g.name}</div>
-                      <div className="text-[10px] text-muted mt-0.5">
-                        {(data.permissions_by_group[g.name] || []).length} permissions
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section>
-              <h3 className="text-sm font-semibold text-ink mb-2">
-                Effective permissions ({data.effective_permissions.length})
-              </h3>
-              <p className="text-[11px] text-muted mb-2">
-                Union of all group permissions, plus extras, minus revoked.
-              </p>
-              {data.effective_permissions.length === 0 ? (
-                <div className="text-[12px] text-amber-700 italic">No permissions in effect.</div>
-              ) : (
-                <ul className="grid grid-cols-2 gap-x-3 gap-y-1">
-                  {data.effective_permissions.map(p => (
-                    <li key={p} className="text-[11px] flex items-baseline gap-1.5">
-                      <code className="text-plum-700 shrink-0">{p}</code>
-                      <span className="text-muted truncate">{data.permission_descriptions[p] || ''}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="border-t border-gray-100 pt-5">
-              <h3 className="text-sm font-semibold text-ink mb-1">
-                Per-user overrides
-              </h3>
-              <p className="text-[11px] text-muted mb-3">
-                Grant extras or revoke specific permissions on top of group memberships.
-                Use sparingly — prefer changing groups.
-              </p>
-
-              <div className="space-y-2">
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
-                    Extras (granted just to this user)
-                  </div>
-                  <PermissionPicker
-                    catalog={catalog?.permissions || []}
-                    selected={extras}
-                    onChange={(next) => setExtras(new Set(next))}
-                    placeholder="Add a permission this user wouldn't otherwise have…"
-                    excluded={revoked}
-                  />
-                </div>
-                <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
-                    Revoked (removed for this user)
-                  </div>
-                  <PermissionPicker
-                    catalog={catalog?.permissions || []}
-                    selected={revoked}
-                    onChange={(next) => setRevoked(new Set(next))}
-                    placeholder="Remove a permission this user inherits from a group…"
-                    excluded={extras}
-                  />
-                </div>
-              </div>
-
-              {save.isError && (
-                <div className="text-danger text-[11px] mt-2">
-                  {save.error?.response?.data?.detail || 'error saving'}
-                </div>
-              )}
-              {save.isSuccess && (
-                <div className="text-success text-[11px] mt-2">✓ Overrides saved</div>
-              )}
-
-              <div className="flex justify-end mt-3">
-                <button className="btn-primary text-sm" onClick={() => save.mutate()}
-                        disabled={save.isPending}>
-                  {save.isPending ? 'Saving…' : 'Save overrides'}
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-
-function PermissionPicker({ catalog, selected, onChange, placeholder, excluded }) {
-  const [text, setText] = useState('')
-  const lower = text.toLowerCase().trim()
-  const candidates = catalog
-    .filter(p => !selected.has(p.key) && !excluded.has(p.key))
-    .filter(p => !lower
-                 || p.key.toLowerCase().includes(lower)
-                 || (p.description || '').toLowerCase().includes(lower))
-    .slice(0, 6)
-
-  function add(key) {
-    onChange([...selected, key])
-    setText('')
-  }
-  function remove(key) {
-    onChange([...selected].filter(k => k !== key))
-  }
-
-  return (
-    <div>
-      <div className="flex flex-wrap gap-1 mb-1">
-        {[...selected].map(p => (
-          <span key={p}
-                className="text-[10px] bg-plum-100 text-plum-700 px-1.5 py-0.5 rounded flex items-center gap-1">
-            <code>{p}</code>
-            <button onClick={() => remove(p)} className="hover:text-red-600">
-              <X size={10} />
-            </button>
-          </span>
-        ))}
-      </div>
-      <input
-        className="input text-[12px] py-1 w-full"
-        placeholder={placeholder}
-        value={text}
-        onChange={e => setText(e.target.value)}
-      />
-      {text && candidates.length > 0 && (
-        <div className="border border-gray-200 rounded mt-1 bg-white max-h-44 overflow-y-auto">
-          {candidates.map(p => (
-            <button
-              key={p.key}
-              type="button"
-              className="block w-full text-left px-2 py-1.5 text-[11px] hover:bg-plum-50"
-              onClick={() => add(p.key)}
-            >
-              <code className="text-plum-700">{p.key}</code>
-              <span className="text-muted ml-2">{p.description}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
 
 
 function SyncRingCentralButton() {
@@ -777,8 +564,6 @@ export default function Admin() {
 
   const [adding, setAdding] = useState(false)
   const [flashes, setFlashes] = useState({})
-  const [permsForEmail, setPermsForEmail] = useState(null)
-
   function onFlash(email, kind, text) {
     setFlashes(prev => ({ ...prev, [email]: { kind, text } }))
     const timeout = kind === 'err' ? 3000 : 1500
@@ -883,7 +668,6 @@ export default function Admin() {
               <UserRow key={u.email} u={u}
                        allGroups={allGroups || []}
                        onFlash={onFlash}
-                       onViewPerms={setPermsForEmail}
                        flashKind={flashes[u.email]?.kind}
                        flashText={flashes[u.email]?.text} />
             ))}
@@ -896,9 +680,6 @@ export default function Admin() {
         </table>
       </div>
 
-      {permsForEmail && (
-        <PermissionsDrawer email={permsForEmail} onClose={() => setPermsForEmail(null)} />
-      )}
     </div>
   )
 }

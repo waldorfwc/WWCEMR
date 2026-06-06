@@ -1,7 +1,9 @@
-"""Admin API for RBAC groups, permissions, and per-user overrides.
+"""Admin API for RBAC groups + memberships.
 
-All endpoints require the `user:manage` permission (enforced at the router
-level via main.py).
+Tier grants live elsewhere — see app/routers/admin_tiers.py for the
+per-module tier grid endpoints. This router only handles the Group
+records themselves (name/description/system_protected) and the
+user↔group membership table.
 """
 from __future__ import annotations
 
@@ -12,13 +14,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.groups import Group, GroupPermission
+from app.models.groups import Group
 from app.models.user import User
 from app.routers.auth import get_current_user
 from app.services.audit_service import log_action
-from app.services.permissions import (
-    ALL_PERMISSIONS, PERMISSIONS, effective_permissions,
-)
 
 
 router = APIRouter(prefix="/admin", tags=["admin-rbac"])
@@ -29,7 +28,6 @@ router = APIRouter(prefix="/admin", tags=["admin-rbac"])
 class GroupCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    permissions: List[str] = []
 
 
 class GroupUpdate(BaseModel):
@@ -37,56 +35,21 @@ class GroupUpdate(BaseModel):
     description: Optional[str] = None
 
 
-class PermissionsReplace(BaseModel):
-    permissions: List[str]
-
-
 class UserGroupsReplace(BaseModel):
     group_ids: List[str]
 
 
-class UserPermissionsOverride(BaseModel):
-    permissions_extra: List[str] = []
-    permissions_revoked: List[str] = []
-
-
-def _group_to_dict(g: Group, with_perms: bool = True,
-                    with_members: bool = False) -> dict:
+def _group_to_dict(g: Group, with_members: bool = False) -> dict:
     out = {
         "id": g.id,
         "name": g.name,
         "description": g.description,
         "system_protected": g.system_protected,
         "member_count": len(g.members),
-        "permission_count": len(g.permissions),
     }
-    if with_perms:
-        out["permissions"] = sorted(gp.permission for gp in g.permissions)
     if with_members:
         out["members"] = sorted(u.email for u in g.members)
     return out
-
-
-def _validate_perms(perms: List[str]) -> None:
-    bad = [p for p in perms if p not in ALL_PERMISSIONS]
-    if bad:
-        raise HTTPException(
-            status_code=422,
-            detail=f"unknown permission(s): {', '.join(bad)}",
-        )
-
-
-# ─── catalog ─────────────────────────────────────────────────────────
-
-@router.get("/permissions-catalog")
-def list_catalog():
-    """All permission strings the app recognizes, with descriptions."""
-    return {
-        "permissions": [
-            {"key": k, "description": v}
-            for k, v in sorted(PERMISSIONS.items())
-        ],
-    }
 
 
 # ─── groups ──────────────────────────────────────────────────────────
@@ -94,7 +57,7 @@ def list_catalog():
 @router.get("/groups")
 def list_groups(db: Session = Depends(get_db)):
     rows = db.query(Group).order_by(Group.name).all()
-    return [_group_to_dict(g, with_perms=False) for g in rows]
+    return [_group_to_dict(g) for g in rows]
 
 
 @router.get("/groups/{group_id}")
@@ -102,7 +65,7 @@ def get_group(group_id: str, db: Session = Depends(get_db)):
     g = db.query(Group).filter(Group.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="group not found")
-    return _group_to_dict(g, with_perms=True, with_members=True)
+    return _group_to_dict(g, with_members=True)
 
 
 @router.post("/groups", status_code=201)
@@ -113,19 +76,14 @@ def create_group(payload: GroupCreate, db: Session = Depends(get_db),
         raise HTTPException(status_code=422, detail="name is required")
     if db.query(Group).filter(Group.name == name).first():
         raise HTTPException(status_code=409, detail=f"group '{name}' already exists")
-    _validate_perms(payload.permissions)
 
     g = Group(name=name, description=payload.description, system_protected=False)
-    db.add(g); db.flush()
-    for p in payload.permissions:
-        db.add(GroupPermission(group_id=g.id, permission=p,
-                               granted_by=current_user.get("email")))
-    db.commit()
+    db.add(g); db.commit(); db.refresh(g)
     log_action(db, "GROUP_CREATED", "group", resource_id=g.id,
                user_name=current_user.get("email"),
-               new_values={"name": name, "permissions": payload.permissions},
-               description=f"created group '{name}'")
-    db.refresh(g)
+               new_values={"name": name},
+               description=(f"created group '{name}' (use the Tiers grid to "
+                            f"grant per-module access)"))
     return _group_to_dict(g)
 
 
@@ -172,37 +130,25 @@ def delete_group(group_id: str, db: Session = Depends(get_db),
     return None
 
 
-@router.put("/groups/{group_id}/permissions")
-def replace_group_permissions(group_id: str, payload: PermissionsReplace,
-                              db: Session = Depends(get_db),
-                              current_user: dict = Depends(get_current_user)):
-    """Replace the full permission set on a group. Idempotent."""
-    g = db.query(Group).filter(Group.id == group_id).first()
-    if not g:
-        raise HTTPException(status_code=404, detail="group not found")
-    new_set = set(payload.permissions)
-    _validate_perms(list(new_set))
-
-    old_set = {gp.permission for gp in g.permissions}
-    # Remove rows no longer in the set
-    for gp in list(g.permissions):
-        if gp.permission not in new_set:
-            db.delete(gp)
-    # Add rows for anything new
-    for p in new_set - old_set:
-        db.add(GroupPermission(group_id=g.id, permission=p,
-                               granted_by=current_user.get("email")))
-    db.commit()
-    log_action(db, "GROUP_PERMS_UPDATED", "group", resource_id=g.id,
-               user_name=current_user.get("email"),
-               old_values={"permissions": sorted(old_set)},
-               new_values={"permissions": sorted(new_set)},
-               description=f"updated permissions on group '{g.name}'")
-    db.refresh(g)
-    return _group_to_dict(g)
+# Group permission grants now live in app/routers/admin_tiers.py
+# (PUT /api/admin/groups/{id}/tiers/{module} — replaces the old
+# PUT /groups/{id}/permissions).
 
 
 # ─── user ↔ group memberships ────────────────────────────────────────
+
+@router.get("/users/{email}/groups")
+def get_user_groups(email: str, db: Session = Depends(get_db)):
+    """Return the user's group memberships. Used by the per-user group
+    editor in Admin.jsx."""
+    user = db.query(User).filter(User.email == email).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+    return {
+        "email": email,
+        "groups": [{"id": g.id, "name": g.name} for g in user.groups],
+    }
+
 
 @router.put("/users/{email}/groups")
 def replace_user_groups(email: str, payload: UserGroupsReplace,
@@ -239,8 +185,7 @@ def replace_user_groups(email: str, payload: UserGroupsReplace,
                new_values={"groups": new_names},
                description=f"groups: {old_names} → {new_names}")
 
-    return {"email": email, "groups": new_names,
-            "effective_permissions": sorted(effective_permissions(user))}
+    return {"email": email, "groups": new_names}
 
 
 class AddMemberPayload(BaseModel):
@@ -264,7 +209,7 @@ def add_group_member(group_id: str, payload: AddMemberPayload,
         raise HTTPException(status_code=404, detail="user not found")
 
     if g in user.groups:
-        return _group_to_dict(g, with_perms=True, with_members=True)
+        return _group_to_dict(g, with_members=True)
 
     user.groups.append(g)
     db.commit(); db.refresh(g)
@@ -272,7 +217,7 @@ def add_group_member(group_id: str, payload: AddMemberPayload,
                user_name=current_user.get("email"),
                new_values={"email": email, "group": g.name},
                description=f"added {email} to group '{g.name}'")
-    return _group_to_dict(g, with_perms=True, with_members=True)
+    return _group_to_dict(g, with_members=True)
 
 
 @router.delete("/groups/{group_id}/members/{email}", status_code=204)
@@ -307,68 +252,7 @@ def remove_group_member(group_id: str, email: str,
     return
 
 
-@router.put("/users/{email}/permissions-override")
-def set_user_permissions_override(
-    email: str, payload: UserPermissionsOverride,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
-):
-    """Set per-user permissions_extra and permissions_revoked. Replaces both."""
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="user not found")
-    _validate_perms(payload.permissions_extra)
-    _validate_perms(payload.permissions_revoked)
-
-    # Reject overlap — same perm in both lists is meaningless
-    overlap = set(payload.permissions_extra) & set(payload.permissions_revoked)
-    if overlap:
-        raise HTTPException(status_code=422,
-                            detail=f"permission(s) appear in both extras and revoked: {sorted(overlap)}")
-
-    old = {"extras": list(user.permissions_extra or []),
-           "revoked": list(user.permissions_revoked or [])}
-    user.permissions_extra = sorted(set(payload.permissions_extra)) or None
-    user.permissions_revoked = sorted(set(payload.permissions_revoked)) or None
-    db.commit()
-    new = {"extras": list(user.permissions_extra or []),
-           "revoked": list(user.permissions_revoked or [])}
-    log_action(db, "USER_PERMS_OVERRIDE", "user", resource_id=email,
-               user_name=current_user.get("email"),
-               old_values=old, new_values=new,
-               description=f"per-user perm override on {email}")
-
-    return {
-        "email": email,
-        "permissions_extra": new["extras"],
-        "permissions_revoked": new["revoked"],
-        "effective_permissions": sorted(effective_permissions(user)),
-    }
-
-
-@router.get("/users/{email}/effective-permissions")
-def user_effective_permissions(email: str, db: Session = Depends(get_db)):
-    """Show another user's effective permissions + breakdown of source.
-
-    Returns: { groups, permissions_extra, permissions_revoked, effective }.
-    """
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="user not found")
-
-    eff = sorted(effective_permissions(user))
-    by_group = {
-        g.name: sorted(gp.permission for gp in g.permissions)
-        for g in user.groups
-    }
-    return {
-        "email": email,
-        "groups": [{"id": g.id, "name": g.name} for g in user.groups],
-        "permissions_by_group": by_group,
-        "permissions_extra": list(user.permissions_extra or []),
-        "permissions_revoked": list(user.permissions_revoked or []),
-        "effective_permissions": eff,
-        "permission_descriptions": {
-            p: PERMISSIONS[p] for p in eff if p in PERMISSIONS
-        },
-    }
+# Per-user permission overrides now live in app/routers/admin_tiers.py
+# (PUT /api/admin/users/{email}/overrides/{module}).
+# The legacy permissions_extra / permissions_revoked columns are dropped
+# in the same commit that removes this file's legacy endpoints.

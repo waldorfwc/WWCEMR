@@ -173,22 +173,19 @@ def delete_user(
             status_code=409,
             detail="You can't delete your own account. Have another admin do it.")
 
-    # Last-user-with-user:manage guard. Count by effective permissions
-    # rather than by group membership so we don't accidentally let the
-    # last super-admin be deleted just because they got their perm via
-    # a custom group.
-    from app.services.permissions import effective_permissions
-    others_with_manage = 0
-    for u in db.query(User).filter(User.email != row.email).all():
-        if "user:manage" in effective_permissions(u):
-            others_with_manage += 1
-            if others_with_manage >= 1:
-                break
-    if "user:manage" in effective_permissions(row) and others_with_manage == 0:
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot delete the last user with `user:manage`. Promote "
-                   "another user to an admin group first.")
+    # Last-Super-Admin guard. With the tier model, "the system admin" =
+    # User.is_super_admin. Refuse to delete the last one — same protection
+    # that lives in permission_grants.set_super_admin.
+    if row.is_super_admin:
+        others = (db.query(User)
+                    .filter(User.is_super_admin.is_(True),
+                            User.email != row.email)
+                    .count())
+        if others == 0:
+            raise HTTPException(
+                status_code=409,
+                detail=("Cannot delete the last Super Admin. Promote "
+                        "another user to Super Admin first."))
 
     # Audit BEFORE the delete so the email is preserved.
     log_action(db, "USER_DELETED", "user",

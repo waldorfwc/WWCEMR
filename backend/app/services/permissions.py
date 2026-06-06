@@ -285,26 +285,20 @@ def legacy_groups_for_user(group_value: str | None,
 # Imported lazily by callers to avoid circular imports with models.
 
 def effective_permissions(user) -> Set[str]:
-    """Compute the set of permissions a User has in effect right now.
+    """DEPRECATED — returns empty set in Phase 4 of the permissions redesign.
 
-    Effective = union of permissions from all groups the user belongs to,
-                plus permissions_extra,
-                minus permissions_revoked.
-
-    `user` must be the SQLAlchemy User row (with `groups` relationship loaded)
-    or anything that exposes the same shape. Returns an empty set for an
-    unrecognized / deleted user.
+    The per-module tier model in app/permissions/resolver.py replaces this.
+    Call-sites that still invoke this function degrade to "no permissions"
+    which is safe for security gates (over-restrictive) but breaks UI
+    features that branched on specific perms (e.g. claim:writeoff). Those
+    call-sites are tracked in the Phase 4 follow-up.
     """
+    return set()
+    # Legacy implementation kept below for reference; never reached.
     if user is None:
         return set()
     perms: Set[str] = set()
-    # Walk groups → group_permissions
     for grp in (user.groups or []):
         for gp in (grp.permissions or []):
             perms.add(gp.permission)
-    extras = user.permissions_extra or []
-    revoked = user.permissions_revoked or []
-    perms |= set(extras)
-    perms -= set(revoked)
-    # Drop anything no longer in the catalog (defensive against stale data)
     return perms & ALL_PERMISSIONS

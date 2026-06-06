@@ -39,7 +39,8 @@ def init_db():
     from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, larc, billing_document, missing_charge, pellet, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier  # noqa
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
-    _seed_default_groups()
+    # Default groups already exist in production; the legacy seed code is
+    # retained at _seed_default_groups for traceability but no longer called.
     _migrate_template_targeting()
     _seed_consent_template_from_env()
     _migrate_billing_doc_status_open_to_new()
@@ -173,9 +174,9 @@ def _apply_lightweight_migrations():
         ("users", "notify_email", "BOOLEAN DEFAULT 1"),
         ("users", "notify_slack", "BOOLEAN DEFAULT 1"),
         ("users", "notify_sms", "BOOLEAN DEFAULT 0"),
-        # RBAC per-user overrides (Phase 1)
-        ("users", "permissions_extra", "JSON"),
-        ("users", "permissions_revoked", "JSON"),
+        # RBAC per-user overrides (Phase 1) — DROPPED in Phase 4 of the
+        # permissions redesign; the corresponding columns are dropped by
+        # scripts/migrate/drop_legacy_perms_schema.py.
         # Per-module tier model — Super Admin global flag (Phase 1 of redesign)
         ("users", "is_super_admin", "BOOLEAN DEFAULT FALSE"),
         # Checklist multi-source targeting (Phase 4)

@@ -100,7 +100,7 @@ function CreateGroupCard({ onClose }) {
   const [description, setDescription] = useState('')
 
   const create = useMutation({
-    mutationFn: () => api.post('/admin/groups', { name, description, permissions: [] })
+    mutationFn: () => api.post('/admin/groups', { name, description })
                         .then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-groups'] })
@@ -158,41 +158,19 @@ function EditGroupDrawer({ groupId, onClose }) {
     queryKey: ['admin-group', groupId],
     queryFn: () => api.get(`/admin/groups/${groupId}`).then(r => r.data),
   })
-  const { data: catalog } = useQuery({
-    queryKey: ['perm-catalog'],
-    queryFn: () => api.get('/admin/permissions-catalog').then(r => r.data),
-  })
-
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
-  const [perms, setPerms] = useState(new Set())
-  const [dirty, setDirty] = useState(false)
   const [saved, setSaved] = useState(null)
   const [hydrated, setHydrated] = useState(false)
 
-  // Sync once when the group payload arrives. Runs for every group,
-  // including ones with zero permissions or empty name/description.
+  // Sync once when the group payload arrives.
   useEffect(() => {
-    if (!group || hydrated || dirty) return
+    if (!group || hydrated) return
     setName(group.name || '')
     setDescription(group.description || '')
-    setPerms(new Set(group.permissions || []))
     setHydrated(true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group])
-
-  const savePerms = useMutation({
-    mutationFn: () => api.put(`/admin/groups/${groupId}/permissions`,
-                              { permissions: [...perms] }).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['admin-groups'] })
-      qc.invalidateQueries({ queryKey: ['admin-group', groupId] })
-      setSaved('Permissions saved.')
-      setDirty(false)
-      setTimeout(() => setSaved(null), 1500)
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'Save failed — see console'),
-  })
 
   const saveMeta = useMutation({
     mutationFn: () => api.patch(`/admin/groups/${groupId}`,
@@ -250,21 +228,6 @@ function EditGroupDrawer({ groupId, onClose }) {
     onError: (e) => alert(e?.response?.data?.detail || 'Remove failed'),
   })
 
-  function togglePerm(p) {
-    const next = new Set(perms)
-    if (next.has(p)) next.delete(p)
-    else next.add(p)
-    setPerms(next)
-    setDirty(true)
-  }
-
-  // Group catalog rows by domain prefix (the part before the colon)
-  const grouped = {}
-  for (const item of (catalog?.permissions || [])) {
-    const dom = item.key.split(':')[0]
-    if (!grouped[dom]) grouped[dom] = []
-    grouped[dom].push(item)
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
@@ -381,42 +344,14 @@ function EditGroupDrawer({ groupId, onClose }) {
               </div>
             </div>
 
-            {/* ─── Permissions ─── */}
+            {/* Per-module tier grants live on the dedicated Tiers page. */}
             <div className="border-t border-gray-100 pt-4">
-              <div className="flex items-baseline justify-between mb-2">
-                <h3 className="text-sm font-semibold text-ink">
-                  Permissions ({perms.size}/{catalog?.permissions?.length || '?'})
-                </h3>
-              </div>
-              <p className="text-[11px] text-muted mb-3">
-                Click to toggle. Members of this group inherit every checked permission.
-              </p>
-              <div className="space-y-3">
-                {Object.entries(grouped).map(([domain, items]) => (
-                  <div key={domain}>
-                    <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">{domain}</div>
-                    <div className="space-y-1">
-                      {items.map(item => {
-                        const checked = perms.has(item.key)
-                        return (
-                          <label key={item.key}
-                                 className={`flex items-start gap-2 py-1 px-2 rounded text-[12px] cursor-pointer ${checked ? 'bg-plum-50' : 'hover:bg-gray-50'}`}>
-                            <input type="checkbox" checked={checked}
-                                   onChange={() => togglePerm(item.key)}
-                                   className="mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-baseline gap-2">
-                                <code className="text-plum-700 text-[11px]">{item.key}</code>
-                              </div>
-                              <div className="text-muted text-[11px]">{item.description}</div>
-                            </div>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <Link
+                to={`/admin/groups/${groupId}/tiers`}
+                className="text-[12px] text-plum-700 hover:underline"
+              >
+                Edit per-module tiers for this group →
+              </Link>
             </div>
 
             <div className="sticky bottom-0 bg-white border-t border-border-subtle pt-3 -mx-6 px-6 flex items-center gap-2 justify-between">
@@ -437,13 +372,6 @@ function EditGroupDrawer({ groupId, onClose }) {
               <div className="flex items-center gap-3">
                 {saved && <span className="text-success text-[12px]">{saved}</span>}
                 <button className="btn-secondary text-sm" onClick={onClose}>Close</button>
-                <button
-                  className="btn-primary text-sm"
-                  onClick={() => savePerms.mutate()}
-                  disabled={!dirty || savePerms.isPending}
-                >
-                  {savePerms.isPending ? 'Saving…' : 'Save Permissions'}
-                </button>
               </div>
             </div>
           </div>
