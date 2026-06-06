@@ -1,9 +1,12 @@
 """Dashboard aggregate metrics.
 
 All figures are derived from existing tables — no schema changes. Date
-windows use SQLite's `date('now', '-N days')` because the production DB
-is SQLite and we want the filter pushed to the engine.
+windows are computed in Python (`date.today() - timedelta(days=N)`) and
+passed as parameters so the query is portable between SQLite (tests)
+and PostgreSQL (production).
 """
+from datetime import date, timedelta
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -31,21 +34,25 @@ TIMELY_FILING_HORIZON_DAYS = 90
 TIMELY_FILING_ALERT_DAYS = 7
 
 
+def _days_ago(n: int) -> date:
+    return date.today() - timedelta(days=n)
+
+
 def _collected_in_window(db: Session, start_offset: int, end_offset: int = 0) -> float:
     """Sum payments with payment_date in [today - start_offset, today - end_offset]."""
-    start_expr = func.date('now', f'-{start_offset} days')
-    end_expr = func.date('now', f'-{end_offset} days') if end_offset else func.date('now')
+    start = _days_ago(start_offset)
+    end = _days_ago(end_offset) if end_offset else date.today()
     q = db.query(func.coalesce(func.sum(Payment.amount), 0)).filter(
         Payment.payment_type.in_([t.value for t in INSURANCE_PAYMENT_TYPES]),
-        Payment.payment_date >= start_expr,
-        Payment.payment_date <= end_expr,
+        Payment.payment_date >= start,
+        Payment.payment_date <= end,
     )
     return float(q.scalar() or 0)
 
 
 def _resolved_window(db: Session, days: int) -> dict:
     """Claims moved to a resolved status within the last `days` days."""
-    since = func.date('now', f'-{days} days')
+    since = _days_ago(days)
     count = db.query(func.count(Claim.id)).filter(
         Claim.status.in_([s.value for s in RESOLVED_STATUSES]),
         Claim.statement_date >= since,
@@ -80,17 +87,14 @@ def dashboard_summary(db: Session = Depends(get_db)):
     ).scalar() or 0
 
     # Submitted last 7d (using statement_date as submission proxy)
-    submitted_7d_since = func.date('now', '-7 days')
+    submitted_7d_since = _days_ago(7)
     claims_submitted_7d = db.query(func.count(Claim.id)).filter(
         Claim.statement_date >= submitted_7d_since,
     ).scalar() or 0
 
     # Timely filing: un-submitted open claims whose DOS is within
     # TIMELY_FILING_ALERT_DAYS of the horizon.
-    horizon_warn = func.date(
-        'now',
-        f'-{TIMELY_FILING_HORIZON_DAYS - TIMELY_FILING_ALERT_DAYS} days',
-    )
+    horizon_warn = _days_ago(TIMELY_FILING_HORIZON_DAYS - TIMELY_FILING_ALERT_DAYS)
     timely_filing_at_risk = db.query(func.count(Claim.id)).filter(
         Claim.status.notin_([s.value for s in TERMINAL_STATUSES]),
         Claim.date_of_service_from.isnot(None),
@@ -103,7 +107,7 @@ def dashboard_summary(db: Session = Depends(get_db)):
     ).scalar() or 0
     denied_last_week = db.query(func.count(Denial.id)).filter(
         Denial.status == DenialStatus.OPEN.value,
-        Denial.created_at >= func.date('now', '-7 days'),
+        Denial.created_at >= _days_ago(7),
     ).scalar() or 0
 
     return {
