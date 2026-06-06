@@ -1,10 +1,10 @@
 """Insurance Documents — upload, classify, assign, view, work.
 
 Visibility rules (enforced in list + detail endpoints):
-  • Admin (user:manage) sees everything.
+  • Admin (Insurance Docs:Manage) sees everything.
   • Uploader always sees their own uploads.
   • Unassigned docs (empty assigned_to list) are visible to anyone with
-    claim:read.
+    Insurance Docs:View.
   • Assigned docs are visible only to their assignees + admins.
 
 Every read or mutation writes one row to billing_document_access.
@@ -27,6 +27,8 @@ from app.models.billing_document import (
     CLASSIFICATIONS, STATUSES,
 )
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services import billing_doc_storage as storage
 from app.services import billing_doc_classify as classifier
 from app.services.audit_service import log_action
@@ -36,9 +38,15 @@ router = APIRouter(prefix="/billing/documents", tags=["billing-documents"])
 
 
 def _is_admin(user: dict) -> bool:
-    perms = set(user.get("effective_permissions")
-                  or user.get("permissions") or [])
-    return "user:manage" in perms
+    """Caller has Insurance Documents Manage tier (or higher) — i.e. can
+    see/edit every doc regardless of assignment.
+
+    The `requires_tier` dependency injects the resolved tier on `user`
+    via `module_tier[<slug>]`. Falls back to False if the call-site
+    didn't go through that dependency (own visibility is then by
+    uploader/assignment only)."""
+    by_module = user.get("module_tier") or {}
+    return by_module.get(Module.INSURANCE_DOCS.value, 0) >= int(Tier.MANAGE)
 
 
 def _visible_to(d: BillingDocument, user: dict) -> bool:
@@ -99,7 +107,7 @@ def _doc_dict(d: BillingDocument, include_notes: bool = False,
 # ─── Picklists ──────────────────────────────────────────────────────
 
 @router.get("/picklists")
-def picklists(current_user: dict = Depends(require_permission("claim:read"))):
+def picklists(current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     return {
         "classifications": [{"v": k, "l": v} for k, v in CLASSIFICATIONS],
         "statuses":        [{"v": k, "l": v} for k, v in STATUSES],
@@ -116,9 +124,9 @@ async def upload_document(
     assigned_to: str = Form(""),     # comma-separated email list
     force: bool = Form(False),       # bypass duplicate check
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW)),
 ):
-    """Upload a scanned document. Anyone with claim:read can upload.
+    """Upload a scanned document. Anyone with Insurance Docs:View can upload.
     If `auto_classify=true` (default) AND the uploader leaves classification
     at the default 'other', we ask Claude to suggest a better label.
 
@@ -210,7 +218,7 @@ async def upload_document(
 @router.get("")
 def list_documents(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW)),
     status: Optional[str] = None,
     classification: Optional[str] = None,
     assigned_to_me: bool = False,
@@ -258,7 +266,7 @@ def _load(db: Session, doc_id: str) -> BillingDocument:
 @router.get("/{doc_id}")
 def get_document(doc_id: str,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("claim:read"))):
+                  current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     d = _load(db, doc_id)
     if not _visible_to(d, current_user):
         raise HTTPException(status_code=403, detail="not authorized for this document")
@@ -272,7 +280,7 @@ def get_document(doc_id: str,
 @router.get("/{doc_id}/file")
 def get_document_file(doc_id: str,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("claim:read"))):
+                       current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     d = _load(db, doc_id)
     if not _visible_to(d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")
@@ -313,7 +321,7 @@ class DocumentPatch(BaseModel):
 @router.patch("/{doc_id}")
 def patch_document(doc_id: str, payload: DocumentPatch,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("claim:read"))):
+                    current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     d = _load(db, doc_id)
     if not _visible_to(d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")
@@ -371,7 +379,7 @@ def patch_document(doc_id: str, payload: DocumentPatch,
 @router.delete("/{doc_id}", status_code=204)
 def delete_document(doc_id: str,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("user:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.MANAGE))):
     """Hard-delete the document row + the file on disk. Admin-only.
     Audit-log entries (billing_document_access) are cascade-deleted too.
     """
@@ -410,7 +418,7 @@ class NoteIn(BaseModel):
 @router.post("/{doc_id}/notes", status_code=201)
 def add_note(doc_id: str, payload: NoteIn,
               db: Session = Depends(get_db),
-              current_user: dict = Depends(require_permission("claim:read"))):
+              current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     d = _load(db, doc_id)
     if not _visible_to(d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")
@@ -431,9 +439,9 @@ def add_note(doc_id: str, payload: NoteIn,
 
 @router.get("/workforce/assignable")
 def assignable_users(db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("claim:read"))):
+                       current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     """Return the list of users that can be assigned to a document.
-    Anyone active with claim:read is fair game."""
+    Anyone active with Insurance Docs:View is fair game."""
     from app.models.user import User
     users = (db.query(User)
                .filter(User.is_active.is_(True))

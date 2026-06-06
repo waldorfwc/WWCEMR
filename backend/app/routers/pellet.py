@@ -34,6 +34,8 @@ from app.models.pellet import (
 )
 from fastapi import UploadFile, File, Form
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.pellet_workflow import (
     spawn_milestones, default_price_for, patient_buckets,
 )
@@ -205,7 +207,7 @@ def _lot_dict(l: PelletLot, balances: Optional[dict] = None) -> dict:
 # ─── Picklists / catalog ────────────────────────────────────────────
 
 @router.get("/picklists")
-def picklists(current_user: dict = Depends(require_permission("pellet:read"))):
+def picklists(current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     return {
         "locations": [{"v": k, "l": v} for k, v in LOCATION_LABELS.items()],
         "disposal_reasons": [
@@ -219,7 +221,7 @@ def picklists(current_user: dict = Depends(require_permission("pellet:read"))):
 
 @router.get("/dose-types")
 def list_dose_types(db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("pellet:read"))):
+                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     rows = (db.query(PelletDoseType)
               .order_by(PelletDoseType.hormone, PelletDoseType.dose_mg).all())
     # Bulk-load on-hand doses per type
@@ -255,7 +257,7 @@ class DoseTypePatch(BaseModel):
 def patch_dose_type(type_id: str, payload: DoseTypePatch,
                      override_reason: Optional[str] = None,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("pellet:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     from app.services.pellet_lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
@@ -374,7 +376,7 @@ def _count_blockers_by_location(db: Session) -> dict:
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("pellet:read"))):
+                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     today = _date.today()
 
     # On-hand by (hormone, location)
@@ -554,7 +556,7 @@ def dashboard(db: Session = Depends(get_db),
 @router.get("/lots")
 def list_lots(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     dose_type_id: Optional[str] = None,
     hormone: Optional[str] = None,
     location: Optional[str] = None,
@@ -613,7 +615,7 @@ def _collect_lots_for_export(db: Session, *,
 @router.get("/lots/export.xlsx")
 def export_lots_xlsx(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     hormone: Optional[str] = None,
     location: Optional[str] = None,
     in_stock_only: bool = True,
@@ -640,7 +642,7 @@ def export_lots_xlsx(
 @router.get("/lots/export.pdf")
 def export_lots_pdf(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     hormone: Optional[str] = None,
     location: Optional[str] = None,
     in_stock_only: bool = True,
@@ -666,7 +668,7 @@ def export_lots_pdf(
 @router.get("/lots/{lot_id}")
 def get_lot(lot_id: str,
              db: Session = Depends(get_db),
-             current_user: dict = Depends(require_permission("pellet:read"))):
+             current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     l = (db.query(PelletLot)
            .options(joinedload(PelletLot.dose_type),
                     joinedload(PelletLot.stock_rows))
@@ -688,7 +690,7 @@ class LotPatchIn(BaseModel):
 def patch_lot(lot_id: str, payload: LotPatchIn,
                 override_reason: Optional[str] = None,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("pellet:manage"))):
+                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     """Edit lot identification — Qualgen lot #, expiration, notes. Used to
     correct placeholder ('made-up') lot numbers after the fact. A reason is
     required for the audit trail. Blocked while the lot is part of an
@@ -879,7 +881,7 @@ def _add_business_days(d: _date, n: int) -> _date:
 
 @router.get("/orders/reorder-prefill")
 def reorder_prefill(db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("pellet:work"))):
+                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Build a starter order from the dashboard's reorder alerts. UI calls
     this and pre-fills the "Place order" form with one line per
     below-threshold dose, using the configured reorder_qty_packs."""
@@ -909,7 +911,7 @@ def reorder_prefill(db: Session = Depends(get_db),
 @router.post("/orders", status_code=201)
 def create_order(payload: OrderIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     if not payload.lines:
         raise HTTPException(status_code=422, detail="at least one line required")
     if payload.payment_method and payload.payment_method not in PAYMENT_METHODS:
@@ -977,7 +979,7 @@ def create_order(payload: OrderIn,
 
 @router.get("/orders")
 def list_orders(db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:read")),
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
                   limit: int = 5,
                   include_cancelled: bool = False):
     q = (db.query(PelletOrder)
@@ -993,7 +995,7 @@ def list_orders(db: Session = Depends(get_db),
 
 @router.get("/orders/open")
 def list_open_orders(db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("pellet:read"))):
+                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     """Orders that can be received against — status placed/partially_received.
     Used by the Receive Shipment form's order picker."""
     rows = (db.query(PelletOrder)
@@ -1006,7 +1008,7 @@ def list_open_orders(db: Session = Depends(get_db),
 @router.get("/orders/{order_id}")
 def get_order(order_id: str,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("pellet:read"))):
+                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     o = (db.query(PelletOrder)
             .options(joinedload(PelletOrder.lines).joinedload(PelletOrderLine.dose_type),
                      joinedload(PelletOrder.attachments),
@@ -1032,7 +1034,7 @@ class OrderPatchIn(BaseModel):
 @router.patch("/orders/{order_id}")
 def patch_order(order_id: str, payload: OrderPatchIn,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:work"))):
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     o = db.query(PelletOrder).filter(PelletOrder.id == order_id).first()
     if not o:
         raise HTTPException(status_code=404, detail="order not found")
@@ -1115,7 +1117,7 @@ def patch_order(order_id: str, payload: OrderPatchIn,
 @router.post("/orders/{order_id}/cancel")
 def cancel_order(order_id: str,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     o = db.query(PelletOrder).filter(PelletOrder.id == order_id).first()
     if not o:
         raise HTTPException(status_code=404, detail="order not found")
@@ -1137,7 +1139,7 @@ def cancel_order(order_id: str,
 async def upload_order_attachment(order_id: str,
                                     file: UploadFile = File(...),
                                     db: Session = Depends(get_db),
-                                    current_user: dict = Depends(require_permission("pellet:work"))):
+                                    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Upload a PDF invoice / receipt for this order."""
     o = db.query(PelletOrder).filter(PelletOrder.id == order_id).first()
     if not o:
@@ -1182,7 +1184,7 @@ async def upload_order_attachment(order_id: str,
 @router.get("/orders/{order_id}/attachments/{att_id}")
 def download_order_attachment(order_id: str, att_id: str,
                                 db: Session = Depends(get_db),
-                                current_user: dict = Depends(require_permission("pellet:read"))):
+                                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     att = (db.query(PelletOrderAttachment)
              .filter(PelletOrderAttachment.id == att_id,
                      PelletOrderAttachment.order_id == order_id).first())
@@ -1203,7 +1205,7 @@ def download_order_attachment(order_id: str, att_id: str,
 @router.delete("/orders/{order_id}/attachments/{att_id}")
 def delete_order_attachment(order_id: str, att_id: str,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("pellet:work"))):
+                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     att = (db.query(PelletOrderAttachment)
              .filter(PelletOrderAttachment.id == att_id,
                      PelletOrderAttachment.order_id == order_id).first())
@@ -1258,7 +1260,7 @@ def _parse_date(s: Optional[str], field: str) -> Optional[_date]:
 @router.post("/receipts", status_code=201)
 def create_receipt(payload: ReceiptIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("pellet:work"))):
+                     current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Create a receipt + lots in one shot. Stock is NOT incremented until
     the receipt is manifest-verified. The receiver and verifier should
     typically be two different people (enforced for testosterone)."""
@@ -1348,7 +1350,7 @@ class VerifyManifestIn(BaseModel):
 @router.post("/receipts/{receipt_id}/verify-manifest")
 def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("pellet:work"))):
+                     current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Verify the manifest matches what physically arrived. THIS is the
     step that pushes doses into PelletStock at the receiving location."""
     r = (db.query(PelletReceipt)
@@ -1443,7 +1445,7 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
 async def upload_receipt_attachment(receipt_id: str,
                                       file: UploadFile = File(...),
                                       db: Session = Depends(get_db),
-                                      current_user: dict = Depends(require_permission("pellet:work"))):
+                                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Upload a PDF of the packing slip / shipping manifest for this receipt."""
     r = db.query(PelletReceipt).filter(PelletReceipt.id == receipt_id).first()
     if not r:
@@ -1489,7 +1491,7 @@ async def upload_receipt_attachment(receipt_id: str,
 @router.get("/receipts/{receipt_id}/attachments/{att_id}")
 def download_receipt_attachment(receipt_id: str, att_id: str,
                                   db: Session = Depends(get_db),
-                                  current_user: dict = Depends(require_permission("pellet:read"))):
+                                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     att = (db.query(PelletReceiptAttachment)
              .filter(PelletReceiptAttachment.id == att_id,
                      PelletReceiptAttachment.receipt_id == receipt_id).first())
@@ -1510,7 +1512,7 @@ def download_receipt_attachment(receipt_id: str, att_id: str,
 @router.delete("/receipts/{receipt_id}/attachments/{att_id}")
 def delete_receipt_attachment(receipt_id: str, att_id: str,
                                 db: Session = Depends(get_db),
-                                current_user: dict = Depends(require_permission("pellet:work"))):
+                                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     att = (db.query(PelletReceiptAttachment)
              .filter(PelletReceiptAttachment.id == att_id,
                      PelletReceiptAttachment.receipt_id == receipt_id).first())
@@ -1532,7 +1534,7 @@ def delete_receipt_attachment(receipt_id: str, att_id: str,
 @router.get("/receipts")
 def list_receipts(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     verified_only: bool = False,
     page: int = 1,
     per_page: int = 50,
@@ -1594,7 +1596,7 @@ class TransferIn(BaseModel):
 @router.post("/transfers", status_code=201)
 def create_transfer(payload: TransferIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("pellet:work"))):
+                     current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     if payload.from_location not in PELLET_LOCATIONS \
        or payload.to_location not in PELLET_LOCATIONS:
         raise HTTPException(status_code=422, detail="invalid location")
@@ -1674,7 +1676,7 @@ class TransferPickupIn(BaseModel):
 @router.post("/transfers/{transfer_id}/take-custody")
 def take_custody(transfer_id: str, payload: TransferPickupIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Courier signs in. Flips packed → in_transit. For Sch III the courier
     must be a different user than the packer (chain-of-custody separation)."""
     t = (db.query(PelletTransfer).options(joinedload(PelletTransfer.lot)
@@ -1717,7 +1719,7 @@ class TransferReceiveIn(BaseModel):
 @router.post("/transfers/{transfer_id}/receive")
 def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("pellet:work"))):
+                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     t = (db.query(PelletTransfer).options(joinedload(PelletTransfer.lot)
                                               .joinedload(PelletLot.dose_type))
            .filter(PelletTransfer.id == transfer_id).first())
@@ -1758,7 +1760,7 @@ def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
 @router.get("/transfers")
 def list_transfers(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     status: Optional[str] = None,
     page: int = 1, per_page: int = 50,
 ):
@@ -1803,7 +1805,7 @@ class DisposalIn(BaseModel):
 @router.post("/disposals", status_code=201)
 def create_disposal(payload: DisposalIn,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("pellet:work"))):
+                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     if payload.reason not in DISPOSAL_REASONS:
         raise HTTPException(status_code=422,
                             detail=f"reason must be one of {DISPOSAL_REASONS}")
@@ -1858,7 +1860,7 @@ def create_disposal(payload: DisposalIn,
 @router.get("/disposals")
 def list_disposals(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     location: Optional[str] = None,
     reason: Optional[str] = None,
     page: int = 1, per_page: int = 100,
@@ -1940,7 +1942,7 @@ def _unconfirmed_visits_blocking_count(db: Session, location: str) -> list[dict]
 @router.post("/visits/run-stale-sweep")
 def run_stale_visit_sweep(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:manage")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE)),
 ):
     """Manual trigger for the nightly stale-visit auto-cancel sweep. Useful
     when an admin wants to clear out the blocker list before starting a
@@ -1954,7 +1956,7 @@ def run_stale_visit_sweep(
 def counts_pre_check(
     location: str = "white_plains",
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
 ):
     """Returns the list of visits whose Proposed insertions must be
     confirmed before a daily count can be started at `location`."""
@@ -1968,7 +1970,7 @@ def counts_pre_check(
 @router.post("/counts/start", status_code=201)
 def start_count(payload: CountStartIn,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:work"))):
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     location = payload.location
     if location != "all" and location not in PELLET_LOCATIONS:
         raise HTTPException(status_code=422, detail="invalid location")
@@ -2073,7 +2075,7 @@ class CountScanIn(BaseModel):
 @router.post("/counts/{count_id}/scan")
 def record_count_scan(count_id: str, payload: CountScanIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:work"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     c = db.query(PelletCount).filter(PelletCount.id == count_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="count not found")
@@ -2105,7 +2107,7 @@ class CountFinishIn(BaseModel):
 @router.post("/counts/{count_id}/finish")
 def finish_count(count_id: str, payload: CountFinishIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     c = (db.query(PelletCount).options(joinedload(PelletCount.lines)
                                             .joinedload(PelletCountLine.lot)
                                             .joinedload(PelletLot.dose_type))
@@ -2216,7 +2218,7 @@ def finish_count(count_id: str, payload: CountFinishIn,
 @router.post("/counts/{count_id}/cancel")
 def cancel_count(count_id: str,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Cancel an in-progress count. No stock changes happen until finish, so
     cancellation is safe. The count_started audit row is preserved; a
     count_cancelled row is appended."""
@@ -2240,7 +2242,7 @@ def cancel_count(count_id: str,
 @router.post("/counts/{count_id}/regenerate-pdf", status_code=201)
 def regenerate_count_pdf(count_id: str,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("pellet:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     """Re-render the count PDF (e.g. after a signature/notes correction).
     Appends a new attachment row — history of prior PDFs is preserved."""
     c = (db.query(PelletCount).options(joinedload(PelletCount.lines)
@@ -2272,7 +2274,7 @@ def regenerate_count_pdf(count_id: str,
 @router.get("/counts/{count_id}/pdf")
 def download_count_pdf(count_id: str,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("pellet:read"))):
+                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     """Download the most-recent PDF attachment for this count."""
     att = (db.query(PelletCountAttachment)
              .filter(PelletCountAttachment.count_id == count_id)
@@ -2294,7 +2296,7 @@ def download_count_pdf(count_id: str,
 @router.get("/counts/{count_id}")
 def get_count(count_id: str,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("pellet:read"))):
+                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     c = (db.query(PelletCount).options(joinedload(PelletCount.lines)
                                             .joinedload(PelletCountLine.lot)
                                             .joinedload(PelletLot.dose_type),
@@ -2349,7 +2351,7 @@ def get_count(count_id: str,
 @router.get("/counts")
 def list_counts(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     status: Optional[str] = None,
     include_cancelled: bool = False,
     page: int = 1, per_page: int = 50,
@@ -2388,7 +2390,7 @@ def list_counts(
 @router.get("/audit")
 def list_audit(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     action: Optional[str] = None,
     lot_id: Optional[str] = None,
     actor: Optional[str] = None,
@@ -2430,7 +2432,7 @@ def list_audit(
 
 @router.get("/manual")
 def list_manual(db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:read"))):
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     rows = (db.query(PelletManualSection)
               .order_by(PelletManualSection.sort_order,
                         PelletManualSection.title).all())
@@ -2457,7 +2459,7 @@ class ManualPatch(BaseModel):
 @router.patch("/manual/{section_id}")
 def patch_manual(section_id: str, payload: ManualPatch,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:manage"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     s = db.query(PelletManualSection).filter(PelletManualSection.id == section_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
@@ -2481,7 +2483,7 @@ class ManualIn(BaseModel):
 @router.post("/manual", status_code=201)
 def create_manual_section(payload: ManualIn,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("pellet:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     slug = payload.slug.strip().lower()
     title = payload.title.strip()
     if not slug or not title:
@@ -2504,7 +2506,7 @@ def create_manual_section(payload: ManualIn,
 @router.delete("/manual/{section_id}", status_code=204)
 def delete_manual_section(section_id: str,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("pellet:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     s = db.query(PelletManualSection).filter(PelletManualSection.id == section_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
@@ -2541,7 +2543,7 @@ def _clear_other_pellet_defaults(db: Session, owner: str, keep_id) -> None:
 
 @router.get("/filter-presets")
 def list_presets(db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:read"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     email = (current_user.get("email") or "").lower()
     rows = (db.query(PelletFilterPreset)
               .filter(PelletFilterPreset.owner_email == email)
@@ -2552,7 +2554,7 @@ def list_presets(db: Session = Depends(get_db),
 @router.post("/filter-presets")
 def create_or_upsert_preset(payload: FilterPresetIn,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("pellet:read"))):
+                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     email = (current_user.get("email") or "").lower()
     name = payload.name.strip()
     if not name:
@@ -2583,7 +2585,7 @@ def create_or_upsert_preset(payload: FilterPresetIn,
 @router.put("/filter-presets/{preset_id}")
 def update_preset(preset_id: str, payload: FilterPresetIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("pellet:read"))):
+                    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     email = (current_user.get("email") or "").lower()
     row = (db.query(PelletFilterPreset)
              .filter(PelletFilterPreset.id == preset_id,
@@ -2603,7 +2605,7 @@ def update_preset(preset_id: str, payload: FilterPresetIn,
 @router.delete("/filter-presets/{preset_id}")
 def delete_preset(preset_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("pellet:read"))):
+                    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     email = (current_user.get("email") or "").lower()
     row = (db.query(PelletFilterPreset)
              .filter(PelletFilterPreset.id == preset_id,
@@ -2632,7 +2634,7 @@ def _mammo_fac_dict(f: PelletMammoFacility) -> dict:
 @router.get("/mammo-facilities")
 def list_mammo_facilities(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     active_only: bool = True,
 ):
     q = db.query(PelletMammoFacility)
@@ -2656,7 +2658,7 @@ class MammoFacilityIn(BaseModel):
 @router.post("/mammo-facilities", status_code=201)
 def create_mammo_facility(payload: MammoFacilityIn,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("pellet:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="name required")
@@ -2684,7 +2686,7 @@ class MammoFacilityPatch(BaseModel):
 @router.patch("/mammo-facilities/{facility_id}")
 def patch_mammo_facility(facility_id: str, payload: MammoFacilityPatch,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("pellet:manage"))):
+                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     f = db.query(PelletMammoFacility).filter(PelletMammoFacility.id == facility_id).first()
     if not f:
         raise HTTPException(status_code=404, detail="facility not found")
@@ -2697,7 +2699,7 @@ def patch_mammo_facility(facility_id: str, payload: MammoFacilityPatch,
 @router.delete("/mammo-facilities/{facility_id}", status_code=204)
 def delete_mammo_facility(facility_id: str,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("pellet:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     f = db.query(PelletMammoFacility).filter(PelletMammoFacility.id == facility_id).first()
     if not f:
         raise HTTPException(status_code=404, detail="facility not found")
@@ -2710,7 +2712,7 @@ def delete_mammo_facility(facility_id: str,
 @router.get("/patients/{patient_id}/prior-dose")
 def get_prior_dose(patient_id: str,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("pellet:read"))):
+                     current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     """Return totals per hormone from the patient's most-recent visit
     where doses were actually inserted (used by the Set Dose flow as the
     'carry forward' default for established patients)."""
@@ -2782,7 +2784,7 @@ class DoseSuggestIn(BaseModel):
 @router.post("/dosing/suggest")
 def suggest_dose(payload: DoseSuggestIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:read"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     """Return ranked dose combinations for each hormone that sum to the
     requested total mg — prefers in-stock first, then fewest pellets."""
     if payload.location not in PELLET_LOCATIONS:
@@ -2802,7 +2804,7 @@ async def upload_appointments(
     file: UploadFile = File(...),
     cancel_missing: bool = Form(False),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:work")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK)),
 ):
     """Upload a ModMed "Pellet Insert" appointment list. Upserts each
     row keyed on (MRN, appt date). Optionally cancels any in-range
@@ -2834,7 +2836,7 @@ DEFAULT_PELLET_ACTIVE_MONTHS = 6
 
 @router.get("/settings/active-months")
 def get_active_months(db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:read"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     return {"months": _get_active_months_cutoff(db),
             "default": DEFAULT_PELLET_ACTIVE_MONTHS}
 
@@ -2846,7 +2848,7 @@ class ActiveMonthsIn(BaseModel):
 @router.patch("/settings/active-months")
 def set_active_months(payload: ActiveMonthsIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:manage"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     if payload.months < 1 or payload.months > 120:
         raise HTTPException(status_code=422, detail="months must be between 1 and 120")
     from app.models.practice_config import PracticeConfig
@@ -2868,7 +2870,7 @@ def set_active_months(payload: ActiveMonthsIn,
 
 @router.get("/settings/inventory-lock")
 def get_inventory_lock(db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:read"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     """Returns the current pellet-inventory lock state. Visible to anyone
     with pellet:read so the UI can show a banner when locked."""
     from app.services.pellet_lock import get_lock_state
@@ -2883,7 +2885,7 @@ class InventoryLockIn(BaseModel):
 @router.post("/settings/inventory-lock")
 def set_inventory_lock(payload: InventoryLockIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:manage"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     """Toggle the pellet inventory lock. When ON, admin-style inventory
     edits (lot metadata, dose-type catalog, historical visit fix-ups)
     return 423 unless the caller is a pellet:manage admin who passes an
@@ -3212,7 +3214,7 @@ class PatientIn(BaseModel):
 @router.post("/patients", status_code=201)
 def create_patient(payload: PatientIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("pellet:work"))):
+                     current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     chart = payload.chart_number.strip()
     if not chart:
         raise HTTPException(status_code=422, detail="chart_number required")
@@ -3250,7 +3252,7 @@ PATIENT_VIEWS = ["roster", "last_visits", "upcoming", "recall_due",
 @router.get("/patient-view-counts")
 def patient_view_counts(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
 ):
     """Lean count-per-view endpoint for the tab strip. Loads patients
     once (still with visits joined) and counts each view in Python —
@@ -3292,7 +3294,7 @@ def patient_view_counts(
 @router.get("/patients")
 def list_patients(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("pellet:read")),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW)),
     status: Optional[str] = None,
     patient_type: Optional[str] = None,
     bucket: Optional[str] = None,
@@ -3419,7 +3421,7 @@ def list_patients(
 @router.get("/patients/{patient_id}")
 def get_patient(patient_id: str,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:read"))):
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     p = (db.query(PelletPatient)
            .options(joinedload(PelletPatient.visits)
                       .joinedload(PelletVisit.milestones),
@@ -3467,7 +3469,7 @@ class PatientPatch(BaseModel):
 @router.patch("/patients/{patient_id}")
 def patch_patient(patient_id: str, payload: PatientPatch,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("pellet:work"))):
+                    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="patient not found")
@@ -3497,7 +3499,7 @@ class MammoIn(BaseModel):
 @router.post("/patients/{patient_id}/verify-mammo")
 def verify_mammo(patient_id: str, payload: MammoIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Records a new mammo result. Appends to the patient's mammo history
     AND updates the cached scalar fields on PelletPatient so existing
     filter views ('Needs mammo' etc.) still work."""
@@ -3544,7 +3546,7 @@ def verify_mammo(patient_id: str, payload: MammoIn,
 @router.delete("/patients/{patient_id}/mammos/{mammo_id}", status_code=204)
 def delete_mammo(patient_id: str, mammo_id: str,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     row = (db.query(PelletPatientMammo)
              .filter(PelletPatientMammo.id == mammo_id,
                      PelletPatientMammo.patient_id == patient_id).first())
@@ -3588,7 +3590,7 @@ class LabsIn(BaseModel):
 @router.post("/patients/{patient_id}/verify-labs")
 def verify_labs(patient_id: str, payload: LabsIn,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:work"))):
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="patient not found")
@@ -3631,7 +3633,7 @@ def verify_labs(patient_id: str, payload: LabsIn,
 @router.delete("/patients/{patient_id}/labs/{lab_id}", status_code=204)
 def delete_lab(patient_id: str, lab_id: str,
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("pellet:work"))):
+                 current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     row = (db.query(PelletPatientLab)
              .filter(PelletPatientLab.id == lab_id,
                      PelletPatientLab.patient_id == patient_id).first())
@@ -3673,7 +3675,7 @@ class PatientNoteIn(BaseModel):
 @router.post("/patients/{patient_id}/notes", status_code=201)
 def add_patient_note(patient_id: str, payload: PatientNoteIn,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("pellet:work"))):
+                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="patient not found")
@@ -3691,7 +3693,7 @@ def add_patient_note(patient_id: str, payload: PatientNoteIn,
 @router.delete("/patients/{patient_id}/notes/{note_id}", status_code=204)
 def delete_patient_note(patient_id: str, note_id: str,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("pellet:work"))):
+                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     n = (db.query(PelletPatientNote)
             .filter(PelletPatientNote.id == note_id,
                     PelletPatientNote.patient_id == patient_id).first())
@@ -3788,7 +3790,7 @@ class VisitIn(BaseModel):
 @router.post("/visits", status_code=201)
 def create_visit(payload: VisitIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("pellet:work"))):
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     if payload.visit_kind not in VISIT_KINDS:
         raise HTTPException(status_code=422, detail="invalid visit_kind")
     if payload.location not in PELLET_LOCATIONS:
@@ -3865,7 +3867,7 @@ class HistoricalVisitIn(BaseModel):
 def create_historical_visit(patient_id: str, payload: HistoricalVisitIn,
                               override_reason: Optional[str] = None,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("pellet:work"))):
+                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Record a past pellet insertion that happened before this system was
     used. Does NOT affect inventory in any way — no dose lines are created,
     no milestones spawned, no audit-stock rows written. Use this for
@@ -3924,7 +3926,7 @@ class HistoricalVisitPatch(BaseModel):
 def patch_historical_visit(visit_id: str, payload: HistoricalVisitPatch,
                              override_reason: Optional[str] = None,
                              db: Session = Depends(get_db),
-                             current_user: dict = Depends(require_permission("pellet:work"))):
+                             current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     from app.services.pellet_lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
@@ -3967,7 +3969,7 @@ def patch_historical_visit(visit_id: str, payload: HistoricalVisitPatch,
 def delete_historical_visit(visit_id: str,
                               override_reason: Optional[str] = None,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("pellet:work"))):
+                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     from app.services.pellet_lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
@@ -4004,7 +4006,7 @@ def _complete_milestone(v: PelletVisit, kind: str, by: str,
 @router.get("/visits/{visit_id}")
 def get_visit(visit_id: str,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("pellet:read"))):
+                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     v = (db.query(PelletVisit)
            .options(joinedload(PelletVisit.patient),
                     joinedload(PelletVisit.milestones),
@@ -4027,7 +4029,7 @@ class VisitPatch(BaseModel):
 @router.patch("/visits/{visit_id}")
 def patch_visit(visit_id: str, payload: VisitPatch,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:work"))):
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     v = (db.query(PelletVisit).options(joinedload(PelletVisit.milestones))
            .filter(PelletVisit.id == visit_id).first())
     if not v:
@@ -4074,7 +4076,7 @@ class VisitRescheduleIn(BaseModel):
 @router.post("/visits/{visit_id}/reschedule")
 def reschedule_visit(visit_id: str, payload: VisitRescheduleIn,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("pellet:work"))):
+                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Move a visit to a new date without touching dose state. The visit
     stays open (status unchanged) — staff just need the new appointment
     on the calendar. Audited with old/new date + reason."""
@@ -4112,7 +4114,7 @@ class VisitCancelIn(BaseModel):
 @router.post("/visits/{visit_id}/cancel")
 def cancel_visit(visit_id: str, payload: VisitCancelIn,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("pellet:work"))):
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Cancel a visit before insertion. If any doses have been pulled from
     stock, they're returned to the visit's location's stock (same logic
     as /insert with outcome=cancelled). Sets status=cancelled."""
@@ -4165,7 +4167,7 @@ def cancel_visit(visit_id: str, payload: VisitCancelIn,
 @router.post("/visits/{visit_id}/klara-sent")
 def klara_sent(visit_id: str,
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("pellet:work"))):
+                 current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     v = (db.query(PelletVisit).options(joinedload(PelletVisit.milestones))
            .filter(PelletVisit.id == visit_id).first())
     if not v:
@@ -4184,7 +4186,7 @@ def klara_sent(visit_id: str,
 @router.post("/visits/{visit_id}/payment-collected")
 def payment_collected(visit_id: str,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:work"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     v = (db.query(PelletVisit).options(joinedload(PelletVisit.milestones))
            .filter(PelletVisit.id == visit_id).first())
     if not v:
@@ -4210,7 +4212,7 @@ class DoseCardIn(BaseModel):
 @router.put("/visits/{visit_id}/dose-card")
 def set_dose_card(visit_id: str, payload: DoseCardIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("pellet:work"))):
+                    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Replace the PROPOSED dose card. Stock is auto-adjusted:
       • Old proposed doses with assigned lots → returned to stock
       • New proposed doses → FIFO lot auto-assigned + stock decremented
@@ -4313,7 +4315,7 @@ class DoseAppendIn(BaseModel):
 @router.post("/visits/{visit_id}/doses", status_code=201)
 def append_visit_dose(visit_id: str, payload: DoseAppendIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:work"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Append a dose to a visit.
       - Active visit  → 'planned' (Proposed) — FIFO lot auto-assigned + stock decremented
       - Confirmed/billed visit → historical 'inserted' record (no stock impact)
@@ -4398,7 +4400,7 @@ class DoseLotChangeIn(BaseModel):
 @router.patch("/visits/{visit_id}/doses/{dose_id}")
 def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("pellet:work"))):
+                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Swap the lot assigned to a proposed (planned/pulled) dose.
     Returns the old lot's reserve and pulls from the new lot. Provider
     in-room reassignment — common when the provider wants a different
@@ -4470,7 +4472,7 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
 @router.delete("/visits/{visit_id}/doses/{dose_id}", status_code=204)
 def delete_visit_dose(visit_id: str, dose_id: str,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:work"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Delete a dose entry. Behavior depends on status:
       - planned/pulled (Proposed) → returns to stock automatically
       - inserted/added/returned/reduced/disposed (Confirmed)
@@ -4528,7 +4530,7 @@ class BagFillIn(BaseModel):
 @router.post("/visits/{visit_id}/fill-bag")
 def fill_bag(visit_id: str, payload: BagFillIn,
                db: Session = Depends(get_db),
-               current_user: dict = Depends(require_permission("pellet:work"))):
+               current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Tattiana pulls each planned dose from a specific lot and stages
     them in the patient's bag. Decrements PelletStock per line and writes
     audit rows."""
@@ -4599,7 +4601,7 @@ class InsertionOutcomeIn(BaseModel):
 @router.post("/visits/{visit_id}/insert")
 def record_insertion(visit_id: str, payload: InsertionOutcomeIn,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("pellet:work"))):
+                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Record the insertion outcome.
       perfect     — all pulled doses become inserted (terminal for those rows)
       rescheduled — all pulled doses become 'returned' (added back to stock)
@@ -4661,7 +4663,7 @@ def record_insertion(visit_id: str, payload: InsertionOutcomeIn,
 @router.post("/visits/{visit_id}/confirm-as-planned")
 def confirm_doses_as_planned(visit_id: str,
                                db: Session = Depends(get_db),
-                               current_user: dict = Depends(require_permission("pellet:work"))):
+                               current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """One-click confirmation: flip every Proposed (planned/pulled) dose on
     this visit to `inserted`. For doses that are still `planned` (never
     pulled from the safe), this also FIFO-assigns a lot and decrements stock
@@ -4779,7 +4781,7 @@ class ConfirmInsertionIn(BaseModel):
 @router.post("/visits/{visit_id}/confirm-insertion")
 def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:work"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Per-line confirmation of what was actually inserted vs. bagged.
 
     Each line targets one existing planned/pulled dose with insert / return
@@ -4993,7 +4995,7 @@ class MidAddIn(BaseModel):
 @router.post("/visits/{visit_id}/add-dose")
 def add_dose_mid_procedure(visit_id: str, payload: MidAddIn,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("pellet:work"))):
+                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Provider decides mid-insertion to add an additional pellet. Pulled
     from the safe, decremented from stock, marked 'added' on the visit."""
     v = (db.query(PelletVisit).options(joinedload(PelletVisit.doses))
@@ -5045,7 +5047,7 @@ class VisitDoseDisposalIn(BaseModel):
 @router.post("/visits/{visit_id}/dispose-dose")
 def dispose_visit_dose(visit_id: str, payload: VisitDoseDisposalIn,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("pellet:work"))):
+                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """A pellet from this visit's bag is dropped/broken → biohazard.
     Already-pulled (stock already decremented), so we just write a
     PelletDisposal row + flip the dose status. For Schedule III, witness
@@ -5104,7 +5106,7 @@ class BillIn(BaseModel):
 @router.post("/visits/{visit_id}/bill")
 def bill_visit(visit_id: str, payload: BillIn,
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("pellet:work"))):
+                 current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     v = (db.query(PelletVisit).options(joinedload(PelletVisit.milestones))
            .filter(PelletVisit.id == visit_id).first())
     if not v:
@@ -5141,7 +5143,7 @@ def _reopen_milestone(v: PelletVisit, kind: str) -> None:
 @router.post("/visits/{visit_id}/revert")
 def revert_visit_status(visit_id: str, payload: RevertIn,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("pellet:work"))):
+                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     """Step a visit one stage backward: un-bill (billed→inserted),
     un-insert (inserted→in_progress), or un-bag (bagged→scheduled).
     A reason is required; every revert writes a StateTransitionAudit row
@@ -5228,7 +5230,7 @@ def revert_visit_status(visit_id: str, payload: RevertIn,
 @router.get("/visits/{visit_id}/transitions")
 def visit_transitions(visit_id: str,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:read"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     """Status-change history for a visit (who flipped it A→B, when, why)."""
     from app.models.state_transition import StateTransitionAudit
     rows = (db.query(StateTransitionAudit)
@@ -5258,7 +5260,7 @@ class MilestoneAdvanceIn(BaseModel):
 def advance_milestone(visit_id: str, milestone_id: str,
                         payload: MilestoneAdvanceIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("pellet:work"))):
+                        current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
     v = (db.query(PelletVisit).options(joinedload(PelletVisit.milestones))
            .filter(PelletVisit.id == visit_id).first())
     if not v:

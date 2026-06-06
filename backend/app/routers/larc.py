@@ -30,6 +30,8 @@ from app.models.larc import (
     LarcOwedPatient, LarcPharmacy,
 )
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.larc_workflow import (
     ALL_BUCKETS, ASSIGNMENT_REALLOCATE_AFTER_DAYS, CHECKOUT_ACK_WINDOW_HOURS,
     DEVICE_EXPIRY_HOLD_DAYS, LOCATIONS, LOCATION_LABELS,
@@ -143,7 +145,7 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db),
-               current_user: dict = Depends(require_permission("larc:read"))):
+               current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     today = _date.today()
 
     # On-hand device counts by type + location + category
@@ -281,7 +283,7 @@ def dashboard(db: Session = Depends(get_db),
 # ─── Picklists ──────────────────────────────────────────────────────
 
 @router.get("/picklists")
-def get_picklists(current_user: dict = Depends(require_permission("larc:read"))):
+def get_picklists(current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     from app.services.surgery_picklists import INSURANCE_COMPANIES
     return {
         "locations": [{"v": k, "l": v} for k, v in LOCATION_LABELS.items()],
@@ -308,7 +310,7 @@ def _device_type_dict(t: LarcDeviceType) -> dict:
 
 @router.get("/device-types")
 def list_device_types(db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("larc:read"))):
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     rows = db.query(LarcDeviceType).order_by(LarcDeviceType.name).all()
     return [_device_type_dict(t) for t in rows]
 
@@ -329,7 +331,7 @@ class DeviceTypeIn(BaseModel):
 @router.post("/device-types", status_code=201)
 def create_device_type(payload: DeviceTypeIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("larc:manage"))):
+                        current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     if payload.category not in ("larc", "office_procedure"):
         raise HTTPException(status_code=422, detail="category must be larc or office_procedure")
     if payload.default_flow not in ("in_stock", "pharmacy_order", "office_procedure"):
@@ -376,7 +378,7 @@ class DeviceTypePatch(BaseModel):
 @router.patch("/device-types/{type_id}")
 def patch_device_type(type_id: str, payload: DeviceTypePatch,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("larc:manage"))):
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     t = db.query(LarcDeviceType).filter(LarcDeviceType.id == type_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="device type not found")
@@ -398,7 +400,7 @@ def patch_device_type(type_id: str, payload: DeviceTypePatch,
 
 
 @router.get("/docusign-templates")
-def list_docusign_templates(current_user: dict = Depends(require_permission("larc:manage"))):
+def list_docusign_templates(current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Pull the live DocuSign template list so admins pick from a dropdown
     instead of hand-typing template GUIDs. Re-uses the same JWT client as
     the surgery-consent feature."""
@@ -436,7 +438,7 @@ class PharmacyIn(BaseModel):
 
 @router.get("/pharmacies")
 def list_pharmacies(db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:read"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     rows = (db.query(LarcPharmacy)
               .filter(LarcPharmacy.is_active.is_(True))
               .order_by(LarcPharmacy.name).all())
@@ -453,7 +455,7 @@ def list_pharmacies(db: Session = Depends(get_db),
 @router.post("/pharmacies", status_code=201)
 def create_pharmacy(payload: PharmacyIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     p = LarcPharmacy(
         name=payload.name.strip(),
         fax=payload.fax, phone=payload.phone, address=payload.address,
@@ -484,7 +486,7 @@ ACTIVE_DEVICE_STATUSES = ["unassigned", "assigned", "received", "checked_out"]
 @router.get("/devices")
 def list_devices(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:read")),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
     device_type_id: Optional[str] = None,
     category: Optional[str] = None,
     status: Optional[str] = None,
@@ -552,7 +554,7 @@ class BulkDeviceIn(BaseModel):
 @router.post("/devices/bulk", status_code=201)
 def create_devices_bulk(payload: BulkDeviceIn,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("larc:manage"))):
+                          current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Add many devices in one shot — useful when receiving a shipment.
     Validates all rows up front; if any fails, nothing is committed."""
     if not payload.devices:
@@ -606,7 +608,7 @@ def create_devices_bulk(payload: BulkDeviceIn,
 @router.get("/devices/labels.pdf")
 def device_labels_pdf(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:read")),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
     ids: str = "",
 ):
     """Return a multi-page PDF with one label per device. Pass device IDs
@@ -649,7 +651,7 @@ def device_labels_pdf(
 @router.post("/devices", status_code=201)
 def create_device(payload: DeviceIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("larc:manage"))):
+                   current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     dt = db.query(LarcDeviceType).filter(LarcDeviceType.id == payload.device_type_id).first()
     if not dt:
         raise HTTPException(status_code=404, detail="device_type not found")
@@ -688,7 +690,7 @@ def create_device(payload: DeviceIn,
 @router.get("/devices/{device_id}")
 def get_device(device_id: str,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("larc:read"))):
+                current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     d = (db.query(LarcDevice)
            .options(joinedload(LarcDevice.device_type),
                     selectinload(LarcDevice.assignments).selectinload(LarcAssignment.milestones))
@@ -722,7 +724,7 @@ class ChangeOwnershipIn(BaseModel):
 def change_device_ownership(device_id: str,
                             payload: ChangeOwnershipIn,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Re-classify the ownership of a device — e.g. flip a patient-owned
     device to 'WWC Claimed' after the patient declined / didn't use it
     within the year-of-receipt window. Reason is required and the
@@ -778,7 +780,7 @@ def change_device_ownership(device_id: str,
 @router.delete("/devices/{device_id}", status_code=204)
 def delete_device(device_id: str,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("larc:manage"))):
+                  current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Hard-delete a LarcDevice row. Intended for pre-go-live inventory
     cleanup. Refuses if the device has ever been assigned to a patient —
     once a real assignment exists the row must stay for audit purposes;
@@ -822,7 +824,7 @@ def delete_device(device_id: str,
 @router.patch("/devices/{device_id}")
 def patch_device(device_id: str, payload: DevicePatch,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("larc:manage"))):
+                  current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     d = db.query(LarcDevice).filter(LarcDevice.id == device_id).first()
     if not d:
         raise HTTPException(status_code=404, detail="device not found")
@@ -866,7 +868,7 @@ class AssignmentIn(BaseModel):
 @router.get("/assignments")
 def list_assignments(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:read")),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
     bucket: Optional[str] = None,
     status: Optional[str] = None,
     chart_number: Optional[str] = None,
@@ -906,7 +908,7 @@ def list_assignments(
 @router.post("/assignments", status_code=201)
 def create_assignment(payload: AssignmentIn,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("larc:work"))):
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     if payload.source_flow not in ("in_stock", "pharmacy_order"):
         raise HTTPException(status_code=422, detail="invalid source_flow")
 
@@ -967,7 +969,7 @@ def create_assignment(payload: AssignmentIn,
 @router.get("/assignments/{assignment_id}")
 def get_assignment(assignment_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("larc:read"))):
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     a = (db.query(LarcAssignment)
            .options(joinedload(LarcAssignment.milestones),
                     joinedload(LarcAssignment.device).joinedload(LarcDevice.device_type))
@@ -1059,7 +1061,7 @@ def _calc_patient_responsibility(*, allowed_amount: float, deductible: float,
 @router.post("/assignments/{assignment_id}/benefits")
 def record_benefits(assignment_id: str, payload: BenefitsIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:work"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Record insurance benefits via the calculator (same math as Surgery).
     When save=True, persists inputs, sets patient_responsibility from the
     calculator, marks the benefits_verified milestone done, and stamps
@@ -1131,7 +1133,7 @@ class ToggleConfirmIn(BaseModel):
 def toggle_responsibility_in_modmed(
     assignment_id: str, payload: ToggleConfirmIn = ToggleConfirmIn(),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:work"))):
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Mark that the patient's out-of-pocket has been entered in ModMed.
     No ModMed integration — purely a staff checkbox."""
     a = _load_assignment(db, assignment_id)
@@ -1160,7 +1162,7 @@ class NotifyIn(BaseModel):
 def mark_patient_notified(
     assignment_id: str, payload: NotifyIn = NotifyIn(),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:work"))):
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Mark that the patient was notified via Klara to schedule their
     insertion appointment."""
     a = _load_assignment(db, assignment_id)
@@ -1182,7 +1184,7 @@ class ApptScheduledIn(BaseModel):
 @router.post("/assignments/{assignment_id}/schedule-appt")
 def schedule_appt(assignment_id: str, payload: ApptScheduledIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("larc:work"))):
+                   current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Record the patient's insertion appointment date."""
     a = _load_assignment(db, assignment_id)
     by = current_user.get("email") or "system"
@@ -1215,7 +1217,7 @@ VALID_OUTCOMES = {
 @router.post("/assignments/{assignment_id}/outcome")
 def record_outcome(assignment_id: str, payload: OutcomeIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("larc:work"))):
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Record the insertion-day outcome. Drives device status:
       inserted        → device.status='inserted', advances to 'billed' milestone
       failed_used     → device.status='defective' (likely manufacturer return)
@@ -1302,7 +1304,7 @@ class EnrollmentSendIn(BaseModel):
 @router.post("/assignments/{assignment_id}/send-enrollment")
 def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSendIn(),
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:work"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Send the device-type's enrollment form to the patient. If DocuSign
     template is configured AND via_docusign=True, fires an envelope via
     the existing DocuSign client. Otherwise just stamps the milestone
@@ -1372,7 +1374,7 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
 def mark_enrollment_signed(assignment_id: str,
                             payload: ToggleConfirmIn = ToggleConfirmIn(),
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:work"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Manual mark that the enrollment form is signed and back in hand."""
     a = _load_assignment(db, assignment_id)
     by = current_user.get("email") or "system"
@@ -1397,7 +1399,7 @@ class FaxPharmacyIn(BaseModel):
 @router.post("/assignments/{assignment_id}/fax-pharmacy")
 def fax_pharmacy(assignment_id: str, payload: FaxPharmacyIn = FaxPharmacyIn(),
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("larc:work"))):
+                  current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Record that the order was faxed to the pharmacy. Starts the
     2-week SLA clock — overdue orders surface on the dashboard."""
     a = _load_assignment(db, assignment_id)
@@ -1432,7 +1434,7 @@ class ReceiveDeviceIn(BaseModel):
 @router.post("/assignments/{assignment_id}/receive-device")
 def receive_device(assignment_id: str, payload: ReceiveDeviceIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("larc:work"))):
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """The pharmacy-shipped device arrived — mint a LarcDevice row with
     our_id + lot, bind it to this assignment, and mark milestones done.
     Idempotent: re-running with the same our_id rejects."""
@@ -1498,7 +1500,7 @@ class CheckoutRequestIn(BaseModel):
 @router.post("/assignments/{assignment_id}/checkout-request")
 def request_checkout(assignment_id: str, payload: CheckoutRequestIn,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("larc:checkout"))):
+                      current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """MA / provider requests to check a device out of the cabinet for
     insertion. Hybrid approval: auto-approved when every gate is green;
     otherwise flagged for manager approval.
@@ -1595,7 +1597,7 @@ class CheckoutApprovalIn(BaseModel):
 @router.post("/checkouts/{checkout_id}/decide")
 def decide_checkout(checkout_id: str, payload: CheckoutApprovalIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:approve"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Manager approves or denies a flagged checkout request."""
     c = (db.query(LarcCheckout)
            .options(joinedload(LarcCheckout.assignment).joinedload(LarcAssignment.device))
@@ -1637,7 +1639,7 @@ def decide_checkout(checkout_id: str, payload: CheckoutApprovalIn,
 @router.post("/checkouts/{checkout_id}/acknowledge")
 def acknowledge_checkout(checkout_id: str,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("larc:work"))):
+                          current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Staff confirms they saw a device checkout happen. Clears it from
     the dashboard's "Unacknowledged checkouts" list."""
     c = (db.query(LarcCheckout)
@@ -1666,7 +1668,7 @@ def acknowledge_checkout(checkout_id: str,
 
 @router.get("/checkouts/pending")
 def list_pending_checkouts(db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:approve"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Manager queue: every checkout flagged for review."""
     rows = (db.query(LarcCheckout)
               .options(joinedload(LarcCheckout.assignment).joinedload(LarcAssignment.device).joinedload(LarcDevice.device_type))
@@ -1691,7 +1693,7 @@ def list_pending_checkouts(db: Session = Depends(get_db),
 
 @router.get("/checkouts/ready")
 def list_ready_to_checkout(db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:checkout"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Assignments whose device is on-hand and ready to be checked out for
     insertion. Returned fields intentionally omit the device's our_id —
     staff must read the physical label and type it back in to confirm."""
@@ -1731,7 +1733,7 @@ class CheckoutDirectIn(BaseModel):
 @router.post("/assignments/{assignment_id}/checkout-direct")
 def checkout_direct(assignment_id: str, payload: CheckoutDirectIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:checkout"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Staff-initiated checkout that bypasses the 4 standard gates (DOB,
     same-day appt, benefits verified, device status). The confirmation
     safeguard is that the user must physically read the device's our_id
@@ -1799,7 +1801,7 @@ class BilledIn(BaseModel):
 @router.post("/assignments/{assignment_id}/bill")
 def mark_billed(assignment_id: str, payload: BilledIn,
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("larc:work"))):
+                 current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Record the ModMed claim number. Marks billed milestone done and
     moves the assignment off the active dashboard (findable in history)."""
     a = _load_assignment(db, assignment_id)
@@ -1836,7 +1838,7 @@ def mark_billed(assignment_id: str, payload: BilledIn,
 @router.get("/devices/{device_id}/label.pdf")
 def device_label_pdf(device_id: str,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("larc:read"))):
+                      current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     from fastapi.responses import Response
     from app.services.larc_label import render_device_label
     d = (db.query(LarcDevice)
@@ -1855,7 +1857,7 @@ def device_label_pdf(device_id: str,
 @router.get("/devices/unallocated")
 def list_unallocated_devices(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:read")),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
     device_type_id: Optional[str] = None,
     category: Optional[str] = None,
     location: Optional[str] = None,
@@ -1904,7 +1906,7 @@ class OfficeProcedureAssignmentIn(BaseModel):
 def create_office_procedure_assignment(
     payload: OfficeProcedureAssignmentIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:work")),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK)),
 ):
     """Create an office-procedure assignment (NovaSure / Bensta etc.). The
     device must be unallocated and of an office_procedure-category type.
@@ -1972,7 +1974,7 @@ class ConsumeIn(BaseModel):
 @router.post("/assignments/{assignment_id}/consume")
 def consume_device(assignment_id: str, payload: ConsumeIn = ConsumeIn(),
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:work"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Mark an office-procedure device as consumed (used during the
     procedure). Device.status → 'inserted' (we reuse the LARC term so the
     rest of the dashboard works). Next: record claim # via /bill."""
@@ -2009,7 +2011,7 @@ class ReturnToManufacturerIn(BaseModel):
 @router.post("/devices/{device_id}/return-to-manufacturer")
 def return_to_manufacturer(device_id: str, payload: ReturnToManufacturerIn,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:work"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Record that a defective device has been shipped back to the
     manufacturer for replacement. Moves device.status from 'defective'
     to 'returned'."""
@@ -2059,7 +2061,7 @@ class ReceiveReplacementIn(BaseModel):
 @router.post("/devices/{device_id}/receive-replacement")
 def receive_replacement(device_id: str, payload: ReceiveReplacementIn,
                          db: Session = Depends(get_db),
-                         current_user: dict = Depends(require_permission("larc:work"))):
+                         current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """The manufacturer-supplied replacement arrived. Mint a new LarcDevice
     row with the bi-directional replacement link, and re-bind any active
     assignment to the new device so the workflow can continue from
@@ -2167,7 +2169,7 @@ def receive_replacement(device_id: str, payload: ReceiveReplacementIn,
 # ─── Sweeps + Owed list (Phase 5) ──────────────────────────────────
 
 @router.post("/admin/run-sweeps")
-def run_sweeps(current_user: dict = Depends(require_permission("larc:manage"))):
+def run_sweeps(current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Manually trigger the expiry + stale-assignment + pharmacy-SLA sweeps."""
     from app.services.larc_sweeps import run_all
     return run_all()
@@ -2175,7 +2177,7 @@ def run_sweeps(current_user: dict = Depends(require_permission("larc:manage"))):
 
 @router.get("/owed")
 def list_owed(db: Session = Depends(get_db),
-               current_user: dict = Depends(require_permission("larc:read")),
+               current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
                include_resolved: bool = False):
     q = db.query(LarcOwedPatient)
     if not include_resolved:
@@ -2208,7 +2210,7 @@ class OwedResolveIn(BaseModel):
 @router.post("/owed/{owed_id}/resolve")
 def resolve_owed(owed_id: str, payload: OwedResolveIn,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("larc:work"))):
+                  current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Mark an Owed patient as resolved. When 'reallocated', the caller
     has already created a new assignment for the patient (via the
     standard /assignments POST flow); pass that ID for the audit link."""
@@ -2242,7 +2244,7 @@ class InventoryCountStartIn(BaseModel):
 @router.post("/inventory-counts/start", status_code=201)
 def start_inventory_count(payload: InventoryCountStartIn,
                            db: Session = Depends(get_db),
-                           current_user: dict = Depends(require_permission("larc:manage"))):
+                           current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Begin a physical inventory count session. Snapshots the current
     expected on-hand device set; staff then scans devices and reconciles."""
     if payload.scope_location and payload.scope_location not in LOCATIONS:
@@ -2282,7 +2284,7 @@ def start_inventory_count(payload: InventoryCountStartIn,
 @router.get("/inventory-counts/{count_id}")
 def get_inventory_count(count_id: str,
                          db: Session = Depends(get_db),
-                         current_user: dict = Depends(require_permission("larc:read"))):
+                         current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     c = db.query(LarcInventoryCount).filter(LarcInventoryCount.id == count_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="count not found")
@@ -2331,7 +2333,7 @@ class InventoryScanIn(BaseModel):
 @router.post("/inventory-counts/{count_id}/scan")
 def scan_for_count(count_id: str, payload: InventoryScanIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("larc:work"))):
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Mark a device as scanned during an in-progress count. Idempotent.
     Accepts:
       - bare our_id (e.g. 'WWC0700')
@@ -2373,7 +2375,7 @@ class InventoryFinishIn(BaseModel):
 @router.post("/inventory-counts/{count_id}/finish")
 def finish_count(count_id: str, payload: InventoryFinishIn = InventoryFinishIn(),
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("larc:manage"))):
+                  current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     """Close out a count. Marks any expected-but-not-scanned devices as
     'lost' (with the count_id in their notes for the audit trail) and
     writes a summary audit event."""
@@ -2420,7 +2422,7 @@ def finish_count(count_id: str, payload: InventoryFinishIn = InventoryFinishIn()
 
 @router.get("/inventory-counts")
 def list_inventory_counts(db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:read"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     rows = (db.query(LarcInventoryCount)
               .order_by(LarcInventoryCount.started_at.desc())
               .limit(20).all())
@@ -2444,7 +2446,7 @@ def list_inventory_counts(db: Session = Depends(get_db),
 @router.get("/reports/eod")
 def end_of_day_report(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:read")),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
     date: Optional[str] = None,   # YYYY-MM-DD, defaults to today
 ):
     """Daily reconciliation — what got checked out, inserted, returned,
@@ -2553,7 +2555,7 @@ def end_of_day_report(
 
 @router.get("/manual")
 def list_manual_sections(db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("larc:read"))):
+                          current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     rows = (db.query(LarcManualSection)
               .order_by(LarcManualSection.sort_order, LarcManualSection.title).all())
     return [
@@ -2577,7 +2579,7 @@ class ManualSectionIn(BaseModel):
 @router.post("/manual", status_code=201)
 def create_manual_section(payload: ManualSectionIn,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     slug = payload.slug.strip().lower().replace(" ", "-")
     if not slug or not payload.title.strip():
         raise HTTPException(status_code=422, detail="slug and title are required")
@@ -2603,7 +2605,7 @@ class ManualSectionPatch(BaseModel):
 @router.patch("/manual/{section_id}")
 def patch_manual_section(section_id: str, payload: ManualSectionPatch,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("larc:manage"))):
+                          current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     s = db.query(LarcManualSection).filter(LarcManualSection.id == section_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
@@ -2618,7 +2620,7 @@ def patch_manual_section(section_id: str, payload: ManualSectionPatch,
 @router.delete("/manual/{section_id}", status_code=204)
 def delete_manual_section(section_id: str,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("larc:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
     s = db.query(LarcManualSection).filter(LarcManualSection.id == section_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
@@ -2629,7 +2631,7 @@ def delete_manual_section(section_id: str,
 @router.get("/audit")
 def list_audit(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("larc:read")),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
     actor: Optional[str] = None,
     device_id: Optional[str] = None,
     chart_number: Optional[str] = None,
