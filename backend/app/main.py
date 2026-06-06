@@ -148,8 +148,10 @@ app.include_router(checklist.router, prefix="/api")
 # Recalls require recall:work / recall:manage — gates inside each handler
 app.include_router(recalls.router, prefix="/api")
 app.include_router(recall_filter_presets.router, prefix="/api")
-# Training is open to authenticated users — handlers gate the manager-only ops
-app.include_router(training.router, prefix="/api")
+# Training: router-level VIEW (everyone sees what's available), handlers
+# escalate to MANAGE for authorize/revoke/force-acknowledge.
+app.include_router(training.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.TRAINING, Tier.VIEW))])
 # Surgery config admin (must come before surgery.router — /config would match /{surgery_id})
 app.include_router(surgery_config.router, prefix="/api")
 # Surgery fee schedule + CCI/MPR admin + per-surgery calculator

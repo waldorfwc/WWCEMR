@@ -14,6 +14,8 @@ from app.models.checklist import TaskTemplate
 from app.models.training import TrainerAuthorization, TrainingCertification
 from app.models.user import User
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services import training_service
 
 
@@ -98,7 +100,7 @@ def _cert_dict(c: TrainingCertification, today: Optional[_date] = None) -> dict:
 @router.post("/trainers", status_code=201)
 def authorize_trainer(payload: AuthorizeTrainerPayload,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("training:authorize"))):
+                       current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.MANAGE))):
     tmpl = db.query(TaskTemplate).filter(TaskTemplate.id == payload.template_id).first()
     if not tmpl:
         raise HTTPException(status_code=404, detail="template not found")
@@ -118,7 +120,7 @@ def authorize_trainer(payload: AuthorizeTrainerPayload,
 @router.delete("/trainers", status_code=200)
 def revoke_trainer(payload: RevokeTrainerPayload,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("training:authorize"))):
+                    current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.MANAGE))):
     try:
         row = training_service.revoke_trainer(
             db,
@@ -157,9 +159,10 @@ def certify(payload: CertifyPayload, db: Session = Depends(get_db),
     """Trainer signs that they trained the trainee.
 
     Per-template TrainerAuthorization is required, EXCEPT when the caller
-    has `training:authorize` (super users / office managers) — they can
+    has Training:Manage tier (super users / office managers) — they can
     directly mark anyone trained without authorizing themselves first.
     """
+    from app.permissions.resolver import effective_tier
     trainer = (current_user.get("email") or "").lower().strip()
     tmpl = db.query(TaskTemplate).filter(TaskTemplate.id == payload.template_id).first()
     if not tmpl:
@@ -168,8 +171,7 @@ def certify(payload: CertifyPayload, db: Session = Depends(get_db),
     if not trainee:
         raise HTTPException(status_code=422, detail="trainee user not found")
 
-    perms = set(current_user.get("effective_permissions") or [])
-    is_authorizer = "training:authorize" in perms
+    is_authorizer = effective_tier(db, trainer, Module.TRAINING) >= Tier.MANAGE
 
     try:
         row = training_service.certify(
@@ -188,7 +190,7 @@ def certify(payload: CertifyPayload, db: Session = Depends(get_db),
 @router.post("/certify-group", status_code=201)
 def certify_group(payload: CertifyGroupPayload,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("training:authorize"))):
+                    current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.MANAGE))):
     """Bulk-certify every member of a group on one template. Skips users
     already certified (idempotent). Always bypasses the trainer check
     since this endpoint is gated on training:authorize."""
@@ -235,7 +237,7 @@ class RevokeGroupPayload(BaseModel):
 @router.post("/revoke-group")
 def revoke_group(payload: RevokeGroupPayload,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("training:authorize"))):
+                   current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.MANAGE))):
     """Bulk-revoke certifications for every member of a group on one
     template. Used when an SOP changes and everyone needs to re-train."""
     from app.models.groups import Group
@@ -296,7 +298,7 @@ def acknowledge(cert_id: str, payload: AcknowledgePayload,
 @router.post("/certifications/{cert_id}/force-acknowledge")
 def force_acknowledge(cert_id: str,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("training:authorize"))):
+                       current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.MANAGE))):
     """Admin override: mark a pending_trainee certification as active on
     the trainee's behalf. Used when the trainee hasn't logged in / can't
     log in to acknowledge themselves. Audited via training_service."""
@@ -323,7 +325,7 @@ def force_acknowledge(cert_id: str,
 @router.delete("/certifications/{cert_id}", status_code=200)
 def revoke_cert(cert_id: str, payload: RevokeCertPayload = RevokeCertPayload(),
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("training:authorize"))):
+                 current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.MANAGE))):
     try:
         row = training_service.revoke_cert(
             db,

@@ -37,11 +37,17 @@ PERM_TO_TIER: dict[str, list[tuple[Module, Tier]]] = {
     "fax:send": [],
 
     # ─── Active AR family ───────────────────────────────────────────
-    "claim:read":      [(Module.ACTIVE_AR, Tier.VIEW)],
-    "claim:edit":      [(Module.ACTIVE_AR, Tier.WORK)],
-    "claim:writeoff":  [(Module.ACTIVE_AR, Tier.MANAGE)],
-    "payment:post":    [(Module.ACTIVE_AR, Tier.WORK)],
-    "payment:void":    [(Module.ACTIVE_AR, Tier.MANAGE)],
+    "claim:read":         [(Module.ACTIVE_AR, Tier.VIEW)],
+    "claim:edit":         [(Module.ACTIVE_AR, Tier.WORK)],
+    "claim:appeal":       [(Module.ACTIVE_AR, Tier.WORK)],
+    "claim:settle_line":  [(Module.ACTIVE_AR, Tier.WORK)],
+    "claim:writeoff":     [(Module.ACTIVE_AR, Tier.MANAGE)],
+    "payment:post":       [(Module.ACTIVE_AR, Tier.WORK)],
+    "payment:void":       [(Module.ACTIVE_AR, Tier.MANAGE)],
+    "denial:work":        [(Module.ACTIVE_AR, Tier.WORK)],
+    "eob:edit":           [(Module.ACTIVE_AR, Tier.WORK)],
+    "adjustment_code:edit": [(Module.ACTIVE_AR, Tier.MANAGE)],
+    "report:operational": [(Module.ACTIVE_AR, Tier.MANAGE)],
 
     # ─── Bank Recon ─────────────────────────────────────────────────
     "bankrecon:read":     [(Module.BANK_RECON, Tier.VIEW)],
@@ -54,13 +60,30 @@ PERM_TO_TIER: dict[str, list[tuple[Module, Tier]]] = {
     "report:financial": [(Module.ACTIVE_AR, Tier.MANAGE)],
 
     # ─── Surgery ────────────────────────────────────────────────────
-    "surgery:read": [(Module.SURGERY, Tier.VIEW)],
-    "surgery:work": [(Module.SURGERY, Tier.WORK)],
+    "surgery:read":   [(Module.SURGERY, Tier.VIEW)],
+    "surgery:work":   [(Module.SURGERY, Tier.WORK)],
+    "surgery:cancel": [(Module.SURGERY, Tier.WORK)],
+    "surgery:manage": [(Module.SURGERY, Tier.MANAGE)],
+    "schedule:read":  [(Module.SURGERY, Tier.VIEW)],
+    "schedule:edit":  [(Module.SURGERY, Tier.WORK)],
+
+    # ─── Recall ─────────────────────────────────────────────────────
+    "recall:work":   [(Module.RECALL, Tier.WORK)],
+    "recall:manage": [(Module.RECALL, Tier.MANAGE)],
+
+    # ─── My Checklist ───────────────────────────────────────────────
+    "checklist:manage": [(Module.MY_CHECKLIST, Tier.MANAGE)],
+
+    # ─── Training ───────────────────────────────────────────────────
+    "training:authorize": [(Module.TRAINING, Tier.MANAGE)],
 
     # ─── Device Tracking – LARC ─────────────────────────────────────
-    "larc:read":   [(Module.LARC, Tier.VIEW)],
-    "larc:edit":   [(Module.LARC, Tier.WORK)],
-    "larc:manage": [(Module.LARC, Tier.MANAGE)],
+    "larc:read":     [(Module.LARC, Tier.VIEW)],
+    "larc:edit":     [(Module.LARC, Tier.WORK)],
+    "larc:work":     [(Module.LARC, Tier.WORK)],
+    "larc:checkout": [(Module.LARC, Tier.WORK)],
+    "larc:approve":  [(Module.LARC, Tier.MANAGE)],
+    "larc:manage":   [(Module.LARC, Tier.MANAGE)],
 
     # ─── Pellets ────────────────────────────────────────────────────
     "pellet:read":   [(Module.PELLETS, Tier.VIEW)],
@@ -68,11 +91,12 @@ PERM_TO_TIER: dict[str, list[tuple[Module, Tier]]] = {
     "pellet:manage": [(Module.PELLETS, Tier.MANAGE)],
 
     # ─── Admin (cross-module) — handled separately via ADMIN_PERMS ──
-    "user:manage": [],
+    "user:manage":  [],
+    "system:admin": [],
 }
 
 
 # Old permission strings whose holders should become per-module Admins.
-# `user:manage` is the closest analog to "system administrator"; it grants
-# the ADMIN tier on every module so existing admins keep their reach.
-ADMIN_PERMS: set[str] = {"user:manage"}
+# Both `user:manage` and `system:admin` are sysop roles — grants the
+# ADMIN tier on every module so existing admins keep their reach.
+ADMIN_PERMS: set[str] = {"user:manage", "system:admin"}
