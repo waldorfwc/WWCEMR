@@ -9,6 +9,8 @@ import Denials from './pages/Denials'
 import Admin from './pages/Admin'
 import AdminGroups from './pages/AdminGroups'
 import AdminTemplates from './pages/AdminTemplates'
+import UserTierGrid from './pages/admin/UserTierGrid'
+import GroupTierGrid from './pages/admin/GroupTierGrid'
 import AdminConsentTemplates from './pages/AdminConsentTemplates'
 import SurgeryRules from './pages/SurgeryRules'
 import Larc from './pages/Larc'
@@ -161,6 +163,8 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/audit"               element={<AuditLog />} />
             <Route path="/admin"                   element={<PrivateRoute adminOnly><Admin /></PrivateRoute>} />
             <Route path="/admin/groups"            element={<PrivateRoute adminOnly><AdminGroups /></PrivateRoute>} />
+            <Route path="/admin/users/:email/tiers" element={<PrivateRoute adminOnly><UserTierGrid /></PrivateRoute>} />
+            <Route path="/admin/groups/:groupId/tiers" element={<PrivateRoute adminOnly><GroupTierGrid /></PrivateRoute>} />
             <Route path="/admin/templates"         element={<PrivateRoute adminOnly><AdminTemplates /></PrivateRoute>} />
             <Route path="/admin/consent-templates" element={<PrivateRoute adminOnly><AdminConsentTemplates /></PrivateRoute>} />
             <Route path="/admin/message-templates" element={<PrivateRoute adminOnly><StaffMessageTemplates /></PrivateRoute>} />

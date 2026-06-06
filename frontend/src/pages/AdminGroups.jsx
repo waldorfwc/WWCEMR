@@ -69,7 +69,16 @@ export default function AdminGroups() {
                 <td className="table-td text-[12px] text-muted">{g.description || '—'}</td>
                 <td className="table-td text-right text-[12px] font-mono">{g.member_count}</td>
                 <td className="table-td text-right text-[12px] font-mono">{g.permission_count}</td>
-                <td className="table-td"></td>
+                <td className="table-td">
+                  <Link
+                    to={`/admin/groups/${g.id}/tiers`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-[11px] text-plum-700 hover:underline whitespace-nowrap"
+                    aria-label={`Edit tiers for ${g.name}`}
+                  >
+                    Tiers →
+                  </Link>
+                </td>
               </tr>
             ))}
             {!isLoading && groups?.length === 0 && (

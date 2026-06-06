@@ -83,12 +83,20 @@ function UserRow({ u, allGroups, onFlash, onViewPerms, flashKind, flashText }) {
         />
       </td>
       <td className="table-td">
-        <button
-          className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
-          onClick={() => onViewPerms(u.email)}
-        >
-          <Eye size={11} /> View
-        </button>
+        <div className="flex flex-col gap-0.5">
+          <button
+            className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
+            onClick={() => onViewPerms(u.email)}
+          >
+            <Eye size={11} /> View
+          </button>
+          <Link
+            to={`/admin/users/${encodeURIComponent(u.email)}/tiers`}
+            className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
+          >
+            <Settings size={11} /> Tiers
+          </Link>
+        </div>
       </td>
       <td className="table-td">
         <RingCentralCell user={u} />
