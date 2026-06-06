@@ -12,6 +12,8 @@ from app.models.insurance_contact import (
     InsuranceContact, InsuranceContactHistory,
 )
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 
 router = APIRouter(prefix="/insurance-contacts", tags=["insurance-contacts"])
@@ -70,7 +72,7 @@ def _log(db: Session, contact_id, actor: str, action: str,
 @router.get("")
 def list_contacts(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_CONTACTS, Tier.VIEW)),
 ):
     rows = (db.query(InsuranceContact)
               .order_by(InsuranceContact.company.asc())
@@ -82,7 +84,7 @@ def list_contacts(
 def create_contact(
     payload: ContactIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:edit")),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_CONTACTS, Tier.WORK)),
 ):
     company = (payload.company or "").strip()
     if not company:
@@ -116,7 +118,7 @@ def _load(db: Session, contact_id: str) -> InsuranceContact:
 def get_contact(
     contact_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_CONTACTS, Tier.VIEW)),
 ):
     return _dump(_load(db, contact_id))
 
@@ -125,7 +127,7 @@ def get_contact(
 def patch_contact(
     contact_id: str, payload: ContactPatch,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:edit")),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_CONTACTS, Tier.WORK)),
 ):
     c = _load(db, contact_id)
     before = _dump(c)
@@ -165,7 +167,7 @@ def patch_contact(
 def delete_contact(
     contact_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:manage")),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_CONTACTS, Tier.MANAGE)),
 ):
     c = _load(db, contact_id)
     before = _dump(c)

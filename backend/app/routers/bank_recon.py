@@ -22,6 +22,8 @@ from app.config import settings
 from app.database import get_db
 from app.models.bai2 import Bai2Import, Bai2Transaction
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.bai2_generator import (
     FilterOptions, parse_csv_from_bytes, render_bai2, make_filename,
 )
@@ -175,7 +177,7 @@ class GenerateRequest(BaseModel):
 def generate_bai2(payload: GenerateRequest,
                   db: Session = Depends(get_db),
                   current_user: dict = Depends(get_current_user),
-                  _perm: dict = Depends(require_permission("bankrecon:generate"))):
+                  _perm: dict = Depends(requires_tier(Module.BANK_RECON, Tier.WORK))):
     """Build the BAI2 file from the CSV cached at preview_id, excluding any
     transactions whose dedup_key is in `excluded_keys`."""
     csv_key = f"bank-recon-csv/{payload.preview_id}{payload.ext}"

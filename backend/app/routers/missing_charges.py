@@ -28,6 +28,8 @@ from app.models.missing_charge import (
     ProviderUserMapping, STATUSES, TERMINAL_STATUSES,
 )
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services import missing_charges_import as importer
 from app.services import missing_charges_token as token_svc
 
@@ -80,7 +82,7 @@ def _charge_dict(c: MissingCharge, include_notes: bool = False) -> dict:
 
 @router.get("/picklists")
 def picklists(db: Session = Depends(get_db),
-               current_user: dict = Depends(require_permission("claim:read"))):
+               current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     def _distinct(col):
         return sorted({
             v for (v,) in db.query(col).filter(col.isnot(None)).distinct().all()
@@ -101,7 +103,7 @@ def picklists(db: Session = Depends(get_db),
 async def upload_report(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW)),
 ):
     """Parse an 'Appointment Missing Charges' Excel and upsert rows.
     Dedupe key: (patient_mrn, appointment_date)."""
@@ -143,7 +145,7 @@ async def upload_report(
 
 @router.get("/imports")
 def list_imports(db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("claim:read"))):
+                  current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     rows = (db.query(MissingChargeImport)
               .order_by(MissingChargeImport.uploaded_at.desc())
               .limit(50).all())
@@ -184,7 +186,7 @@ SORT_COLUMNS = {
 @router.get("")
 def list_charges(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW)),
     status: Optional[str] = None,
     provider: Optional[str] = None,
     payer: Optional[str] = None,
@@ -247,7 +249,7 @@ def list_charges(
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("claim:read"))):
+                current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     from sqlalchemy import func
     by_status = dict(
         db.query(MissingCharge.status, func.count(MissingCharge.id))
@@ -280,7 +282,7 @@ def _load(db: Session, charge_id: str) -> MissingCharge:
 @router.get("/{charge_id}")
 def get_charge(charge_id: str,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("claim:read"))):
+                current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     return _charge_dict(_load(db, charge_id), include_notes=True)
 
 
@@ -294,7 +296,7 @@ class ChargePatch(BaseModel):
 @router.patch("/{charge_id}")
 def patch_charge(charge_id: str, payload: ChargePatch,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("claim:read"))):
+                  current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     c = _load(db, charge_id)
     actor = current_user.get("email") or "system"
     data = payload.model_dump(exclude_unset=True)
@@ -337,7 +339,7 @@ class NoteIn(BaseModel):
 @router.post("/{charge_id}/notes", status_code=201)
 def add_note(charge_id: str, payload: NoteIn,
               db: Session = Depends(get_db),
-              current_user: dict = Depends(require_permission("claim:read"))):
+              current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     c = _load(db, charge_id)
     if not payload.body.strip():
         raise HTTPException(status_code=422, detail="note body required")
@@ -353,7 +355,7 @@ def add_note(charge_id: str, payload: NoteIn,
 @router.delete("/{charge_id}", status_code=204)
 def delete_charge(charge_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("user:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.MANAGE))):
     """Admin-only hard delete."""
     c = _load(db, charge_id)
     db.delete(c); db.commit()
@@ -369,7 +371,7 @@ class ProviderTokenMint(BaseModel):
 
 @router.post("/provider-tokens")
 def mint_provider_token(payload: ProviderTokenMint,
-                          current_user: dict = Depends(require_permission("claim:read"))):
+                          current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     """Mint a signed token for a provider. Anyone with claim:read can
     generate one (so a biller can copy the link and email it ad hoc).
     Returns both the raw token and the full portal URL."""
@@ -472,7 +474,7 @@ def provider_action(token: str, charge_id: str, payload: ProviderActionIn,
 
 @router.post("/email-providers")
 def email_providers(db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("claim:read"))):
+                     current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     """Send one email per provider with their open `needs_to_be_billed`
     rows + a signed portal link. Returns the send report.
 
@@ -501,7 +503,7 @@ def _mapping_dict(m: ProviderUserMapping) -> dict:
 @router.get("/provider-mappings")
 def list_provider_mappings(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW)),
 ):
     """Return the full mapping list + the set of provider names from
     active rows that DON'T have a mapping yet (so the UI can prompt the
@@ -556,7 +558,7 @@ def _normalize_name_to_tokens(name: str) -> Optional[tuple]:
 @router.post("/provider-mappings/auto-match")
 def auto_match_provider_mappings(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW)),
 ):
     """Walk unmapped provider names, pair each with an active Google-sync'd
     user whose display_name matches by tokens (first + last, case-insensitive,
@@ -635,7 +637,7 @@ class MappingIn(BaseModel):
 @router.post("/provider-mappings", status_code=201)
 def create_provider_mapping(payload: MappingIn,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("claim:read"))):
+                              current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     name = payload.provider_name.strip()
     email = (payload.user_email or "").strip().lower()
     ignored = bool(payload.is_ignored)
@@ -669,7 +671,7 @@ class MappingPatch(BaseModel):
 @router.patch("/provider-mappings/{mapping_id}")
 def patch_provider_mapping(mapping_id: str, payload: MappingPatch,
                              db: Session = Depends(get_db),
-                             current_user: dict = Depends(require_permission("claim:read"))):
+                             current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
     m = db.query(ProviderUserMapping).filter(ProviderUserMapping.id == mapping_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="mapping not found")
@@ -692,7 +694,7 @@ def patch_provider_mapping(mapping_id: str, payload: MappingPatch,
 @router.delete("/provider-mappings/{mapping_id}", status_code=204)
 def delete_provider_mapping(mapping_id: str,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("user:manage"))):
+                              current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.MANAGE))):
     m = db.query(ProviderUserMapping).filter(ProviderUserMapping.id == mapping_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="mapping not found")

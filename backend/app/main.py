@@ -142,7 +142,8 @@ app.include_router(adjustment_codes.router, prefix="/api", dependencies=BILLING_
 app.include_router(transaction_detail_imports.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(active_ar.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(active_ar_filter_presets.router, prefix="/api", dependencies=BILLING_READ)
-app.include_router(bank_recon.router, prefix="/api", dependencies=BANKRECON_READ)
+app.include_router(bank_recon.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.BANK_RECON, Tier.VIEW))])
 # Checklist is open to all authenticated users (each user works their own list)
 app.include_router(checklist.router, prefix="/api")
 # Recalls require recall:work / recall:manage — gates inside each handler

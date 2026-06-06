@@ -37,7 +37,15 @@ PERM_TO_TIER: dict[str, list[tuple[Module, Tier]]] = {
     "fax:send": [],
 
     # ─── Active AR family ───────────────────────────────────────────
-    "claim:read":         [(Module.ACTIVE_AR, Tier.VIEW)],
+    # claim:read historically gated more than just Active AR — Missing
+    # Charges, Bank Recon, and Insurance Documents/Contacts also lived
+    # behind it. Bridge to View on each billing module so anyone who
+    # currently reads claims keeps seeing the rest of billing.
+    "claim:read":         [(Module.ACTIVE_AR, Tier.VIEW),
+                           (Module.MISSING_CHARGES, Tier.VIEW),
+                           (Module.INSURANCE_DOCS, Tier.VIEW),
+                           (Module.INSURANCE_CONTACTS, Tier.VIEW),
+                           (Module.BANK_RECON, Tier.VIEW)],
     "claim:edit":         [(Module.ACTIVE_AR, Tier.WORK)],
     "claim:appeal":       [(Module.ACTIVE_AR, Tier.WORK)],
     "claim:settle_line":  [(Module.ACTIVE_AR, Tier.WORK)],
