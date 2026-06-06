@@ -1,8 +1,8 @@
-"""RBAC groups + per-group permission assignments + user memberships.
+"""RBAC groups + user memberships.
 
-Permissions themselves live in code (app/services/permissions.py PERMISSIONS).
-Groups, group→permission rows, and user→group memberships live here so admins
-can edit them at runtime without a deploy.
+Per-module tier grants for a group live in `group_module_tiers`
+(see app/models/module_tier.py). The legacy `group_permissions` table
+was dropped in Phase 4 of the permissions redesign.
 """
 from __future__ import annotations
 

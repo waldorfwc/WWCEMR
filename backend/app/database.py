@@ -445,13 +445,27 @@ def _apply_lightweight_migrations():
                   {"v": max(int(max_n) + 1, 1)})
 
 
+# practice_role enum → seed group name. Used only by the one-time
+# template-targeting migration below. Kept inline so we can drop
+# app/services/permissions.py entirely.
+_PRACTICE_ROLE_TO_GROUP = {
+    "office_manager":    "Office Manager",
+    "provider":          "Provider",
+    "ma":                "Medical Assistant",
+    "front_desk":        "Front Desk",
+    "billing_coding":    "Billing — Coding",
+    "billing_payments":  "Billing — Payments",
+    "billing_denials":   "Billing — Denials",
+    "caribcall":         "Front Desk",
+}
+
+
 def _migrate_template_targeting():
     """One-time: link each task template's legacy `role` value to the
     matching seed Group via task_template_groups. Idempotent — only runs
     when assigned_groups is empty for that template."""
     from app.models.checklist import TaskTemplate
     from app.models.groups import Group
-    from app.services.permissions import PRACTICE_ROLE_TO_GROUP
 
     db = SessionLocal()
     try:
@@ -466,7 +480,7 @@ def _migrate_template_targeting():
                 continue
             if not tmpl.role:
                 continue
-            target_name = PRACTICE_ROLE_TO_GROUP.get(tmpl.role)
+            target_name = _PRACTICE_ROLE_TO_GROUP.get(tmpl.role)
             if not target_name:
                 continue
             grp = groups_by_name.get(target_name)
@@ -479,65 +493,3 @@ def _migrate_template_targeting():
         db.close()
 
 
-def _seed_default_groups():
-    """Idempotently seed RBAC default groups and migrate existing users.
-
-    Safe to call on every boot. On the first run: creates the 9 default
-    groups, sets their permission rows, and assigns existing users into
-    groups matching their legacy `group` + `practice_role`. On subsequent
-    runs: only ensures the seeded groups exist; never touches user
-    memberships (admin owns those once migration has happened).
-    """
-    from app.models.groups import Group, GroupPermission
-    from app.models.user import User
-    from app.services.permissions import (
-        DEFAULT_GROUPS, legacy_groups_for_user,
-    )
-
-    db = SessionLocal()
-    try:
-        existing_by_name = {g.name: g for g in db.query(Group).all()}
-        first_time = len(existing_by_name) == 0
-
-        for spec in DEFAULT_GROUPS:
-            grp = existing_by_name.get(spec["name"])
-            if grp is None:
-                grp = Group(
-                    name=spec["name"],
-                    description=spec["description"],
-                    system_protected=spec["system_protected"],
-                )
-                db.add(grp)
-                db.flush()  # get id
-                for perm_str in spec["permissions"]:
-                    db.add(GroupPermission(group_id=grp.id, permission=perm_str,
-                                           granted_by="system:seed"))
-                existing_by_name[spec["name"]] = grp
-            elif grp.system_protected:
-                # System-protected groups get any missing spec permissions
-                # backfilled on every boot. This is how new permissions
-                # added to the catalog (e.g. training:authorize) reach
-                # the Admin / Office Manager seed groups without manual
-                # intervention. Custom (non-protected) groups are left
-                # alone — admins manage their permissions in-app.
-                existing_perms = {gp.permission for gp in grp.permissions}
-                for perm_str in spec["permissions"]:
-                    if perm_str not in existing_perms:
-                        db.add(GroupPermission(group_id=grp.id, permission=perm_str,
-                                               granted_by="system:seed-backfill"))
-
-        db.commit()
-
-        if first_time:
-            # One-time migration: assign each existing user to seed groups
-            # that match their legacy fields. Skip users with no legacy data.
-            for u in db.query(User).all():
-                legacy_group = u.group.value if hasattr(u.group, "value") else u.group
-                wanted_names = legacy_groups_for_user(legacy_group, u.practice_role)
-                for gname in wanted_names:
-                    grp = existing_by_name.get(gname)
-                    if grp and grp not in u.groups:
-                        u.groups.append(grp)
-            db.commit()
-    finally:
-        db.close()

@@ -17,7 +17,6 @@ from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.services import checklist_service
 from app.services import checklist_seed
-from app.services.permissions import ALL_PERMISSIONS
 
 
 router = APIRouter(prefix="/checklist", tags=["checklist"])
@@ -341,9 +340,10 @@ def _validate_template_fields(payload: TemplatePayload, db: Session) -> None:
         raise HTTPException(status_code=422, detail="weekday required for weekly frequency")
     if payload.frequency == "monthly" and payload.day_of_month is None and not payload.recurrence_kind:
         raise HTTPException(status_code=422, detail="day_of_month required for monthly frequency")
-    if payload.assigned_permission and payload.assigned_permission not in ALL_PERMISSIONS:
-        raise HTTPException(status_code=422,
-                            detail=f"unknown permission: {payload.assigned_permission}")
+    # assigned_permission is a deprecated targeting field — kept on the
+    # column for backwards compat but no longer validated against any
+    # catalog (the legacy PERMISSIONS catalog was removed in Phase 4 of
+    # the permissions redesign).
     if payload.assigned_group_ids:
         found = db.query(Group).filter(Group.id.in_(payload.assigned_group_ids)).all()
         if len(found) != len(payload.assigned_group_ids):
