@@ -12,6 +12,7 @@ from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
 from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, docusign as docusign_router, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts
 from app.routers import google_sync as google_sync_router
+from app.routers import admin_tiers
 from app.routers import portal_preview
 from app.routers import stripe_payments
 from app.routers import surgery_messages
@@ -131,6 +132,9 @@ app.include_router(fax_batch.router, prefix="/api", dependencies=FAX_READ)
 app.include_router(fax_batch.log_router, prefix="/api", dependencies=FAX_READ)
 app.include_router(admin_users.router, prefix="/api", dependencies=USER_MANAGE)
 app.include_router(admin_groups.router, prefix="/api", dependencies=USER_MANAGE)
+# admin_tiers does its own per-route auth (Super Admin / per-module Admin),
+# so it intentionally has no router-level dependency.
+app.include_router(admin_tiers.router, prefix="/api")
 app.include_router(adjustment_codes.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(transaction_detail_imports.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(active_ar.router, prefix="/api", dependencies=BILLING_READ)
