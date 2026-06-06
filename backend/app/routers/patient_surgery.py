@@ -590,6 +590,42 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
 
+    # Void any still-live BoldSign consent envelopes so the patient can't
+    # complete a consent for a surgery they just cancelled. Skip terminal
+    # statuses (signed/completed/voided/declined/expired). Mirrors the
+    # coordinator-cancel path.
+    from app.services.boldsign_envelopes import (
+        void_envelope_row, BoldSignEnvelopeError,
+    )
+    TERMINAL = {"signed", "completed", "voided", "declined", "expired"}
+    for env in (s.consent_envelopes or []):
+        if (env.status or "").lower() in TERMINAL:
+            continue
+        try:
+            void_envelope_row(db, env, reason="Patient self-cancelled")
+        except Exception as ve:
+            import logging
+            logging.getLogger(__name__).warning(
+                "BoldSign void on patient cancel failed for %s: %s",
+                env.id, ve,
+            )
+
+    # HIPAA audit — the central audit_logs row. cancelled_by on the
+    # SurgeryCancellation row is canonical, but a CANCEL action here
+    # keeps the per-resource audit timeline complete.
+    from app.services.audit_service import log_action
+    log_action(
+        db,
+        action="CANCEL",
+        resource_type="surgery",
+        resource_id=str(s.id),
+        patient_id=s.chart_number or None,
+        user_id="patient:self-service",
+        user_name="patient (self-service)",
+        description=(f"Patient self-cancelled (fee_required: {fee_required}, "
+                     f"refund_required: {refund_required})"),
+    )
+
     msg = "Your surgery has been cancelled."
     if fee_required:
         msg += (" Per practice policy, cancellations within 14 days of surgery "
