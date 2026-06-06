@@ -23,6 +23,28 @@ from app.permissions.resolver import effective_tier
 from app.routers.auth import get_current_user
 
 
+def requires_super_admin() -> Callable:
+    """Return a FastAPI dependency that 403s unless the current user is
+    a Super Admin. Use for cross-module sysop endpoints (user lifecycle,
+    Google directory sync, etc.) that don't fit any single module."""
+
+    def _dep(
+        current_user: dict = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ):
+        from app.models.user import User
+        email = (current_user.get("email") or "").lower().strip()
+        u = db.query(User).filter(User.email == email).first()
+        if u is None or not u.is_super_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Super Admin required",
+            )
+        return current_user
+
+    return _dep
+
+
 def requires_tier(module: Module, min_tier: Tier) -> Callable:
     """Return a FastAPI dependency that 403s if the current user's
     effective tier on `module` is less than `min_tier`."""

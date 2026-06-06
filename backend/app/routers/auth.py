@@ -189,34 +189,42 @@ def get_me(user: dict = Depends(get_current_user),
            db: Session = Depends(get_db)):
     """Return current authenticated user with derived RBAC flags.
 
-    `is_admin / is_billing / is_clinical` are computed from effective
-    permissions, NOT the legacy `group` enum. Legacy `group` is still
-    returned for any UI not yet migrated.
+    The legacy `is_admin` / `is_billing` / `is_clinical` booleans are
+    still returned for frontend nav gating, but now computed from the
+    per-module tier model:
+      - is_admin    = caller is a Super Admin
+      - is_billing  = caller has Active AR:View or higher
+      - is_clinical = caller has Chart:View AND no billing/admin reach
     """
-    from app.services.permissions import effective_permissions
+    from app.permissions.catalog import Module, Tier
+    from app.permissions.resolver import effective_tier
+
     email = (user.get("email") or "").lower().strip()
     user_row = db.query(User).filter(User.email == email).first()
-    perms = effective_permissions(user_row) if user_row else set()
-    is_admin = "user:manage" in perms
-    has_billing = "claim:read" in perms
-    has_chart = "chart:read" in perms or "chart:edit" in perms
+    is_super_admin = bool(user_row and user_row.is_super_admin)
+    active_ar_tier = effective_tier(db, email, Module.ACTIVE_AR)
+    chart_tier     = effective_tier(db, email, Module.CHART)
+
+    has_billing = active_ar_tier >= Tier.VIEW
+    has_chart   = chart_tier >= Tier.VIEW
+
+    # Compute the user's tier on every module for the frontend nav.
+    module_tiers = {
+        m.value: int(effective_tier(db, email, m)) for m in Module
+    }
+
     return {
         "email": user.get("email"),
         "name": user.get("name"),
         "picture": user.get("picture"),
-        # Derived from group memberships / permissions (Phase 5).
-        # Semantic match for the legacy enum:
-        #   is_admin    = full admin (gates /admin)
-        #   is_billing  = anyone with claim:read (sees Active AR, billing nav)
-        #   is_clinical = EXCLUSIVELY clinical — chart access only, no
-        #                 billing/admin visibility. Used to redirect to the
-        #                 simplified clinical view; must not be true for
-        #                 admins/billing users who happen to also have charts.
-        "is_admin":    is_admin,
+        # Legacy nav flags, derived from tiers:
+        "is_admin":    is_super_admin,
         "is_billing":  has_billing,
-        "is_clinical": has_chart and not has_billing and not is_admin,
-        "effective_permissions": sorted(perms),
-        # Legacy — kept for backwards compat until all callers migrated.
+        "is_clinical": has_chart and not has_billing and not is_super_admin,
+        # New: per-module effective tier (ints from the Tier IntEnum).
+        "module_tiers":  module_tiers,
+        "is_super_admin": is_super_admin,
+        # Legacy "group" enum — kept until every caller migrates.
         "group": user.get("group"),
     }
 
@@ -242,69 +250,42 @@ def my_profile(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Authenticated user's profile + group memberships + effective permissions.
+    """Authenticated user's profile + group memberships + effective tiers.
 
     Visible to any logged-in user — this is the "what can I do?" page.
     """
-    from app.services.permissions import effective_permissions, PERMISSIONS
+    from app.permissions.catalog import MODULE_REGISTRY, Module, Tier
+    from app.permissions.resolver import effective_tier_with_source
+
     email = (current_user.get("email") or "").lower().strip()
     user_row = db.query(User).filter(User.email == email).first()
     if user_row is None:
         raise HTTPException(status_code=404, detail="user not in directory")
 
-    perms = sorted(effective_permissions(user_row))
     groups = [
         {"id": g.id, "name": g.name, "description": g.description}
         for g in user_row.groups
     ]
-    extras = list(user_row.permissions_extra or [])
-    revoked = list(user_row.permissions_revoked or [])
+    tiers = []
+    for m in Module:
+        result = effective_tier_with_source(db, email, m)
+        tiers.append({
+            "module": m.value,
+            "label": MODULE_REGISTRY[m].label,
+            "tier": result.tier.name.lower(),
+            "source_kind": result.source_kind,
+            "source_label": result.source_label,
+        })
     return {
         "email": user_row.email,
         "display_name": user_row.display_name,
         "legacy_group": user_row.group.value if hasattr(user_row.group, "value") else user_row.group,
+        "is_super_admin": bool(user_row.is_super_admin),
         "groups": groups,
-        "permissions_extra": extras,
-        "permissions_revoked": revoked,
-        "effective_permissions": perms,
-        # Catalog descriptions so the UI can render a friendly list
-        "permission_descriptions": {p: PERMISSIONS[p] for p in perms if p in PERMISSIONS},
+        "tiers": tiers,
     }
 
 
-def require_permission(*needed: str):
-    """FastAPI dependency factory: 403 unless the current user has *all*
-    of the listed permissions in their effective set.
-
-    Single-permission usage:
-        Depends(require_permission("payment:post"))
-
-    Multi-permission usage (rare — passes only if user has every one):
-        Depends(require_permission("claim:edit", "claim:writeoff"))
-
-    Use OR semantics by composing two routes or by adding a new bundle
-    permission rather than mixing this dependency with custom logic.
-    """
-    if not needed:
-        raise ValueError("require_permission needs at least one permission string")
-
-    def _dep(
-        current_user: dict = Depends(get_current_user),
-        db: Session = Depends(get_db),
-    ):
-        from app.services.permissions import effective_permissions
-        email = (current_user.get("email") or "").lower().strip()
-        user_row = db.query(User).filter(User.email == email).first()
-        perms = effective_permissions(user_row)
-        missing = [p for p in needed if p not in perms]
-        if missing:
-            raise HTTPException(
-                status_code=403,
-                detail=f"forbidden — missing permission(s): {', '.join(missing)}",
-            )
-        # Stash the resolved perms onto the returned dict so handlers can
-        # introspect without re-querying.
-        out = dict(current_user)
-        out["effective_permissions"] = sorted(perms)
-        return out
-    return _dep
+# require_permission was removed in Phase 4. Use:
+#   from app.permissions.dependencies import requires_tier
+#   Depends(requires_tier(Module.X, Tier.Y))

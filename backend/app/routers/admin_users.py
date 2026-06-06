@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User, UserGroup, PRACTICE_ROLES
 from app.services.audit_service import log_action
-from app.routers.auth import get_current_user, require_permission
+from app.routers.auth import get_current_user
+from app.permissions.dependencies import requires_super_admin
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
 
@@ -149,7 +150,7 @@ def update_user(
 def delete_user(
     email: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:manage")),
+    current_user: dict = Depends(requires_super_admin()),
 ):
     """Hard-delete a user. Refuses to delete:
       • yourself (avoid lockout)

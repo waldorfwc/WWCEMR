@@ -25,7 +25,7 @@ from app.models.surgery import (
     SURGERY_COMPLEXITY_VALUES, SURGERY_DURATION_SOURCES,
     SURGERY_STATUS_VALUES, SURGERY_FACILITY_VALUES, SURGERY_MAX_MINUTES,
 )
-from app.routers.auth import get_current_user, require_permission
+from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.services.audit_service import log_action

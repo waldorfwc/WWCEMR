@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.google_sync import GoogleSyncExclusion, GoogleSyncRun
-from app.routers.auth import require_permission
+from app.routers.auth import get_current_user
+from app.permissions.dependencies import requires_super_admin
 from app.services import google_sync as svc
 
 router = APIRouter(prefix="/admin/google-sync", tags=["admin-google-sync"])
@@ -30,7 +31,7 @@ class ExclusionPayload(BaseModel):
 
 @router.get("/status")
 def status(db: Session = Depends(get_db),
-           current_user: dict = Depends(require_permission("user:manage"))):
+           current_user: dict = Depends(requires_super_admin())):
     """Last-run summary + whether the sync is configured."""
     last = (db.query(GoogleSyncRun)
               .order_by(GoogleSyncRun.started_at.desc())
@@ -43,14 +44,14 @@ def status(db: Session = Depends(get_db),
 
 @router.post("/run")
 def run_now(db: Session = Depends(get_db),
-            current_user: dict = Depends(require_permission("user:manage"))):
+            current_user: dict = Depends(requires_super_admin())):
     """Trigger an immediate sync. Returns the run summary."""
     return svc.run_sync(db, triggered_by=current_user.get("email") or "manual")
 
 
 @router.get("/preview")
 def preview(db: Session = Depends(get_db),
-            current_user: dict = Depends(require_permission("user:manage"))):
+            current_user: dict = Depends(requires_super_admin())):
     """Google emails that would be created on the next sync — useful for
     pre-excluding service accounts before they get auto-provisioned."""
     if not svc.is_configured():
@@ -64,7 +65,7 @@ def preview(db: Session = Depends(get_db),
 
 @router.get("/runs")
 def list_runs(limit: int = 20, db: Session = Depends(get_db),
-              current_user: dict = Depends(require_permission("user:manage"))):
+              current_user: dict = Depends(requires_super_admin())):
     rows = (db.query(GoogleSyncRun)
               .order_by(GoogleSyncRun.started_at.desc())
               .limit(limit).all())
@@ -75,7 +76,7 @@ def list_runs(limit: int = 20, db: Session = Depends(get_db),
 
 @router.get("/exclusions")
 def list_exclusions(db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("user:manage"))):
+                    current_user: dict = Depends(requires_super_admin())):
     rows = db.query(GoogleSyncExclusion).order_by(GoogleSyncExclusion.email).all()
     return {
         "exclusions": [
@@ -92,7 +93,7 @@ def list_exclusions(db: Session = Depends(get_db),
 
 @router.post("/exclusions", status_code=201)
 def add_exclusion(payload: ExclusionPayload, db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("user:manage"))):
+                  current_user: dict = Depends(requires_super_admin())):
     email = (payload.email or "").lower().strip()
     if not email or "@" not in email:
         raise HTTPException(status_code=422, detail="email required (must include @)")
@@ -116,7 +117,7 @@ def add_exclusion(payload: ExclusionPayload, db: Session = Depends(get_db),
 
 @router.delete("/exclusions/{email}", status_code=204)
 def remove_exclusion(email: str, db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("user:manage"))):
+                     current_user: dict = Depends(requires_super_admin())):
     row = (db.query(GoogleSyncExclusion)
              .filter(GoogleSyncExclusion.email == email.lower().strip())
              .first())

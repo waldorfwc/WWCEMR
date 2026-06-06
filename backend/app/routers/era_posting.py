@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.parsers.era_835 import Era835Parser
-from app.routers.auth import get_current_user, require_permission
+from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.services.idempotency import idempotency_for

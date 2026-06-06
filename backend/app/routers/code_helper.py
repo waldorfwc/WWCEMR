@@ -19,7 +19,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.code_helper import CodeHelperDenial, CodeHelperRequest  # noqa: F401
-from app.routers.auth import require_permission
+from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 
 router = APIRouter(prefix="/billing/code-helper", tags=["code-helper"])
@@ -60,7 +62,7 @@ def list_denials(
     db: Session = Depends(get_db),
     payer:  Optional[str]  = None,
     active: Optional[bool] = True,
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW)),
 ):
     q = db.query(CodeHelperDenial)
     if active is True:
@@ -79,7 +81,7 @@ def list_denials(
 def create_denial(
     payload: DenialIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:edit")),
+    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     if payload.code_type not in ("cpt", "icd10"):
         raise HTTPException(422, "code_type must be 'cpt' or 'icd10'")
@@ -99,7 +101,7 @@ def patch_denial(
     denial_id: str,
     payload: DenialPatch,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:edit")),
+    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     d = db.query(CodeHelperDenial).filter(CodeHelperDenial.id == denial_id).first()
     if not d:
@@ -118,7 +120,7 @@ def patch_denial(
 def delete_denial(
     denial_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:manage")),
+    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.MANAGE)),
 ):
     d = db.query(CodeHelperDenial).filter(CodeHelperDenial.id == denial_id).first()
     if not d:
@@ -161,7 +163,7 @@ def create_request(
     note_pdf:   Optional[UploadFile] = File(None),
     payer_name: Optional[str]        = Form(None),
     db: Session = Depends(get_db),
-    user: dict = Depends(require_permission("claim:edit")),
+    user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     if not note_text and not note_pdf:
         raise HTTPException(422, "Provide note_text or note_pdf")
@@ -254,7 +256,7 @@ def list_requests(
     per_page: int = Query(50, ge=1, le=200),
     patient_id: Optional[str] = None,
     payer:      Optional[str] = None,
-    _user = Depends(require_permission("claim:read")),
+    _user = Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW)),
 ):
     q = db.query(CodeHelperRequest)
     if patient_id:
@@ -272,7 +274,7 @@ def list_requests(
 def get_request(
     request_id: str,
     db: Session = Depends(get_db),
-    _user = Depends(require_permission("claim:read")),
+    _user = Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW)),
 ):
     r = db.query(CodeHelperRequest).filter(CodeHelperRequest.id == request_id).first()
     if not r:
@@ -284,7 +286,7 @@ def get_request(
 def patch_request(
     request_id: str, payload: RequestPatch,
     db: Session = Depends(get_db),
-    _user = Depends(require_permission("claim:edit")),
+    _user = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     r = db.query(CodeHelperRequest).filter(CodeHelperRequest.id == request_id).first()
     if not r:
@@ -300,7 +302,7 @@ def patch_request(
 def delete_request(
     request_id: str,
     db: Session = Depends(get_db),
-    _user = Depends(require_permission("user:manage")),
+    _user = Depends(requires_tier(Module.ACTIVE_AR, Tier.MANAGE)),
 ):
     r = db.query(CodeHelperRequest).filter(CodeHelperRequest.id == request_id).first()
     if not r:

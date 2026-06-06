@@ -13,7 +13,7 @@ from app.database import get_db
 from app.models.checklist import TaskTemplate
 from app.models.training import TrainerAuthorization, TrainingCertification
 from app.models.user import User
-from app.routers.auth import get_current_user, require_permission
+from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.services import training_service

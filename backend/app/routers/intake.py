@@ -104,7 +104,7 @@ from app.services.patient_resolver import (
     match_intake_to_charts,
 )
 from app.services.audit_service import log_action
-from app.routers.auth import require_permission
+from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.config import settings

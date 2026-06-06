@@ -11,7 +11,9 @@ from app.models.document import PatientDocument
 from app.models.patient_directory import IntakeDocument
 from app.services.fax_service import send_fax, check_fax_status
 from app.services.audit_service import log_action
-from app.routers.auth import get_current_user, require_permission
+from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(prefix="/fax", tags=["fax"])
 
@@ -20,7 +22,7 @@ router = APIRouter(prefix="/fax", tags=["fax"])
 def fax_document(
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("fax:send")),
+    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """
     Legacy single-doc fax. Delegates to the new send-batch path so every

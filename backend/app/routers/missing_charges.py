@@ -27,7 +27,7 @@ from app.models.missing_charge import (
     MissingCharge, MissingChargeImport, MissingChargeNote,
     ProviderUserMapping, STATUSES, TERMINAL_STATUSES,
 )
-from app.routers.auth import require_permission
+from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.services import missing_charges_import as importer

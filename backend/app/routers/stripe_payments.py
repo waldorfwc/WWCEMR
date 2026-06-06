@@ -24,7 +24,7 @@ from app.models.stripe_payment import (
     SURGERY_PAYMENT_STATUSES,
 )
 from app.models.surgery import Surgery
-from app.routers.auth import require_permission
+from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.routers.patient_surgery import require_patient_token

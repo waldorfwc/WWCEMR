@@ -29,7 +29,7 @@ from app.models.larc import (
     LarcDeviceType, LarcInventoryCount, LarcManualSection, LarcMilestone,
     LarcOwedPatient, LarcPharmacy,
 )
-from app.routers.auth import require_permission
+from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.services.larc_workflow import (

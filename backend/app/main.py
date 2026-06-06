@@ -25,26 +25,11 @@ from app.models import patient_email as _patient_email_models  # noqa: F401
 from app.models import patient_sms as _patient_sms_models  # noqa: F401
 from app.models import fee_schedule as _fee_schedule_models  # noqa: F401
 
-# RBAC guards. Every router below gates on a specific permission, computed
-# from the user's group memberships + per-user extras/revokes (see
-# app/services/permissions.py). Specific routers gate on tighter permissions
-# (audit:read, bankrecon:read, report:financial, user:manage).
-BILLING_READ        = [Depends(auth.require_permission("claim:read"))]
-USER_MANAGE         = [Depends(auth.require_permission("user:manage"))]
-AUDIT_READ          = [Depends(auth.require_permission("audit:read"))]
-BANKRECON_READ      = [Depends(auth.require_permission("bankrecon:read"))]
-REPORT_FINANCIAL    = [Depends(auth.require_permission("report:financial"))]
-PATIENT_READ        = [Depends(auth.require_permission("patient:read"))]
-DOCUMENT_READ       = [Depends(auth.require_permission("document:read"))]
-CHART_READ          = [Depends(auth.require_permission("chart:read"))]
-INTAKE_READ         = [Depends(auth.require_permission("intake:read"))]
-FAX_READ            = [Depends(auth.require_permission("fax:read"))]
-# Authentication only — requires a valid session (cookie or bearer) but no
-# specific permission. Use sparingly; only for routers that are truly
-# permission-less (auth/me, etc.). PHI routers should pick a *_READ above
-# so role-less accounts (shared mailboxes, ghost auto-provisioned users)
-# can't read patient data.
-AUTH_ONLY           = [Depends(auth.get_current_user)]
+# Per-module tier gates live in app/permissions/dependencies.py. Each
+# include_router below uses `requires_tier(Module.X, Tier.Y)` directly.
+# The legacy verb-based catalog (BILLING_READ / AUDIT_READ / etc.) was
+# removed in Phase 4 of the permissions redesign.
+from app.permissions.dependencies import requires_super_admin
 
 
 @asynccontextmanager
@@ -132,13 +117,14 @@ app.include_router(intake.router, prefix="/api",
                    dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(chart.router, prefix="/api",
                    dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
-app.include_router(fax.router, prefix="/api", dependencies=FAX_READ)
+app.include_router(fax.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
 app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.MANAGE))])
-app.include_router(fax_batch.router, prefix="/api", dependencies=FAX_READ)
-app.include_router(fax_batch.log_router, prefix="/api", dependencies=FAX_READ)
-app.include_router(admin_users.router, prefix="/api", dependencies=USER_MANAGE)
-app.include_router(admin_groups.router, prefix="/api", dependencies=USER_MANAGE)
+app.include_router(fax_batch.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
+app.include_router(fax_batch.log_router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
+app.include_router(admin_users.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
+app.include_router(admin_groups.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
 # admin_tiers does its own per-route auth (Super Admin / per-module Admin),
 # so it intentionally has no router-level dependency.
 app.include_router(admin_tiers.router, prefix="/api")
@@ -198,7 +184,7 @@ app.include_router(personal_tasks.router,  prefix="/api")
 # Code Helper — AI-assisted CPT + ICD-10 coding; handlers gate by get_current_user
 app.include_router(code_helper.router, prefix="/api")
 # Google Workspace sync — admin-only
-app.include_router(google_sync_router.router, prefix="/api", dependencies=USER_MANAGE)
+app.include_router(google_sync_router.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
 # Stripe payments — coordinator endpoints + patient self-service + webhook
 app.include_router(stripe_payments.router, prefix="/api")
 # Staff messaging — per-surgery thread + unread inbox; router carries /api/staff prefix

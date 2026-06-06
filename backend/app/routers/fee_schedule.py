@@ -13,7 +13,9 @@ from app.models.fee_schedule import (
     SurgeryFeeScheduleEntry, SurgeryCciEdit, CCI_ACTIONS,
 )
 from app.services.fee_schedule_calc import calculate_allowed_for_surgery
-from app.routers.auth import require_permission
+from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(prefix="/surgery", tags=["fee-schedule"])
 
@@ -44,7 +46,7 @@ def _entry_dict(e: SurgeryFeeScheduleEntry) -> dict:
 def list_entries(insurance: Optional[str] = Query(None),
                   cpt: Optional[str] = Query(None),
                   db: Session = Depends(get_db),
-                  _: dict = Depends(require_permission("surgery:read"))):
+                  _: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     q = db.query(SurgeryFeeScheduleEntry)
     if insurance:
         q = q.filter(SurgeryFeeScheduleEntry.insurance_name == insurance)
@@ -58,7 +60,7 @@ def list_entries(insurance: Optional[str] = Query(None),
 @router.post("/fee-schedule", status_code=201)
 def upsert_entry(payload: FeeEntryIn,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("surgery:work"))):
+                  current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Insert or update the row for (insurance_name, cpt_code)."""
     from datetime import datetime
     insurance = (payload.insurance_name or "").strip()
@@ -101,7 +103,7 @@ def upsert_entry(payload: FeeEntryIn,
 @router.delete("/fee-schedule/{entry_id}", status_code=204)
 def delete_entry(entry_id: str,
                   db: Session = Depends(get_db),
-                  _: dict = Depends(require_permission("surgery:work"))):
+                  _: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     row = (db.query(SurgeryFeeScheduleEntry)
              .filter(SurgeryFeeScheduleEntry.id == entry_id).first())
     if row is None:
@@ -132,7 +134,7 @@ def _cci_dict(e: SurgeryCciEdit) -> dict:
 
 @router.get("/cci-edits")
 def list_cci(db: Session = Depends(get_db),
-              _: dict = Depends(require_permission("surgery:read"))):
+              _: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = (db.query(SurgeryCciEdit)
               .order_by(SurgeryCciEdit.cpt_primary,
                         SurgeryCciEdit.cpt_secondary).all())
@@ -142,7 +144,7 @@ def list_cci(db: Session = Depends(get_db),
 @router.post("/cci-edits", status_code=201)
 def upsert_cci(payload: CciEditIn,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("surgery:work"))):
+                current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     primary   = (payload.cpt_primary   or "").strip()
     secondary = (payload.cpt_secondary or "").strip()
     if not primary or not secondary:
@@ -176,7 +178,7 @@ def upsert_cci(payload: CciEditIn,
 @router.delete("/cci-edits/{edit_id}", status_code=204)
 def delete_cci(edit_id: str,
                 db: Session = Depends(get_db),
-                _: dict = Depends(require_permission("surgery:work"))):
+                _: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     row = (db.query(SurgeryCciEdit)
              .filter(SurgeryCciEdit.id == edit_id).first())
     if row is None:
@@ -190,7 +192,7 @@ def delete_cci(edit_id: str,
 @router.get("/{surgery_id}/fee-schedule/preview")
 def preview_from_fee_schedule(surgery_id: str,
                                 db: Session = Depends(get_db),
-                                _: dict = Depends(require_permission("surgery:read"))):
+                                _: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Dry-run: show what the allowed amount would be without changing
     the surgery row."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -215,7 +217,7 @@ def preview_from_fee_schedule(surgery_id: str,
 @router.post("/{surgery_id}/fee-schedule/apply")
 def apply_from_fee_schedule(surgery_id: str,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("surgery:work"))):
+                              current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Compute the allowed amount and write it to Surgery.allowed_amount.
     Returns the same payload as /preview plus the updated value."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
