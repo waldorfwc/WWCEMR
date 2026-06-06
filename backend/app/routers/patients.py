@@ -8,6 +8,8 @@ from datetime import date
 from app.database import get_db
 from app.models.patient import Patient
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.audit_service import log_action, log_view
 
 router = APIRouter(prefix="/patients", tags=["patients"])
@@ -54,7 +56,7 @@ def list_patients(
 
 @router.post("")
 def create_patient(data: PatientCreate, db: Session = Depends(get_db),
-                    _: dict = Depends(require_permission("patient:create"))):
+                    _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     existing = db.query(Patient).filter(Patient.patient_id == data.patient_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="Patient ID already exists")
@@ -80,7 +82,7 @@ def get_patient(patient_id: str, db: Session = Depends(get_db),
 
 @router.patch("/{patient_id}")
 def update_patient(patient_id: str, data: dict, db: Session = Depends(get_db),
-                    _: dict = Depends(require_permission("patient:edit"))):
+                    _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     p = db.query(Patient).filter(Patient.id == patient_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Patient not found")

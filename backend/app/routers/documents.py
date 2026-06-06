@@ -19,6 +19,8 @@ from app.models.document import PatientDocument
 from app.config import settings
 from app.services.audit_service import log_action
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -49,7 +51,7 @@ def _parse_filename(filename: str):
 def index_documents(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    _: dict = Depends(require_permission("user:manage")),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.MANAGE)),
 ):
     """
     Scan the documents directory and index all PDFs into the database.

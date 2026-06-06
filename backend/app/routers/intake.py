@@ -105,6 +105,8 @@ from app.services.patient_resolver import (
 )
 from app.services.audit_service import log_action
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.config import settings
 
 router = APIRouter(prefix="/intake", tags=["intake"])
@@ -122,7 +124,7 @@ def _safe_counts(obj):
 
 @router.post("/build-directory")
 def build_directory(background_tasks: BackgroundTasks,
-                     _: dict = Depends(require_permission("user:manage"))):
+                     _: dict = Depends(requires_tier(Module.CHART, Tier.MANAGE))):
     """Walk Phreesia Demographic PDFs and populate the patient directory."""
     if not os.path.isdir(settings.documents_dir):
         raise HTTPException(status_code=404, detail=f"Documents dir not found: {settings.documents_dir}")
@@ -189,7 +191,7 @@ def list_directory(
 def start_indexing(
     background_tasks: BackgroundTasks,
     intake_dir: str = "~/Downloads/wwc_intake_docs",
-    _: dict = Depends(require_permission("user:manage")),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.MANAGE)),
 ):
     """Walk an intake archive directory and index all files."""
     abs_dir = os.path.expanduser(intake_dir)
@@ -214,7 +216,7 @@ def _bg_index_and_match(intake_dir: str):
 
 @router.post("/match")
 def run_matching(db: Session = Depends(get_db),
-                  _: dict = Depends(require_permission("intake:edit"))):
+                  _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     """Re-run matching against the current patient directory."""
     result = match_intake_to_charts(db)
     log_action(db, "INTAKE_MATCH", "intake", description=f"Matching run: {result}")
@@ -345,7 +347,7 @@ def list_intake_patients(
 
 @router.patch("/documents/{doc_id}/override-match")
 def override_match(doc_id: str, chart_number: str, db: Session = Depends(get_db),
-                    _: dict = Depends(require_permission("intake:edit"))):
+                    _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     """Manually assign a chart number to an intake document (or all docs for that patient)."""
     doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
     if not doc:

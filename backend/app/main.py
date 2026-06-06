@@ -117,7 +117,8 @@ app.include_router(service_line_adjustments.router, prefix="/api", dependencies=
 app.include_router(charge_imports.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(claim_id_bootstrap.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(era_posting.router, prefix="/api", dependencies=BILLING_READ)
-app.include_router(patients.router, prefix="/api", dependencies=PATIENT_READ)
+app.include_router(patients.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(denials.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(appeals.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(eob.router, prefix="/api", dependencies=BILLING_READ)
@@ -125,9 +126,12 @@ app.include_router(audit.router, prefix="/api",
                    dependencies=[Depends(requires_tier(Module.AUDIT_LOG, Tier.VIEW))])
 app.include_router(waystar.router, prefix="/api", dependencies=BILLING_READ)
 app.include_router(ar.router, prefix="/api", dependencies=BILLING_READ)
-app.include_router(documents.router, prefix="/api", dependencies=DOCUMENT_READ)
-app.include_router(intake.router, prefix="/api", dependencies=INTAKE_READ)
-app.include_router(chart.router, prefix="/api", dependencies=CHART_READ)
+app.include_router(documents.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
+app.include_router(intake.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
+app.include_router(chart.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(fax.router, prefix="/api", dependencies=FAX_READ)
 app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api", dependencies=REPORT_FINANCIAL)
