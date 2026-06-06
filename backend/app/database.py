@@ -36,7 +36,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, larc, billing_document, missing_charge, pellet, state_transition, idempotency, personal_task, code_helper, patient_portal  # noqa
+    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, larc, billing_document, missing_charge, pellet, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier  # noqa
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
     _seed_default_groups()
@@ -176,6 +176,8 @@ def _apply_lightweight_migrations():
         # RBAC per-user overrides (Phase 1)
         ("users", "permissions_extra", "JSON"),
         ("users", "permissions_revoked", "JSON"),
+        # Per-module tier model — Super Admin global flag (Phase 1 of redesign)
+        ("users", "is_super_admin", "BOOLEAN DEFAULT FALSE"),
         # Checklist multi-source targeting (Phase 4)
         ("task_templates", "assigned_users", "JSON"),
         ("task_templates", "assigned_permission", "VARCHAR(80)"),

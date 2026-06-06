@@ -76,6 +76,10 @@ class User(Base):
     auto_provisioned = Column(Boolean, default=False, nullable=False)
     # Timestamp of the last successful sync that included this user.
     last_google_sync = Column(DateTime, nullable=True)
+    # Per-module-tier permission model: Super Admin is the only cross-module
+    # role. Holders can grant Admin tier on any module + last-Super-Admin
+    # safety is enforced in permission_grants.set_super_admin.
+    is_super_admin = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
