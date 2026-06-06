@@ -12,6 +12,8 @@ from app.models.reputation import (
     ReputationProfile, ReputationScan, ReputationReview,
 )
 from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(prefix="/api/admin/reputation", tags=["reputation-admin"])
 
@@ -59,7 +61,7 @@ def list_profiles(db: Session = Depends(get_db),
 @router.post("/profiles")
 def create_profile(payload: ProfileIn,
                       db: Session = Depends(get_db),
-                      user: dict = Depends(get_current_user)):
+                      user: dict = Depends(requires_tier(Module.REPUTATION, Tier.WORK))):
     p = ReputationProfile(
         display_name=payload.display_name.strip(),
         role_label=(payload.role_label or "").strip() or None,
@@ -74,7 +76,7 @@ def create_profile(payload: ProfileIn,
 @router.patch("/profiles/{pid}")
 def update_profile(pid: str, payload: ProfilePatch,
                       db: Session = Depends(get_db),
-                      user: dict = Depends(get_current_user)):
+                      user: dict = Depends(requires_tier(Module.REPUTATION, Tier.WORK))):
     p = (db.query(ReputationProfile)
               .filter(ReputationProfile.id == pid).first())
     if p is None:
@@ -95,7 +97,7 @@ def update_profile(pid: str, payload: ProfilePatch,
 
 @router.post("/profiles/{pid}/rotate-token")
 def rotate_token(pid: str, db: Session = Depends(get_db),
-                    user: dict = Depends(get_current_user)):
+                    user: dict = Depends(requires_tier(Module.REPUTATION, Tier.WORK))):
     p = (db.query(ReputationProfile)
               .filter(ReputationProfile.id == pid).first())
     if p is None:
@@ -191,7 +193,8 @@ class ReviewPatch(BaseModel):
     approved_for_embed: Optional[bool] = None
 
 
-@router.patch("/reviews/{rid}")
+@router.patch("/reviews/{rid}",
+               dependencies=[Depends(requires_tier(Module.REPUTATION, Tier.WORK))])
 def patch_review(rid: str, payload: ReviewPatch,
                     db: Session = Depends(get_db),
                     user: dict = Depends(get_current_user)):
