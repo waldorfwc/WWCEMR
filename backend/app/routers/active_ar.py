@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import desc, or_, func
 from sqlalchemy.orm import Session, joinedload
 
@@ -48,7 +48,9 @@ class PaymentCreate(BaseModel):
     check_number: Optional[str] = None
     check_date: Optional[date] = None
     payer_name: str
-    total_amount: Decimal
+    # gt=0 and an explicit ceiling that matches Numeric(10,2) on the column —
+    # rejects NaN/Inf cleanly and catches column overflow before SQLAlchemy.
+    total_amount: Decimal = Field(gt=0, le=99_999_999.99)
     payment_method: Optional[str] = "Check"
     notes: Optional[str] = None
     allocations: List["AllocationItem"] = []
@@ -56,7 +58,7 @@ class PaymentCreate(BaseModel):
 
 class AllocationItem(BaseModel):
     active_claim_id: str
-    amount_applied: Decimal
+    amount_applied: Decimal = Field(gt=0, le=99_999_999.99)
     allocation_note: Optional[str] = None
 
 

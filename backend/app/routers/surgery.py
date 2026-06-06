@@ -14,7 +14,7 @@ from typing import Any, Optional
 from app.models.surgery import SurgeryFile
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, func, desc
 from sqlalchemy.orm import Session, joinedload
 
@@ -3492,7 +3492,10 @@ _MANUAL_PAYMENT_METHODS = {"modpay", "check", "cash", "other"}
 
 class ManualPaymentPayload(BaseModel):
     method: str           # modpay | check | cash | other
-    amount: float
+    # Field(gt=0, le=99_999.99) also rejects NaN/Inf cleanly (both compare
+    # False against numbers), so we get a 422 instead of crashing on
+    # JSON-encode or Numeric(10,2) overflow downstream.
+    amount: float = Field(gt=0, le=99_999.99)
     note:   Optional[str] = None
 
 

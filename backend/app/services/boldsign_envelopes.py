@@ -518,10 +518,14 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
     row.last_synced_at = datetime.utcnow()
 
     if raw_status == "completed":
-        row.signed_at = (
-            _parse_dt(env.get("completedDateTime") or env.get("completedAt"))
-            or datetime.utcnow()
-        )
+        # First-write-wins so a duplicate Connect retry doesn't refresh
+        # signed_at — that's the canonical signature timestamp and shouldn't
+        # drift on every webhook re-fire.
+        if not row.signed_at:
+            row.signed_at = (
+                _parse_dt(env.get("completedDateTime") or env.get("completedAt"))
+                or datetime.utcnow()
+            )
     elif raw_status == "declined":
         row.declined_at = (
             _parse_dt(env.get("declinedDateTime") or env.get("declinedAt"))

@@ -15,7 +15,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -38,7 +38,10 @@ router = APIRouter(tags=["stripe-payments"])
 # ─── Coordinator: request a payment ─────────────────────────────────
 
 class RequestPaymentIn(BaseModel):
-    amount: Optional[Decimal] = None
+    # Optional because we may auto-compute from outstanding balance. When
+    # provided, must fit Numeric(10,2) and be > 0; constraint catches
+    # NaN/Inf (which compare False against numbers).
+    amount: Optional[Decimal] = Field(default=None, gt=0, le=99_999.99)
     description: Optional[str] = None
 
 
@@ -140,7 +143,8 @@ def list_payments(
 # ─── Admin: refund ──────────────────────────────────────────────────
 
 class RefundIn(BaseModel):
-    amount: Optional[Decimal] = None
+    # None = full refund. When set, must be > 0 and fit Numeric(10,2).
+    amount: Optional[Decimal] = Field(default=None, gt=0, le=99_999.99)
     reason: Optional[str] = None
 
 
@@ -270,6 +274,13 @@ def _handle_session_completed(db, event_type, obj):
         log.warning("stripe webhook %s — no SurgeryPayment for session %s",
                     event_type, session_id)
         return
+    # Idempotency: Stripe retries on 5xx / timeout. Without this guard a
+    # retried checkout.session.completed would re-add amount_paid to the
+    # surgery row (the +=) and write a duplicate history row.
+    if pay.status == "paid":
+        log.info("stripe webhook %s — payment %s already paid, ignoring",
+                 event_type, pay.id)
+        return
     before = pay.status
     amount_paid = Decimal(obj.get("amount_total", 0)) / Decimal(100)
     pay.amount_paid = amount_paid
@@ -322,6 +333,13 @@ def _handle_refund(db, event_type, obj):
     if not pay:
         log.warning("stripe webhook %s — no SurgeryPayment for PI %s",
                     event_type, pi)
+        return
+    # Idempotency: re-firing charge.refunded would double-decrement
+    # surgery.amount_paid (capped at zero, but still wrong) and write
+    # a duplicate history row.
+    if pay.status == "refunded":
+        log.info("stripe webhook %s — payment %s already refunded, ignoring",
+                 event_type, pay.id)
         return
     before = pay.status
     refunded = Decimal(obj.get("amount_refunded", 0)) / Decimal(100)
