@@ -1,6 +1,6 @@
 """Recalls API — patient recall queue, call logging, suppressions, dashboard.
 
-All endpoints require recall:work (read/write) or recall:manage (admin ops).
+All endpoints require Recall:Work (read/write) or Recall:Manage (admin ops).
 """
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from app.models.patient_directory import PatientDirectory
 from app.models.recall import RecallEntry, RecallSuppression, RecallCallLog, WWEVisit
 from app.models.user import User
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.ringcentral_client import client as rc_client
 
 
@@ -138,7 +140,7 @@ def _entry_to_dict(e: RecallEntry, dob: Optional[date] = None) -> dict:
 @router.get("")
 def list_recalls(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("recall:work")),
+    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK)),
     search: Optional[str] = None,
     recall_type: Optional[str] = None,
     status: Optional[str] = "active",   # default to active queue
@@ -211,7 +213,7 @@ def list_recalls(
 
 @router.get("/{recall_id}")
 def get_recall(recall_id: str, db: Session = Depends(get_db),
-               current_user: dict = Depends(require_permission("recall:work"))):
+               current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="recall not found")
@@ -307,7 +309,7 @@ def get_recall(recall_id: str, db: Session = Depends(get_db),
 
 @router.post("/{recall_id}/claim")
 def claim_recall(recall_id: str, db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("recall:work"))):
+                  current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     """Take or refresh a soft claim on this recall. Returns 409 if another
     user already owns an unexpired claim."""
     e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
@@ -322,7 +324,7 @@ def claim_recall(recall_id: str, db: Session = Depends(get_db),
 
 @router.delete("/{recall_id}/claim", status_code=200)
 def release_recall(recall_id: str, db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("recall:work"))):
+                    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     """Release a claim. Only releases if it was ours (or already expired)."""
     e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
     if not e:
@@ -337,7 +339,7 @@ def release_recall(recall_id: str, db: Session = Depends(get_db),
 
 @router.post("/{recall_id}/call-attempted")
 def log_call_attempted(recall_id: str, db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("recall:work"))):
+                        current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     """Legacy: fired when user clicked tel: link. Logs intent — outcome
     captured later via /outcome. Replaced by /dial in production but
     retained for fallback when RingOut is unavailable."""
@@ -357,7 +359,7 @@ def log_call_attempted(recall_id: str, db: Session = Depends(get_db),
 
 @router.post("/{recall_id}/dial")
 def dial(recall_id: str, db: Session = Depends(get_db),
-         current_user: dict = Depends(require_permission("recall:work"))):
+         current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     """Initiate a RingCentral RingOut call for this recall.
 
     Flow:
@@ -468,7 +470,7 @@ def dial(recall_id: str, db: Session = Depends(get_db),
 @router.post("/{recall_id}/outcome")
 def log_outcome(recall_id: str, payload: OutcomePayload,
                 db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("recall:work"))):
+                current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     """Record the outcome of a call. May trigger suppression, cooldown, or
     completion depending on the outcome value."""
     e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
@@ -525,7 +527,7 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
 
 @router.get("/dashboard/stats")
 def dashboard_stats(db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("recall:work"))):
+                    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     """Top-of-page mini dashboard metrics."""
     today = date.today()
     week_ago = today - timedelta(days=7)
@@ -600,7 +602,7 @@ def dashboard_stats(db: Session = Depends(get_db),
 # ─── Outcomes catalog ────────────────────────────────────────────────
 
 @router.get("/outcomes/catalog")
-def outcomes_catalog(current_user: dict = Depends(require_permission("recall:work"))):
+def outcomes_catalog(current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     return {
         "outcomes": [
             {
@@ -625,7 +627,7 @@ def outcomes_catalog(current_user: dict = Depends(require_permission("recall:wor
 async def import_modmed_wwe(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("recall:manage")),
+    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.MANAGE)),
 ):
     if not file.filename.lower().endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=422, detail="Expected an .xlsx or .xls file")
@@ -649,7 +651,7 @@ async def import_modmed_wwe(
 @router.get("/imports/wwe-summary")
 def wwe_import_summary(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("recall:work")),
+    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK)),
 ):
     """Status snapshot of the WWE history corpus — used by the import
     page to show the operator what's already loaded."""

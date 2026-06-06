@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.recall import RecallFilterPreset
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(prefix="/recall-filters", tags=["recall-filters"])
 
@@ -50,7 +52,7 @@ def _clear_other_defaults(db: Session, owner_email: str, keep_id) -> None:
 
 @router.get("")
 def list_presets(db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("recall:work"))):
+                   current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     email = current_user.get("email") or ""
     rows = (db.query(RecallFilterPreset)
               .filter(RecallFilterPreset.owner_email == email)
@@ -61,7 +63,7 @@ def list_presets(db: Session = Depends(get_db),
 @router.post("")
 def create_preset(payload: FilterPresetIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("recall:work"))):
+                    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     email = current_user.get("email") or ""
     name = payload.name.strip()
     if not name:
@@ -96,7 +98,7 @@ def create_preset(payload: FilterPresetIn,
 @router.put("/{preset_id}")
 def update_preset(preset_id: str, payload: FilterPresetIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("recall:work"))):
+                    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     email = current_user.get("email") or ""
     row = (db.query(RecallFilterPreset)
              .filter(RecallFilterPreset.id == preset_id,
@@ -117,7 +119,7 @@ def update_preset(preset_id: str, payload: FilterPresetIn,
 @router.delete("/{preset_id}")
 def delete_preset(preset_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("recall:work"))):
+                    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     email = current_user.get("email") or ""
     row = (db.query(RecallFilterPreset)
              .filter(RecallFilterPreset.id == preset_id,
