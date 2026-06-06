@@ -17,6 +17,8 @@ from app.models.surgery_config import (
     SurgeryConfig, SurgeryAlertRecipient, Facility, SurgeryProcedureTemplate,
 )
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 
 router = APIRouter(prefix="/surgery", tags=["surgery-config"])
@@ -97,14 +99,14 @@ def _read_config(db: Session) -> dict:
 
 @router.get("/config")
 def get_config(db: Session = Depends(get_db),
-               current_user: dict = Depends(require_permission("claim:read"))):
+               current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     return _read_config(db)
 
 
 @router.put("/config")
 def put_config(payload: ConfigPayload,
                db: Session = Depends(get_db),
-               current_user: dict = Depends(require_permission("user:manage"))):
+               current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     actor = current_user.get("email") or "system"
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
@@ -124,7 +126,7 @@ def put_config(payload: ConfigPayload,
 
 @router.get("/admin/alert-recipients")
 def list_recipients(db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("claim:read"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = db.query(SurgeryAlertRecipient).all()
     out = {k: [] for k in ALERT_KINDS}
     for r in rows:
@@ -137,7 +139,7 @@ def list_recipients(db: Session = Depends(get_db),
 @router.post("/admin/alert-recipients", status_code=201)
 def add_recipient(payload: RecipientIn,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("user:manage"))):
+                  current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     if payload.alert_kind not in ALERT_KINDS:
         raise HTTPException(status_code=422,
                             detail=f"unknown alert_kind: {payload.alert_kind}")
@@ -160,7 +162,7 @@ def add_recipient(payload: RecipientIn,
 @router.delete("/admin/alert-recipients", status_code=204)
 def delete_recipient(alert_kind: str, email: str,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("user:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     row = (db.query(SurgeryAlertRecipient)
              .filter(SurgeryAlertRecipient.alert_kind == alert_kind,
                       SurgeryAlertRecipient.email == email.strip().lower())
@@ -181,7 +183,7 @@ def _facility_dict(f: Facility) -> dict:
 
 @router.get("/admin/facilities")
 def list_facilities_admin(db: Session = Depends(get_db),
-                           current_user: dict = Depends(require_permission("claim:read"))):
+                           current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = (db.query(Facility)
               .order_by(Facility.sort_order.asc(), Facility.label.asc()).all())
     return {"facilities": [_facility_dict(f) for f in rows]}
@@ -189,7 +191,7 @@ def list_facilities_admin(db: Session = Depends(get_db),
 
 @router.get("/picklists/facilities")
 def list_facilities_picklist(db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("claim:read"))):
+                              current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = (db.query(Facility)
               .filter(Facility.is_active.is_(True))
               .order_by(Facility.sort_order.asc(), Facility.label.asc()).all())
@@ -199,7 +201,7 @@ def list_facilities_picklist(db: Session = Depends(get_db),
 @router.post("/admin/facilities", status_code=201)
 def create_facility(payload: FacilityIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("user:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     code = (payload.code or "").strip().lower()
     label = (payload.label or "").strip()
     if not code or not label:
@@ -217,7 +219,7 @@ def create_facility(payload: FacilityIn,
 @router.patch("/admin/facilities/{facility_id}")
 def patch_facility(facility_id: str, payload: FacilityPatch,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("user:manage"))):
+                   current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     f = db.query(Facility).filter(Facility.id == facility_id).first()
     if not f:
         raise HTTPException(status_code=404, detail="facility not found")
@@ -232,7 +234,7 @@ def patch_facility(facility_id: str, payload: FacilityPatch,
 @router.delete("/admin/facilities/{facility_id}", status_code=204)
 def delete_facility(facility_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("user:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     f = db.query(Facility).filter(Facility.id == facility_id).first()
     if f:
         db.delete(f); db.commit()
@@ -251,7 +253,7 @@ def _template_dict(t: SurgeryProcedureTemplate) -> dict:
 
 @router.get("/admin/procedure-templates")
 def list_templates_admin(db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("claim:read"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = db.query(SurgeryProcedureTemplate).order_by(
         SurgeryProcedureTemplate.name.asc()).all()
     return {"templates": [_template_dict(t) for t in rows]}
@@ -259,7 +261,7 @@ def list_templates_admin(db: Session = Depends(get_db),
 
 @router.get("/picklists/procedure-templates")
 def list_templates_picklist(db: Session = Depends(get_db),
-                             current_user: dict = Depends(require_permission("claim:read"))):
+                             current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = (db.query(SurgeryProcedureTemplate)
               .filter(SurgeryProcedureTemplate.is_active.is_(True))
               .order_by(SurgeryProcedureTemplate.name.asc()).all())
@@ -269,7 +271,7 @@ def list_templates_picklist(db: Session = Depends(get_db),
 @router.post("/admin/procedure-templates", status_code=201)
 def create_template(payload: TemplateIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("user:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     if payload.procedure_kind not in PROCEDURE_KINDS:
         raise HTTPException(status_code=422,
                             detail=f"unknown procedure_kind: {payload.procedure_kind}")
@@ -293,7 +295,7 @@ def create_template(payload: TemplateIn,
 @router.patch("/admin/procedure-templates/{template_id}")
 def patch_template(template_id: str, payload: TemplatePatch,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("user:manage"))):
+                   current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     t = db.query(SurgeryProcedureTemplate).filter(
             SurgeryProcedureTemplate.id == template_id).first()
     if not t:
@@ -312,7 +314,7 @@ def patch_template(template_id: str, payload: TemplatePatch,
 @router.delete("/admin/procedure-templates/{template_id}", status_code=204)
 def delete_template(template_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("user:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     t = db.query(SurgeryProcedureTemplate).filter(
             SurgeryProcedureTemplate.id == template_id).first()
     if t:
@@ -357,7 +359,7 @@ def _email_template_dict(t: EmailTemplate) -> dict:
 
 @router.get("/admin/email-templates")
 def list_email_templates(db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("claim:read"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = db.query(EmailTemplate).order_by(EmailTemplate.label.asc()).all()
     return {
         "templates": [_email_template_dict(t) for t in rows],
@@ -369,7 +371,7 @@ def list_email_templates(db: Session = Depends(get_db),
 def patch_email_template(template_id: str,
                           payload: EmailTemplatePatch,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("user:manage"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     t = db.query(EmailTemplate).filter(EmailTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="template not found")
@@ -383,7 +385,7 @@ def patch_email_template(template_id: str,
 
 @router.post("/admin/email-templates/preview")
 def preview_email_template(payload: EmailTemplatePreviewIn,
-                            current_user: dict = Depends(require_permission("claim:read"))):
+                            current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Render subject + html with provided context. No DB writes, no send."""
     from app.services.patient_email import render
     return {
@@ -424,7 +426,7 @@ def _sms_template_dict(t: SmsTemplate) -> dict:
 
 @router.get("/admin/sms-templates")
 def list_sms_templates(db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("claim:read"))):
+                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = db.query(SmsTemplate).order_by(SmsTemplate.label.asc()).all()
     return {
         "templates":     [_sms_template_dict(t) for t in rows],
@@ -436,7 +438,7 @@ def list_sms_templates(db: Session = Depends(get_db),
 def patch_sms_template(template_id: str,
                         payload: SmsTemplatePatch,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("user:manage"))):
+                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     t = db.query(SmsTemplate).filter(SmsTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="template not found")
@@ -450,7 +452,7 @@ def patch_sms_template(template_id: str,
 
 @router.post("/admin/sms-templates/preview")
 def preview_sms_template(payload: SmsTemplatePreviewIn,
-                          current_user: dict = Depends(require_permission("claim:read"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Render body with context. Returns body + segment count."""
     from app.services.patient_sms import render, _segments
     body = render(payload.body, payload.context or {})

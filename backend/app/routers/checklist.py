@@ -13,6 +13,8 @@ from app.models.checklist import TaskTemplate, TaskInstance, PainPoint
 from app.models.groups import Group
 from app.models.user import User, PRACTICE_ROLES
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services import checklist_service
 from app.services import checklist_seed
 from app.services.permissions import ALL_PERMISSIONS
@@ -411,7 +413,7 @@ def get_template(template_id: str, db: Session = Depends(get_db),
 @router.post("/templates", status_code=201)
 def create_template(payload: TemplatePayload,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("checklist:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
     _validate_template_fields(payload, db)
     t = TaskTemplate(
         title=payload.title.strip(),
@@ -487,7 +489,7 @@ def _auto_grant_super_admin_trainer(db: Session, template_id, *, authorized_by: 
 @router.patch("/templates/{template_id}")
 def update_template(template_id: str, payload: TemplatePayload,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("checklist:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
     t = db.query(TaskTemplate).filter(TaskTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="template not found")
@@ -535,7 +537,7 @@ def update_template(template_id: str, payload: TemplatePayload,
 @router.delete("/templates/{template_id}", status_code=204)
 def delete_template(template_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("checklist:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
     t = db.query(TaskTemplate).filter(TaskTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="template not found")
@@ -563,14 +565,14 @@ def preview_assignees(template_id: str,
 
 @router.post("/seed")
 def seed_templates(db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("checklist:manage"))):
+                   current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
     """Idempotently seeds the Phase A template library."""
     return checklist_seed.seed(db)
 
 
 @router.post("/generate-for-today")
 def generate_today(db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("checklist:manage"))):
+                   current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
     """Manually trigger today's task-instance generation. Normally runs
     automatically via the scheduler at midnight, but useful for testing."""
     return checklist_service.generate_instances_for_date(db, _date.today())
@@ -587,7 +589,7 @@ def generate_today(db: Session = Depends(get_db),
 def manager_dashboard(
     days: int = Query(7, ge=1, le=90),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("checklist:manage")),
+    current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE)),
 ):
     """Manager view of accountability state across direct reports.
 
@@ -701,7 +703,7 @@ def manager_dashboard(
 
 @router.post("/manager/run-escalations")
 def run_escalations(db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("checklist:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
     """Manually fire the escalation sweep. Normally runs hourly via the
     scheduler, but useful for testing the email/slack flow."""
     from app.services import checklist_notifications

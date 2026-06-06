@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.surgery import SurgeryFilterPreset
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(prefix="/surgery-filters", tags=["surgery-filters"])
 
@@ -43,7 +45,7 @@ def _to_dict(p: SurgeryFilterPreset) -> dict:
 
 @router.get("")
 def list_presets(db: Session = Depends(get_db),
-                  current_user: dict = Depends(require_permission("surgery:read"))):
+                  current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     email = current_user.get("email") or ""
     rows = (db.query(SurgeryFilterPreset)
               .filter(SurgeryFilterPreset.owner_email == email)
@@ -54,7 +56,7 @@ def list_presets(db: Session = Depends(get_db),
 @router.post("")
 def create_preset(payload: FilterPresetIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:read"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     email = current_user.get("email") or ""
     name = payload.name.strip()
     if not name:
@@ -90,7 +92,7 @@ def create_preset(payload: FilterPresetIn,
 @router.put("/{preset_id}")
 def update_preset(preset_id: str, payload: FilterPresetIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:read"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     email = current_user.get("email") or ""
     row = (db.query(SurgeryFilterPreset)
              .filter(SurgeryFilterPreset.id == preset_id,
@@ -111,7 +113,7 @@ def update_preset(preset_id: str, payload: FilterPresetIn,
 @router.delete("/{preset_id}")
 def delete_preset(preset_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:read"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     email = current_user.get("email") or ""
     row = (db.query(SurgeryFilterPreset)
              .filter(SurgeryFilterPreset.id == preset_id,

@@ -158,12 +158,15 @@ app.include_router(recall_filter_presets.router, prefix="/api")
 app.include_router(training.router, prefix="/api",
                    dependencies=[Depends(requires_tier(Module.TRAINING, Tier.VIEW))])
 # Surgery config admin (must come before surgery.router — /config would match /{surgery_id})
-app.include_router(surgery_config.router, prefix="/api")
+app.include_router(surgery_config.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.SURGERY, Tier.VIEW))])
 # Surgery fee schedule + CCI/MPR admin + per-surgery calculator
 # (Must come BEFORE surgery.router — /fee-schedule would match /{surgery_id})
-app.include_router(fee_schedule_router.router, prefix="/api")
-# Surgery scheduling — handlers gate by surgery:* permissions
-app.include_router(surgery.router, prefix="/api")
+app.include_router(fee_schedule_router.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.SURGERY, Tier.VIEW))])
+# Surgery scheduling — handlers gate by per-endpoint requires_tier on SURGERY
+app.include_router(surgery.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.SURGERY, Tier.VIEW))])
 # Patient-facing date picker — public, soft-auth via DOB + last 4 of phone
 app.include_router(patient_surgery.router, prefix="/api")
 # Patient portal — durable session-based sign-in (DOB + last4 -> SMS challenge -> JWT)
@@ -175,10 +178,12 @@ app.include_router(docusign_router.router, prefix="/api")
 # BoldSign Connect webhook — no auth (BoldSign POSTs from outside;
 # verified via HMAC). Lives alongside DocuSign during the provider migration.
 app.include_router(boldsign.router, prefix="/api")
-# Consent template admin — gated by surgery:manage
-app.include_router(consent_templates.router, prefix="/api")
+# Consent template admin — gated by per-endpoint Surgery:Manage
+app.include_router(consent_templates.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.SURGERY, Tier.VIEW))])
 # User-scoped saved filter presets for the surgery dashboard
-app.include_router(surgery_filter_presets.router, prefix="/api")
+app.include_router(surgery_filter_presets.router, prefix="/api",
+                   dependencies=[Depends(requires_tier(Module.SURGERY, Tier.VIEW))])
 # LARC device inventory + tracking
 app.include_router(larc.router, prefix="/api")
 # Pellet inventory + receiving + DEA-compliant audit

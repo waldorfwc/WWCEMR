@@ -26,6 +26,8 @@ from app.models.surgery import (
     SURGERY_STATUS_VALUES, SURGERY_FACILITY_VALUES, SURGERY_MAX_MINUTES,
 )
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.audit_service import log_action
 from app.services.surgery_slot_conflict import overlapping_slot
 from app.services.surgery_blackout_conflict import is_date_blacked_out
@@ -260,7 +262,7 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
 
 @router.get("/dashboard")
 def dashboard(db: Session = Depends(get_db),
-              current_user: dict = Depends(require_permission("surgery:read"))):
+              current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     today = _date.today()
     thirty_days_ago = today - timedelta(days=30)
 
@@ -593,7 +595,7 @@ def calendar(
     start_date: Optional[str] = Query(None,
         description="YYYY-MM-DD; if omitted defaults to today"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     """Surgeries scheduled in a `days`-long window starting at `start_date`
     (defaults to today). The frontend uses days=7 for one-week pagination."""
@@ -660,7 +662,7 @@ VALID_GROUPINGS = ["milestone", "status", "facility"]
 @router.get("")
 def list_surgeries(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
     search: Optional[str] = None,
     status: Optional[str] = None,
     facility: Optional[str] = None,
@@ -776,7 +778,7 @@ def list_surgeries(
 async def upload_order(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Upload a ModMed surgery-order PDF. Parses it via Claude, creates a
     Surgery row with status='incomplete' so the scheduler can review the
@@ -940,7 +942,7 @@ class ManualSurgeryIn(BaseModel):
 @router.post("/manual", status_code=201)
 def create_manual(payload: ManualSurgeryIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("surgery:work"))):
+                   current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Create a surgery row from manual data entry. Used when no PDF
     order is available (e.g. patient was already in the schedule from
     ModMed but never had an order generated)."""
@@ -1043,7 +1045,7 @@ def create_manual(payload: ManualSurgeryIn,
 # ─── Picklists (must be declared BEFORE /{surgery_id} so it isn't eaten as a path-param) ─
 
 @router.get("/picklists")
-def get_picklists(current_user: dict = Depends(require_permission("surgery:read"))):
+def get_picklists(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Return the curated dropdown options for SurgeryDetail editing."""
     from app.services.surgery_picklists import all_picklists
     return all_picklists()
@@ -1053,7 +1055,7 @@ def get_picklists(current_user: dict = Depends(require_permission("surgery:read"
 
 @router.get("/{surgery_id}")
 def get_surgery(surgery_id: str, db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("surgery:read"))):
+                 current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     s = (db.query(Surgery)
            .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
@@ -1155,7 +1157,7 @@ def patch_slot(
     slot_id: str,
     payload: SlotPatch,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     from app.models.surgery import SurgeryNote
     slot = db.query(SurgerySlot).filter(SurgerySlot.id == slot_id).first()
@@ -1224,7 +1226,7 @@ def patch_slot(
 @router.patch("/{surgery_id}")
 def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("surgery:work"))):
+                   current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -1424,7 +1426,7 @@ def milestone_action(
     surgery_id: str, kind: str, action: str,
     payload: MilestoneAction = MilestoneAction(),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """action ∈ {start, done, skip, reopen, not_applicable}.
     `start` flips locked/pending → in_progress and stamps started_at.
@@ -1506,7 +1508,7 @@ class CancelPayload(BaseModel):
 @router.post("/{surgery_id}/cancel")
 def cancel_surgery(surgery_id: str, payload: CancelPayload,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:cancel"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Cancel / hold / mark unresponsive. Fee logic: $351 only when
     reason=patient AND surgery is within 14 days of scheduled_date.
     Anesthesia/hospital/medical cancellations never charge a fee."""
@@ -1645,7 +1647,7 @@ def _parse_time(s: str) -> Optional[_time]:
 
 @router.get("/admin/block-schedules")
 def list_block_schedules(db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("surgery:manage"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     rows = db.query(BlockSchedule).order_by(BlockSchedule.facility,
                                               BlockSchedule.weekday).all()
     return {"schedules": [
@@ -1669,7 +1671,7 @@ def list_block_schedules(db: Session = Depends(get_db),
 
 @router.post("/admin/block-schedules", status_code=201)
 def create_block_schedule(payload: BlockScheduleIn, db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("surgery:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     if payload.facility not in ("medstar", "crmc", "office"):
         raise HTTPException(status_code=422, detail="facility must be medstar/crmc/office")
     if payload.recurrence_kind not in ("weekly", "weekly_nth", "specific_dates"):
@@ -1709,7 +1711,7 @@ def create_block_schedule(payload: BlockScheduleIn, db: Session = Depends(get_db
 
 @router.delete("/admin/block-schedules/{schedule_id}", status_code=204)
 def delete_block_schedule(schedule_id: str, db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("surgery:manage"))):
+                            current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     bs = db.query(BlockSchedule).filter(BlockSchedule.id == schedule_id).first()
     if not bs:
         raise HTTPException(status_code=404, detail="not found")
@@ -1719,14 +1721,14 @@ def delete_block_schedule(schedule_id: str, db: Session = Depends(get_db),
 
 @router.post("/admin/block-schedules/materialize")
 def trigger_materialize(db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("surgery:manage"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     from app.services.surgery_block_schedule import materialize_block_days
     return materialize_block_days(db)
 
 
 @router.post("/admin/run-escalations")
 def trigger_escalations(db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("surgery:manage"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     """Manually fire the behind-schedule sweep."""
     from app.services.surgery_escalations import run_escalation_sweep
     return run_escalation_sweep(db)
@@ -1734,7 +1736,7 @@ def trigger_escalations(db: Session = Depends(get_db),
 
 @router.post("/admin/run-release-sweep")
 def trigger_release_sweep(db: Session = Depends(get_db),
-                           current_user: dict = Depends(require_permission("surgery:manage"))):
+                           current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     """Manually fire the daily release-alert sweep."""
     from app.services.surgery_release_alerts import run_release_sweep
     return run_release_sweep(db)
@@ -1742,7 +1744,7 @@ def trigger_release_sweep(db: Session = Depends(get_db),
 
 @router.get("/scheduler-alerts")
 def scheduler_alerts(db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("surgery:work"))):
+                      current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Surfaces actionable scheduling alerts for the surgery scheduler's
     checklist. Currently:
       - Office procedure days within 14 days that have <6 cases booked
@@ -1784,7 +1786,7 @@ def scheduler_alerts(db: Session = Depends(get_db),
 @router.post("/admin/block-days/{block_day_id}/mark-released")
 def mark_block_day_released(block_day_id: str,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("surgery:work"))):
+                              current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """The scheduler called the hospital and released this unbooked block day.
     Stamps release_alert_sent_at so it falls off the dashboard alert list."""
     bd = db.query(BlockDay).filter(BlockDay.id == block_day_id).first()
@@ -1803,7 +1805,7 @@ def block_day_availability(
     block_day_id: str,
     surgery_id: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     """Return the list of available start times on a block day, computed
     server-side from the block day's start/end + the duration the booking
@@ -1853,7 +1855,7 @@ def block_day_availability(
 @router.post("/{surgery_id}/clearance/generate-form")
 def generate_clearance_form(surgery_id: str,
                              db: Session = Depends(get_db),
-                             current_user: dict = Depends(require_permission("surgery:work"))):
+                             current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Generate a fillable cardiac/anesthesia clearance form for the
     cardiologist, save it as a SurgeryFile (visible on the patient
     portal too), and email the patient with the portal link."""
@@ -2004,7 +2006,7 @@ def _translate_overrides(facility: str, user_overrides: dict) -> dict:
 def generate_boarding_slip(surgery_id: str,
                             payload: Optional[BoardingSlipPayload] = Body(default=None),
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("surgery:work"))):
+                            current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -2037,7 +2039,7 @@ def generate_boarding_slip(surgery_id: str,
 @router.get("/{surgery_id}/boarding-slip/prefill")
 def boarding_slip_prefill(surgery_id: str,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("surgery:work"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Returns the prefill values that would land on each field of the
     boarding slip, so the staff PDF editor can show them as initial
     values."""
@@ -2098,7 +2100,7 @@ class BoardingSlipSendPayload(BaseModel):
 def send_boarding_slip(surgery_id: str,
                        payload: BoardingSlipSendPayload,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("surgery:work"))):
+                       current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Fax or email the latest boarding slip PDF to a hospital scheduler."""
     if payload.kind not in ("fax", "email"):
         raise HTTPException(status_code=422, detail="kind must be 'fax' or 'email'")
@@ -2273,7 +2275,7 @@ async def bulk_import_candidates(
     file: UploadFile = File(...),
     dry_run: bool = Query(True),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Upload a ModMed-style patient roster Excel and create Surgery rows
     in 'incomplete' status. Defaults to dry-run so the coordinator can
@@ -2314,7 +2316,7 @@ async def bulk_import_candidates(
 @router.get("/{surgery_id}/klara-draft/{kind}")
 def klara_draft(surgery_id: str, kind: str,
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("surgery:work"))):
+                 current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Generate a Klara message draft. kind ∈
     {initial_scheduling, date_reminder, post_op_check_in}."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -2335,7 +2337,7 @@ class KlaraSendNote(BaseModel):
 @router.post("/{surgery_id}/klara-sent")
 def log_klara_sent(surgery_id: str, payload: KlaraSendNote,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:work"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Record that staff copied the draft into Klara and sent it. Keeps the
     SurgeryNotification audit row; the klara_scheduling milestone was
     retired so there's nothing to auto-advance."""
@@ -2360,7 +2362,7 @@ def log_klara_sent(surgery_id: str, payload: KlaraSendNote,
 @router.post("/{surgery_id}/portal-access/send")
 def send_portal_access(surgery_id: str,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("surgery:work"))):
+                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Email the patient a link to the portal login page along with the
     DOB + last-4-of-phone instructions. Records to PatientEmail history and
     drops a SurgeryNotification row so the Communication card surfaces it."""
@@ -2433,7 +2435,7 @@ async def upload_file(
     kind: str = Query(..., description="prior_auth | op_notes | path_report | clearance | consent | fmla | other"),
     notes: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Upload a file for a surgery. Auto-completes the matching milestone
     if there's an obvious mapping (prior_auth, op_notes, path_report)."""
@@ -2492,7 +2494,7 @@ async def upload_file(
 
 @router.get("/{surgery_id}/files")
 def list_files(surgery_id: str, db: Session = Depends(get_db),
-                current_user: dict = Depends(require_permission("surgery:read"))):
+                current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     rows = (db.query(SurgeryFile)
               .filter(SurgeryFile.surgery_id == surgery_id)
               .order_by(SurgeryFile.uploaded_at.desc())
@@ -2516,7 +2518,7 @@ def list_files(surgery_id: str, db: Session = Depends(get_db),
 @router.get("/{surgery_id}/files/{file_id}/download")
 def download_file(surgery_id: str, file_id: str,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("surgery:read"))):
+                   current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     f = db.query(SurgeryFile).filter(
         SurgeryFile.id == file_id,
         SurgeryFile.surgery_id == surgery_id,
@@ -2540,7 +2542,7 @@ def list_block_days(
     facility: Optional[str] = None,
     days: int = 60,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     today = _date.today()
     end = today + timedelta(days=days)
@@ -2601,7 +2603,7 @@ class BlackoutIn(BaseModel):
 def list_blackouts(
     days: int = 365,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     today = _date.today()
     end = today + timedelta(days=days)
@@ -2627,7 +2629,7 @@ def list_blackouts(
 
 @router.post("/admin/blackouts", status_code=201)
 def create_blackout(payload: BlackoutIn, db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("surgery:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     if payload.scope not in ("office", "provider", "facility"):
         raise HTTPException(status_code=422, detail="invalid scope")
     if payload.scope == "provider" and not payload.owner_email:
@@ -2656,7 +2658,7 @@ def create_blackout(payload: BlackoutIn, db: Session = Depends(get_db),
 
 @router.delete("/admin/blackouts/{blackout_id}", status_code=204)
 def delete_blackout(blackout_id: str, db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("surgery:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     row = db.query(SurgeryBlackoutDay).filter(SurgeryBlackoutDay.id == blackout_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="not found")
@@ -2676,7 +2678,7 @@ class BookSlotIn(BaseModel):
 @router.post("/{surgery_id}/book-slot")
 def book_slot_endpoint(surgery_id: str, payload: BookSlotIn,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(require_permission("surgery:work"))):
+                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     from app.services.surgery_block_schedule import book_slot, CapacityViolation
     try:
         slot = book_slot(
@@ -2705,7 +2707,7 @@ def book_slot_endpoint(surgery_id: str, payload: BookSlotIn,
 @router.get("/{surgery_id}/available-slots")
 def available_slots(surgery_id: str, days_ahead: int = 180,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("surgery:work"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Return upcoming block days that can fit this surgery's procedure
     classification. Same logic as the patient-facing slot list; intended
     for the scheduler-side "Pick date" modal."""
@@ -2750,7 +2752,7 @@ class SchedulerPickIn(BaseModel):
 @router.post("/{surgery_id}/pick-date")
 def scheduler_pick_date(surgery_id: str, payload: SchedulerPickIn,
                          db: Session = Depends(get_db),
-                         current_user: dict = Depends(require_permission("surgery:work"))):
+                         current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Scheduler picks (or reschedules) a date on a patient's behalf.
     Same rule set as the patient-facing flow except:
       - No 14-day reschedule lockout (staff can always reschedule)
@@ -2789,7 +2791,7 @@ def toggle_modmed_scheduled(
     surgery_id: str,
     payload: ToggleConfirmPayload = ToggleConfirmPayload(),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Mark the appointment as added to (or removed from) the ModMed schedule."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -2810,7 +2812,7 @@ def toggle_office_meds_pickup(
     surgery_id: str,
     payload: ToggleConfirmPayload = ToggleConfirmPayload(),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Mark that the office-procedure patient has confirmed picking up their meds."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -2843,7 +2845,7 @@ def coordinator_schedule(
     surgery_id: str,
     payload: CoordinatorScheduleIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     from app.models.surgery import SurgeryNote
     from app.routers.patient_surgery import _parse_hhmm, _default_duration_for
@@ -2928,7 +2930,7 @@ class SurgeryNoteIn(BaseModel):
 def list_surgery_notes(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     from app.models.surgery import SurgeryNote
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -2953,7 +2955,7 @@ def add_surgery_note(
     surgery_id: str,
     payload: SurgeryNoteIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     from app.models.surgery import SurgeryNote
     if not payload.content or not payload.content.strip():
@@ -2980,7 +2982,7 @@ def delete_surgery_note(
     surgery_id: str,
     note_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Delete a note. Author may delete their own; surgery:manage role may
     delete any."""
@@ -3004,7 +3006,7 @@ def delete_surgery_note(
 def resolve_blocked_conflict(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Mark that the hospital has been notified of a blackout-day conflict.
     Stamps blocked_conflict_notified_at so the surgery is excluded from
@@ -3040,7 +3042,7 @@ class PostOpApptsPayload(BaseModel):
 def get_post_op_schedule(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     """Return the post-op visits this surgery's procedures require, plus
     suggested dates relative to scheduled_date. Used by the frontend to
@@ -3070,7 +3072,7 @@ def save_post_op_appts(
     surgery_id: str,
     payload: PostOpApptsPayload,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Record the patient's post-op appointment dates. Auto-completes the
     post_op_appts_scheduled milestone once every required appt has a date."""
@@ -3160,7 +3162,7 @@ def _maybe_complete_assistant_milestone(db: Session, s: Surgery, by: str) -> Non
 def assistant_surgeon_notify_office(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Mark the assistant surgeon's office as notified.
     Closes the assistant_surgeon milestone if the appt is also confirmed."""
@@ -3189,7 +3191,7 @@ def assistant_surgeon_confirm_appt(
     surgery_id: str,
     payload: AssistantApptConfirm = AssistantApptConfirm(),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Confirm the patient has scheduled an appointment with the assistant
     surgeon. Optional appt_date records the date; absence still counts as
@@ -3220,7 +3222,7 @@ def assistant_surgeon_confirm_appt(
 def assistant_surgeon_reset(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Clear notified / appt confirmation (e.g. patient missed the appt and
     needs to reschedule). Reopens the milestone if it was done."""
@@ -3248,7 +3250,7 @@ def assistant_surgeon_reset(
 @router.post("/{surgery_id}/suggest-billing-codes")
 def suggest_billing_codes(surgery_id: str,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("surgery:work"))):
+                            current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Read the surgery's op note + path report, ask Claude for ICD-10 /
     CPT / modifier / POS codes, and auto-save them on the Surgery row.
     If any CPT uses modifier 22, a justification letter PDF is generated
@@ -3402,7 +3404,7 @@ def _calc_patient_responsibility(*, allowed_amount: float,
 @router.post("/{surgery_id}/benefits")
 def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("surgery:work"))):
+                       current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Calculate (and optionally save) the patient's surgery responsibility
     from insurance benefit inputs. When save=True, also marks the
     benefits_determined milestone as done."""
@@ -3502,7 +3504,7 @@ class ManualPaymentPayload(BaseModel):
 @router.post("/{surgery_id}/payments/manual", status_code=201)
 def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(require_permission("surgery:work"))):
+                            current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Record a payment that happened outside Stripe (ModMed Pay swipe,
     check, cash, etc.). Bumps surgery.amount_paid and adds a SurgeryPayment
     row (status='paid', kind='manual_offset') so it appears in the
@@ -3578,7 +3580,7 @@ class ConsentTransitionPayload(BaseModel):
 @router.post("/{surgery_id}/consent/sent")
 def consent_mark_sent(surgery_id: str, payload: ConsentTransitionPayload = ConsentTransitionPayload(),
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(require_permission("surgery:work"))):
+                       current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Mark that consent has been sent to the patient (paper or DocuSign).
     Sets consent_status='sent', stamps consent_sent_at, moves the consent
     milestone to 'in_progress' (still pending the signature)."""
@@ -3603,7 +3605,7 @@ def consent_mark_sent(surgery_id: str, payload: ConsentTransitionPayload = Conse
 @router.get("/{surgery_id}/consent/template-matches")
 def consent_template_matches(surgery_id: str,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(require_permission("surgery:read"))):
+                              current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Preview which templates would be sent for this surgery, without
     actually sending. Useful for the UI to show staff what they're about
     to commit to before they click Send."""
@@ -3638,7 +3640,7 @@ class DocuSignSendPayload(BaseModel):
 def consent_docusign_send(surgery_id: str,
                           payload: DocuSignSendPayload = DocuSignSendPayload(),
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("surgery:work"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Send all matched consent envelopes for this surgery (one per template).
 
     The matcher resolves: one primary template per procedure, plus any
@@ -3676,7 +3678,7 @@ def consent_docusign_send(surgery_id: str,
 @router.post("/{surgery_id}/consent/docusign-sync")
 def consent_docusign_sync(surgery_id: str,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(require_permission("surgery:work"))):
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Pull the latest status for every envelope on this surgery and
     reconcile Surgery.consent_status. Manual fallback when Connect
     webhooks aren't wired up."""
@@ -3707,7 +3709,7 @@ def consent_docusign_sync(surgery_id: str,
 def send_consent_via_boldsign(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Send all matching BoldSign consent envelopes for this surgery.
     Mirrors the DocuSign endpoint but uses the BoldSign service. Both
@@ -3747,7 +3749,7 @@ def send_consent_via_boldsign(
 def sync_boldsign_envelopes(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Force-reconcile BoldSign envelope statuses for one surgery. Useful
     if a webhook was missed."""
@@ -3765,7 +3767,7 @@ def sync_boldsign_envelopes(
 @router.post("/{surgery_id}/consent/signed")
 def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = ConsentTransitionPayload(),
                          db: Session = Depends(get_db),
-                         current_user: dict = Depends(require_permission("surgery:work"))):
+                         current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Mark that the patient has signed the consent. Stamps consent_signed_at,
     flips status='signed', closes the consent milestone."""
     s = (db.query(Surgery)
@@ -3790,7 +3792,7 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
 @router.post("/{surgery_id}/consent/reset")
 def consent_reset(surgery_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     """Revoke every live BoldSign envelope, delete all envelope rows, and
     return the surgery's consent state to 'not_required'. Used by staff to
     re-issue consents from scratch (e.g. after a template was updated, or
@@ -3859,7 +3861,7 @@ class WaitlistJoinIn(BaseModel):
 @router.post("/{surgery_id}/waitlist", status_code=201)
 def waitlist_join(surgery_id: str, payload: WaitlistJoinIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:work"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Add a surgery to the waitlist (or update its advance_notice_days)."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
@@ -3893,7 +3895,7 @@ def waitlist_join(surgery_id: str, payload: WaitlistJoinIn,
 def waitlist_remove(surgery_id: str,
                      reason: Optional[str] = Query(None),
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("surgery:work"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Remove the surgery from the active waitlist."""
     w = (db.query(SurgeryWaitlist)
            .filter(SurgeryWaitlist.surgery_id == surgery_id,
@@ -3911,7 +3913,7 @@ def waitlist_remove(surgery_id: str,
 def waitlist_list(facility: Optional[str] = None,
                    procedure_kind: Optional[str] = None,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(require_permission("surgery:read"))):
+                   current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Show every active waitlister, optionally filtered to a facility
     or procedure kind. Used by /surgery/admin/waitlist page."""
     rows = (db.query(SurgeryWaitlist, Surgery)
@@ -3952,7 +3954,7 @@ def waitlist_list(facility: Optional[str] = None,
 @router.get("/admin/waitlist-matches")
 def waitlist_matches(block_day_id: str,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(require_permission("surgery:work"))):
+                      current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Find waitlisters who could realistically fill the given block day."""
     from app.services.surgery_waitlist import find_matches, klara_blast_text
     matches = find_matches(db, block_day_id=block_day_id)
@@ -3982,7 +3984,7 @@ class WaitlistClaimIn(BaseModel):
 @router.post("/admin/waitlist/{waitlist_id}/claim")
 def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:work"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """A waitlisted patient confirmed they want the freed slot — book it
     and remove them from the waitlist."""
     from app.services.surgery_block_schedule import book_slot, CapacityViolation, DURATIONS
@@ -4054,7 +4056,7 @@ def send_ad_hoc_patient_email(
     surgery_id: str,
     payload: PatientEmailIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Compose-and-send an ad-hoc email to the patient. Uses the
     generic_patient_message template kind — subject + body are merged into
@@ -4105,7 +4107,7 @@ def send_ad_hoc_patient_sms(
     surgery_id: str,
     payload: PatientSmsIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Compose-and-send an ad-hoc SMS to the patient. Uses the
     sms_generic_message template's wrapper (adds opt-out language)
@@ -4137,7 +4139,7 @@ def send_ad_hoc_patient_sms(
 def list_patient_emails(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     """Audit history of patient emails for this surgery."""
     from app.models.patient_email import PatientEmail
@@ -4162,7 +4164,7 @@ def list_patient_emails(
 def list_patient_sms(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     """Audit history of patient SMS messages for this surgery."""
     from app.models.patient_sms import PatientSms
@@ -4189,7 +4191,7 @@ def list_patient_sms(
 @router.post("/admin/reminders/run-now")
 def run_reminders_now(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:manage")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE)),
 ):
     from app.services.surgery_reminders import run_reminder_sweep
     return run_reminder_sweep(db)
@@ -4206,7 +4208,7 @@ def patch_schedule_gate_override(
     surgery_id: str,
     payload: ScheduleGateOverridePayload,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Flip schedule_gate_override so a patient can self-schedule without paying."""
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()

@@ -18,6 +18,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.surgery import ConsentTemplate, SurgeryConsentEnvelope
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(prefix="/consent-templates", tags=["consent-templates"])
 
@@ -92,7 +94,7 @@ def _to_dict(t: ConsentTemplate, in_use_count: int = 0) -> dict:
 
 @router.get("")
 def list_templates(db: Session = Depends(get_db),
-                    current_user: dict = Depends(require_permission("surgery:manage"))):
+                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     rows = (db.query(ConsentTemplate)
               .order_by(ConsentTemplate.is_supplemental, ConsentTemplate.name)
               .all())
@@ -107,7 +109,7 @@ def list_templates(db: Session = Depends(get_db),
 @router.post("")
 def create_template(payload: ConsentTemplateIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("surgery:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     bs_id = (payload.boldsign_template_id or "").strip()
     if not payload.name.strip() or not bs_id:
         raise HTTPException(status_code=400,
@@ -132,7 +134,7 @@ def create_template(payload: ConsentTemplateIn,
 @router.put("/{template_id}")
 def update_template(template_id: str, payload: ConsentTemplateIn,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("surgery:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     t = db.query(ConsentTemplate).filter(ConsentTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="template not found")
@@ -158,7 +160,7 @@ def update_template(template_id: str, payload: ConsentTemplateIn,
 @router.delete("/{template_id}")
 def delete_template(template_id: str,
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(require_permission("surgery:manage"))):
+                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     t = db.query(ConsentTemplate).filter(ConsentTemplate.id == template_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="template not found")
@@ -185,7 +187,7 @@ class TemplateTestPayload(BaseModel):
 @router.post("/test-match")
 def test_match(payload: TemplateTestPayload,
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(require_permission("surgery:manage"))):
+                 current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     """Given a hypothetical procedure / facility / insurance, return the
     templates that would match. Used by the admin form's 'Test match'
     button so staff can verify their setup before saving."""
@@ -216,7 +218,7 @@ def test_match(payload: TemplateTestPayload,
 
 @router.get("/boldsign-templates")
 def list_boldsign_templates(
-    current_user: dict = Depends(require_permission("surgery:manage"))
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))
 ):
     """Pull the live list of templates from BoldSign so admins can pick a
     templateId from a dropdown instead of hand-typing it.
