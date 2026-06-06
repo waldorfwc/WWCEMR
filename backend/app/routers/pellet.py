@@ -130,9 +130,11 @@ CONFIRMED_DOSE_STATUSES = {"inserted", "added", "reduced", "returned", "disposed
 
 
 def _is_admin(user: dict) -> bool:
-    perms = set(user.get("effective_permissions")
-                  or user.get("permissions") or [])
-    return ("pellet:manage" in perms) or ("user:manage" in perms)
+    """Caller has Pellets:Manage (or Super Admin). The requires_tier
+    dependency injects module_tier[pellets] on the user dict; we just
+    read it here. Falls back to False if the calling endpoint wasn't
+    gated through requires_tier(Module.PELLETS, …)."""
+    return (user.get("module_tier") or {}).get("pellets", 0) >= 30  # Tier.MANAGE
 
 
 def _require_visit_location(v: PelletVisit) -> str:

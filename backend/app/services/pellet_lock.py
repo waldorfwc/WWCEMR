@@ -78,9 +78,11 @@ def ensure_unlocked_or_override(db: Session, *,
     if not state["locked"]:
         return
 
-    perms = set(current_user.get("effective_permissions")
-                  or current_user.get("permissions") or [])
-    is_admin = ("pellet:manage" in perms) or ("user:manage" in perms)
+    # Pellets:Manage (tier 30) can override the inventory lock. The
+    # requires_tier dependency injects module_tier['pellets'] on the
+    # current_user dict; if the calling endpoint didn't go through
+    # requires_tier we fall back to "not admin".
+    is_admin = (current_user.get("module_tier") or {}).get("pellets", 0) >= 30
     override_reason = (override_reason or "").strip()
 
     if is_admin and override_reason:

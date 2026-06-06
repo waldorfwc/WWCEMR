@@ -30,11 +30,12 @@ class TaskTemplate(Base):
     """A reusable task definition. Per-day instances are spawned from these
     by the recurrence engine.
 
-    Targeting (Phase 4) — assignees are the union of:
+    Targeting — assignees are the union of:
       - users in any of `assigned_groups`
       - users listed in `assigned_users` (JSON list of emails)
-      - users whose effective_permissions include `assigned_permission`
-    The legacy `role` field is still here but no longer authoritative; it's
+    The legacy `assigned_permission` column is retained for back-compat
+    but no longer evaluated (see services/checklist_service.py). The
+    legacy `role` field is still here but no longer authoritative; it's
     used as a display hint and during the one-time migration to seed
     assigned_groups from the matching practice-role group.
     """

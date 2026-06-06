@@ -14,16 +14,19 @@ from app.models.user import User
 def _assignees_for_template(db: Session, tmpl: TaskTemplate) -> List[User]:
     """Resolve the set of users a template should generate instances for.
 
-    Phase 4 — union of three sources:
+    Union of two sources:
       1. assigned_groups → all members of any listed group
       2. assigned_users  → explicit list of emails (JSON)
-      3. assigned_permission → any user whose effective_permissions include it
 
     De-duplicates by email. Falls back to legacy `role` field when none of
     the new fields are populated, so pre-migration templates still work.
-    """
-    from app.services.permissions import effective_permissions
 
+    The legacy `assigned_permission` field is no longer evaluated — the
+    permissions catalog it referenced was removed in the Phase 4 cleanup
+    of the permissions redesign. Templates relying on it should be re-
+    pointed at an `assigned_groups` value (typically the new group whose
+    members hold the equivalent module tier).
+    """
     emails: Set[str] = set()
 
     for grp in (tmpl.assigned_groups or []):
@@ -34,12 +37,6 @@ def _assignees_for_template(db: Session, tmpl: TaskTemplate) -> List[User]:
         em = (em or "").lower().strip()
         if em:
             emails.add(em)
-
-    if tmpl.assigned_permission:
-        perm = tmpl.assigned_permission
-        for u in db.query(User).all():
-            if perm in effective_permissions(u):
-                emails.add(u.email)
 
     # Legacy fallback — only used if none of the new fields are populated
     if not emails and tmpl.role:

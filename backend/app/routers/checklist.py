@@ -126,21 +126,19 @@ def skip(instance_id: str, payload: SkipPayload,
 def reopen(instance_id: str, db: Session = Depends(get_db),
            current_user: dict = Depends(get_current_user)):
     """Re-open a done/skipped task. A user can re-open their OWN task at any
-    time; re-opening someone else's requires `checklist:manage`."""
+    time; re-opening someone else's requires My Checklist:Manage."""
     from app.models.checklist import TaskInstance
-    from app.services.permissions import effective_permissions
-    from app.models.user import User
+    from app.permissions.catalog import Module, Tier
+    from app.permissions.resolver import effective_tier
     inst = db.query(TaskInstance).filter(TaskInstance.id == instance_id).first()
     if inst is None:
         raise HTTPException(status_code=404, detail="task instance not found")
     me_email = (current_user.get("email") or "").lower().strip()
     if (inst.assigned_to_email or "").lower().strip() != me_email:
-        u = db.query(User).filter(User.email == me_email).first()
-        perms = effective_permissions(u) if u else set()
-        if "checklist:manage" not in perms:
+        if effective_tier(db, me_email, Module.MY_CHECKLIST) < Tier.MANAGE:
             raise HTTPException(
                 status_code=403,
-                detail="Only the task owner or a manager (checklist:manage) "
+                detail="Only the task owner or a My Checklist:Manage user "
                        "can re-open this task.")
     inst = checklist_service.reopen(db, instance_id)
     return {"id": str(inst.id), "status": inst.status}
@@ -658,8 +656,11 @@ def manager_dashboard(
     # orphan template (active, requires_training or not, with no
     # escalate_to_email and zero assignees). A template with zero
     # assignees never generates instances — it's silently broken.
-    perms = set(current_user.get("effective_permissions") or [])
-    is_super_admin = "system:admin" in perms
+    # Super Admins (the cross-module system role) can see orphan templates
+    # so they can re-assign or clean them up.
+    from app.models.user import User
+    me_row = db.query(User).filter(User.email == me).first()
+    is_super_admin = bool(me_row and me_row.is_super_admin)
 
     unassigned = []
     candidate_templates = (db.query(TaskTemplate)

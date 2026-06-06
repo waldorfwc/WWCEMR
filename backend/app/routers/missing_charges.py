@@ -37,12 +37,6 @@ from app.services import missing_charges_token as token_svc
 router = APIRouter(prefix="/billing/missing-charges", tags=["billing-missing-charges"])
 
 
-def _is_admin(user: dict) -> bool:
-    perms = set(user.get("effective_permissions")
-                  or user.get("permissions") or [])
-    return "user:manage" in perms
-
-
 def _charge_dict(c: MissingCharge, include_notes: bool = False) -> dict:
     out = {
         "id": str(c.id),

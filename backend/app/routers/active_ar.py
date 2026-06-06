@@ -518,15 +518,15 @@ def update_claim_status(claim_id: str, payload: StatusUpdate,
     user = current_user.get("email")
     changes = []
     if payload.workflow_state and payload.workflow_state != c.workflow_state:
-        # Write-offs are gated behind their own permission — anyone with
-        # claim:edit can change other states, but only claim:writeoff can
-        # send a claim into written_off.
+        # Write-offs are gated higher than other edits — Active AR:Work can
+        # change most states, but only Active AR:Manage can send a claim
+        # into written_off.
         if payload.workflow_state == "written_off":
-            from app.services.permissions import effective_permissions
-            actor = db.query(User).filter(User.email == user).first()
-            if "claim:writeoff" not in effective_permissions(actor):
+            from app.permissions.catalog import Module, Tier
+            from app.permissions.resolver import effective_tier
+            if effective_tier(db, user, Module.ACTIVE_AR) < Tier.MANAGE:
                 raise HTTPException(status_code=403,
-                                    detail="forbidden — missing permission: claim:writeoff")
+                                    detail="forbidden — needs Active AR:Manage to write off a claim")
         changes.append(f"workflow_state {c.workflow_state} → {payload.workflow_state}")
         c.workflow_state = payload.workflow_state
         if payload.workflow_state == "written_off":
@@ -930,12 +930,13 @@ def _doc_to_dict(d: ActiveClaimDocument) -> dict:
 @router.get("/assignees")
 def list_assignees(db: Session = Depends(get_db),
                    current_user: dict = Depends(get_current_user)):
-    """Users who can have claims assigned to them — anyone with claim:read.
-    Plus any historical assignees already attached to claims (in case a user
-    was deleted but their email still appears on past claims)."""
-    from app.services.permissions import effective_permissions
+    """Users who can have claims assigned to them — anyone with Active AR:View
+    or higher. Plus any historical assignees already attached to claims (in
+    case a user was deleted but their email still appears on past claims)."""
+    from app.permissions.catalog import Module, Tier
+    from app.permissions.resolver import effective_tier
     role_users = [u for u in db.query(User).all()
-                  if "claim:read" in effective_permissions(u)]
+                  if effective_tier(db, u.email, Module.ACTIVE_AR) >= Tier.VIEW]
     assignees = {
         u.email: {
             "email": u.email,
