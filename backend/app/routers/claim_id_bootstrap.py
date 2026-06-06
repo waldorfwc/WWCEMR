@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services import import_sessions
 from app.services.claims_analysis_fixer import fix_file as fix_claims_analysis
 from app.services.claims_analysis_matcher import (

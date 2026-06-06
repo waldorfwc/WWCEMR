@@ -10,6 +10,8 @@ from app.database import get_db
 from app.models.claim import Claim, ClaimStatus, InsuranceOrder, EraFile
 from app.models.patient import Patient
 from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.audit_service import log_action
 from app.services.claim_math import recompute_balance
 

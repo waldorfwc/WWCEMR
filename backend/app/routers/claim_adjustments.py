@@ -8,6 +8,8 @@ from app.database import get_db
 from app.models.claim import Claim, ClaimAdjustment
 from app.services.audit_service import log_action
 from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 router = APIRouter(tags=["claim-adjustments"])
 

@@ -23,6 +23,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.import_drift import (
     KEYS_AND_VALUES, check_drift, compute_fingerprints, file_sha256,
     write_audit_log,

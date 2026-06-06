@@ -42,6 +42,8 @@ from app.models.adjustment_code_reference import (
     AdjustmentCodeReference, AdjustmentCodeType,
 )
 from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.adjustment_code_enricher import (
     ENRICHMENT_MODEL, enrich_code, synthesize_combo,
 )

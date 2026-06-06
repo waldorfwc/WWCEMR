@@ -25,6 +25,8 @@ from app.services.import_drift import (
     KEYS_AND_VALUES, check_drift, compute_fingerprints, write_audit_log,
 )
 from app.routers.auth import get_current_user
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 
 
 router = APIRouter(prefix="/imports", tags=["charge-imports"])

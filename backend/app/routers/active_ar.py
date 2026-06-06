@@ -28,6 +28,8 @@ from app.models.patient import Patient
 from app.models.patient_directory import IntakeDocument
 from app.models.user import User
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.active_ar_importer import import_unpaid_claims
 from app.services.audit_service import log_action
 from app.services.appeal_letter_pdf import render_pdf
@@ -551,7 +553,7 @@ def update_claim_status(claim_id: str, payload: StatusUpdate,
 def post_insurance_payment(payload: PaymentCreate,
                            db: Session = Depends(get_db),
                            current_user: dict = Depends(get_current_user),
-                           _perm: dict = Depends(require_permission("payment:post"))):
+                           _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     """Post a payer check/EFT and allocate to one or more claims."""
     if not payload.allocations:
         raise HTTPException(status_code=422, detail="at least one allocation required")
@@ -654,7 +656,7 @@ def list_payments(db: Session = Depends(get_db),
 def update_eob_details(claim_id: str, payload: EobDetailsUpdate,
                        db: Session = Depends(get_db),
                        current_user: dict = Depends(get_current_user),
-                       _perm: dict = Depends(require_permission("eob:edit"))):
+                       _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     """Update the manually-entered EOB fields. Any field passed as null is
     treated as 'no change' — pass an explicit 0 to clear a value."""
     c = db.query(ActiveClaim).filter(ActiveClaim.id == claim_id).first()
@@ -1139,7 +1141,7 @@ def settle_service_line(
     claim_id: str, line_num: int, payload: LineSettlePayload,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
-    _perm: dict = Depends(require_permission("claim:settle_line")),
+    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Settle a single service line on a claim. Auto-computes contractual,
     insurance_paid, patient_balance from the inputs. Updates the claim-level
@@ -1345,7 +1347,7 @@ def list_appeal_templates(current_user: dict = Depends(get_current_user)):
 def draft_appeal(claim_id: str, payload: AppealDraftRequest,
                  db: Session = Depends(get_db),
                  current_user: dict = Depends(get_current_user),
-                 _perm: dict = Depends(require_permission("claim:appeal"))):
+                 _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     """Draft a new appeal letter for the claim. Renders the template, optionally
     runs Claude over the body for a tailored argument. Saves as a 'draft' status
     AppealLetter record. Does NOT generate PDF or send."""

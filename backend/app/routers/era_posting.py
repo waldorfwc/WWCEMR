@@ -15,6 +15,8 @@ from app.config import settings
 from app.database import get_db
 from app.parsers.era_835 import Era835Parser
 from app.routers.auth import get_current_user, require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.services.idempotency import idempotency_for
 from app.services import import_sessions
 from app.services.era_poster import EraFilePreview, build_preview
@@ -161,7 +163,7 @@ def commit_eras(
     session_id: str,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
-    _perm: dict = Depends(require_permission("payment:post")),
+    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
     idem=Depends(idempotency_for("POST /era-posting/{session_id}/commit")),
 ):
     # If the client sent an Idempotency-Key header and we've already

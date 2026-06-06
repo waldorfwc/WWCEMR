@@ -25,6 +25,8 @@ from app.models.stripe_payment import (
 )
 from app.models.surgery import Surgery
 from app.routers.auth import require_permission
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
 from app.routers.patient_surgery import require_patient_token
 from app.services import stripe_payments as svc
 from app.services.audit_service import log_action
@@ -50,7 +52,7 @@ def request_payment(
     surgery_id: str,
     payload: RequestPaymentIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("surgery:work")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Create a Stripe Checkout Session for the surgery's outstanding
     pre-op balance. Returns the hosted checkout URL the coordinator can
@@ -123,7 +125,7 @@ def request_payment(
 def list_payments(
     surgery_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("claim:read")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
@@ -153,7 +155,7 @@ def refund(
     payment_id: str,
     payload: RefundIn,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:manage")),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE)),
 ):
     p = db.query(SurgeryPayment).filter(SurgeryPayment.id == payment_id).first()
     if not p:
