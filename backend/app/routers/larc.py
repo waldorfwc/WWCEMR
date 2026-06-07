@@ -73,6 +73,24 @@ def _device_dict(d: LarcDevice) -> dict:
     }
 
 
+def _resolve_device_type_name(a: LarcAssignment) -> Optional[str]:
+    """Prefer the attached device's type; fall back to the assignment's
+    pinned device_type_id (set for pharmacy-order rows before the device
+    ships). Single SELECT either way."""
+    if a.device and a.device.device_type:
+        return a.device.device_type.name
+    if a.device_type_id:
+        from sqlalchemy.orm import object_session
+        sess = object_session(a)
+        if sess is None:
+            return None
+        dt = (sess.query(LarcDeviceType)
+                  .filter(LarcDeviceType.id == a.device_type_id)
+                  .first())
+        return dt.name if dt else None
+    return None
+
+
 def _latest_envelope_dict(a: LarcAssignment) -> Optional[dict]:
     """Compact summary of the most recent LarcEnrollmentEnvelope for this
     assignment. Returns None if no envelope has been sent. Drives the
@@ -111,9 +129,10 @@ def _latest_envelope_dict(a: LarcAssignment) -> Optional[dict]:
 def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dict:
     out = {
         "id": str(a.id),
-        "device_id": str(a.device_id),
+        "device_id": str(a.device_id) if a.device_id else None,
+        "device_type_id": str(a.device_type_id) if a.device_type_id else None,
         "device_our_id": a.device.our_id if a.device else None,
-        "device_type_name": (a.device.device_type.name if a.device and a.device.device_type else None),
+        "device_type_name": _resolve_device_type_name(a),
         "device_ownership": (a.device.ownership if a.device else None),
         "device_received_date":
             (str(a.device.purchase_date) if a.device and a.device.purchase_date else None),
@@ -978,6 +997,11 @@ def create_assignment(payload: AssignmentIn,
 
     a = LarcAssignment(
         device_id=device.id if device else None,
+        # Pin device_type at creation — required for pharmacy_order
+        # assignments without a device so the enrollment sender can
+        # pick the right template before receive-device.
+        device_type_id=(device.device_type_id if device
+                          else payload.device_type_id),
         chart_number=payload.chart_number.strip(),
         patient_name=payload.patient_name.strip(),
         patient_dob=_parse_date(payload.patient_dob, "patient_dob"),

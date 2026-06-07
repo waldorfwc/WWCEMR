@@ -176,7 +176,12 @@ def _build_nexplanon_fields(
     # ── Receptionist: per-assignment ────────────────────────────────
     add(receptionist, "patient_full_name",     _friendly_name(a.patient_name))
     add(receptionist, "patient_dob",           p_dob)
-    add(receptionist, "sign_on_behalf_of_patient", sent_by_email)
+    # NOTE: sign_on_behalf_of_patient shares its dataSyncTag with
+    # patient_dob in the live Nexplanon template — BoldSign rejects the
+    # send if both are prefilled with different values. Skip it until
+    # the template is fixed (assign sign_on_behalf_of_patient its own
+    # unique dataSyncTag in BoldSign). Receptionist can fill it manually.
+    # add(receptionist, "sign_on_behalf_of_patient", sent_by_email)
     add(receptionist, "patient_last_name2",    p_last)
     add(receptionist, "patient_first_name2",   p_first)
     add(receptionist, "patient_dob2",          p_dob)
@@ -205,6 +210,15 @@ def _build_nexplanon_fields(
 
     # ── Provider role: no textbox prefill (signatures + dates only) ──
     provider = []
+
+    # BoldSign rejects the send with "default value and read-only mode
+    # should be same for same data synced fields" when the SAME field id
+    # appears in multiple roles' existingFormFields arrays. Several
+    # template fields (patient_dob, patient_full_name) are visible to
+    # both Receptionist + Patient — only set them once, via the first
+    # signer (Receptionist), and BoldSign auto-syncs to Patient.
+    recept_ids = {f["id"] for f in receptionist}
+    patient = [f for f in patient if f["id"] not in recept_ids]
 
     return {
         "Receptionist": receptionist,
@@ -430,10 +444,23 @@ def send_enrollment_envelope(
     if not _is_configured():
         raise LarcEnrollmentError("BoldSign API key not configured")
 
-    # Prerequisites
-    dt = assignment.device.device_type if assignment.device else None
+    # Prerequisites — resolve device_type. Pharmacy-order assignments
+    # are created with device_id=NULL (the physical device hasn't shipped
+    # yet) but device_type_id is pinned at creation so we can pick the
+    # template up front.
+    from app.models.larc import LarcDeviceType
+    dt = None
+    if assignment.device and assignment.device.device_type:
+        dt = assignment.device.device_type
+    elif assignment.device_type_id:
+        dt = (db.query(LarcDeviceType)
+                .filter(LarcDeviceType.id == assignment.device_type_id)
+                .first())
     if not dt:
-        raise LarcEnrollmentError("Assignment has no device_type — wire one up first.")
+        raise LarcEnrollmentError(
+            "Assignment has no device_type — set device_type_id on the "
+            "assignment (or attach a device) before sending."
+        )
     template_id = dt.enrollment_form_template
     if not template_id:
         raise LarcEnrollmentError(

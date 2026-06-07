@@ -44,6 +44,7 @@ def init_db():
     _migrate_template_targeting()
     _seed_consent_template_from_env()
     _migrate_billing_doc_status_open_to_new()
+    _backfill_larc_assignment_device_type()
     from app.services.larc_seed import seed_larc_device_types
     seed_larc_device_types()
     from app.services.pellet_seed import seed_pellet_dose_types
@@ -65,6 +66,28 @@ def init_db():
     except Exception:
         import logging
         logging.getLogger(__name__).exception("surgery_config_seed failed")
+
+
+def _backfill_larc_assignment_device_type():
+    """One-time: for assignments that have a device but no device_type_id
+    on the assignment row (created before the column existed), copy the
+    type id over from the linked device. Idempotent."""
+    insp = inspect(engine)
+    if "larc_assignments" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("larc_assignments")}
+    if "device_type_id" not in cols:
+        return
+    with engine.begin() as conn:
+        # Portable correlated-subquery form (works on both PG and SQLite).
+        conn.execute(text(
+            "UPDATE larc_assignments "
+            "SET device_type_id = ("
+            "  SELECT d.device_type_id FROM larc_devices d "
+            "  WHERE d.id = larc_assignments.device_id"
+            ") "
+            "WHERE device_type_id IS NULL AND device_id IS NOT NULL"
+        ))
 
 
 def _migrate_billing_doc_status_open_to_new():
@@ -387,6 +410,11 @@ def _apply_lightweight_migrations():
         # / APP pickers. Empty NPI = excluded from the dropdown.
         ("users", "npi",             "VARCHAR(20)"),
         ("users", "clinician_role",  "VARCHAR(20)"),
+        # Track device_type on the assignment for pharmacy-order rows
+        # that don't yet have a device_id. Lets the enrollment sender
+        # pick the right BoldSign template before the physical device
+        # arrives from the pharmacy.
+        ("larc_assignments", "device_type_id", "VARCHAR(36)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

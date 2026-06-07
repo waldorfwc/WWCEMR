@@ -174,7 +174,14 @@ class LarcAssignment(Base):
     # Optimistic locking — prevents two MAs from racing on a single assignment.
     version_id = Column(Integer, default=1, nullable=False)
     __mapper_args__ = {"version_id_col": version_id}
-    device_id = Column(GUID(), ForeignKey("larc_devices.id"), nullable=False)
+    # For pharmacy-order assignments, device_id is NULL until the device
+    # is received from the pharmacy — but we still need to know what
+    # device type was ordered (to pick the enrollment form template +
+    # match the right LarcDeviceType.enrollment_form_template). Stored
+    # directly so the sender can resolve before device_id is set.
+    device_id = Column(GUID(), ForeignKey("larc_devices.id"), nullable=True)
+    device_type_id = Column(GUID(), ForeignKey("larc_device_types.id"),
+                             nullable=True)
 
     # Patient identity — chart number is the durable key; name is denormalised
     # so the dashboard can render without joining ModMed.
