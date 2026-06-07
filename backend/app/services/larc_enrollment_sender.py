@@ -183,11 +183,11 @@ def _build_nexplanon_fields(
     add(receptionist, "patient_cell_phone",    a.patient_phone or "")
     add(receptionist, "app_date",              today)
 
-    # Checkboxes — BoldSign accepts {"id": "...", "value": "true"/"false"}
+    # Checkboxes — BoldSign accepts {"id": "...", "value": "ON"/"false"}
     if dispense:
-        receptionist.append({"id": "dispense", "value": "true"})
+        receptionist.append({"id": "dispense", "value": "ON"})
     if provider_contact_preference:
-        receptionist.append({"id": "provider_contact_preference", "value": "true"})
+        receptionist.append({"id": "provider_contact_preference", "value": "ON"})
 
     # ── Patient role: demographics + insurance (pre-fill, patient edits)
     patient = []
@@ -339,6 +339,36 @@ def _build_bayer_fields(
     # into both so the receptionist sees a sensible starting point.
     add(receptionist, "prescription_insurance_name", a.primary_insurance or "")
     add(receptionist, "medical_insurance_name",      a.primary_insurance or "")
+
+    # Device-family checkbox: tick the box for the specific Bayer device
+    # this assignment is for (Mirena vs Skyla vs Kyleena). The template
+    # has one checkbox per device; the provider signs the matching
+    # signature line. Field IDs in BoldSign are case-sensitive — Skyla
+    # is capitalized while the others are lowercase.
+    device_name = (a.device.device_type.name if a.device and a.device.device_type
+                    else None)
+    if device_name is None and a.device_type_id:
+        # Pharmacy-order before receive — look up the assignment's pinned type.
+        from sqlalchemy.orm import object_session
+        from app.models.larc import LarcDeviceType
+        sess = object_session(a)
+        if sess is not None:
+            dt_row = (sess.query(LarcDeviceType)
+                          .filter(LarcDeviceType.id == a.device_type_id)
+                          .first())
+            device_name = dt_row.name if dt_row else None
+    bayer_checkbox_for = {
+        "Kyleena": "kyleena",
+        "Mirena":  "mirena",
+        "Skyla":   "Skyla",   # template uses capital S for this one only
+    }
+    cb_id = bayer_checkbox_for.get(device_name)
+    if cb_id:
+        receptionist.append({"id": cb_id, "value": "ON"})
+    # Pharmacy checkbox — tick when the assignment has a pharmacy linked
+    # (the form's "this device ships via the pharmacy" option).
+    if a.pharmacy_id:
+        receptionist.append({"id": "pharmacy", "value": "ON"})
 
     # ── Provider role: signatures only (drug-specific, provider picks one)
     provider: list[dict] = []  # no prefill — provider signs at signing time
