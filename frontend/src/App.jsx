@@ -9,6 +9,7 @@ import Denials from './pages/Denials'
 import Admin from './pages/Admin'
 import AdminTemplates from './pages/AdminTemplates'
 import AdminPermissions from './pages/admin/AdminPermissions'
+import PracticeSettings from './pages/admin/PracticeSettings'
 import AdminConsentTemplates from './pages/AdminConsentTemplates'
 import SurgeryRules from './pages/SurgeryRules'
 import Larc from './pages/Larc'
@@ -161,6 +162,7 @@ function ProtectedApp({ user, onLogout }) {
             <Route path="/audit"               element={<AuditLog />} />
             <Route path="/admin"                   element={<PrivateRoute adminOnly><Admin /></PrivateRoute>} />
             <Route path="/admin/permissions"       element={<PrivateRoute adminOnly><AdminPermissions /></PrivateRoute>} />
+            <Route path="/admin/practice-settings" element={<PrivateRoute adminOnly><PracticeSettings /></PrivateRoute>} />
             {/* Legacy permission URLs redirect to the unified page */}
             <Route path="/admin/groups"            element={<Navigate to="/admin/permissions" replace />} />
             <Route path="/admin/users/:email/tiers" element={<Navigate to="/admin/permissions" replace />} />
