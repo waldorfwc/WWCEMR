@@ -70,44 +70,33 @@ export default function MyProfile() {
 
       <div className="card">
         <h2 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
-          <Shield size={14} className="text-plum-600" /> Effective Permissions ({data.effective_permissions.length})
+          <Shield size={14} className="text-plum-600" /> Module access
         </h2>
         <p className="text-[11px] text-gray-500 mb-3">
-          Computed as: union of permissions from all your groups
-          {data.permissions_extra.length > 0 && <>, plus extras granted just to you</>}
-          {data.permissions_revoked.length > 0 && <>, minus any revoked just for you</>}
-          .
+          Your effective tier on each module — the max of every group you
+          belong to, or your per-user override if one is set.
+          {data.is_super_admin && (
+            <> You are a <strong>Super Admin</strong>, which grants access to every module.</>
+          )}
         </p>
-        {data.effective_permissions.length === 0 ? (
-          <div className="text-xs text-amber-700 italic">No permissions yet.</div>
-        ) : (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
-            {data.effective_permissions.map(p => (
-              <li key={p} className="flex items-baseline gap-2 text-xs">
-                <CheckCircle2 size={12} className="text-green-600 shrink-0 translate-y-[1px]" />
-                <span className="font-mono text-gray-700 shrink-0">{p}</span>
-                <span className="text-gray-500 truncate">{data.permission_descriptions[p] || ''}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {(data.permissions_extra.length > 0 || data.permissions_revoked.length > 0) && (
-          <div className="mt-4 pt-3 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
-            {data.permissions_extra.length > 0 && (
-              <div>
-                <strong className="text-gray-700">Extras (granted just to you):</strong>{' '}
-                {data.permissions_extra.map(p => <code key={p} className="mx-0.5 px-1 bg-blue-50 rounded">{p}</code>)}
-              </div>
-            )}
-            {data.permissions_revoked.length > 0 && (
-              <div>
-                <strong className="text-gray-700">Revoked (removed just for you):</strong>{' '}
-                {data.permissions_revoked.map(p => <code key={p} className="mx-0.5 px-1 bg-red-50 rounded">{p}</code>)}
-              </div>
-            )}
-          </div>
-        )}
+        <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+          {(data.tiers || []).map(row => (
+            <li key={row.module} className="flex items-baseline gap-2 text-xs">
+              <CheckCircle2 size={12}
+                            className={row.tier === 'none'
+                              ? 'text-gray-300 shrink-0 translate-y-[1px]'
+                              : 'text-green-600 shrink-0 translate-y-[1px]'} />
+              <span className="font-medium text-gray-700 shrink-0">{row.label}</span>
+              <span className="text-plum-700 text-[11px] font-mono">{row.tier}</span>
+              {row.source_kind === 'group' && row.source_label && (
+                <span className="text-gray-500 truncate">via {row.source_label}</span>
+              )}
+              {row.source_kind === 'override' && (
+                <span className="text-amber-700 truncate">override</span>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   )
