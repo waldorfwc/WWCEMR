@@ -370,6 +370,22 @@ def _build_bayer_fields(
     if a.pharmacy_id:
         receptionist.append({"id": "pharmacy", "value": "ON"})
 
+    # Provider credential checkbox — tick the row matching the inserting
+    # provider's User.credential (MD/DO/NP/PA). Looked up via the
+    # assignment's inserting_provider_email; falls back to no tick when
+    # the email isn't a known clinician or has no credential set.
+    cred_email = (a.inserting_provider_email or "").lower().strip()
+    if cred_email:
+        from sqlalchemy.orm import object_session
+        from app.models.user import User
+        sess = object_session(a)
+        if sess is not None:
+            u = sess.query(User).filter(User.email == cred_email).first()
+            cred = (u.credential if u else None) or ""
+            cred_box = {"MD": "md", "DO": "do", "NP": "np", "PA": "pa"}.get(cred.upper())
+            if cred_box:
+                receptionist.append({"id": cred_box, "value": "ON"})
+
     # ── Provider role: signatures only (drug-specific, provider picks one)
     provider: list[dict] = []  # no prefill — provider signs at signing time
 

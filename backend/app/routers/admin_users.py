@@ -39,6 +39,9 @@ class UpdateUserPayload(BaseModel):
     npi: Optional[str] = None
     # Values: 'provider' | 'app' | '' (clear)
     clinician_role: Optional[str] = None
+    # Values: 'MD' | 'DO' | 'NP' | 'PA' | '' (clear) — printed on Bayer
+    # LARC enrollment forms via the provider-credentials checkbox row.
+    credential: Optional[str] = None
 
 
 def _sort_key(u: User) -> tuple:
@@ -65,6 +68,7 @@ def _serialize(u: User) -> dict:
         "updated_at": u.updated_at.isoformat() + "Z" if u.updated_at else None,
         "npi": u.npi,
         "clinician_role": u.clinician_role,
+        "credential": u.credential,
     }
 
 
@@ -94,6 +98,7 @@ def list_clinicians(db: Session = Depends(get_db),
             "display_name": u.display_name or u.email,
             "npi": u.npi,
             "clinician_role": u.clinician_role,
+            "credential": u.credential,
         }
         for u in rows
     ]
@@ -153,6 +158,14 @@ def update_user(
                 detail="clinician_role must be 'provider', 'app', or empty",
             )
         row.clinician_role = cr or None
+    if payload.credential is not None:
+        c = (payload.credential or "").strip().upper()
+        if c and c not in ("MD", "DO", "NP", "PA"):
+            raise HTTPException(
+                status_code=422,
+                detail="credential must be 'MD', 'DO', 'NP', 'PA', or empty",
+            )
+        row.credential = c or None
     if payload.ringcentral_callback_number is not None:
         cb = payload.ringcentral_callback_number.strip()
         if cb:

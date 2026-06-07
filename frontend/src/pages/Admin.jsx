@@ -308,13 +308,26 @@ function ClinicianCell({ user }) {
         <option value="provider">Provider</option>
         <option value="app">APP</option>
       </select>
-      <input className="input py-0.5 px-1 text-[10px] font-mono w-full"
-             placeholder="10-digit NPI"
-             value={npi}
-             onChange={e => setNpi(e.target.value)}
-             onBlur={() => {
-               if (npi !== (user.npi || '')) patch.mutate({ npi })
-             }} />
+      <div className="flex gap-1">
+        <input className="input py-0.5 px-1 text-[10px] font-mono flex-1 min-w-0"
+               placeholder="NPI"
+               value={npi}
+               onChange={e => setNpi(e.target.value)}
+               onBlur={() => {
+                 if (npi !== (user.npi || '')) patch.mutate({ npi })
+               }} />
+        <select className="input py-0.5 px-1 text-[10px] w-14"
+                value={user.credential || ''}
+                onChange={e => patch.mutate({ credential: e.target.value })}
+                disabled={patch.isPending}
+                title="Credential (MD/DO/NP/PA)">
+          <option value="">—</option>
+          <option value="MD">MD</option>
+          <option value="DO">DO</option>
+          <option value="NP">NP</option>
+          <option value="PA">PA</option>
+        </select>
+      </div>
       {patch.isError && (
         <div className="text-[10px] text-danger">
           {patch.error?.response?.data?.detail || 'error'}

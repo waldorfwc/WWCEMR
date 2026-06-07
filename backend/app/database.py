@@ -410,6 +410,7 @@ def _apply_lightweight_migrations():
         # / APP pickers. Empty NPI = excluded from the dropdown.
         ("users", "npi",             "VARCHAR(20)"),
         ("users", "clinician_role",  "VARCHAR(20)"),
+        ("users", "credential",      "VARCHAR(10)"),
         # Track device_type on the assignment for pharmacy-order rows
         # that don't yet have a device_id. Lets the enrollment sender
         # pick the right BoldSign template before the physical device

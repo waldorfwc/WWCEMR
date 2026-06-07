@@ -82,6 +82,10 @@ class User(Base):
     # Values: 'provider' | 'app' | null (non-clinician)
     npi = Column(String(20), nullable=True)
     clinician_role = Column(String(20), nullable=True)
+    # Credential printed on enrollment forms (MD/DO/NP/PA). The Bayer
+    # LARC template has a 4-checkbox provider-credentials selector that
+    # the sender ticks based on this value.
+    credential = Column(String(10), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
