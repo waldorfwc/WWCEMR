@@ -18,7 +18,7 @@ import { useCurrentUser } from '../hooks/useCurrentUser'
  *
  * Examples:
  *   <PrivateRoute perm="checklist:manage"><ManagerDashboard/></PrivateRoute>
- *   <PrivateRoute adminOnly><AdminGroups/></PrivateRoute>
+ *   <PrivateRoute adminOnly><AdminPermissions/></PrivateRoute>
  *   <PrivateRoute anyOf={['pellet:manage','user:manage']}><DoseTypes/></PrivateRoute>
  */
 export default function PrivateRoute({

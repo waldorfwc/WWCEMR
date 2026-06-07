@@ -47,7 +47,6 @@ function UserRow({ u, allGroups, onFlash, onViewPerms, flashKind, flashText }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-users'] })
       queryClient.invalidateQueries({ queryKey: ['admin-groups'] })
-      // group-member queries (used by the AdminGroups → /admin filter)
       queryClient.invalidateQueries({ queryKey: ['admin-group-members'] })
     },
     onError: (err) => {
@@ -84,10 +83,10 @@ function UserRow({ u, allGroups, onFlash, onViewPerms, flashKind, flashText }) {
       </td>
       <td className="table-td">
         <Link
-          to={`/admin/users/${encodeURIComponent(u.email)}/tiers`}
+          to={`/admin/permissions?focus=${encodeURIComponent(u.email)}`}
           className="text-[11px] text-plum-700 hover:underline flex items-center gap-1"
         >
-          <Settings size={11} /> Tiers
+          <Settings size={11} /> Permissions
         </Link>
       </td>
       <td className="table-td">
@@ -619,9 +618,9 @@ export default function Admin() {
                 className="btn-secondary text-sm flex items-center gap-1">
             <Settings size={13} /> Google Sync
           </Link>
-          <Link to="/admin/groups"
+          <Link to="/admin/permissions"
                 className="btn-secondary text-sm flex items-center gap-1">
-            <Settings size={13} /> Groups & Permissions
+            <Shield size={13} /> Permissions
           </Link>
           {!adding && (
             <button className="btn-primary text-sm" onClick={() => setAdding(true)}>
