@@ -489,7 +489,8 @@ function EnrollmentSentBody({ a }) {
         Once all three sign, the form auto-faxes to the pharmacy.
       </div>
 
-      <InsertingProviderInline a={a} />
+      <ClinicianPicker a={a} kind="provider" />
+      <ClinicianPicker a={a} kind="app" />
 
       <details className="text-[11px]">
         <summary className="cursor-pointer text-plum-700 hover:underline">
@@ -526,54 +527,107 @@ function EnrollmentSentBody({ a }) {
 }
 
 
-function InsertingProviderInline({ a }) {
+function ClinicianPicker({ a, kind }) {
+  // `kind` is 'provider' or 'app'. Each picks from the same /admin/users/
+  // clinicians endpoint but writes to a different per-assignment override.
   const qc = useQueryClient()
-  const [draft, setDraft] = useState({
-    email: a.inserting_provider_email || '',
-    name:  a.inserting_provider_name  || '',
-    npi:   a.inserting_provider_npi   || '',
-  })
+  const isProvider = kind === 'provider'
+  const endpoint = isProvider
+    ? `/larc/assignments/${a.id}/inserting-provider`
+    : `/larc/assignments/${a.id}/app`
+  const fields = isProvider
+    ? ['inserting_provider_email', 'inserting_provider_name', 'inserting_provider_npi']
+    : ['app_email', 'app_name', 'app_npi']
+  const label = isProvider ? 'Inserting provider' : 'APP (Advanced Practice Provider)'
+  const current = {
+    email: a[fields[0]] || '',
+    name:  a[fields[1]] || '',
+    npi:   a[fields[2]] || '',
+  }
   const [saved, setSaved] = useState(false)
+
+  const { data: clinicians = [] } = useQuery({
+    queryKey: ['larc-clinicians'],
+    queryFn: () => api.get('/admin/users/clinicians').then(r => r.data),
+    staleTime: 60_000,
+  })
+
   const save = useMutation({
-    mutationFn: (body) => api.post(`/larc/assignments/${a.id}/inserting-provider`, body)
-                            .then(r => r.data),
+    mutationFn: (body) => api.post(endpoint, body).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
       setSaved(true); setTimeout(() => setSaved(false), 1200)
     },
   })
-  function commit(field) {
-    const current = (a[`inserting_provider_${field}`] || '')
-    if ((draft[field] || '') === current) return
-    save.mutate({ [field]: draft[field] })
+
+  function applyClinician(email) {
+    if (!email) {
+      // "Use practice default" → clear all three fields
+      save.mutate({ email: '', name: '', npi: '' })
+      return
+    }
+    const c = clinicians.find(x => x.email === email)
+    if (!c) return
+    save.mutate({ email: c.email, name: c.display_name, npi: c.npi })
   }
+
+  // Pre-filter the dropdown by clinician_role. Show all clinicians as a
+  // fallback so a misroled user can still be picked.
+  const matchKind = isProvider ? 'provider' : 'app'
+  const primary   = clinicians.filter(c => c.clinician_role === matchKind)
+  const others    = clinicians.filter(c => c.clinician_role !== matchKind)
+  const matchedCurrent = clinicians.find(c => c.email === current.email)
+
   return (
     <details className="text-[11px]">
       <summary className="cursor-pointer text-plum-700 hover:underline">
-        Inserting provider {saved && <span className="text-success ml-1">✓ saved</span>}
+        {label}
+        {current.email && (
+          <span className="ml-2 text-gray-700">
+            — {current.name || current.email}{current.npi && <> · <span className="font-mono">{current.npi}</span></>}
+          </span>
+        )}
+        {saved && <span className="text-success ml-1">✓ saved</span>}
       </summary>
-      <div className="mt-1 pl-3 border-l border-gray-200 space-y-1">
+      <div className="mt-1 pl-3 border-l border-gray-200 space-y-1.5">
         <div className="text-[10px] text-gray-500">
-          Overrides the practice-wide provider for this envelope only.
-          Leave blank to use the default.
+          {isProvider
+            ? 'Prescribing physician on the enrollment form. Falls back to the practice provider if blank.'
+            : 'APP printed on the form. Falls back to the practice APP if blank.'}
+          {' '}Pick from the clinician catalog (set NPIs on the Admin page).
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-          <input className="input py-0.5 px-1.5 text-[11px]"
-                 placeholder="provider@…"
-                 value={draft.email}
-                 onChange={e => setDraft(d => ({ ...d, email: e.target.value }))}
-                 onBlur={() => commit('email')} />
-          <input className="input py-0.5 px-1.5 text-[11px]"
-                 placeholder="Display name"
-                 value={draft.name}
-                 onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-                 onBlur={() => commit('name')} />
-          <input className="input py-0.5 px-1.5 text-[11px]"
-                 placeholder="NPI (10-digit)"
-                 value={draft.npi}
-                 onChange={e => setDraft(d => ({ ...d, npi: e.target.value }))}
-                 onBlur={() => commit('npi')} />
-        </div>
+        <select className="input py-0.5 px-1 text-[11px] w-full"
+                value={current.email}
+                onChange={e => applyClinician(e.target.value)}
+                disabled={save.isPending}>
+          <option value="">— use practice default —</option>
+          {primary.length > 0 && (
+            <optgroup label={isProvider ? 'Providers' : 'APPs'}>
+              {primary.map(c => (
+                <option key={c.email} value={c.email}>
+                  {c.display_name} · {c.npi}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {others.length > 0 && (
+            <optgroup label="Other clinicians">
+              {others.map(c => (
+                <option key={c.email} value={c.email}>
+                  {c.display_name} · {c.npi}
+                  {c.clinician_role && ` (${c.clinician_role})`}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          {current.email && !matchedCurrent && (
+            // Custom override that doesn't match any catalog entry — keep
+            // the value pickable so it shows as selected.
+            <option value={current.email}>
+              ⚠ {current.name || current.email} · {current.npi} (not in catalog)
+            </option>
+          )}
+        </select>
       </div>
     </details>
   )

@@ -254,6 +254,14 @@ class LarcAssignment(Base):
     inserting_provider_name  = Column(String(200), nullable=True)
     inserting_provider_npi   = Column(String(20),  nullable=True)
 
+    # Advanced Practice Provider (APP) — printed on enrollment forms that
+    # list both a prescribing physician and a supervising/collaborating
+    # APP (Bayer + Nexplanon forms have separate APP fields). Falls back
+    # to PracticeConfig app_name/app_npi when blank.
+    app_email = Column(String(200), nullable=True)
+    app_name  = Column(String(200), nullable=True)
+    app_npi   = Column(String(20),  nullable=True)
+
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(String(200), nullable=True)

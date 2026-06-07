@@ -76,6 +76,13 @@ class User(Base):
     # safety is enforced in permission_grants.set_super_admin.
     is_super_admin = Column(Boolean, nullable=False, default=False)
 
+    # Clinician identity for enrollment forms. Any user with a non-blank
+    # NPI shows up in the LARC inserting-provider / APP pickers. The role
+    # column distinguishes physician vs. APP in the same dropdown.
+    # Values: 'provider' | 'app' | null (non-clinician)
+    npi = Column(String(20), nullable=True)
+    clinician_role = Column(String(20), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

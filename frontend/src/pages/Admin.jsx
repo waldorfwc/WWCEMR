@@ -92,6 +92,9 @@ function UserRow({ u, allGroups, onFlash, onViewPerms, flashKind, flashText }) {
       <td className="table-td">
         <RingCentralCell user={u} />
       </td>
+      <td className="table-td">
+        <ClinicianCell user={u} />
+      </td>
       <td className="table-td text-[11px] text-muted">
         {u.created_at ? new Date(u.created_at).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }) : '—'}
       </td>
@@ -274,6 +277,47 @@ function UserGroupsCell({ user, allGroups, editing, onEdit, onCancel, onSave, sa
               {saving ? '…' : 'Save'}
             </button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function ClinicianCell({ user }) {
+  const queryClient = useQueryClient()
+  const [npi, setNpi] = useState(user.npi || '')
+  const patch = useMutation({
+    mutationFn: (body) => api.patch(`/admin/users/${encodeURIComponent(user.email)}`, body)
+                            .then(r => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      queryClient.invalidateQueries({ queryKey: ['larc-clinicians'] })
+    },
+  })
+  // Keep input in sync if the row is refreshed by another mutation.
+  useEffect(() => { setNpi(user.npi || '') }, [user.npi])
+
+  return (
+    <div className="text-[11px] space-y-0.5">
+      <select className="input py-0.5 px-1 text-[10px] w-full"
+              value={user.clinician_role || ''}
+              onChange={e => patch.mutate({ clinician_role: e.target.value })}
+              disabled={patch.isPending}>
+        <option value="">— not a clinician —</option>
+        <option value="provider">Provider</option>
+        <option value="app">APP</option>
+      </select>
+      <input className="input py-0.5 px-1 text-[10px] font-mono w-full"
+             placeholder="10-digit NPI"
+             value={npi}
+             onChange={e => setNpi(e.target.value)}
+             onBlur={() => {
+               if (npi !== (user.npi || '')) patch.mutate({ npi })
+             }} />
+      {patch.isError && (
+        <div className="text-[10px] text-danger">
+          {patch.error?.response?.data?.detail || 'error'}
         </div>
       )}
     </div>
@@ -505,6 +549,7 @@ function AddUserForm({ onClose, onFlash }) {
       <td className="table-td" />
       <td className="table-td" />
       <td className="table-td" />
+      <td className="table-td" />
       <td className="table-td">
         <div className="flex gap-2 items-center">
           <button className="btn-primary py-1 px-2 text-[11px]"
@@ -658,6 +703,7 @@ export default function Admin() {
               <th className="table-th">Groups</th>
               <th className="table-th">Permissions</th>
               <th className="table-th">RingCentral</th>
+              <th className="table-th">Clinician / NPI</th>
               <th className="table-th">Created</th>
               <th className="table-th"></th>
             </tr>
@@ -665,7 +711,7 @@ export default function Admin() {
           <tbody>
             {adding && <AddUserForm onClose={() => setAdding(false)} onFlash={onFlash} />}
             {isLoading && (
-              <tr><td colSpan={7} className="table-td text-center text-muted py-8">Loading…</td></tr>
+              <tr><td colSpan={8} className="table-td text-center text-muted py-8">Loading…</td></tr>
             )}
             {!isLoading && visibleUsers?.map(u => (
               <UserRow key={u.email} u={u}
@@ -675,7 +721,7 @@ export default function Admin() {
                        flashText={flashes[u.email]?.text} />
             ))}
             {!isLoading && visibleUsers?.length === 0 && (
-              <tr><td colSpan={7} className="table-td text-center text-muted py-8">
+              <tr><td colSpan={8} className="table-td text-center text-muted py-8">
                 {groupFilter ? 'No users in this group yet.' : 'No users yet.'}
               </td></tr>
             )}

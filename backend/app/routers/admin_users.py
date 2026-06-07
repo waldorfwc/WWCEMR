@@ -34,6 +34,11 @@ class UpdateUserPayload(BaseModel):
     # if the Google state still says suspended; for hard manual control,
     # add the email to GoogleSyncExclusion as well).
     is_active: Optional[bool] = None
+    # Clinician identity for LARC enrollment-form pickers. Empty string
+    # clears (removes the user from the clinicians dropdown).
+    npi: Optional[str] = None
+    # Values: 'provider' | 'app' | '' (clear)
+    clinician_role: Optional[str] = None
 
 
 def _sort_key(u: User) -> tuple:
@@ -58,6 +63,8 @@ def _serialize(u: User) -> dict:
         "last_google_sync": u.last_google_sync.isoformat() + "Z" if u.last_google_sync else None,
         "created_at": u.created_at.isoformat() + "Z" if u.created_at else None,
         "updated_at": u.updated_at.isoformat() + "Z" if u.updated_at else None,
+        "npi": u.npi,
+        "clinician_role": u.clinician_role,
     }
 
 
@@ -67,6 +74,29 @@ def list_users(db: Session = Depends(get_db),
     rows = db.query(User).all()
     rows.sort(key=_sort_key)
     return [_serialize(u) for u in rows]
+
+
+@router.get("/clinicians")
+def list_clinicians(db: Session = Depends(get_db),
+                    current_user: dict = Depends(get_current_user)):
+    """Active users with a non-blank NPI — populates the LARC enrollment
+    pickers (Inserting Provider + APP). Front-end filters/groups by
+    `clinician_role`. Returns email/display_name/npi/clinician_role/is_active."""
+    rows = (db.query(User)
+              .filter(User.is_active.is_(True),
+                      User.npi.isnot(None),
+                      User.npi != "")
+              .all())
+    rows.sort(key=lambda u: (u.clinician_role or "zz", u.display_name or u.email))
+    return [
+        {
+            "email": u.email,
+            "display_name": u.display_name or u.email,
+            "npi": u.npi,
+            "clinician_role": u.clinician_role,
+        }
+        for u in rows
+    ]
 
 
 @router.patch("/{email}")
@@ -113,6 +143,16 @@ def update_user(
         row.ringcentral_manual_override = bool(payload.ringcentral_manual_override)
     if payload.is_active is not None:
         row.is_active = payload.is_active
+    if payload.npi is not None:
+        row.npi = (payload.npi or "").strip() or None
+    if payload.clinician_role is not None:
+        cr = (payload.clinician_role or "").strip().lower()
+        if cr and cr not in ("provider", "app"):
+            raise HTTPException(
+                status_code=422,
+                detail="clinician_role must be 'provider', 'app', or empty",
+            )
+        row.clinician_role = cr or None
     if payload.ringcentral_callback_number is not None:
         cb = payload.ringcentral_callback_number.strip()
         if cb:

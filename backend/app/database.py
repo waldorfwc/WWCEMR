@@ -379,6 +379,14 @@ def _apply_lightweight_migrations():
         ("larc_assignments", "inserting_provider_email", "VARCHAR(200)"),
         ("larc_assignments", "inserting_provider_name",  "VARCHAR(200)"),
         ("larc_assignments", "inserting_provider_npi",   "VARCHAR(20)"),
+        # LARC pharmacy enrollment — per-assignment APP override.
+        ("larc_assignments", "app_email", "VARCHAR(200)"),
+        ("larc_assignments", "app_name",  "VARCHAR(200)"),
+        ("larc_assignments", "app_npi",   "VARCHAR(20)"),
+        # Clinician identity on User — drives the LARC inserting-provider
+        # / APP pickers. Empty NPI = excluded from the dropdown.
+        ("users", "npi",             "VARCHAR(20)"),
+        ("users", "clinician_role",  "VARCHAR(20)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

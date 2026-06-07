@@ -153,6 +153,9 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "inserting_provider_email": a.inserting_provider_email,
         "inserting_provider_name":  a.inserting_provider_name,
         "inserting_provider_npi":   a.inserting_provider_npi,
+        "app_email": a.app_email,
+        "app_name":  a.app_name,
+        "app_npi":   a.app_npi,
         "latest_envelope": _latest_envelope_dict(a),
         "request_faxed_at": a.request_faxed_at.isoformat() if a.request_faxed_at else None,
         "expected_received_by": str(a.expected_received_by) if a.expected_received_by else None,
@@ -1443,6 +1446,32 @@ def set_inserting_provider(
                   "email": a.inserting_provider_email,
                   "name":  a.inserting_provider_name,
                   "npi":   a.inserting_provider_npi,
+              }})
+    db.commit(); db.refresh(a)
+    return _assignment_dict(a, include_milestones=True)
+
+
+@router.post("/assignments/{assignment_id}/app")
+def set_app(assignment_id: str, payload: InsertingProviderIn,
+             db: Session = Depends(get_db),
+             current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Set the per-assignment APP (Advanced Practice Provider) override.
+    Same shape as /inserting-provider — empty string clears one field,
+    falling back to PracticeConfig app_name/app_npi."""
+    a = _load_assignment(db, assignment_id)
+    by = current_user.get("email") or "system"
+    before = {"email": a.app_email, "name": a.app_name, "npi": a.app_npi}
+    if payload.email is not None:
+        a.app_email = (payload.email or "").strip() or None
+    if payload.name is not None:
+        a.app_name  = (payload.name  or "").strip() or None
+    if payload.npi is not None:
+        a.app_npi   = (payload.npi   or "").strip() or None
+    log_audit(db, actor=by, action="app_set",
+              device=a.device, assignment=a,
+              summary=f"APP override updated for {a.patient_name}",
+              detail={"before": before, "after": {
+                  "email": a.app_email, "name": a.app_name, "npi": a.app_npi,
               }})
     db.commit(); db.refresh(a)
     return _assignment_dict(a, include_milestones=True)

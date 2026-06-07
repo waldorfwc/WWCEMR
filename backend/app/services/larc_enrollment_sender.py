@@ -164,8 +164,13 @@ def _build_nexplanon_fields(
     add(receptionist, "provider_last_name",     settings.get("provider_last_name"))
     add(receptionist, "provider_npi",           provider_npi_for_form)
     add(receptionist, "provider_name",          provider_name_for_form)
-    add(receptionist, "app_name",               settings.get("app_name"))
-    add(receptionist, "app_npi",                settings.get("app_npi"))
+    # APP: per-assignment override beats practice-wide fallback. The
+    # form has just two slots (app_name + app_npi); we don't split first/
+    # last like the prescriber because the APP signature line is a single
+    # printed name. _resolve_app returns the chosen values.
+    app_name_for_form, app_npi_for_form = _resolve_app(a, settings)
+    add(receptionist, "app_name",               app_name_for_form)
+    add(receptionist, "app_npi",                app_npi_for_form)
 
     # ── Receptionist: per-assignment ────────────────────────────────
     add(receptionist, "patient_full_name",     _friendly_name(a.patient_name))
@@ -211,7 +216,6 @@ def _build_nexplanon_fields(
 
 def _resolve_provider(a: LarcAssignment) -> tuple[str, str, str]:
     """Return (email, display_name, npi) for the Provider signer role."""
-    settings_db = None
     email = (a.inserting_provider_email or "").strip()
     name  = (a.inserting_provider_name  or "").strip()
     npi   = (a.inserting_provider_npi   or "").strip()
@@ -220,6 +224,16 @@ def _resolve_provider(a: LarcAssignment) -> tuple[str, str, str]:
     if not name:
         name = _fallback_provider_name()
     return email, name, npi
+
+
+def _resolve_app(a: LarcAssignment,
+                  settings: dict[str, Optional[str]]) -> tuple[str, str]:
+    """Return (name, npi) for the APP printed on the enrollment form.
+    Per-assignment override beats PracticeConfig defaults; empty result
+    is fine (the form just leaves those fields blank)."""
+    name = (a.app_name or "").strip() or (settings.get("app_name") or "")
+    npi  = (a.app_npi  or "").strip() or (settings.get("app_npi")  or "")
+    return name, npi
 
 
 def send_enrollment_envelope(
