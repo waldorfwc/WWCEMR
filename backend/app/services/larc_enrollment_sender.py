@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 import os
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Optional
 
@@ -212,6 +213,182 @@ def _build_nexplanon_fields(
     }
 
 
+# ─── Field map (Paragard, Phase 5) ─────────────────────────────────
+
+def _build_paragard_fields(
+    a: LarcAssignment,
+    settings: dict[str, Optional[str]],
+    *,
+    sent_by_email: str,
+    dispense: bool,
+    provider_contact_preference: bool,
+    provider_name_for_form: str,
+    provider_npi_for_form: str,
+) -> dict[str, list[dict]]:
+    """Paragard template — two roles: Patient (signs first) + Provider.
+    No Receptionist role; the patient fills + signs themselves.
+    """
+    p_dob = a.patient_dob.strftime("%m/%d/%Y") if a.patient_dob else ""
+
+    def add(role_list: list, field_id: str, value: Optional[str]):
+        if value is None or value == "":
+            return
+        role_list.append({"id": field_id, "value": str(value)})
+
+    # ── Patient: demographics + primary insurance (pre-fill, edits OK) ─
+    patient: list[dict] = []
+    add(patient, "patient_name",       _friendly_name(a.patient_name))
+    add(patient, "patient_dob",        p_dob)
+    add(patient, "patient_address",    "")   # no chart data — patient fills
+    add(patient, "patient_city",       "")
+    add(patient, "patient_state",      "")
+    add(patient, "patient_zip",        "")
+    add(patient, "patient_phone_home", a.patient_phone or "")
+    add(patient, "patient_cell",       a.patient_phone or "")
+    add(patient, "primary_insurance_name", a.primary_insurance or "")
+
+    # ── Provider role: practice + provider + APP identity ──────────────
+    app_name_for_form, app_npi_for_form = _resolve_app(a, settings)
+    provider: list[dict] = []
+    add(provider, "provider_name",        provider_name_for_form)
+    add(provider, "provider_npi",         provider_npi_for_form)
+    add(provider, "provider_lic",         settings.get("provider_lic"))
+    add(provider, "provider_speciality",  settings.get("provider_speciality"))
+    add(provider, "app_name",             app_name_for_form)
+    add(provider, "practice_name",        settings.get("practice_name"))
+    add(provider, "practice_address",     settings.get("practice_address"))
+    add(provider, "practice_city",        settings.get("practice_city"))
+    add(provider, "practice_state",       settings.get("practice_state"))
+    add(provider, "practice_zip",         settings.get("practice_zip"))
+    # Ship-to address defaults to the practice address — most enrollments
+    # ship back to the same office that ordered them. Override per-key
+    # later if a separate dock address is needed.
+    add(provider, "practice_ship_address", settings.get("practice_address"))
+    add(provider, "practice_ship_city",    settings.get("practice_city"))
+    add(provider, "practice_ship_state",   settings.get("practice_state"))
+    add(provider, "practice_ship_zip",     settings.get("practice_zip"))
+    add(provider, "practice_contact_name",  settings.get("practice_contact"))
+    add(provider, "practice_contact_phone", settings.get("practice_contact_phone"))
+    add(provider, "practice_contact_email", settings.get("practice_email"))
+    add(provider, "practice_contact_fax",   settings.get("practice_fax"))
+
+    return {"Patient": patient, "Provider": provider}
+
+
+# ─── Field map (Bayer Mirena/Skyla/Kyleena, Phase 5) ──────────────
+
+def _build_bayer_fields(
+    a: LarcAssignment,
+    settings: dict[str, Optional[str]],
+    *,
+    sent_by_email: str,
+    dispense: bool,
+    provider_contact_preference: bool,
+    provider_name_for_form: str,
+    provider_npi_for_form: str,
+) -> dict[str, list[dict]]:
+    """Bayer (Mirena/Skyla/Kyleena) shared template — two roles:
+    Receptionist (fills everything) + Provider (signs ONE of the three
+    drug-specific signature lines). No Patient role on this template —
+    Bayer's workflow has the practice fill on the patient's behalf."""
+    p_first, p_middle, p_last = _split_name(a.patient_name)
+    p_dob = a.patient_dob.strftime("%m/%d/%Y") if a.patient_dob else ""
+    settings_last_first = ", ".join(
+        x for x in [(settings.get("provider_last_name") or "").strip(),
+                    (settings.get("provider_first_name") or "").strip()]
+        if x
+    )
+
+    def add(role_list: list, field_id: str, value: Optional[str]):
+        if value is None or value == "":
+            return
+        role_list.append({"id": field_id, "value": str(value)})
+
+    # ── Receptionist: patient demographics + insurance + practice ────
+    receptionist: list[dict] = []
+    add(receptionist, "patient_last_name",  p_last)
+    add(receptionist, "patient_first_name", p_first)
+    add(receptionist, "patient_initial",    p_middle)
+    add(receptionist, "patient_dob",        p_dob)
+    add(receptionist, "patient_phone",      a.patient_phone or "")
+    # Address / language / gender — not on the LARC assignment row, left
+    # blank for the receptionist to fill from the chart.
+
+    # Practice + provider identity (Bayer uses 'office_*' not 'practice_*')
+    add(receptionist, "office_contact",  settings.get("practice_contact"))
+    add(receptionist, "office_address",  settings.get("practice_address"))
+    add(receptionist, "office_city",     settings.get("practice_city"))
+    add(receptionist, "office_state",    settings.get("practice_state"))
+    add(receptionist, "office_zip",      settings.get("practice_zip"))
+    # Bayer prints the provider name in "Last, First" format.
+    add(receptionist, "provider_name_last_first", settings_last_first)
+    add(receptionist, "provider_licenses", settings.get("provider_lic"))
+    add(receptionist, "provider_dea",      settings.get("provider_dea"))
+    add(receptionist, "provider_npi",      provider_npi_for_form)
+    # Insurance — Bayer has separate prescription + medical sections.
+    # We only know primary_insurance on the assignment; duplicate it
+    # into both so the receptionist sees a sensible starting point.
+    add(receptionist, "prescription_insurance_name", a.primary_insurance or "")
+    add(receptionist, "medical_insurance_name",      a.primary_insurance or "")
+
+    # ── Provider role: signatures only (drug-specific, provider picks one)
+    provider: list[dict] = []  # no prefill — provider signs at signing time
+
+    return {"Receptionist": receptionist, "Provider": provider}
+
+
+# ─── Template registry ─────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class _RoleSpec:
+    name: str           # logical role: Receptionist | Patient | Provider
+    role_index: int     # template's roleIndex (1-based, per template order)
+    signer_order: int   # 1-based order in which they get the email
+
+
+@dataclass(frozen=True)
+class _TemplateSpec:
+    template_id: str
+    nice_name: str          # "Nexplanon" | "Paragard" | "Bayer (Mirena/Skyla/Kyleena)"
+    roles: tuple             # tuple[_RoleSpec, ...]
+    field_builder: object    # callable(a, settings, **kw) -> {role_name: [field…]}
+
+
+_TEMPLATE_SPECS: dict[str, _TemplateSpec] = {
+    NEXPLANON_TEMPLATE_ID: _TemplateSpec(
+        template_id=NEXPLANON_TEMPLATE_ID,
+        nice_name="Nexplanon",
+        roles=(
+            _RoleSpec("Receptionist", role_index=1, signer_order=1),
+            _RoleSpec("Patient",       role_index=2, signer_order=2),
+            _RoleSpec("Provider",      role_index=3, signer_order=3),
+        ),
+        field_builder=_build_nexplanon_fields,
+    ),
+    PARAGARD_TEMPLATE_ID: _TemplateSpec(
+        template_id=PARAGARD_TEMPLATE_ID,
+        nice_name="Paragard",
+        roles=(
+            _RoleSpec("Patient",  role_index=1, signer_order=1),
+            _RoleSpec("Provider", role_index=2, signer_order=2),
+        ),
+        field_builder=_build_paragard_fields,
+    ),
+    BAYER_TEMPLATE_ID: _TemplateSpec(
+        template_id=BAYER_TEMPLATE_ID,
+        nice_name="Bayer (Mirena/Skyla/Kyleena)",
+        roles=(
+            # Bayer's BoldSign template lists Provider first, Receptionist
+            # second — so roleIndex follows that. signerOrder reflects our
+            # workflow: Reception fills, then Provider signs.
+            _RoleSpec("Provider",     role_index=1, signer_order=2),
+            _RoleSpec("Receptionist", role_index=2, signer_order=1),
+        ),
+        field_builder=_build_bayer_fields,
+    ),
+}
+
+
 # ─── Public send ───────────────────────────────────────────────────
 
 def _resolve_provider(a: LarcAssignment) -> tuple[str, str, str]:
@@ -262,13 +439,16 @@ def send_enrollment_envelope(
         raise LarcEnrollmentError(
             f"No BoldSign template ID configured for device type {dt.name!r}."
         )
-    if template_id != NEXPLANON_TEMPLATE_ID:
-        # Phase 2 ships Nexplanon only. Paragard / Bayer light up in Phase 5.
+    spec = _TEMPLATE_SPECS.get(template_id)
+    if spec is None:
         raise LarcEnrollmentError(
-            f"Enrollment sender for {dt.name!r} not yet implemented "
-            "(Phase 2 supports Nexplanon only)."
+            f"Enrollment template {template_id} (device {dt.name!r}) has no "
+            "field map configured. Add a _TemplateSpec entry in "
+            "app/services/larc_enrollment_sender.py."
         )
-    if not (assignment.patient_email or "").strip():
+
+    needs_patient = any(r.name == "Patient" for r in spec.roles)
+    if needs_patient and not (assignment.patient_email or "").strip():
         raise LarcEnrollmentError(
             "Assignment is missing patient_email — fill it in before sending."
         )
@@ -285,7 +465,7 @@ def send_enrollment_envelope(
     # per-assignment override, fall back to practice settings.
     npi_for_form = provider_npi or (settings.get("provider_npi") or "")
 
-    fields_by_role = _build_nexplanon_fields(
+    fields_by_role = spec.field_builder(
         assignment, settings,
         sent_by_email=sent_by_email,
         dispense=dispense,
@@ -294,42 +474,37 @@ def send_enrollment_envelope(
         provider_npi_for_form=npi_for_form,
     )
 
-    roles_payload = [
-        {
-            "signerName":  "WWC Reception",
-            "signerEmail": _receptionist_email(),
+    # Build the roles[] payload from the template spec. Each role gets the
+    # right signer email + the prefill fields the builder produced for it.
+    role_email_by_name = {
+        "Receptionist": _receptionist_email(),
+        "Patient":      (assignment.patient_email or "").strip(),
+        "Provider":     provider_email,
+    }
+    role_signer_name = {
+        "Receptionist": "WWC Reception",
+        "Patient":      _friendly_name(assignment.patient_name),
+        "Provider":     provider_name,
+    }
+    roles_payload = []
+    for r in spec.roles:
+        roles_payload.append({
+            "signerName":  role_signer_name[r.name],
+            "signerEmail": role_email_by_name[r.name],
             "signerType":  "Signer",
-            "signerRole":  "Receptionist",
-            "signerOrder": 1,
-            "roleIndex":   1,
-            "existingFormFields": fields_by_role["Receptionist"],
-        },
-        {
-            "signerName":  _friendly_name(assignment.patient_name),
-            "signerEmail": (assignment.patient_email or "").strip(),
-            "signerType":  "Signer",
-            "signerRole":  "Patient",
-            "signerOrder": 2,
-            "roleIndex":   2,
-            "existingFormFields": fields_by_role["Patient"],
-        },
-        {
-            "signerName":  provider_name,
-            "signerEmail": provider_email,
-            "signerType":  "Signer",
-            "signerRole":  "Provider",
-            "signerOrder": 3,
-            "roleIndex":   3,
-            "existingFormFields": fields_by_role["Provider"],
-        },
-    ]
+            "signerRole":  r.name,
+            "signerOrder": r.signer_order,
+            "roleIndex":   r.role_index,
+            "existingFormFields": fields_by_role.get(r.name, []),
+        })
 
     payload = {
-        "title": f"WWC — {dt.name} Pharmacy Enrollment — {assignment.patient_name or 'Patient'}",
+        "title": (f"WWC — {dt.name} ({spec.nice_name}) Pharmacy Enrollment — "
+                  f"{assignment.patient_name or 'Patient'}"),
         "message": (
-            f"Please review and electronically sign the {dt.name} pharmacy "
-            f"enrollment form. Once all three signers complete, the form "
-            f"will be faxed to the dispensing pharmacy."
+            f"Please review and electronically sign the {spec.nice_name} "
+            f"pharmacy enrollment form for {dt.name}. Once all signers "
+            f"complete, the form will be faxed to the dispensing pharmacy."
         ),
         "roles": roles_payload,
         "enableSigningOrder": True,

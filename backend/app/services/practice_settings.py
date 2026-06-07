@@ -67,6 +67,14 @@ PRACTICE_SETTING_REGISTRY: list[SettingSpec] = [
     SettingSpec("provider_name",          "Provider", "Printed Name on Signature",
                 "How the provider's name should print on the signature line "
                 "(e.g., 'Dr. Aryian Cooke')."),
+    SettingSpec("provider_lic",           "Provider", "Medical License #",
+                "State medical license number (Maryland). Required on "
+                "Paragard + Bayer enrollment forms."),
+    SettingSpec("provider_dea",           "Provider", "DEA #",
+                "DEA registration number. Required on Bayer enrollment forms."),
+    SettingSpec("provider_speciality",    "Provider", "Specialty",
+                "Provider specialty (e.g., 'OB/GYN'). Printed on Paragard "
+                "enrollment forms."),
 
     # ── Advanced Practice Provider (optional) ──────────────────────
     SettingSpec("app_name",               "Advanced Practice Provider", "APP Name",
