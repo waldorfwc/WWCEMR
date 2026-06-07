@@ -1379,6 +1379,34 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
     return _assignment_dict(a, include_milestones=True)
 
 
+@router.post("/envelopes/{envelope_id}/refax")
+def refax_envelope(envelope_id: str,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Manually retry the auto-fax of a completed enrollment envelope.
+
+    Use case: the webhook fired the fax and RingCentral rejected it
+    (busy number, bad PDF). Staff fixes the pharmacy fax number then
+    hits this to retry without having to void + resend the BoldSign
+    envelope."""
+    env = (db.query(LarcEnrollmentEnvelope)
+             .filter(LarcEnrollmentEnvelope.id == envelope_id)
+             .first())
+    if env is None:
+        raise HTTPException(status_code=404, detail="envelope not found")
+    if not env.signed_at:
+        raise HTTPException(status_code=409,
+                            detail="envelope is not yet fully signed — nothing to fax")
+    by = current_user.get("email") or "system"
+    from app.services.larc_pharmacy_fax import fax_envelope
+    result = fax_envelope(db, env, by_email=by, force=True)
+    if not result.get("ok"):
+        # Soft-fail with the persisted error rather than 500 — the row
+        # already has fax_status=fax_failed + last_fax_error.
+        raise HTTPException(status_code=502, detail=result.get("error"))
+    return result
+
+
 class InsertingProviderIn(BaseModel):
     email: Optional[str] = None       # Empty string / null clears the override
     name:  Optional[str] = None

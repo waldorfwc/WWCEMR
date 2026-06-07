@@ -26,8 +26,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
+from app.models.larc import LarcEnrollmentEnvelope
 from app.models.surgery import Surgery, SurgeryConsentEnvelope
 from app.services import boldsign_envelopes as bs
+from app.services import larc_enrollment_sender as larc_es
 
 log = logging.getLogger(__name__)
 
@@ -135,6 +137,26 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
         log.warning("BoldSign webhook missing documentId: %r", event)
         return {"received": True, "applied": False, "reason": "no documentId"}
 
+    # Dispatch: a BoldSign envelope id can belong to either a surgery
+    # consent or a LARC pharmacy-enrollment envelope. Try LARC first —
+    # the larc_enrollment_envelopes table is much smaller than the
+    # surgery_consent_envelopes table, so lookup is cheap.
+    larc_row = (db.query(LarcEnrollmentEnvelope)
+                  .filter(LarcEnrollmentEnvelope.boldsign_envelope_id == doc_id)
+                  .first())
+    if larc_row is not None:
+        before = larc_row.status
+        try:
+            after = larc_es.apply_webhook_event(db, larc_row, data)
+            db.commit()
+        except Exception as exc:
+            log.exception("LARC webhook apply failed for %s", doc_id)
+            raise HTTPException(status_code=500, detail=f"larc apply error: {exc}")
+        log.info("BoldSign LARC webhook applied: documentId=%s status %s → %s",
+                  doc_id, before, after)
+        return {"received": True, "applied": True, "kind": "larc",
+                "before_status": before, "after_status": after}
+
     row = (db.query(SurgeryConsentEnvelope)
              .filter(SurgeryConsentEnvelope.boldsign_envelope_id == doc_id)
              .first())
@@ -160,5 +182,5 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
 
     log.info("BoldSign webhook applied: documentId=%s status %s → %s",
               doc_id, before, row.status)
-    return {"received": True, "applied": True,
+    return {"received": True, "applied": True, "kind": "surgery",
             "before_status": before, "after_status": row.status}

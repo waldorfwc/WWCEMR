@@ -1,14 +1,16 @@
-"""LARC pharmacy-enrollment envelope sender.
+"""LARC pharmacy-enrollment envelope sender + webhook applier.
 
-Sends a BoldSign envelope for a pharmacy-order LARC assignment with
-three signer roles (Receptionist → Patient → Provider). Persists a
-`LarcEnrollmentEnvelope` row, audits, and bumps
-`assignment.enrollment_sent_at` so the dashboard shows the milestone.
+Send side (`send_enrollment_envelope`): builds the BoldSign 3-signer
+envelope (Receptionist → Patient → Provider), prefills from
+PracticeConfig + the LARC assignment, persists a row, audits.
 
-Phase 2 supports Nexplanon only. The per-template field map lives in
-NEXPLANON_FIELD_MAP at the bottom of this module — Phase 5 will add
-PARAGARD_FIELD_MAP and BAYER_FIELD_MAP and pick the right one by
-template id.
+Webhook side (`apply_webhook_event`): called from the BoldSign webhook
+when an envelope changes state. Updates per-signer timestamps + the
+overall status, and triggers the auto-fax to the pharmacy on Completed.
+
+Phase 2 supports Nexplanon only on the send path. Webhook handling is
+template-agnostic — same status applier works for Paragard / Bayer
+once their send paths land in Phase 5.
 """
 from __future__ import annotations
 
@@ -368,3 +370,97 @@ def send_enrollment_envelope(
     db.commit()
     db.refresh(env)
     return env
+
+
+# ─── Webhook applier ───────────────────────────────────────────────
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    """BoldSign sends ISO 8601 timestamps. Tolerates None / blank."""
+    if not value:
+        return None
+    try:
+        # Strip a trailing Z so fromisoformat works on older Python.
+        return datetime.fromisoformat(str(value).rstrip("Z"))
+    except (ValueError, TypeError):
+        return None
+
+
+_STATUS_MAP = {
+    "inprogress": "sent",
+    "completed":  "signed",
+    "declined":   "declined",
+    "expired":    "voided",
+    "revoked":    "voided",
+}
+
+
+def apply_webhook_event(db, env, data: dict) -> str:
+    """Apply a BoldSign webhook payload to a LarcEnrollmentEnvelope row.
+
+    Updates:
+      - per-signer timestamps (receptionist/patient/provider)
+      - overall status (sent | signed | declined | voided | faxed)
+      - last_synced_at
+
+    Returns the new `status` so the caller can log before/after.
+
+    Side effect: when the envelope reaches Completed and hasn't been
+    faxed yet, fires the auto-fax to LarcAssignment.pharmacy.fax. Any
+    fax failure is recorded on the row (fax_status / last_fax_error) but
+    does NOT raise — the webhook handler still returns 200 to BoldSign.
+    """
+    raw_status = (data.get("status") or data.get("Status") or "").lower()
+    new_status = _STATUS_MAP.get(raw_status, raw_status or env.status)
+    env.status = new_status
+    env.last_synced_at = datetime.utcnow()
+
+    if raw_status == "completed" and not env.signed_at:
+        env.signed_at = (_parse_dt(data.get("completedDateTime")
+                                    or data.get("completedAt"))
+                          or datetime.utcnow())
+    elif raw_status == "declined" and not env.declined_at:
+        env.declined_at = (_parse_dt(data.get("declinedDateTime")
+                                      or data.get("declinedAt"))
+                            or datetime.utcnow())
+    elif raw_status in ("revoked", "expired") and not env.voided_at:
+        env.voided_at = (_parse_dt(data.get("revokedDateTime")
+                                    or data.get("revokedAt"))
+                          or datetime.utcnow())
+
+    # Per-signer timestamps — BoldSign sends `signerDetails` with one entry
+    # per signer role; we mirror Reception / Patient / Provider onto the
+    # row's three *_signed_at columns. First-write-wins so duplicate
+    # webhook retries don't refresh the canonical signature time.
+    signers = data.get("signerDetails") or data.get("SignerDetails") or []
+    for s in signers:
+        role = (s.get("signerRole") or s.get("SignerRole") or "").lower()
+        s_status = (s.get("status") or s.get("Status") or "").lower()
+        if s_status != "completed":
+            continue
+        signed_at = (_parse_dt(s.get("signedDateTime")
+                                or s.get("completedDateTime"))
+                      or datetime.utcnow())
+        if role == "receptionist" and not env.receptionist_signed_at:
+            env.receptionist_signed_at = signed_at
+        elif role == "patient" and not env.patient_signed_at:
+            env.patient_signed_at = signed_at
+        elif role == "provider" and not env.provider_signed_at:
+            env.provider_signed_at = signed_at
+
+    db.flush()  # let the fax service see the updated row
+
+    # Trigger auto-fax to the pharmacy on completion. Imports lazy to
+    # avoid a circular import (fax service pulls LarcAssignment models).
+    if raw_status == "completed" and not env.faxed_at:
+        try:
+            from app.services.larc_pharmacy_fax import fax_envelope
+            fax_envelope(db, env, by_email="system:webhook")
+        except Exception as exc:
+            # Swallow — webhook handler logs + returns 200 regardless.
+            # The failure is recorded on the row by fax_envelope itself
+            # (last_fax_error / fax_status), or here for unexpected exits.
+            env.last_fax_error = str(exc)
+            env.fax_status = "fax_failed"
+            log.exception("LARC auto-fax raised unexpectedly")
+
+    return env.status
