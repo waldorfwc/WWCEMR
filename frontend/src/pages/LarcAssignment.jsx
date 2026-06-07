@@ -462,39 +462,177 @@ function ResponsibilityModmedBody({ a }) {
 
 function EnrollmentSentBody({ a }) {
   const qc = useQueryClient()
+  const [dispense, setDispense] = useState(false)
+  const [providerContact, setProviderContact] = useState(false)
+  const [error, setError] = useState(null)
+
   const send = useMutation({
-    mutationFn: (viaDocusign) => api.post(`/larc/assignments/${a.id}/send-enrollment`,
-                                            { via_docusign: viaDocusign }).then(r => r.data),
+    mutationFn: () => api.post(`/larc/assignments/${a.id}/send-enrollment`, {
+      dispense, provider_contact_preference: providerContact,
+    }).then(r => r.data),
+    onMutate: () => setError(null),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
-    onError: (e) => alert(e?.response?.data?.detail || 'Send failed'),
+    onError: (e) => setError(e?.response?.data?.detail || 'Send failed'),
   })
 
-  if (a.enrollment_sent_at) {
-    return (
-      <div className="text-[11px] text-green-700">
-        ✓ Enrollment sent {fmt.date(a.enrollment_sent_at.slice(0, 10))}
-      </div>
-    )
+  const env = a.latest_envelope
+
+  // Already sent — show the BoldSign envelope status panel.
+  if (env) {
+    return <EnrollmentEnvelopeStatus a={a} env={env} />
   }
 
   return (
     <div className="space-y-2 text-[12px]">
       <div className="text-[11px] text-gray-600">
-        Send the device-specific enrollment form to the patient. Once they sign, we can fax the order to the pharmacy.
+        Sends a 3-signer BoldSign envelope (Reception → Patient → Provider).
+        Once all three sign, the form auto-faxes to the pharmacy.
       </div>
+
+      <InsertingProviderInline a={a} />
+
+      <details className="text-[11px]">
+        <summary className="cursor-pointer text-plum-700 hover:underline">
+          Form options
+        </summary>
+        <div className="mt-1 space-y-1 pl-3 border-l border-gray-200">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={dispense}
+                   onChange={e => setDispense(e.target.checked)} />
+            <span>Dispense (check this if applicable)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={providerContact}
+                   onChange={e => setProviderContact(e.target.checked)} />
+            <span>Provider contact preference</span>
+          </label>
+        </div>
+      </details>
+
       <div className="flex gap-2">
         <button className="btn-primary text-[11px]"
-                onClick={() => send.mutate(true)}
+                onClick={() => send.mutate()}
                 disabled={send.isPending}>
-          {send.isPending ? 'Sending…' : 'Send via DocuSign'}
-        </button>
-        <button className="btn-secondary text-[11px]"
-                onClick={() => send.mutate(false)}
-                disabled={send.isPending}
-                title="Mark sent without DocuSign — e.g., paper form mailed">
-          Mark sent (paper)
+          {send.isPending ? 'Sending…' : 'Send Enrollment via BoldSign'}
         </button>
       </div>
+      {error && (
+        <div className="text-[11px] text-danger bg-red-50 border border-red-200 rounded px-2 py-1.5">
+          {error}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function InsertingProviderInline({ a }) {
+  const qc = useQueryClient()
+  const [draft, setDraft] = useState({
+    email: a.inserting_provider_email || '',
+    name:  a.inserting_provider_name  || '',
+    npi:   a.inserting_provider_npi   || '',
+  })
+  const [saved, setSaved] = useState(false)
+  const save = useMutation({
+    mutationFn: (body) => api.post(`/larc/assignments/${a.id}/inserting-provider`, body)
+                            .then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+      setSaved(true); setTimeout(() => setSaved(false), 1200)
+    },
+  })
+  function commit(field) {
+    const current = (a[`inserting_provider_${field}`] || '')
+    if ((draft[field] || '') === current) return
+    save.mutate({ [field]: draft[field] })
+  }
+  return (
+    <details className="text-[11px]">
+      <summary className="cursor-pointer text-plum-700 hover:underline">
+        Inserting provider {saved && <span className="text-success ml-1">✓ saved</span>}
+      </summary>
+      <div className="mt-1 pl-3 border-l border-gray-200 space-y-1">
+        <div className="text-[10px] text-gray-500">
+          Overrides the practice-wide provider for this envelope only.
+          Leave blank to use the default.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+          <input className="input py-0.5 px-1.5 text-[11px]"
+                 placeholder="provider@…"
+                 value={draft.email}
+                 onChange={e => setDraft(d => ({ ...d, email: e.target.value }))}
+                 onBlur={() => commit('email')} />
+          <input className="input py-0.5 px-1.5 text-[11px]"
+                 placeholder="Display name"
+                 value={draft.name}
+                 onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                 onBlur={() => commit('name')} />
+          <input className="input py-0.5 px-1.5 text-[11px]"
+                 placeholder="NPI (10-digit)"
+                 value={draft.npi}
+                 onChange={e => setDraft(d => ({ ...d, npi: e.target.value }))}
+                 onBlur={() => commit('npi')} />
+        </div>
+      </div>
+    </details>
+  )
+}
+
+
+function EnrollmentEnvelopeStatus({ a, env }) {
+  // Step states: 'pending' | 'signed' | 'declined' | 'voided'
+  const steps = [
+    { label: 'Reception', at: env.receptionist_signed_at },
+    { label: 'Patient',   at: env.patient_signed_at },
+    { label: 'Provider',  at: env.provider_signed_at },
+  ]
+  const allSigned = !!env.signed_at
+  const fax = env.faxed_at
+        ? { kind: 'done', text: `Faxed ${fmt.date(env.faxed_at.slice(0, 10))} — ${env.fax_status || 'sent'}` }
+        : env.fax_status === 'SendingFailed' || env.last_fax_error
+          ? { kind: 'err', text: `Fax failed — ${env.last_fax_error || env.fax_status}` }
+          : allSigned
+            ? { kind: 'pending', text: 'Signed — fax queued' }
+            : null
+
+  return (
+    <div className="space-y-1.5 text-[11px]">
+      <div className="text-gray-700">
+        <span className="font-mono text-[10px] text-gray-500">
+          BoldSign {env.boldsign_envelope_id ? env.boldsign_envelope_id.slice(0, 8) + '…' : ''}
+        </span>
+        {' '}sent {env.sent_at ? fmt.date(env.sent_at.slice(0, 10)) : '—'}
+        {env.sent_by && <> by <span className="text-gray-600">{env.sent_by}</span></>}
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {steps.map(s => (
+          <span key={s.label}
+                className={
+                  s.at
+                    ? 'text-[10px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded'
+                    : 'text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded'
+                }
+                title={s.at || 'pending'}>
+            {s.at ? '✓ ' : '○ '}{s.label}
+          </span>
+        ))}
+      </div>
+      {fax && (
+        <div className={
+          fax.kind === 'done' ? 'text-green-700'
+            : fax.kind === 'err' ? 'text-danger'
+            : 'text-amber-700'
+        }>
+          {fax.text}
+        </div>
+      )}
+      {env.declined_at && (
+        <div className="text-danger">Declined {fmt.date(env.declined_at.slice(0, 10))}</div>
+      )}
+      {env.voided_at && (
+        <div className="text-gray-500 italic">Voided {fmt.date(env.voided_at.slice(0, 10))}</div>
+      )}
     </div>
   )
 }
@@ -515,8 +653,8 @@ function EnrollmentSignedBody({ a }) {
       <div>
         <div className="font-medium text-gray-800">Enrollment form signed</div>
         <div className="text-[10px] text-gray-500">
-          DocuSign will auto-mark this when the patient signs. Or check it manually if they
-          returned a paper form.
+          BoldSign will auto-mark this when all three signers complete (Phase 4 webhook).
+          For now, check this manually once you confirm the signed PDF arrived.
         </div>
         {done && (
           <div className="text-[11px] text-green-700 mt-0.5">

@@ -26,8 +26,8 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.database import get_db
 from app.models.larc import (
     LarcAssignment, LarcAuditEvent, LarcCheckout, LarcDevice,
-    LarcDeviceType, LarcInventoryCount, LarcManualSection, LarcMilestone,
-    LarcOwedPatient, LarcPharmacy,
+    LarcDeviceType, LarcEnrollmentEnvelope, LarcInventoryCount,
+    LarcManualSection, LarcMilestone, LarcOwedPatient, LarcPharmacy,
 )
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
@@ -73,6 +73,41 @@ def _device_dict(d: LarcDevice) -> dict:
     }
 
 
+def _latest_envelope_dict(a: LarcAssignment) -> Optional[dict]:
+    """Compact summary of the most recent LarcEnrollmentEnvelope for this
+    assignment. Returns None if no envelope has been sent. Drives the
+    Pharmacy Enrollment status panel on the LarcAssignment page."""
+    from sqlalchemy.orm import object_session
+    sess = object_session(a)
+    if sess is None:
+        return None
+    env = (sess.query(LarcEnrollmentEnvelope)
+              .filter(LarcEnrollmentEnvelope.assignment_id == a.id)
+              .order_by(LarcEnrollmentEnvelope.created_at.desc())
+              .first())
+    if env is None:
+        return None
+    return {
+        "id": str(env.id),
+        "boldsign_envelope_id": env.boldsign_envelope_id,
+        "boldsign_template_id": env.boldsign_template_id,
+        "status": env.status,
+        "sent_at":                 env.sent_at.isoformat() if env.sent_at else None,
+        "receptionist_signed_at":  env.receptionist_signed_at.isoformat() if env.receptionist_signed_at else None,
+        "patient_signed_at":       env.patient_signed_at.isoformat() if env.patient_signed_at else None,
+        "provider_signed_at":      env.provider_signed_at.isoformat() if env.provider_signed_at else None,
+        "signed_at":               env.signed_at.isoformat() if env.signed_at else None,
+        "declined_at":             env.declined_at.isoformat() if env.declined_at else None,
+        "voided_at":               env.voided_at.isoformat() if env.voided_at else None,
+        "faxed_at":                env.faxed_at.isoformat() if env.faxed_at else None,
+        "fax_status":              env.fax_status,
+        "fax_to":                  env.fax_to,
+        "fax_attempts":            env.fax_attempts,
+        "last_fax_error":          env.last_fax_error,
+        "sent_by":                 env.sent_by,
+    }
+
+
 def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dict:
     out = {
         "id": str(a.id),
@@ -115,6 +150,10 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "billed_by": a.billed_by,
         "enrollment_sent_at": a.enrollment_sent_at.isoformat() if a.enrollment_sent_at else None,
         "enrollment_signed_at": a.enrollment_signed_at.isoformat() if a.enrollment_signed_at else None,
+        "inserting_provider_email": a.inserting_provider_email,
+        "inserting_provider_name":  a.inserting_provider_name,
+        "inserting_provider_npi":   a.inserting_provider_npi,
+        "latest_envelope": _latest_envelope_dict(a),
         "request_faxed_at": a.request_faxed_at.isoformat() if a.request_faxed_at else None,
         "expected_received_by": str(a.expected_received_by) if a.expected_received_by else None,
         "device_received_at": a.device_received_at.isoformat() if a.device_received_at else None,
@@ -1297,77 +1336,88 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
 # ─── Pharmacy-order flow ───────────────────────────────────────────
 
 class EnrollmentSendIn(BaseModel):
-    via_docusign: bool = True       # False = paper fallback; just stamps the milestone
-    notes: Optional[str] = None
+    # The two per-send checkboxes on the Nexplanon form. Each device-
+    # specific form may expose its own set in Phase 5 — keep this loose.
+    dispense: bool = False
+    provider_contact_preference: bool = False
 
 
 @router.post("/assignments/{assignment_id}/send-enrollment")
 def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSendIn(),
                      db: Session = Depends(get_db),
                      current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
-    """Send the device-type's enrollment form to the patient. If DocuSign
-    template is configured AND via_docusign=True, fires an envelope via
-    the existing DocuSign client. Otherwise just stamps the milestone
-    (staff sent on paper / fax)."""
+    """Send the device-type's BoldSign enrollment envelope. Validates
+    prerequisites in the sender and surfaces actionable 409s — won't
+    burn an envelope on missing patient_email / unwired template."""
     a = _load_assignment(db, assignment_id)
     if a.source_flow != "pharmacy_order":
         raise HTTPException(status_code=409,
                             detail="Enrollment only applies to pharmacy_order flow")
-    if not a.device_id and not a.notes:
-        # Pharmacy orders without a device yet still need a device_type — stored on the linked device
-        pass
     by = current_user.get("email") or "system"
 
-    dt = (db.query(LarcDeviceType)
-            .join(LarcDevice, LarcDevice.device_type_id == LarcDeviceType.id, isouter=True)
-            .filter(LarcDevice.id == a.device_id).first()) if a.device_id else None
+    from app.services.larc_enrollment_sender import (
+        send_enrollment_envelope, LarcEnrollmentError,
+    )
+    try:
+        env = send_enrollment_envelope(
+            db, a, sent_by_email=by,
+            dispense=payload.dispense,
+            provider_contact_preference=payload.provider_contact_preference,
+        )
+    except LarcEnrollmentError as exc:
+        # Sender raises these for missing prerequisites or BoldSign errors.
+        raise HTTPException(status_code=409, detail=str(exc))
 
-    envelope_id = None
-    if payload.via_docusign and dt and dt.enrollment_form_template:
-        if not a.patient_email:
-            raise HTTPException(status_code=409,
-                                detail="Patient email required to send via DocuSign")
-        try:
-            from app.services.docusign_client import auth_headers, envelopes_base_url
-            import httpx
-            body = {
-                "templateId": dt.enrollment_form_template,
-                "templateRoles": [{
-                    "roleName": "Patient",
-                    "name": a.patient_name,
-                    "email": a.patient_email,
-                    "routingOrder": "1",
-                }],
-                "status": "sent",
-                "emailSubject": f"WWC — {dt.name} enrollment form",
-                "emailBlurb": (f"Please complete the {dt.name} enrollment form so we can "
-                                "order your device from the pharmacy."),
-                "customFields": {"textCustomFields": [
-                    {"name": "wwc_larc_assignment_id", "value": a.id, "show": "false", "required": "false"},
-                ]},
-            }
-            r = httpx.post(f"{envelopes_base_url()}/envelopes",
-                           headers=auth_headers(), json=body, timeout=60)
-            if r.status_code in (200, 201):
-                envelope_id = r.json().get("envelopeId")
-            else:
-                raise HTTPException(status_code=502,
-                                    detail=f"DocuSign error: {r.status_code} {r.text[:200]}")
-        except HTTPException:
-            raise
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"DocuSign send failed: {exc}")
-
-    a.enrollment_sent_at = datetime.utcnow()
-    _mark_milestone(a, "enrollment_sent", status="done", by=by, notes=payload.notes)
+    _mark_milestone(a, "enrollment_sent", status="done", by=by)
     log_audit(db, actor=by, action="enrollment_sent",
               device=a.device, assignment=a,
-              summary=(f"Enrollment form sent to {a.patient_name}"
-                       + (f" via DocuSign ({envelope_id[:8]}…)" if envelope_id
-                          else " (manual / paper)")),
-              detail={"docusign_envelope_id": envelope_id})
+              summary=(f"BoldSign enrollment envelope sent to {a.patient_name} "
+                       f"({(env.boldsign_envelope_id or '')[:8]}…)"),
+              detail={"boldsign_envelope_id": env.boldsign_envelope_id,
+                      "template_id": env.boldsign_template_id})
     db.commit(); db.refresh(a)
-    return {**_assignment_dict(a, include_milestones=True), "docusign_envelope_id": envelope_id}
+    return _assignment_dict(a, include_milestones=True)
+
+
+class InsertingProviderIn(BaseModel):
+    email: Optional[str] = None       # Empty string / null clears the override
+    name:  Optional[str] = None
+    npi:   Optional[str] = None
+
+
+@router.post("/assignments/{assignment_id}/inserting-provider")
+def set_inserting_provider(
+    assignment_id: str, payload: InsertingProviderIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK)),
+):
+    """Set the per-assignment inserting-provider override. Each field is
+    optional and overridden independently — empty string clears that
+    one field (falls back to the practice-wide provider settings when
+    the BoldSign envelope is sent)."""
+    a = _load_assignment(db, assignment_id)
+    by = current_user.get("email") or "system"
+    before = {
+        "email": a.inserting_provider_email,
+        "name":  a.inserting_provider_name,
+        "npi":   a.inserting_provider_npi,
+    }
+    if payload.email is not None:
+        a.inserting_provider_email = (payload.email or "").strip() or None
+    if payload.name is not None:
+        a.inserting_provider_name  = (payload.name  or "").strip() or None
+    if payload.npi is not None:
+        a.inserting_provider_npi   = (payload.npi   or "").strip() or None
+    log_audit(db, actor=by, action="inserting_provider_set",
+              device=a.device, assignment=a,
+              summary=f"Inserting provider override updated for {a.patient_name}",
+              detail={"before": before, "after": {
+                  "email": a.inserting_provider_email,
+                  "name":  a.inserting_provider_name,
+                  "npi":   a.inserting_provider_npi,
+              }})
+    db.commit(); db.refresh(a)
+    return _assignment_dict(a, include_milestones=True)
 
 
 @router.post("/assignments/{assignment_id}/enrollment-signed")
