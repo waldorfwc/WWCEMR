@@ -373,6 +373,12 @@ def _apply_lightweight_migrations():
         ("pellet_visits", "smartsheet_visit_id", "VARCHAR(40)"),
         # Labs-not-required flag for the pellet "ready" check.
         ("pellet_patients", "labs_not_required", "BOOLEAN DEFAULT 0"),
+        # LARC pharmacy enrollment — per-assignment inserting provider
+        # override (falls back to PracticeConfig provider_* values when
+        # blank). Used to fill the BoldSign Provider role.
+        ("larc_assignments", "inserting_provider_email", "VARCHAR(200)"),
+        ("larc_assignments", "inserting_provider_name",  "VARCHAR(200)"),
+        ("larc_assignments", "inserting_provider_npi",   "VARCHAR(20)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

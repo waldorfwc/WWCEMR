@@ -246,6 +246,14 @@ class LarcAssignment(Base):
     replacement_assignment_id = Column(GUID(), ForeignKey("larc_assignments.id"), nullable=True)
     replaces_assignment_id = Column(GUID(), ForeignKey("larc_assignments.id"), nullable=True)
 
+    # Inserting provider (per-assignment override for the BoldSign enrollment
+    # envelope's Provider role). Falls back to the practice-wide settings
+    # when blank. Three fields because BoldSign forms need both human display
+    # ("Dr. Aryian Cooke") and NPI on the signature line.
+    inserting_provider_email = Column(String(200), nullable=True)
+    inserting_provider_name  = Column(String(200), nullable=True)
+    inserting_provider_npi   = Column(String(20),  nullable=True)
+
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(String(200), nullable=True)
@@ -444,3 +452,61 @@ class LarcAuditEvent(Base):
     # Free-form payload for context (before/after snapshots, notes)
     detail = Column(JSON, nullable=True)
     summary = Column(Text, nullable=True)   # one-line human description
+
+
+# ─── LARC enrollment envelope (BoldSign pharmacy-order forms) ──────
+
+class LarcEnrollmentEnvelope(Base):
+    """One BoldSign envelope sent for a pharmacy-order LARC assignment.
+
+    Tracks the three-signer flow (Receptionist → Patient → Provider) and
+    the downstream auto-fax to the dispensing pharmacy. One row per
+    (assignment, template) pair — uniqueness lets `assignment.id` be
+    re-used if a form has to be voided and re-sent under a different
+    template (e.g., assignment switched from Mirena to Paragard)."""
+    __tablename__ = "larc_enrollment_envelopes"
+    __table_args__ = (
+        Index("ix_larc_envelope_assignment", "assignment_id"),
+        Index("ix_larc_envelope_boldsign", "boldsign_envelope_id"),
+        Index("ix_larc_envelope_status", "status"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid)
+    assignment_id = Column(GUID(),
+                            ForeignKey("larc_assignments.id", ondelete="CASCADE"),
+                            nullable=False)
+    # The device-type-level template ID we sent against (denormalised so a
+    # later change to LarcDeviceType.enrollment_form_template doesn't
+    # rewrite history).
+    boldsign_template_id = Column(String(80), nullable=False)
+    boldsign_envelope_id = Column(String(80), nullable=True, unique=True)
+
+    # values: pending | sent | partially_signed | signed | declined |
+    #         voided | failed | faxed | fax_failed
+    status = Column(String(20), default="pending", nullable=False)
+    sent_at      = Column(DateTime, nullable=True)
+    receptionist_signed_at = Column(DateTime, nullable=True)
+    patient_signed_at      = Column(DateTime, nullable=True)
+    provider_signed_at     = Column(DateTime, nullable=True)
+    signed_at    = Column(DateTime, nullable=True)  # all three done
+    declined_at  = Column(DateTime, nullable=True)
+    voided_at    = Column(DateTime, nullable=True)
+
+    # Auto-fax step (after all signers complete)
+    faxed_at         = Column(DateTime, nullable=True)
+    fax_message_id   = Column(String(80), nullable=True)
+    fax_status       = Column(String(40), nullable=True)  # Queued | Sent | SendingFailed
+    fax_to           = Column(String(40), nullable=True)
+    fax_attempts     = Column(Integer, default=0, nullable=False)
+    last_fax_error   = Column(Text, nullable=True)
+
+    # Bookkeeping
+    sent_by      = Column(String(200), nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    last_error   = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow,
+                        onupdate=datetime.utcnow, nullable=False)
+
+    assignment = relationship("LarcAssignment")

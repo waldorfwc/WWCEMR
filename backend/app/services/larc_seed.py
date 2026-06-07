@@ -41,6 +41,20 @@ SEED_DEVICE_TYPES = [
 ]
 
 
+# BoldSign template IDs for the three known pharmacy-enrollment forms.
+# Mirena/Skyla/Kyleena share one (Bayer); Paragard and Nexplanon each
+# have their own. Only Nexplanon is wired into the send flow today
+# (Phase 2); the other two light up in Phase 5 once their fields are
+# labeled and per-template prefill rules are added.
+LARC_ENROLLMENT_TEMPLATES = {
+    "Nexplanon": "9af154d6-0bc7-43f6-bf94-175b7daf27e6",
+    "Paragard":  "9a8f78cc-5de0-4b61-a05b-fa2cadb98ae7",
+    "Mirena":    "2918da35-1fed-4e9b-ad9c-4103c5db8e85",
+    "Skyla":     "2918da35-1fed-4e9b-ad9c-4103c5db8e85",
+    "Kyleena":   "2918da35-1fed-4e9b-ad9c-4103c5db8e85",
+}
+
+
 def seed_larc_device_types():
     db = SessionLocal()
     try:
@@ -65,6 +79,17 @@ def seed_larc_device_types():
                 reorder_quantity=qty, notes=notes,
             ))
             added += 1
+
+        # Backfill BoldSign enrollment template IDs on the three pharmacy-
+        # order families. Idempotent — only fills when blank or stale.
+        for t in db.query(LarcDeviceType).filter(
+            LarcDeviceType.name.in_(LARC_ENROLLMENT_TEMPLATES.keys())
+        ).all():
+            want = LARC_ENROLLMENT_TEMPLATES.get(t.name)
+            if want and t.enrollment_form_template != want:
+                t.enrollment_form_template = want
+                added += 1
+
         if added:
             db.commit()
     finally:
