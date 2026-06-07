@@ -508,6 +508,12 @@ function CreateGroupCard({ onClose }) {
 // ─── Subject Drawer ────────────────────────────────────────────────────────
 
 function SubjectDrawer({ kind, id, onClose, onJumpToModule }) {
+  useEffect(() => {
+    function handleEsc(e) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handleEsc)
+    return () => document.removeEventListener('keydown', handleEsc)
+  }, [onClose])
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30" />
