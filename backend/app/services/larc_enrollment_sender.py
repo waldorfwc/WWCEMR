@@ -176,12 +176,7 @@ def _build_nexplanon_fields(
     # ── Receptionist: per-assignment ────────────────────────────────
     add(receptionist, "patient_full_name",     _friendly_name(a.patient_name))
     add(receptionist, "patient_dob",           p_dob)
-    # NOTE: sign_on_behalf_of_patient shares its dataSyncTag with
-    # patient_dob in the live Nexplanon template — BoldSign rejects the
-    # send if both are prefilled with different values. Skip it until
-    # the template is fixed (assign sign_on_behalf_of_patient its own
-    # unique dataSyncTag in BoldSign). Receptionist can fill it manually.
-    # add(receptionist, "sign_on_behalf_of_patient", sent_by_email)
+    add(receptionist, "sign_on_behalf_of_patient", sent_by_email)
     add(receptionist, "patient_last_name2",    p_last)
     add(receptionist, "patient_first_name2",   p_first)
     add(receptionist, "patient_dob2",          p_dob)
