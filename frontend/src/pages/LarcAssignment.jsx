@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, AlertTriangle, Check, CheckCircle2, Circle, Clock,
-  ChevronDown, ChevronUp, Edit3, RotateCcw, X, SkipForward, FileText,
+  ChevronDown, ChevronUp, Edit3, Package, RotateCcw, X, SkipForward, FileText,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
@@ -114,6 +114,7 @@ export default function LarcAssignment() {
       {/* Replacement chain banner (failed_used assignments only) */}
       {a.status === 'failed_used' && <ReplacementChainCard a={a} />}
 
+      <AllocateInventoryCard a={a} />
       <InsuranceCardCard a={a} />
 
       {/* Benefits calculator — always-visible card. The benefits_verified
@@ -1187,6 +1188,148 @@ function ConsumeBody({ a }) {
               disabled={save.isPending}>
         {save.isPending ? 'Saving…' : 'Mark device consumed'}
       </button>
+    </div>
+  )
+}
+
+
+function AllocateInventoryCard({ a }) {
+  // Only renders for in-stock assignments where no device has been
+  // allocated yet. Pharmacy-order assignments use a different
+  // workflow (receive-device endpoint) wired up elsewhere.
+  if (a.source_flow !== 'in_stock' || a.device_id) return null
+
+  const qc = useQueryClient()
+  const refetch = () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+  const benefitsDone = !!a.benefits_verified_at
+  const paidDone     = !!a.patient_paid_at
+  const ready        = benefitsDone && paidDone
+
+  const recordPayment = useMutation({
+    mutationFn: (amount) => api.post(`/larc/assignments/${a.id}/payment-received`,
+                                       { amount: amount || null }).then(r => r.data),
+    onSuccess: refetch,
+    onError: (e) => alert(e?.response?.data?.detail || 'Failed'),
+  })
+
+  const { data: stock } = useQuery({
+    queryKey: ['larc-unassigned', a.device_type_id],
+    queryFn: () => api.get('/larc/devices', { params: { status: 'unassigned' } })
+                       .then(r => r.data),
+    enabled: ready,
+  })
+  const matchingDevices = (stock?.devices || []).filter(
+    d => d.device_type_id === a.device_type_id && d.status === 'unassigned'
+  )
+
+  const [devId, setDevId] = useState('')
+  const allocate = useMutation({
+    mutationFn: () => api.post(`/larc/assignments/${a.id}/allocate-device`,
+                                 { device_id: devId }).then(r => r.data),
+    onSuccess: refetch,
+    onError: (e) => alert(e?.response?.data?.detail || 'Allocation failed'),
+  })
+
+  return (
+    <div className="card mb-4 border-amber-200 bg-amber-50/40">
+      <div className="flex items-center gap-2 mb-2">
+        <Package size={14} className="text-amber-700" />
+        <h2 className="text-sm font-semibold text-gray-800">
+          Allocate Device from Inventory
+        </h2>
+        <span className="text-[11px] text-gray-500">
+          ({a.device_type_name || 'unknown device type'})
+        </span>
+      </div>
+      <p className="text-[11px] text-gray-600 mb-2">
+        Reserved patient — device picked from inventory only after benefits
+        are verified <em>and</em> the patient has paid their responsibility.
+      </p>
+
+      <ol className="text-[12px] space-y-1.5 mb-2">
+        <li className="flex items-baseline gap-2">
+          <span className={benefitsDone ? 'text-success' : 'text-gray-400'}>
+            {benefitsDone ? '✓' : '○'}
+          </span>
+          <span className={benefitsDone ? 'text-gray-700' : 'text-gray-500'}>
+            Benefits verified
+            {benefitsDone && <span className="text-[10px] text-gray-500 ml-1">
+              {fmt.date(a.benefits_verified_at?.slice(0, 10))}
+            </span>}
+          </span>
+          {!benefitsDone && (
+            <span className="text-[10px] text-gray-500">
+              — fill in the Benefits Calculator above
+            </span>
+          )}
+        </li>
+        <li className="flex items-baseline gap-2">
+          <span className={paidDone ? 'text-success' : 'text-gray-400'}>
+            {paidDone ? '✓' : '○'}
+          </span>
+          <span className={paidDone ? 'text-gray-700' : 'text-gray-500'}>
+            Patient paid responsibility
+            {paidDone && <span className="text-[10px] text-gray-500 ml-1">
+              {fmt.date(a.patient_paid_at?.slice(0, 10))}
+              {a.patient_paid_amount && <> · ${parseFloat(a.patient_paid_amount).toFixed(2)}</>}
+              {a.patient_paid_by && <> · {a.patient_paid_by}</>}
+            </span>}
+          </span>
+          {!paidDone && (
+            <button className="btn-secondary py-0.5 px-2 text-[11px] ml-2"
+                    onClick={() => {
+                      const amt = window.prompt(
+                        'Amount paid (USD, optional — blank if unknown):',
+                        a.patient_responsibility || '')
+                      if (amt === null) return  // cancelled
+                      const parsed = amt.trim() ? parseFloat(amt) : null
+                      if (amt.trim() && Number.isNaN(parsed)) {
+                        alert('Not a number'); return
+                      }
+                      recordPayment.mutate(parsed)
+                    }}
+                    disabled={recordPayment.isPending}>
+              {recordPayment.isPending ? '…' : 'Record payment'}
+            </button>
+          )}
+        </li>
+      </ol>
+
+      {ready && (
+        <div className="border-t border-amber-200 pt-2">
+          <label className="text-[10px] uppercase text-gray-500 block mb-1">
+            Pick device from inventory
+          </label>
+          <div className="flex gap-2 items-center">
+            <select className="input text-[12px] flex-1"
+                    value={devId}
+                    onChange={e => setDevId(e.target.value)}>
+              <option value="">
+                {matchingDevices.length === 0
+                  ? `— no unassigned ${a.device_type_name || ''} devices in inventory —`
+                  : '— pick a device —'}
+              </option>
+              {matchingDevices.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.our_id} · expires {d.expiration_date || 'unknown'}
+                  {d.location_label && ` · ${d.location_label}`}
+                  {d.manufacturer_lot && ` · lot ${d.manufacturer_lot}`}
+                </option>
+              ))}
+            </select>
+            <button className="btn-primary text-[11px] whitespace-nowrap"
+                    disabled={!devId || allocate.isPending}
+                    onClick={() => allocate.mutate()}>
+              {allocate.isPending ? 'Allocating…' : 'Allocate'}
+            </button>
+          </div>
+          {matchingDevices.length === 0 && (
+            <div className="text-[10px] text-amber-700 mt-1">
+              Receive more {a.device_type_name || ''} into inventory before allocating.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

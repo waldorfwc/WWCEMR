@@ -176,6 +176,10 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "oop_max":          (str(a.oop_max)          if a.oop_max          is not None else None),
         "oop_met":          (str(a.oop_met)          if a.oop_met          is not None else None),
         "benefits_verified_at": (str(a.benefits_verified_at) if a.benefits_verified_at else None),
+        "patient_paid_at": a.patient_paid_at.isoformat() if a.patient_paid_at else None,
+        "patient_paid_by": a.patient_paid_by,
+        "patient_paid_amount": (str(a.patient_paid_amount)
+                                if a.patient_paid_amount is not None else None),
         "claim_number": a.claim_number,
         "billed_at": a.billed_at.isoformat() if a.billed_at else None,
         "billed_by": a.billed_by,
@@ -1058,13 +1062,17 @@ def create_assignment(payload: AssignmentIn,
             raise HTTPException(status_code=409,
                                 detail=f"Device #{device.our_id} already has an active "
                                        f"assignment to {active.patient_name}")
-    elif payload.source_flow == "pharmacy_order":
-        # Pharmacy orders can start without a device; we'll bind one when received.
-        if not payload.device_type_id:
-            raise HTTPException(status_code=422,
-                                detail="device_type_id required when starting a pharmacy_order without a device")
     else:
-        raise HTTPException(status_code=422, detail="device_id required for in_stock flow")
+        # No device_id provided. Pharmacy orders can start with no
+        # device (the pharmacy ships one later). In-stock assignments
+        # can also start with no device under the reserve-first flow —
+        # benefits + payment happen first, then staff allocates a
+        # specific unassigned WWC device via /allocate-device.
+        if not payload.device_type_id:
+            raise HTTPException(
+                status_code=422,
+                detail="device_type_id required when starting without a device_id",
+            )
 
     # Default pharmacy lookup: if no pharmacy_id was provided AND this is
     # a pharmacy-order flow with a known device type, pick the pharmacy
@@ -1584,6 +1592,92 @@ def download_insurance_card(
         filename=a.insurance_card_filename or "insurance_card",
         disposition="inline",
     )
+
+
+class PaymentIn(BaseModel):
+    amount: Optional[float] = None   # dollars; None = no amount recorded
+    notes:  Optional[str] = None
+
+
+@router.post("/assignments/{assignment_id}/payment-received")
+def record_payment(assignment_id: str,
+                    payload: PaymentIn,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Mark the patient's responsibility as paid. Required (along with
+    benefits-verified) before an unassigned WWC device can be allocated
+    from inventory."""
+    a = _load_assignment(db, assignment_id)
+    by = current_user.get("email") or "system"
+    a.patient_paid_at = datetime.utcnow()
+    a.patient_paid_by = by
+    if payload.amount is not None:
+        a.patient_paid_amount = payload.amount
+    log_audit(db, actor=by, action="patient_payment_received",
+              device=a.device, assignment=a,
+              summary=f"Patient payment received for {a.patient_name}"
+                       + (f" (${payload.amount:.2f})" if payload.amount else ""),
+              detail={"amount": payload.amount, "notes": payload.notes})
+    db.commit(); db.refresh(a)
+    return _assignment_dict(a, include_milestones=True)
+
+
+class AllocateDeviceIn(BaseModel):
+    device_id: str
+
+
+@router.post("/assignments/{assignment_id}/allocate-device")
+def allocate_device(assignment_id: str,
+                     payload: AllocateDeviceIn,
+                     db: Session = Depends(get_db),
+                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Bind a specific unassigned WWC device to this assignment. Only
+    valid when:
+      - source_flow == 'in_stock'
+      - assignment.device_id is currently NULL
+      - benefits are verified AND patient has paid
+      - the device exists, is unassigned, and matches the assignment's
+        device_type_id
+
+    Returns 409 if any gate fails so the UI can surface the reason."""
+    a = _load_assignment(db, assignment_id)
+    if a.source_flow != "in_stock":
+        raise HTTPException(status_code=409,
+                            detail="Allocation only applies to in-stock assignments")
+    if a.device_id:
+        raise HTTPException(status_code=409,
+                            detail=f"Already allocated device #{a.device.our_id if a.device else '?'}")
+    if not a.benefits_verified_at:
+        raise HTTPException(status_code=409,
+                            detail="Benefits must be verified before allocating a device")
+    if not a.patient_paid_at:
+        raise HTTPException(status_code=409,
+                            detail="Patient payment must be recorded before allocating a device")
+
+    d = db.query(LarcDevice).filter(LarcDevice.id == payload.device_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="device not found")
+    if d.status != "unassigned":
+        raise HTTPException(status_code=409,
+                            detail=f"Device is in status {d.status!r}; only 'unassigned' devices can be allocated")
+    if a.device_type_id and d.device_type_id != a.device_type_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Device type mismatch — assignment is for type "
+                   f"{a.device_type_id}, device is {d.device_type_id}",
+        )
+
+    # Bind
+    a.device_id = d.id
+    d.status = "assigned"
+    by = current_user.get("email") or "system"
+    log_audit(db, actor=by, action="device_allocated",
+              device=d, assignment=a,
+              summary=f"Allocated device #{d.our_id} to {a.patient_name} "
+                       f"(post benefits + payment)",
+              detail={"device_our_id": d.our_id, "lot": d.manufacturer_lot})
+    db.commit(); db.refresh(a)
+    return _assignment_dict(a, include_milestones=True)
 
 
 class InsertingProviderIn(BaseModel):

@@ -245,6 +245,12 @@ class LarcAssignment(Base):
     patient_responsibility = Column(Numeric(10, 2), nullable=True)
     patient_responsibility_in_modmed_at = Column(DateTime, nullable=True)
     patient_responsibility_in_modmed_by = Column(String(200), nullable=True)
+    # Patient-payment tracking (used to gate device allocation from
+    # inventory — staff can't allocate an unassigned WWC device until
+    # benefits are verified AND the patient has paid their portion).
+    patient_paid_at     = Column(DateTime,      nullable=True)
+    patient_paid_by     = Column(String(200),   nullable=True)
+    patient_paid_amount = Column(Numeric(10, 2), nullable=True)
 
     # Benefits calculator inputs (parallel to Surgery's BenefitsPanel)
     allowed_amount   = Column(Numeric(10, 2), nullable=True)

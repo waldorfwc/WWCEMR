@@ -435,6 +435,10 @@ def _apply_lightweight_migrations():
         ("larc_assignments", "insurance_card_key",     "VARCHAR(300)"),
         ("larc_assignments", "insurance_card_filename","VARCHAR(255)"),
         ("larc_assignments", "insurance_card_content_type", "VARCHAR(100)"),
+        # Patient-payment tracking — gates inventory allocation.
+        ("larc_assignments", "patient_paid_at",     "DATETIME"),
+        ("larc_assignments", "patient_paid_by",     "VARCHAR(200)"),
+        ("larc_assignments", "patient_paid_amount", "NUMERIC(10,2)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

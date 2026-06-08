@@ -38,6 +38,7 @@ export default function Larc() {
   const [filterBucket, setFilterBucket] = useState('')
   const [search, setSearch] = useState('')
   const [newRequest, setNewRequest] = useState(false)
+  const [reserveInventory, setReserveInventory] = useState(false)
 
   const { data: dash } = useQuery({
     queryKey: ['larc-dashboard'],
@@ -159,6 +160,11 @@ export default function Larc() {
                 title="Office-purchased devices received into inventory (no patient at this stage)">
             <Plus size={13} /> Receive Devices into Inventory
           </Link>
+          <button className="btn-secondary text-sm flex items-center gap-1"
+                  onClick={() => setReserveInventory(true)}
+                  title="Reserve an in-stock device for a patient — allocate the specific device later after benefits + payment">
+            <Plus size={13} /> Reserve from Inventory
+          </button>
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => setNewRequest(true)}
                   title="Send a pharmacy enrollment form for a specific patient — the pharmacy ships the device">
@@ -452,14 +458,19 @@ export default function Larc() {
         </table>
       </div>
 
-      {newRequest && <NewRequestDrawer onClose={() => setNewRequest(false)}
+      {newRequest && <NewRequestDrawer mode="pharmacy"
+                                          onClose={() => setNewRequest(false)}
+                                          onCreated={(id) => navigate(`/larc/assignments/${id}`)} />}
+      {reserveInventory && <NewRequestDrawer mode="reserve_inventory"
+                                          onClose={() => setReserveInventory(false)}
                                           onCreated={(id) => navigate(`/larc/assignments/${id}`)} />}
     </div>
   )
 }
 
 
-function NewRequestDrawer({ onClose, onCreated }) {
+function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
+  const isReserve = mode === 'reserve_inventory'
   const qc = useQueryClient()
   const [form, setForm] = useState({
     chart_number: '',
@@ -468,12 +479,14 @@ function NewRequestDrawer({ onClose, onCreated }) {
     patient_email: '', patient_phone: '', patient_cell: '',
     patient_address: '', patient_city: '', patient_state: '', patient_zip: '',
     primary_insurance: '', insurance_policy_no: '', insurance_group_no: '',
-    // Pharmacy enrollment flow only — the form is the prescribed
-    // workflow for pharmacy-shipped devices. Office-purchased devices
-    // go through /larc/devices ("Receive Devices into Inventory") and
-    // are assigned to a patient later via the in-stock pick step on
-    // the assignment page (after benefits + payment).
-    source_flow: 'pharmacy_order', device_id: '', device_type_id: '',
+    // Pharmacy enrollment flow sends the BoldSign envelope; reserve-
+    // inventory flow creates the same kind of in-stock assignment that
+    // used to come from the legacy "in-stock" picker, except the actual
+    // device is picked LATER on the assignment page (after benefits +
+    // payment). Both create an assignment without device_id; only the
+    // BoldSign-side workflow differs.
+    source_flow: isReserve ? 'in_stock' : 'pharmacy_order',
+    device_id: '', device_type_id: '',
     notes: '',
   })
   const [insuranceCardFile, setInsuranceCardFile] = useState(null)
@@ -554,16 +567,26 @@ function NewRequestDrawer({ onClose, onCreated }) {
       <div className="relative w-full max-w-lg bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">New Pharmacy Enrollment</h2>
+          <h2 className="font-serif font-semibold text-ink text-[16px]">
+            {isReserve ? 'Reserve from Inventory' : 'New Pharmacy Enrollment'}
+          </h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">
-          <div className="bg-plum-50/40 border border-plum-100 rounded px-2 py-1.5 text-[11px] text-gray-700">
-            For an office-purchased device (no patient yet), use{' '}
-            <Link to="/larc/devices?add=1" className="text-plum-700 hover:underline">
-              Receive Devices into Inventory
-            </Link>{' '}instead.
-          </div>
+          {isReserve ? (
+            <div className="bg-amber-50/60 border border-amber-200 rounded px-2 py-1.5 text-[11px] text-gray-700">
+              No device is picked yet — that happens later on the assignment
+              page, after benefits are verified and the patient has paid
+              their responsibility.
+            </div>
+          ) : (
+            <div className="bg-plum-50/40 border border-plum-100 rounded px-2 py-1.5 text-[11px] text-gray-700">
+              For an office-purchased device (no patient yet), use{' '}
+              <Link to="/larc/devices?add=1" className="text-plum-700 hover:underline">
+                Receive Devices into Inventory
+              </Link>{' '}instead.
+            </div>
+          )}
 
           <div className="grid grid-cols-6 gap-2">
             <div className="col-span-3">
