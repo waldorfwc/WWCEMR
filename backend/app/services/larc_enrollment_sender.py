@@ -660,6 +660,27 @@ def send_enrollment_envelope(
         # under Team Members.
     }
 
+    # Attach the patient's insurance-card image as an additional file
+    # on the envelope. Pharmacies usually want to see the card next to
+    # the enrollment form. BoldSign accepts a `files` array of
+    # `data:<mime>;base64,...` URLs. Soft-fail if the blob is missing
+    # so a deleted/lost upload doesn't block the envelope.
+    if assignment.insurance_card_key:
+        try:
+            from app.services.storage import read_blob
+            import base64
+            card_bytes = read_blob(assignment.insurance_card_key)
+            mime = (assignment.insurance_card_content_type
+                    or "application/octet-stream")
+            encoded = base64.b64encode(card_bytes).decode("ascii")
+            payload["files"] = [f"data:{mime};base64,{encoded}"]
+        except FileNotFoundError:
+            log.warning("Insurance card blob missing for assignment %s — "
+                        "sending envelope without attachment", assignment.id)
+        except Exception:
+            log.exception("Insurance card attach failed for assignment %s",
+                          assignment.id)
+
     # Send to BoldSign
     with _http() as c:
         r = c.post("/v1/template/send",
