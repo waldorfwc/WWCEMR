@@ -195,12 +195,32 @@ class LarcAssignment(Base):
     # so the dashboard can render without joining ModMed.
     chart_number = Column(String(40), nullable=False)
     patient_name = Column(String(200), nullable=False)
+    # Distinct name parts for enrollment-form prefill (LARC pharmacy forms
+    # have separate first/middle/last boxes). When set, the sender prefers
+    # these over parsing `patient_name`; legacy assignments fall back to
+    # the parser.
+    patient_first_name = Column(String(80),  nullable=True)
+    patient_middle_initial = Column(String(8), nullable=True)
+    patient_last_name = Column(String(80),  nullable=True)
     patient_dob = Column(Date, nullable=True)
     patient_email = Column(String(200), nullable=True)
     patient_phone = Column(String(40), nullable=True)
+    patient_cell  = Column(String(40), nullable=True)
+    # Address — required on most pharmacy enrollment forms.
+    patient_address = Column(String(300), nullable=True)
+    patient_city    = Column(String(120), nullable=True)
+    patient_state   = Column(String(8),   nullable=True)
+    patient_zip     = Column(String(15),  nullable=True)
 
     # Insurance / pharmacy info
     primary_insurance = Column(String(200), nullable=True)
+    insurance_policy_no = Column(String(80), nullable=True)
+    insurance_group_no  = Column(String(80), nullable=True)
+    # Insurance card uploaded image — storage key into the GCS bucket
+    # (or local fallback) via app.services.storage.serve_blob.
+    insurance_card_key = Column(String(300), nullable=True)
+    insurance_card_filename = Column(String(255), nullable=True)
+    insurance_card_content_type = Column(String(100), nullable=True)
     pharmacy_id = Column(GUID(), ForeignKey("larc_pharmacies.id"), nullable=True)
 
     # Surgery-module link — set when an office-procedure device is picked

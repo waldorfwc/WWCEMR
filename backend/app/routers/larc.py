@@ -18,7 +18,7 @@ from __future__ import annotations
 from datetime import date as _date, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -144,10 +144,22 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
               else None),
         "chart_number": a.chart_number,
         "patient_name": a.patient_name,
+        "patient_first_name":     a.patient_first_name,
+        "patient_middle_initial": a.patient_middle_initial,
+        "patient_last_name":      a.patient_last_name,
         "patient_dob": str(a.patient_dob) if a.patient_dob else None,
         "patient_email": a.patient_email,
         "patient_phone": a.patient_phone,
-        "primary_insurance": a.primary_insurance,
+        "patient_cell":  a.patient_cell,
+        "patient_address": a.patient_address,
+        "patient_city":    a.patient_city,
+        "patient_state":   a.patient_state,
+        "patient_zip":     a.patient_zip,
+        "primary_insurance":   a.primary_insurance,
+        "insurance_policy_no": a.insurance_policy_no,
+        "insurance_group_no":  a.insurance_group_no,
+        "has_insurance_card":  bool(a.insurance_card_key),
+        "insurance_card_filename": a.insurance_card_filename,
         "pharmacy_id": str(a.pharmacy_id) if a.pharmacy_id else None,
         "source_flow": a.source_flow,
         "linked_surgery_id": str(a.linked_surgery_id) if a.linked_surgery_id else None,
@@ -963,11 +975,22 @@ def patch_device(device_id: str, payload: DevicePatch,
 class AssignmentIn(BaseModel):
     device_id: Optional[str] = None         # null if pharmacy-order, set later on receipt
     chart_number: str
-    patient_name: str
+    patient_name: str                        # "Last, First" — required, kept for back-compat
+    # Distinct name parts for pharmacy-enrollment-form prefill.
+    patient_first_name:     Optional[str] = None
+    patient_middle_initial: Optional[str] = None
+    patient_last_name:      Optional[str] = None
     patient_dob: Optional[str] = None
     patient_email: Optional[str] = None
     patient_phone: Optional[str] = None
-    primary_insurance: Optional[str] = None
+    patient_cell:  Optional[str] = None
+    patient_address: Optional[str] = None
+    patient_city:    Optional[str] = None
+    patient_state:   Optional[str] = None
+    patient_zip:     Optional[str] = None
+    primary_insurance:   Optional[str] = None
+    insurance_policy_no: Optional[str] = None
+    insurance_group_no:  Optional[str] = None
     pharmacy_id: Optional[str] = None
     source_flow: str = "in_stock"           # in_stock | pharmacy_order
     device_type_id: Optional[str] = None    # required for pharmacy_order before a device exists
@@ -1070,10 +1093,20 @@ def create_assignment(payload: AssignmentIn,
                           else payload.device_type_id),
         chart_number=payload.chart_number.strip(),
         patient_name=payload.patient_name.strip(),
+        patient_first_name=(payload.patient_first_name or "").strip() or None,
+        patient_middle_initial=(payload.patient_middle_initial or "").strip() or None,
+        patient_last_name=(payload.patient_last_name or "").strip() or None,
         patient_dob=_parse_date(payload.patient_dob, "patient_dob"),
         patient_email=payload.patient_email,
         patient_phone=payload.patient_phone,
+        patient_cell=payload.patient_cell,
+        patient_address=payload.patient_address,
+        patient_city=payload.patient_city,
+        patient_state=payload.patient_state,
+        patient_zip=payload.patient_zip,
         primary_insurance=payload.primary_insurance,
+        insurance_policy_no=payload.insurance_policy_no,
+        insurance_group_no=payload.insurance_group_no,
         pharmacy_id=pharmacy_id,
         source_flow=payload.source_flow,
         status="new",
@@ -1498,6 +1531,55 @@ def refax_envelope(envelope_id: str,
         # already has fax_status=fax_failed + last_fax_error.
         raise HTTPException(status_code=502, detail=result.get("error"))
     return result
+
+
+@router.post("/assignments/{assignment_id}/insurance-card", status_code=201)
+async def upload_insurance_card(
+    assignment_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK)),
+):
+    """Upload (or replace) the patient's insurance card image for this
+    assignment. Stored via the shared blob service so it lands in GCS
+    on Cloud Run; legacy local backend works the same.
+
+    The image gets attached to the BoldSign envelope as a supplemental
+    file at send time (sender reads insurance_card_key and pulls bytes
+    via storage.read_blob)."""
+    a = _load_assignment(db, assignment_id)
+    body = await file.read()
+    if not body:
+        raise HTTPException(status_code=422, detail="empty file")
+    from app.services.storage import save_blob
+    key = save_blob(prefix="larc/insurance-cards", body=body,
+                    filename=file.filename or "insurance_card")
+    a.insurance_card_key = key
+    a.insurance_card_filename = file.filename
+    a.insurance_card_content_type = file.content_type
+    log_audit(db, actor=current_user.get("email") or "system",
+              action="insurance_card_uploaded",
+              device=a.device, assignment=a,
+              summary=f"Uploaded insurance card for {a.patient_name} ({file.filename})")
+    db.commit(); db.refresh(a)
+    return {"key": key, "filename": file.filename}
+
+
+@router.get("/assignments/{assignment_id}/insurance-card")
+def download_insurance_card(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
+):
+    a = _load_assignment(db, assignment_id)
+    if not a.insurance_card_key:
+        raise HTTPException(status_code=404, detail="no insurance card on file")
+    from app.services.storage import serve_blob
+    return serve_blob(key=a.insurance_card_key,
+                       filename=a.insurance_card_filename or "insurance_card",
+                       content_type=a.insurance_card_content_type
+                                    or "application/octet-stream",
+                       disposition="inline")
 
 
 class InsertingProviderIn(BaseModel):

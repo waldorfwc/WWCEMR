@@ -138,7 +138,12 @@ def _build_nexplanon_fields(
     The BoldSign payload requires per-role `existingFormFields` arrays
     (BoldSign silently drops fields whose id isn't on that role), so we
     group up front."""
-    p_first, p_middle, p_last = _split_name(a.patient_name)
+    # Prefer the explicit name fields when set, fall back to parsing
+    # patient_name (legacy assignments + freeform input).
+    parsed_f, parsed_m, parsed_l = _split_name(a.patient_name)
+    p_first  = (a.patient_first_name     or parsed_f).strip()
+    p_middle = (a.patient_middle_initial or parsed_m).strip()
+    p_last   = (a.patient_last_name      or parsed_l).strip()
     p_dob = a.patient_dob.strftime("%m/%d/%Y") if a.patient_dob else ""
     today = date.today().strftime("%m/%d/%Y")
 
@@ -184,10 +189,18 @@ def _build_nexplanon_fields(
     add(receptionist, "patient_dob1",             p_dob)
     add(receptionist, "patient_dob",              p_dob)   # second-page dupe
     add(receptionist, "patient_full_name",        _friendly_name(a.patient_name))
-    add(receptionist, "patient_cell",             a.patient_phone or "")
+    add(receptionist, "patient_address",          a.patient_address or "")
+    add(receptionist, "patient_city",             a.patient_city or "")
+    add(receptionist, "patient_state",            a.patient_state or "")
+    add(receptionist, "patient_zip",              a.patient_zip or "")
+    add(receptionist, "patient_cell",             (a.patient_cell or a.patient_phone) or "")
     add(receptionist, "patient_email",            a.patient_email or "")
     add(receptionist, "patient_insurance_plan",   a.primary_insurance or "")
     add(receptionist, "patient_insurance_plan2",  a.primary_insurance or "")
+    add(receptionist, "patient_insurance_policy_no",   a.insurance_policy_no or "")
+    add(receptionist, "patient_insurance_policy_no2",  a.insurance_policy_no or "")
+    add(receptionist, "patient_insurance_group_no",    a.insurance_group_no or "")
+    add(receptionist, "patient_insurance_group_no2",   a.insurance_group_no or "")
     # Per-assignment patient_*2 (second-page duplicates) + cell + dob2
     add(receptionist, "sign_on_behalf_of_patient", sent_by_email)
     add(receptionist, "patient_last_name2",       p_last)
@@ -250,10 +263,16 @@ def _build_paragard_fields(
     add(receptionist, "patient_name",       _friendly_name(a.patient_name))
     add(receptionist, "patient_name2",      _friendly_name(a.patient_name))
     add(receptionist, "patient_dob",        p_dob)
+    add(receptionist, "patient_address",    a.patient_address or "")
+    add(receptionist, "patient_city",       a.patient_city or "")
+    add(receptionist, "patient_state",      a.patient_state or "")
+    add(receptionist, "patient_zip",        a.patient_zip or "")
     add(receptionist, "patient_phone_home", a.patient_phone or "")
-    add(receptionist, "patient_cell",       a.patient_phone or "")
-    # Insurance — only the plan name is on the assignment row
-    add(receptionist, "primary_insurance_name", a.primary_insurance or "")
+    add(receptionist, "patient_cell",       (a.patient_cell or a.patient_phone) or "")
+    # Insurance
+    add(receptionist, "primary_insurance_name",     a.primary_insurance or "")
+    add(receptionist, "primary_insurance_plan_no",  a.insurance_policy_no or "")
+    add(receptionist, "primary_insurance_group_no", a.insurance_group_no or "")
     # Provider identity
     add(receptionist, "provider_name",        provider_name_for_form)
     add(receptionist, "provider_npi",         provider_npi_for_form)
@@ -334,8 +353,12 @@ def _build_bayer_fields(
     add(receptionist, "patient_initial",    p_middle)
     add(receptionist, "patient_dob",        p_dob)
     add(receptionist, "patient_phone",      a.patient_phone or "")
-    # Address / language / gender — not on the LARC assignment row, left
-    # blank for the receptionist to fill from the chart.
+    add(receptionist, "patient_address",    a.patient_address or "")
+    add(receptionist, "patient_city",       a.patient_city or "")
+    add(receptionist, "patient_state",      a.patient_state or "")
+    add(receptionist, "patient_zip",        a.patient_zip or "")
+    # Language / gender — not on the LARC assignment row, left blank
+    # for the receptionist to fill from the chart.
 
     # Practice + provider identity — Bayer template now uses the same
     # `practice_*` naming convention as Nexplanon + Paragard. The
@@ -363,6 +386,11 @@ def _build_bayer_fields(
     # into both so the receptionist sees a sensible starting point.
     add(receptionist, "prescription_insurance_name", a.primary_insurance or "")
     add(receptionist, "medical_insurance_name",      a.primary_insurance or "")
+    add(receptionist, "prescription_insurance_subscriber_id",
+                      a.insurance_policy_no or "")
+    add(receptionist, "medical_insurance_subscriber_id",
+                      a.insurance_policy_no or "")
+    add(receptionist, "medical_insurance_group",     a.insurance_group_no or "")
 
     # Device-family checkbox: tick the box for the specific Bayer device
     # this assignment is for (Mirena vs Skyla vs Kyleena). The template

@@ -456,11 +456,16 @@ export default function Larc() {
 function NewRequestDrawer({ onClose, onCreated }) {
   const qc = useQueryClient()
   const [form, setForm] = useState({
-    chart_number: '', patient_name: '', patient_dob: '',
-    patient_email: '', patient_phone: '', primary_insurance: '',
+    chart_number: '',
+    patient_first_name: '', patient_middle_initial: '', patient_last_name: '',
+    patient_dob: '',
+    patient_email: '', patient_phone: '', patient_cell: '',
+    patient_address: '', patient_city: '', patient_state: '', patient_zip: '',
+    primary_insurance: '', insurance_policy_no: '', insurance_group_no: '',
     source_flow: 'in_stock', device_id: '', device_type_id: '',
     notes: '',
   })
+  const [insuranceCardFile, setInsuranceCardFile] = useState(null)
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const { data: types } = useQuery({
@@ -480,19 +485,56 @@ function NewRequestDrawer({ onClose, onCreated }) {
     enabled: form.source_flow === 'in_stock',
   })
 
+  // Compose "Last, First [M]" from the distinct fields — this is what
+  // the legacy patient_name column holds (still required by the API).
+  const composedName = (() => {
+    const last  = (form.patient_last_name  || '').trim()
+    const first = (form.patient_first_name || '').trim()
+    const mi    = (form.patient_middle_initial || '').trim()
+    if (!last && !first) return ''
+    const right = [first, mi].filter(Boolean).join(' ')
+    return [last, right].filter(Boolean).join(', ')
+  })()
+
   const create = useMutation({
-    mutationFn: () => api.post('/larc/assignments', {
-      chart_number: form.chart_number.trim(),
-      patient_name: form.patient_name.trim(),
-      patient_dob: form.patient_dob || null,
-      patient_email: form.patient_email || null,
-      patient_phone: form.patient_phone || null,
-      primary_insurance: form.primary_insurance || null,
-      source_flow: form.source_flow,
-      device_id: form.source_flow === 'in_stock' ? form.device_id : null,
-      device_type_id: form.source_flow === 'pharmacy_order' ? form.device_type_id : null,
-      notes: form.notes || null,
-    }).then(r => r.data),
+    mutationFn: async () => {
+      const assignment = (await api.post('/larc/assignments', {
+        chart_number: form.chart_number.trim(),
+        patient_name: composedName,
+        patient_first_name:     form.patient_first_name.trim() || null,
+        patient_middle_initial: form.patient_middle_initial.trim() || null,
+        patient_last_name:      form.patient_last_name.trim() || null,
+        patient_dob: form.patient_dob || null,
+        patient_email: form.patient_email || null,
+        patient_phone: form.patient_phone || null,
+        patient_cell:  form.patient_cell || null,
+        patient_address: form.patient_address || null,
+        patient_city:    form.patient_city || null,
+        patient_state:   form.patient_state || null,
+        patient_zip:     form.patient_zip || null,
+        primary_insurance:   form.primary_insurance || null,
+        insurance_policy_no: form.insurance_policy_no.trim() || null,
+        insurance_group_no:  form.insurance_group_no.trim() || null,
+        source_flow: form.source_flow,
+        device_id: form.source_flow === 'in_stock' ? form.device_id : null,
+        device_type_id: form.source_flow === 'pharmacy_order' ? form.device_type_id : null,
+        notes: form.notes || null,
+      })).data
+      // Insurance card upload — only if a file was picked. Errors here
+      // don't block the assignment (it's already created).
+      if (insuranceCardFile) {
+        const fd = new FormData()
+        fd.append('file', insuranceCardFile)
+        try {
+          await api.post(`/larc/assignments/${assignment.id}/insurance-card`,
+                          fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+        } catch (e) {
+          alert('Assignment created, but insurance-card upload failed: '
+                + (e?.response?.data?.detail || e.message))
+        }
+      }
+      return assignment
+    },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
       qc.invalidateQueries({ queryKey: ['larc-assignments'] })
@@ -535,39 +577,86 @@ function NewRequestDrawer({ onClose, onCreated }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div>
+          <div className="grid grid-cols-6 gap-2">
+            <div className="col-span-3">
               <label className="text-[10px] uppercase text-gray-500 block mb-1">Chart # *</label>
               <input className="input text-sm w-full font-mono" required
                      value={form.chart_number}
                      onChange={e => update('chart_number', e.target.value)} />
             </div>
-            <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Patient name *</label>
-              <input className="input text-sm w-full" required
-                     placeholder="Last, First"
-                     value={form.patient_name}
-                     onChange={e => update('patient_name', e.target.value)} />
-            </div>
-            <div>
+            <div className="col-span-3">
               <label className="text-[10px] uppercase text-gray-500 block mb-1">DOB</label>
               <input type="date" className="input text-sm w-full"
                      value={form.patient_dob}
                      onChange={e => update('patient_dob', e.target.value)} />
             </div>
-            <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Phone</label>
+            <div className="col-span-3">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">First name *</label>
+              <input className="input text-sm w-full" required
+                     value={form.patient_first_name}
+                     onChange={e => update('patient_first_name', e.target.value)} />
+            </div>
+            <div className="col-span-1">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">MI</label>
+              <input className="input text-sm w-full"
+                     maxLength={3}
+                     value={form.patient_middle_initial}
+                     onChange={e => update('patient_middle_initial', e.target.value)} />
+            </div>
+            <div className="col-span-2">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">Last name *</label>
+              <input className="input text-sm w-full" required
+                     value={form.patient_last_name}
+                     onChange={e => update('patient_last_name', e.target.value)} />
+            </div>
+
+            <div className="col-span-3">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">Cell phone</label>
+              <input className="input text-sm w-full font-mono"
+                     placeholder="240-555-1234"
+                     value={form.patient_cell}
+                     onChange={e => update('patient_cell', e.target.value)} />
+            </div>
+            <div className="col-span-3">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">Home / alt phone</label>
               <input className="input text-sm w-full font-mono"
                      value={form.patient_phone}
                      onChange={e => update('patient_phone', e.target.value)} />
             </div>
-            <div className="col-span-2">
+            <div className="col-span-6">
               <label className="text-[10px] uppercase text-gray-500 block mb-1">Email</label>
               <input className="input text-sm w-full"
                      value={form.patient_email}
                      onChange={e => update('patient_email', e.target.value)} />
             </div>
+
+            <div className="col-span-6">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">Street address</label>
+              <input className="input text-sm w-full"
+                     value={form.patient_address}
+                     onChange={e => update('patient_address', e.target.value)} />
+            </div>
+            <div className="col-span-3">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">City</label>
+              <input className="input text-sm w-full"
+                     value={form.patient_city}
+                     onChange={e => update('patient_city', e.target.value)} />
+            </div>
+            <div className="col-span-1">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">State</label>
+              <input className="input text-sm w-full"
+                     maxLength={2}
+                     value={form.patient_state}
+                     onChange={e => update('patient_state', e.target.value.toUpperCase())} />
+            </div>
             <div className="col-span-2">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">ZIP</label>
+              <input className="input text-sm w-full font-mono"
+                     value={form.patient_zip}
+                     onChange={e => update('patient_zip', e.target.value)} />
+            </div>
+
+            <div className="col-span-6">
               <label className="text-[10px] uppercase text-gray-500 block mb-1">Primary insurance</label>
               <select className="input text-sm w-full"
                       value={form.primary_insurance}
@@ -577,6 +666,30 @@ function NewRequestDrawer({ onClose, onCreated }) {
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
+            </div>
+            <div className="col-span-3">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">Policy / member #</label>
+              <input className="input text-sm w-full font-mono"
+                     value={form.insurance_policy_no}
+                     onChange={e => update('insurance_policy_no', e.target.value)} />
+            </div>
+            <div className="col-span-3">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">Group #</label>
+              <input className="input text-sm w-full font-mono"
+                     value={form.insurance_group_no}
+                     onChange={e => update('insurance_group_no', e.target.value)} />
+            </div>
+            <div className="col-span-6">
+              <label className="text-[10px] uppercase text-gray-500 block mb-1">Insurance card (image)</label>
+              <input type="file" accept="image/*,application/pdf"
+                     className="text-sm w-full"
+                     onChange={e => setInsuranceCardFile(e.target.files?.[0] || null)} />
+              {insuranceCardFile && (
+                <div className="text-[10px] text-gray-500 mt-1">
+                  Selected: <span className="font-mono">{insuranceCardFile.name}</span>
+                  {' '}({Math.round(insuranceCardFile.size / 1024)} KB)
+                </div>
+              )}
             </div>
           </div>
 
@@ -631,7 +744,9 @@ function NewRequestDrawer({ onClose, onCreated }) {
           <button className="btn-primary text-sm"
                   onClick={() => create.mutate()}
                   disabled={
-                    !form.chart_number.trim() || !form.patient_name.trim()
+                    !form.chart_number.trim()
+                    || !form.patient_first_name.trim()
+                    || !form.patient_last_name.trim()
                     || (form.source_flow === 'in_stock' && !form.device_id)
                     || (form.source_flow === 'pharmacy_order' && !form.device_type_id)
                     || create.isPending

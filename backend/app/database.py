@@ -420,6 +420,21 @@ def _apply_lightweight_migrations():
         # filter + auto-default for the pharmacy picker on assignments.
         ("larc_pharmacies", "device_names",        "JSON"),
         ("larc_pharmacies", "default_for_devices", "JSON"),
+        # Structured patient fields on LarcAssignment — drive enrollment-
+        # form prefill. Sender prefers these over parsing patient_name.
+        ("larc_assignments", "patient_first_name",     "VARCHAR(80)"),
+        ("larc_assignments", "patient_middle_initial", "VARCHAR(8)"),
+        ("larc_assignments", "patient_last_name",      "VARCHAR(80)"),
+        ("larc_assignments", "patient_cell",           "VARCHAR(40)"),
+        ("larc_assignments", "patient_address",        "VARCHAR(300)"),
+        ("larc_assignments", "patient_city",           "VARCHAR(120)"),
+        ("larc_assignments", "patient_state",          "VARCHAR(8)"),
+        ("larc_assignments", "patient_zip",            "VARCHAR(15)"),
+        ("larc_assignments", "insurance_policy_no",    "VARCHAR(80)"),
+        ("larc_assignments", "insurance_group_no",     "VARCHAR(80)"),
+        ("larc_assignments", "insurance_card_key",     "VARCHAR(300)"),
+        ("larc_assignments", "insurance_card_filename","VARCHAR(255)"),
+        ("larc_assignments", "insurance_card_content_type", "VARCHAR(100)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
