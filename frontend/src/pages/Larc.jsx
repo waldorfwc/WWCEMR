@@ -706,16 +706,24 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
 
 
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Device type to order *</label>
+            <label className="text-[10px] uppercase text-gray-500 block mb-1">
+              {isReserve ? 'Device type to reserve *' : 'Device type to order *'}
+            </label>
             <select className="input text-sm w-full"
                     value={form.device_type_id}
                     onChange={e => update('device_type_id', e.target.value)}>
               <option value="">— pick device type —</option>
-              {(types || []).filter(t => t.default_flow === 'pharmacy_order')
+              {(types || [])
+                .filter(t => t.category === 'larc'
+                              && (isReserve
+                                   ? true
+                                   : t.default_flow === 'pharmacy_order'))
                 .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
             <div className="text-[10px] text-gray-500 mt-1">
-              Device row will be created when it arrives from the pharmacy.
+              {isReserve
+                ? 'Pick a specific device from inventory later — after benefits + payment.'
+                : 'Device row will be created when it arrives from the pharmacy.'}
             </div>
           </div>
 
