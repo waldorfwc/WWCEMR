@@ -183,9 +183,10 @@ def _build_nexplanon_fields(
     add(receptionist, "patient_cell_phone",    a.patient_phone or "")
     add(receptionist, "app_date",              today)
 
-    # Checkboxes — BoldSign accepts {"id": "...", "value": "ON"/"false"}
-    if dispense:
-        receptionist.append({"id": "dispense", "value": "ON"})
+    # Checkboxes — BoldSign accepts {"id": "...", "value": "ON"/"false"}.
+    # The old `dispense` field was renamed to `dispense_no` on the
+    # template, but the practice's policy is unchanged — always tick it.
+    receptionist.append({"id": "dispense_no", "value": "ON"})
     if provider_contact_preference:
         receptionist.append({"id": "provider_contact_preference", "value": "ON"})
 
@@ -335,7 +336,10 @@ def _build_bayer_fields(
     add(receptionist, "practice_zip",     settings.get("practice_zip"))
     add(receptionist, "practice_phone",   settings.get("practice_contact_phone"))
     add(receptionist, "practice_fax",     settings.get("practice_fax"))
-    add(receptionist, "shipping_address", settings.get("practice_address"))
+    # Shipping address stays blank unless Reception writes in a
+    # different dock address at signing — defaulting it to the practice
+    # address was wrong because the form is supposed to be empty when
+    # shipping matches the office address above.
     # Bayer prints the provider name in "Last, First" format.
     add(receptionist, "provider_name_last_first", settings_last_first)
     add(receptionist, "provider_licenses", settings.get("provider_lic"))
@@ -603,6 +607,11 @@ def send_enrollment_envelope(
         ),
         "roles": roles_payload,
         "enableSigningOrder": True,
+        # Sender override (onBehalfOf=info@) intentionally removed —
+        # BoldSign accepts the send but creates a document whose sender
+        # identity is invalid until info@ is a confirmed team member.
+        # Re-enable after info@ is verified in the BoldSign dashboard
+        # under Team Members.
     }
 
     # Send to BoldSign
