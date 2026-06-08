@@ -173,39 +173,37 @@ def _build_nexplanon_fields(
     add(receptionist, "app_name",               app_name_for_form)
     add(receptionist, "app_npi",                app_npi_for_form)
 
-    # ── Receptionist: per-assignment ────────────────────────────────
-    add(receptionist, "patient_full_name",     _friendly_name(a.patient_name))
-    add(receptionist, "patient_dob",           p_dob)
+    # ── Receptionist: per-assignment patient demographics + insurance ─
+    # All demographic and insurance fields moved into the Receptionist
+    # role on the template (Reception now fills the entire form; Patient
+    # just signs). Set everything here so the form arrives ready for
+    # signature with nothing missing.
+    add(receptionist, "patient_first_name",       p_first)
+    add(receptionist, "patient_last_name",        p_last)
+    add(receptionist, "patient_middle_initial",   p_middle)
+    add(receptionist, "patient_dob1",             p_dob)
+    add(receptionist, "patient_dob",              p_dob)   # second-page dupe
+    add(receptionist, "patient_full_name",        _friendly_name(a.patient_name))
+    add(receptionist, "patient_cell",             a.patient_phone or "")
+    add(receptionist, "patient_email",            a.patient_email or "")
+    add(receptionist, "patient_insurance_plan",   a.primary_insurance or "")
+    add(receptionist, "patient_insurance_plan2",  a.primary_insurance or "")
+    # Per-assignment patient_*2 (second-page duplicates) + cell + dob2
     add(receptionist, "sign_on_behalf_of_patient", sent_by_email)
-    add(receptionist, "patient_last_name2",    p_last)
-    add(receptionist, "patient_first_name2",   p_first)
-    add(receptionist, "patient_dob2",          p_dob)
-    add(receptionist, "patient_cell_phone",    a.patient_phone or "")
-    add(receptionist, "app_date",              today)
+    add(receptionist, "patient_last_name2",       p_last)
+    add(receptionist, "patient_first_name2",      p_first)
+    add(receptionist, "patient_dob2",             p_dob)
+    add(receptionist, "patient_cell_phone",       a.patient_phone or "")
+    add(receptionist, "app_date",                 today)
 
-    # Checkboxes — BoldSign accepts {"id": "...", "value": "ON"/"false"}.
-    # The old `dispense` field was renamed to `dispense_no` on the
-    # template, but the practice's policy is unchanged — always tick it.
+    # Checkboxes — `dispense_no` is always-on per practice policy.
     receptionist.append({"id": "dispense_no", "value": "ON"})
     if provider_contact_preference:
         receptionist.append({"id": "provider_contact_preference", "value": "ON"})
 
-    # ── Patient role: demographics + insurance (pre-fill, patient edits)
-    patient = []
-    add(patient, "patient_first_name",   p_first)
-    add(patient, "patient_last_name",    p_last)
-    add(patient, "patient_middle_initial", p_middle)
-    add(patient, "patient_dob1",         p_dob)
-    add(patient, "patient_dob",          p_dob)   # second-page duplicate
-    add(patient, "patient_full_name",    _friendly_name(a.patient_name))
-    add(patient, "patient_cell",         a.patient_phone or "")
-    add(patient, "patient_email",        a.patient_email or "")
-    # Insurance — we only have the plan name on the assignment row
-    add(patient, "patient_insurance_plan",  a.primary_insurance or "")
-    add(patient, "patient_insurance_plan2", a.primary_insurance or "")
-
-    # ── Provider role: no textbox prefill (signatures + dates only) ──
-    provider = []
+    # ── Patient + Provider: signature-only roles (no prefill) ─────────
+    patient: list[dict] = []
+    provider: list[dict] = []
 
     # BoldSign rejects the send with "default value and read-only mode
     # should be same for same data synced fields" when the SAME field id
@@ -235,9 +233,9 @@ def _build_paragard_fields(
     provider_name_for_form: str,
     provider_npi_for_form: str,
 ) -> dict[str, list[dict]]:
-    """Paragard template — two roles: Patient (signs first) + Provider.
-    No Receptionist role; the patient fills + signs themselves.
-    """
+    """Paragard template — three roles now (Reception fills, Patient
+    signs, Provider signs). Reception holds the full prefill payload
+    so the form arrives signature-ready; Patient + Provider only sign."""
     p_dob = a.patient_dob.strftime("%m/%d/%Y") if a.patient_dob else ""
 
     def add(role_list: list, field_id: str, value: Optional[str]):
@@ -245,44 +243,59 @@ def _build_paragard_fields(
             return
         role_list.append({"id": field_id, "value": str(value)})
 
-    # ── Patient: demographics + primary insurance (pre-fill, edits OK) ─
-    patient: list[dict] = []
-    add(patient, "patient_name",       _friendly_name(a.patient_name))
-    add(patient, "patient_dob",        p_dob)
-    add(patient, "patient_address",    "")   # no chart data — patient fills
-    add(patient, "patient_city",       "")
-    add(patient, "patient_state",      "")
-    add(patient, "patient_zip",        "")
-    add(patient, "patient_phone_home", a.patient_phone or "")
-    add(patient, "patient_cell",       a.patient_phone or "")
-    add(patient, "primary_insurance_name", a.primary_insurance or "")
-
-    # ── Provider role: practice + provider + APP identity ──────────────
+    # ── Receptionist: full form prefill ───────────────────────────────
     app_name_for_form, app_npi_for_form = _resolve_app(a, settings)
-    provider: list[dict] = []
-    add(provider, "provider_name",        provider_name_for_form)
-    add(provider, "provider_npi",         provider_npi_for_form)
-    add(provider, "provider_lic",         settings.get("provider_lic"))
-    add(provider, "provider_speciality",  settings.get("provider_speciality"))
-    add(provider, "app_name",             app_name_for_form)
-    add(provider, "practice_name",        settings.get("practice_name"))
-    add(provider, "practice_address",     settings.get("practice_address"))
-    add(provider, "practice_city",        settings.get("practice_city"))
-    add(provider, "practice_state",       settings.get("practice_state"))
-    add(provider, "practice_zip",         settings.get("practice_zip"))
-    # Ship-to address defaults to the practice address — most enrollments
-    # ship back to the same office that ordered them. Override per-key
-    # later if a separate dock address is needed.
-    add(provider, "practice_ship_address", settings.get("practice_address"))
-    add(provider, "practice_ship_city",    settings.get("practice_city"))
-    add(provider, "practice_ship_state",   settings.get("practice_state"))
-    add(provider, "practice_ship_zip",     settings.get("practice_zip"))
-    add(provider, "practice_contact_name",  settings.get("practice_contact"))
-    add(provider, "practice_contact_phone", settings.get("practice_contact_phone"))
-    add(provider, "practice_contact_email", settings.get("practice_email"))
-    add(provider, "practice_contact_fax",   settings.get("practice_fax"))
+    receptionist: list[dict] = []
+    # Patient demographics
+    add(receptionist, "patient_name",       _friendly_name(a.patient_name))
+    add(receptionist, "patient_name2",      _friendly_name(a.patient_name))
+    add(receptionist, "patient_dob",        p_dob)
+    add(receptionist, "patient_phone_home", a.patient_phone or "")
+    add(receptionist, "patient_cell",       a.patient_phone or "")
+    # Insurance — only the plan name is on the assignment row
+    add(receptionist, "primary_insurance_name", a.primary_insurance or "")
+    # Provider identity
+    add(receptionist, "provider_name",        provider_name_for_form)
+    add(receptionist, "provider_npi",         provider_npi_for_form)
+    add(receptionist, "provider_lic",         settings.get("provider_lic"))
+    add(receptionist, "provider_speciality",  settings.get("provider_speciality"))
+    add(receptionist, "app_name",             app_name_for_form)
+    # Practice identity
+    add(receptionist, "practice_name",    settings.get("practice_name"))
+    add(receptionist, "practice_address", settings.get("practice_address"))
+    add(receptionist, "practice_city",    settings.get("practice_city"))
+    add(receptionist, "practice_state",   settings.get("practice_state"))
+    add(receptionist, "practice_zip",     settings.get("practice_zip"))
+    # Ship-to address — leave blank by default; Reception writes a value
+    # only when a different dock address is needed.
+    add(receptionist, "practice_contact_name",  settings.get("practice_contact"))
+    add(receptionist, "practice_contact_phone", settings.get("practice_contact_phone"))
+    add(receptionist, "practice_contact_email", settings.get("practice_email"))
+    add(receptionist, "practice_contact_fax",   settings.get("practice_fax"))
+    # Pharmacy choice — tick the pharmacy-specific checkbox.
+    # Paragard template has pharmacy_biologics (Biologics by McKesson)
+    # and pharmacy_cityDrugs (City Drugs) at minimum.
+    if a.pharmacy_id:
+        from sqlalchemy.orm import object_session
+        from app.models.larc import LarcPharmacy
+        sess = object_session(a)
+        if sess is not None:
+            pharm = (sess.query(LarcPharmacy)
+                          .filter(LarcPharmacy.id == a.pharmacy_id).first())
+            pname = (pharm.name if pharm else "") or ""
+            pharm_cb = None
+            if "Biologics" in pname or "McKesson" in pname:
+                pharm_cb = "pharmacy_biologics"
+            elif "City Drugs" in pname:
+                pharm_cb = "pharmacy_cityDrugs"
+            if pharm_cb:
+                receptionist.append({"id": pharm_cb, "value": "ON"})
 
-    return {"Patient": patient, "Provider": provider}
+    # ── Patient + Provider: signature-only roles ──────────────────────
+    patient: list[dict] = []
+    provider: list[dict] = []
+
+    return {"Receptionist": receptionist, "Patient": patient, "Provider": provider}
 
 
 # ─── Field map (Bayer Mirena/Skyla/Kyleena, Phase 5) ──────────────
@@ -455,8 +468,13 @@ _TEMPLATE_SPECS: dict[str, _TemplateSpec] = {
         template_id=PARAGARD_TEMPLATE_ID,
         nice_name="Paragard",
         roles=(
-            _RoleSpec("Patient",  role_index=1, signer_order=1),
-            _RoleSpec("Provider", role_index=2, signer_order=2),
+            # Paragard now has three roles. Template's roleIndex order
+            # is Patient(1), Provider(2), Receptionist(3) — but our
+            # workflow is Reception fills first, Patient signs, Provider
+            # signs last.
+            _RoleSpec("Patient",      role_index=1, signer_order=2),
+            _RoleSpec("Provider",     role_index=2, signer_order=3),
+            _RoleSpec("Receptionist", role_index=3, signer_order=1),
         ),
         field_builder=_build_paragard_fields,
     ),
