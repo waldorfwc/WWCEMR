@@ -630,8 +630,9 @@ def manager_dashboard(
                 "followup_text": inst.followup_text,
                 "answered_at": str(inst.completed_at) if inst.completed_at else None,
             })
-        # Overdue: not done AND past escalate window
-        if inst.status != "done":
+        # Overdue: still pending past escalate window. done + skipped both
+        # represent a resolved instance and must not surface here.
+        if inst.status not in ("done", "skipped"):
             base = inst.due_at or datetime.combine(inst.due_date, datetime.min.time())
             eligible_at = base + timedelta(hours=tmpl.escalate_after_hours or 24)
             if now >= eligible_at:
