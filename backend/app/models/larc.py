@@ -72,6 +72,14 @@ class LarcPharmacy(Base):
     phone = Column(String(40), nullable=True)
     address = Column(String(300), nullable=True)
     accepts_insurance = Column(JSON, nullable=True)   # list of insurance keywords
+    # Device types this pharmacy can ship (e.g. ["Mirena","Skyla","Kyleena"]
+    # for a CVS Bayer pharmacy, ["Paragard"] for Biologics by McKesson).
+    # Empty / null means "serves any device" (legacy rows).
+    device_names = Column(JSON, nullable=True)
+    # Device types where this pharmacy is the default pick on new
+    # assignments. One pharmacy per device-name max, but enforcement is
+    # at the API layer rather than via a DB constraint.
+    default_for_devices = Column(JSON, nullable=True)
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 

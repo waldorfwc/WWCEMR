@@ -723,9 +723,15 @@ function EnrollmentSignedBody({ a }) {
 
 function FaxPharmacyBody({ a }) {
   const qc = useQueryClient()
+  // Filter pharmacies by the assignment's device type — staff only sees
+  // pharmacies that ship the right device family. Legacy rows with no
+  // device_names list still show up (server-side: empty = "any device").
+  const device = a.device_type_name || ''
   const { data: pharmacies } = useQuery({
-    queryKey: ['larc-pharmacies'],
-    queryFn: () => api.get('/larc/pharmacies').then(r => r.data),
+    queryKey: ['larc-pharmacies', device || 'all'],
+    queryFn: () => api.get('/larc/pharmacies',
+                            device ? { params: { device_name: device } } : {})
+                       .then(r => r.data),
     staleTime: 60_000,
   })
   const [pharmacyId, setPharmacyId] = useState(a.pharmacy_id || '')

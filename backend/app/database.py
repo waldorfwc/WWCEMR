@@ -416,6 +416,10 @@ def _apply_lightweight_migrations():
         # pick the right BoldSign template before the physical device
         # arrives from the pharmacy.
         ("larc_assignments", "device_type_id", "VARCHAR(36)"),
+        # LarcPharmacy.device_names / default_for_devices — drive the
+        # filter + auto-default for the pharmacy picker on assignments.
+        ("larc_pharmacies", "device_names",        "JSON"),
+        ("larc_pharmacies", "default_for_devices", "JSON"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

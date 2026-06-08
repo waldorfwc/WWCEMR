@@ -494,23 +494,69 @@ class PharmacyIn(BaseModel):
     phone: Optional[str] = None
     address: Optional[str] = None
     accepts_insurance: Optional[list[str]] = None
+    device_names: Optional[list[str]] = None
+    default_for_devices: Optional[list[str]] = None
     notes: Optional[str] = None
 
 
+class PharmacyPatch(BaseModel):
+    name: Optional[str] = None
+    fax: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    accepts_insurance: Optional[list[str]] = None
+    device_names: Optional[list[str]] = None
+    default_for_devices: Optional[list[str]] = None
+    notes: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+def _pharmacy_dict(p: LarcPharmacy) -> dict:
+    return {
+        "id": str(p.id), "name": p.name, "fax": p.fax, "phone": p.phone,
+        "address": p.address, "accepts_insurance": p.accepts_insurance or [],
+        "device_names": p.device_names or [],
+        "default_for_devices": p.default_for_devices or [],
+        "notes": p.notes,
+    }
+
+
 @router.get("/pharmacies")
-def list_pharmacies(db: Session = Depends(get_db),
-                     current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+def list_pharmacies(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
+    device_name: Optional[str] = None,
+):
+    """List active pharmacies. If `device_name` is given, return only
+    pharmacies whose `device_names` list contains it (or is empty —
+    legacy rows with no device filter are assumed to serve everything)."""
     rows = (db.query(LarcPharmacy)
               .filter(LarcPharmacy.is_active.is_(True))
               .order_by(LarcPharmacy.name).all())
-    return [
-        {
-            "id": str(p.id), "name": p.name, "fax": p.fax, "phone": p.phone,
-            "address": p.address, "accepts_insurance": p.accepts_insurance or [],
-            "notes": p.notes,
-        }
-        for p in rows
-    ]
+    if device_name:
+        target = device_name.strip()
+        rows = [p for p in rows if not (p.device_names) or target in (p.device_names or [])]
+    return [_pharmacy_dict(p) for p in rows]
+
+
+@router.patch("/pharmacies/{pharmacy_id}")
+def patch_pharmacy(pharmacy_id: str, payload: PharmacyPatch,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
+    p = db.query(LarcPharmacy).filter(LarcPharmacy.id == pharmacy_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="pharmacy not found")
+    data = payload.model_dump(exclude_unset=True)
+    before = {k: getattr(p, k) for k in data}
+    for k, v in data.items():
+        setattr(p, k, v)
+    log_audit(db, actor=current_user.get("email") or "system",
+              action="pharmacy_edited",
+              summary=f"Edited pharmacy {p.name}: {list(data.keys())}",
+              detail={"before": {k: str(v) if v is not None else None for k, v in before.items()},
+                      "after":  {k: str(getattr(p, k)) if getattr(p, k) is not None else None for k in data}})
+    db.commit(); db.refresh(p)
+    return _pharmacy_dict(p)
 
 
 @router.post("/pharmacies", status_code=201)
@@ -521,10 +567,12 @@ def create_pharmacy(payload: PharmacyIn,
         name=payload.name.strip(),
         fax=payload.fax, phone=payload.phone, address=payload.address,
         accepts_insurance=payload.accepts_insurance or [],
+        device_names=payload.device_names or [],
+        default_for_devices=payload.default_for_devices or [],
         notes=payload.notes,
     )
     db.add(p); db.commit(); db.refresh(p)
-    return {"id": str(p.id)}
+    return _pharmacy_dict(p)
 
 
 # ─── Devices ────────────────────────────────────────────────────────
@@ -995,6 +1043,24 @@ def create_assignment(payload: AssignmentIn,
     else:
         raise HTTPException(status_code=422, detail="device_id required for in_stock flow")
 
+    # Default pharmacy lookup: if no pharmacy_id was provided AND this is
+    # a pharmacy-order flow with a known device type, pick the pharmacy
+    # marked as default_for_devices containing that device name.
+    pharmacy_id = payload.pharmacy_id
+    if (not pharmacy_id and payload.source_flow == "pharmacy_order"
+            and payload.device_type_id):
+        dt_row = (db.query(LarcDeviceType)
+                    .filter(LarcDeviceType.id == payload.device_type_id)
+                    .first())
+        if dt_row:
+            default_pharm = (db.query(LarcPharmacy)
+                                .filter(LarcPharmacy.is_active.is_(True))
+                                .all())
+            for p in default_pharm:
+                if dt_row.name in (p.default_for_devices or []):
+                    pharmacy_id = str(p.id)
+                    break
+
     a = LarcAssignment(
         device_id=device.id if device else None,
         # Pin device_type at creation — required for pharmacy_order
@@ -1008,7 +1074,7 @@ def create_assignment(payload: AssignmentIn,
         patient_email=payload.patient_email,
         patient_phone=payload.patient_phone,
         primary_insurance=payload.primary_insurance,
-        pharmacy_id=payload.pharmacy_id,
+        pharmacy_id=pharmacy_id,
         source_flow=payload.source_flow,
         status="new",
         is_active=True,
