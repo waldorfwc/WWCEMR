@@ -154,9 +154,15 @@ export default function Larc() {
           <Link to="/larc/audit" className="btn-secondary text-sm flex items-center gap-1">
             <FileText size={13} /> Audit log
           </Link>
+          <Link to="/larc/devices?add=1"
+                className="btn-secondary text-sm flex items-center gap-1"
+                title="Office-purchased devices received into inventory (no patient at this stage)">
+            <Plus size={13} /> Receive Devices into Inventory
+          </Link>
           <button className="btn-primary text-sm flex items-center gap-1"
-                  onClick={() => setNewRequest(true)}>
-            <Plus size={13} /> Order/Assign LARC for Patient
+                  onClick={() => setNewRequest(true)}
+                  title="Send a pharmacy enrollment form for a specific patient — the pharmacy ships the device">
+            <Plus size={13} /> New Pharmacy Enrollment
           </button>
         </div>
       </div>
@@ -462,7 +468,12 @@ function NewRequestDrawer({ onClose, onCreated }) {
     patient_email: '', patient_phone: '', patient_cell: '',
     patient_address: '', patient_city: '', patient_state: '', patient_zip: '',
     primary_insurance: '', insurance_policy_no: '', insurance_group_no: '',
-    source_flow: 'in_stock', device_id: '', device_type_id: '',
+    // Pharmacy enrollment flow only — the form is the prescribed
+    // workflow for pharmacy-shipped devices. Office-purchased devices
+    // go through /larc/devices ("Receive Devices into Inventory") and
+    // are assigned to a patient later via the in-stock pick step on
+    // the assignment page (after benefits + payment).
+    source_flow: 'pharmacy_order', device_id: '', device_type_id: '',
     notes: '',
   })
   const [insuranceCardFile, setInsuranceCardFile] = useState(null)
@@ -478,13 +489,6 @@ function NewRequestDrawer({ onClose, onCreated }) {
     queryFn: () => api.get('/larc/picklists').then(r => r.data),
     staleTime: 60_000,
   })
-  // For in_stock flow, list unassigned devices the MA can pick
-  const { data: stockDevices } = useQuery({
-    queryKey: ['larc-devices-unassigned'],
-    queryFn: () => api.get('/larc/devices', { params: { status: 'unassigned' } }).then(r => r.data),
-    enabled: form.source_flow === 'in_stock',
-  })
-
   // Compose "Last, First [M]" from the distinct fields — this is what
   // the legacy patient_name column holds (still required by the API).
   const composedName = (() => {
@@ -516,8 +520,8 @@ function NewRequestDrawer({ onClose, onCreated }) {
         insurance_policy_no: form.insurance_policy_no.trim() || null,
         insurance_group_no:  form.insurance_group_no.trim() || null,
         source_flow: form.source_flow,
-        device_id: form.source_flow === 'in_stock' ? form.device_id : null,
-        device_type_id: form.source_flow === 'pharmacy_order' ? form.device_type_id : null,
+        device_id: null,
+        device_type_id: form.device_type_id,
         notes: form.notes || null,
       })).data
       // Insurance card upload — only if a file was picked. Errors here
@@ -538,7 +542,6 @@ function NewRequestDrawer({ onClose, onCreated }) {
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
       qc.invalidateQueries({ queryKey: ['larc-assignments'] })
-      qc.invalidateQueries({ queryKey: ['larc-devices-unassigned'] })
       qc.invalidateQueries({ queryKey: ['larc-ready-to-checkout'] })
       onCreated(data.id)
     },
@@ -551,30 +554,15 @@ function NewRequestDrawer({ onClose, onCreated }) {
       <div className="relative w-full max-w-lg bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">Order / Assign LARC for Patient</h2>
+          <h2 className="font-serif font-semibold text-ink text-[16px]">New Pharmacy Enrollment</h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
         <div className="p-5 space-y-3 text-sm">
-          <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Source</label>
-            <div className="flex gap-2">
-              <label className={`text-[12px] px-2 py-1 rounded border cursor-pointer ${
-                form.source_flow === 'in_stock'
-                  ? 'border-plum-500 bg-plum-50 text-plum-800'
-                  : 'border-gray-200 text-gray-700'}`}>
-                <input type="radio" className="mr-1" checked={form.source_flow === 'in_stock'}
-                       onChange={() => update('source_flow', 'in_stock')} />
-                In-stock (pick from cabinet)
-              </label>
-              <label className={`text-[12px] px-2 py-1 rounded border cursor-pointer ${
-                form.source_flow === 'pharmacy_order'
-                  ? 'border-plum-500 bg-plum-50 text-plum-800'
-                  : 'border-gray-200 text-gray-700'}`}>
-                <input type="radio" className="mr-1" checked={form.source_flow === 'pharmacy_order'}
-                       onChange={() => update('source_flow', 'pharmacy_order')} />
-                Pharmacy order (patient's pharmacy ships it)
-              </label>
-            </div>
+          <div className="bg-plum-50/40 border border-plum-100 rounded px-2 py-1.5 text-[11px] text-gray-700">
+            For an office-purchased device (no patient yet), use{' '}
+            <Link to="/larc/devices?add=1" className="text-plum-700 hover:underline">
+              Receive Devices into Inventory
+            </Link>{' '}instead.
           </div>
 
           <div className="grid grid-cols-6 gap-2">
@@ -693,44 +681,20 @@ function NewRequestDrawer({ onClose, onCreated }) {
             </div>
           </div>
 
-          {form.source_flow === 'in_stock' && (
-            <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Pick device from stock *</label>
-              <select className="input text-sm w-full"
-                      value={form.device_id}
-                      onChange={e => update('device_id', e.target.value)}>
-                <option value="">— pick a device —</option>
-                {(stockDevices?.devices || [])
-                  .filter(d => d.status === 'unassigned')
-                  .map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.our_id} · {d.device_type_name} · expires {d.expiration_date || 'unknown'} · {d.location_label}
-                  </option>
-                ))}
-              </select>
-              {(stockDevices?.devices || []).filter(d => d.status === 'unassigned').length === 0 && (
-                <div className="text-[10px] text-amber-700 mt-1">
-                  No unassigned devices available — order from pharmacy or add new devices in inventory.
-                </div>
-              )}
-            </div>
-          )}
 
-          {form.source_flow === 'pharmacy_order' && (
-            <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Device type to order *</label>
-              <select className="input text-sm w-full"
-                      value={form.device_type_id}
-                      onChange={e => update('device_type_id', e.target.value)}>
-                <option value="">— pick device type —</option>
-                {(types || []).filter(t => t.default_flow === 'pharmacy_order' || form.source_flow === 'pharmacy_order')
-                  .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-              <div className="text-[10px] text-gray-500 mt-1">
-                Device row will be created when it arrives from the pharmacy.
-              </div>
+          <div>
+            <label className="text-[10px] uppercase text-gray-500 block mb-1">Device type to order *</label>
+            <select className="input text-sm w-full"
+                    value={form.device_type_id}
+                    onChange={e => update('device_type_id', e.target.value)}>
+              <option value="">— pick device type —</option>
+              {(types || []).filter(t => t.default_flow === 'pharmacy_order')
+                .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+            <div className="text-[10px] text-gray-500 mt-1">
+              Device row will be created when it arrives from the pharmacy.
             </div>
-          )}
+          </div>
 
           <div>
             <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
@@ -747,8 +711,7 @@ function NewRequestDrawer({ onClose, onCreated }) {
                     !form.chart_number.trim()
                     || !form.patient_first_name.trim()
                     || !form.patient_last_name.trim()
-                    || (form.source_flow === 'in_stock' && !form.device_id)
-                    || (form.source_flow === 'pharmacy_order' && !form.device_type_id)
+                    || !form.device_type_id
                     || create.isPending
                   }>
             {create.isPending ? 'Creating…' : 'Create request'}

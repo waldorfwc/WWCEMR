@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, Plus, Search, Package, X, Printer, Layers } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 
@@ -40,6 +40,19 @@ export default function LarcDevices() {
   })
   const [adding, setAdding] = useState(false)
   const [bulkAdding, setBulkAdding] = useState(false)
+  // ?add=1 auto-opens the bulk-add form (linked from /larc's
+  // "Receive Devices into Inventory" button). Consume the param once
+  // so reopening the form later doesn't require a fresh URL.
+  const [searchParams, setSearchParams] = useSearchParams()
+  useEffect(() => {
+    if (searchParams.get('add') === '1' && !bulkAdding) {
+      setBulkAdding(true)
+      const next = new URLSearchParams(searchParams)
+      next.delete('add')
+      setSearchParams(next, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const [selected, setSelected] = useState(new Set())
 
   const { data: types } = useQuery({
