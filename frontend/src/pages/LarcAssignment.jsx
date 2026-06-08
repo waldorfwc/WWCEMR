@@ -810,6 +810,17 @@ function ReceiveDeviceBody({ a }) {
   const [price, setPrice] = useState('')
   const [typeId, setTypeId] = useState(a.device_id ? '' :
     (types?.find(t => t.name?.toLowerCase() === (a.device_type_name || '').toLowerCase())?.id || ''))
+  // The initializer above runs before the device-types query resolves
+  // on first mount, leaving typeId blank and the Receive button
+  // disabled until Reception manually re-picks. Once types arrive,
+  // default to the assignment's known type (Mirena/Paragard/etc.) so
+  // the form is one click closer to submit.
+  useEffect(() => {
+    if (typeId || !types || !a.device_type_name) return
+    const match = types.find(
+      t => t.name?.toLowerCase() === a.device_type_name.toLowerCase())
+    if (match) setTypeId(match.id)
+  }, [types, a.device_type_name, typeId])
 
   const save = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/receive-device`, {
