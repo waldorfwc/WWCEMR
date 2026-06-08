@@ -159,30 +159,43 @@ def generate_instances_for_date(db: Session, target_date: date) -> dict:
     Idempotent — uses the unique (template_id, email, due_date) constraint.
     """
     candidates: list[tuple[TaskTemplate, date]] = []
+    seen_template_ids: set = set()
     templates = db.query(TaskTemplate).filter(TaskTemplate.active.is_(True)).all()
 
     for tmpl in templates:
+        added = False
         # Direct hit on target_date
         if _template_fires_on(tmpl, target_date):
             adj = _adjust_for_weekend(tmpl, target_date)
             if adj == target_date:
                 candidates.append((tmpl, target_date))
+                seen_template_ids.add(tmpl.id)
+                added = True
         # Roll-forward: if target_date is Mon, a task that fired on Sat or
-        # Sun with roll_to_monday rolls into today.
-        if target_date.weekday() == 0:  # Monday
+        # Sun with roll_to_monday rolls into today. Skip if already added
+        # via the direct-fire branch to avoid double-inserting on templates
+        # whose explicit weekend_rule = roll_to_monday on a daily/weekly
+        # recurrence (the direct + roll-forward branches both fire).
+        if not added and target_date.weekday() == 0:  # Monday
             for back in (1, 2):  # Sun=−1, Sat=−2
                 prior = target_date - timedelta(days=back)
                 if _template_fires_on(tmpl, prior):
                     adj = _adjust_for_weekend(tmpl, prior)
                     if adj == target_date:
                         candidates.append((tmpl, target_date))
+                        seen_template_ids.add(tmpl.id)
                         break
 
     created = 0
     skipped = 0
+    added_keys: set = set()
     for tmpl, d in candidates:
         users = _assignees_for_template(db, tmpl)
         for u in users:
+            key = (tmpl.id, u.email, d)
+            if key in added_keys:
+                skipped += 1
+                continue
             existing = db.query(TaskInstance).filter(
                 TaskInstance.template_id == tmpl.id,
                 TaskInstance.assigned_to_email == u.email,
@@ -201,6 +214,7 @@ def generate_instances_for_date(db: Session, target_date: date) -> dict:
                 due_at=due_at,
                 status="pending",
             ))
+            added_keys.add(key)
             created += 1
 
     db.commit()
