@@ -163,7 +163,7 @@ export default function Larc() {
           <button className="btn-secondary text-sm flex items-center gap-1"
                   onClick={() => setReserveInventory(true)}
                   title="Reserve an in-stock device for a patient — allocate the specific device later after benefits + payment">
-            <Plus size={13} /> Reserve from Inventory
+            <Plus size={13} /> Benefits for In-Stock Device
           </button>
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => setNewRequest(true)}
@@ -568,7 +568,7 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="font-serif font-semibold text-ink text-[16px]">
-            {isReserve ? 'Reserve from Inventory' : 'LARC Enrollment Form'}
+            {isReserve ? 'Benefits for In-Stock Device' : 'LARC Enrollment Form'}
           </h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
@@ -641,31 +641,35 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
                      onChange={e => update('patient_email', e.target.value)} />
             </div>
 
-            <div className="col-span-6">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Street address</label>
-              <input className="input text-sm w-full"
-                     value={form.patient_address}
-                     onChange={e => update('patient_address', e.target.value)} />
-            </div>
-            <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">City</label>
-              <input className="input text-sm w-full"
-                     value={form.patient_city}
-                     onChange={e => update('patient_city', e.target.value)} />
-            </div>
-            <div className="col-span-1">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">State</label>
-              <input className="input text-sm w-full"
-                     maxLength={2}
-                     value={form.patient_state}
-                     onChange={e => update('patient_state', e.target.value.toUpperCase())} />
-            </div>
-            <div className="col-span-2">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">ZIP</label>
-              <input className="input text-sm w-full font-mono"
-                     value={form.patient_zip}
-                     onChange={e => update('patient_zip', e.target.value)} />
-            </div>
+            {!isReserve && (
+              <>
+                <div className="col-span-6">
+                  <label className="text-[10px] uppercase text-gray-500 block mb-1">Street address</label>
+                  <input className="input text-sm w-full"
+                         value={form.patient_address}
+                         onChange={e => update('patient_address', e.target.value)} />
+                </div>
+                <div className="col-span-3">
+                  <label className="text-[10px] uppercase text-gray-500 block mb-1">City</label>
+                  <input className="input text-sm w-full"
+                         value={form.patient_city}
+                         onChange={e => update('patient_city', e.target.value)} />
+                </div>
+                <div className="col-span-1">
+                  <label className="text-[10px] uppercase text-gray-500 block mb-1">State</label>
+                  <input className="input text-sm w-full"
+                         maxLength={2}
+                         value={form.patient_state}
+                         onChange={e => update('patient_state', e.target.value.toUpperCase())} />
+                </div>
+                <div className="col-span-2">
+                  <label className="text-[10px] uppercase text-gray-500 block mb-1">ZIP</label>
+                  <input className="input text-sm w-full font-mono"
+                         value={form.patient_zip}
+                         onChange={e => update('patient_zip', e.target.value)} />
+                </div>
+              </>
+            )}
 
             <div className="col-span-6">
               <label className="text-[10px] uppercase text-gray-500 block mb-1">Primary insurance</label>
@@ -690,18 +694,20 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
                      value={form.insurance_group_no}
                      onChange={e => update('insurance_group_no', e.target.value)} />
             </div>
-            <div className="col-span-6">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Insurance card (image)</label>
-              <input type="file" accept="image/*,application/pdf"
-                     className="text-sm w-full"
-                     onChange={e => setInsuranceCardFile(e.target.files?.[0] || null)} />
-              {insuranceCardFile && (
-                <div className="text-[10px] text-gray-500 mt-1">
-                  Selected: <span className="font-mono">{insuranceCardFile.name}</span>
-                  {' '}({Math.round(insuranceCardFile.size / 1024)} KB)
-                </div>
-              )}
-            </div>
+            {!isReserve && (
+              <div className="col-span-6">
+                <label className="text-[10px] uppercase text-gray-500 block mb-1">Insurance card (image)</label>
+                <input type="file" accept="image/*,application/pdf"
+                       className="text-sm w-full"
+                       onChange={e => setInsuranceCardFile(e.target.files?.[0] || null)} />
+                {insuranceCardFile && (
+                  <div className="text-[10px] text-gray-500 mt-1">
+                    Selected: <span className="font-mono">{insuranceCardFile.name}</span>
+                    {' '}({Math.round(insuranceCardFile.size / 1024)} KB)
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
 
