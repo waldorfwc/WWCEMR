@@ -168,7 +168,7 @@ export default function Larc() {
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => setNewRequest(true)}
                   title="Send a pharmacy enrollment form for a specific patient — the pharmacy ships the device">
-            <Plus size={13} /> New Pharmacy Enrollment
+            <Plus size={13} /> LARC Enrollment Form
           </button>
         </div>
       </div>
@@ -568,7 +568,7 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="font-serif font-semibold text-ink text-[16px]">
-            {isReserve ? 'Reserve from Inventory' : 'New Pharmacy Enrollment'}
+            {isReserve ? 'Reserve from Inventory' : 'LARC Enrollment Form'}
           </h2>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
