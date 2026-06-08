@@ -569,11 +569,17 @@ def seed_templates(db: Session = Depends(get_db),
 
 
 @router.post("/generate-for-today")
-def generate_today(db: Session = Depends(get_db),
+def generate_today(date_str: Optional[str] = Query(None, alias="date"),
+                   db: Session = Depends(get_db),
                    current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
-    """Manually trigger today's task-instance generation. Normally runs
-    automatically via the scheduler at midnight, but useful for testing."""
-    return checklist_service.generate_instances_for_date(db, _date.today())
+    """Manually trigger task-instance generation for a given date. Defaults
+    to today. The midnight cron handles the normal case; this is for
+    testing and for backfilling a date the cron missed."""
+    try:
+        target = _date.fromisoformat(date_str) if date_str else _date.today()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date must be YYYY-MM-DD")
+    return checklist_service.generate_instances_for_date(db, target)
 
 
 # ─── Manager dashboard ───────────────────────────────────────────────
