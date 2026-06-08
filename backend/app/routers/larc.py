@@ -1575,11 +1575,15 @@ def download_insurance_card(
     if not a.insurance_card_key:
         raise HTTPException(status_code=404, detail="no insurance card on file")
     from app.services.storage import serve_blob
-    return serve_blob(key=a.insurance_card_key,
-                       filename=a.insurance_card_filename or "insurance_card",
-                       content_type=a.insurance_card_content_type
-                                    or "application/octet-stream",
-                       disposition="inline")
+    import os
+    local_root = os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs")
+    return serve_blob(
+        local_path=os.path.join(local_root, a.insurance_card_key),
+        gcs_object=a.insurance_card_key,
+        media_type=a.insurance_card_content_type or "application/octet-stream",
+        filename=a.insurance_card_filename or "insurance_card",
+        disposition="inline",
+    )
 
 
 class InsertingProviderIn(BaseModel):
