@@ -323,12 +323,19 @@ def _build_bayer_fields(
     # Address / language / gender — not on the LARC assignment row, left
     # blank for the receptionist to fill from the chart.
 
-    # Practice + provider identity (Bayer uses 'office_*' not 'practice_*')
-    add(receptionist, "office_contact",  settings.get("practice_contact"))
-    add(receptionist, "office_address",  settings.get("practice_address"))
-    add(receptionist, "office_city",     settings.get("practice_city"))
-    add(receptionist, "office_state",    settings.get("practice_state"))
-    add(receptionist, "office_zip",      settings.get("practice_zip"))
+    # Practice + provider identity — Bayer template now uses the same
+    # `practice_*` naming convention as Nexplanon + Paragard. The
+    # template also adds `practice_phone` + `practice_fax` + a separate
+    # `shipping_address` field that defaults to the main practice
+    # address (override per-key once a separate dock address is needed).
+    add(receptionist, "practice_contact", settings.get("practice_contact"))
+    add(receptionist, "practice_address", settings.get("practice_address"))
+    add(receptionist, "practice_city",    settings.get("practice_city"))
+    add(receptionist, "practice_state",   settings.get("practice_state"))
+    add(receptionist, "practice_zip",     settings.get("practice_zip"))
+    add(receptionist, "practice_phone",   settings.get("practice_contact_phone"))
+    add(receptionist, "practice_fax",     settings.get("practice_fax"))
+    add(receptionist, "shipping_address", settings.get("practice_address"))
     # Bayer prints the provider name in "Last, First" format.
     add(receptionist, "provider_name_last_first", settings_last_first)
     add(receptionist, "provider_licenses", settings.get("provider_lic"))
@@ -365,10 +372,30 @@ def _build_bayer_fields(
     cb_id = bayer_checkbox_for.get(device_name)
     if cb_id:
         receptionist.append({"id": cb_id, "value": "ON"})
-    # Pharmacy checkbox — tick when the assignment has a pharmacy linked
-    # (the form's "this device ships via the pharmacy" option).
+    # Pharmacy checkbox — the Bayer template lists four specialty pharmacy
+    # choices, each with its own checkbox. Match the assignment's
+    # pharmacy.name to the corresponding checkbox. CVS Specialty's three
+    # regional variants (Continental, Hawaii Neighbor, Hawaii Oahu) all
+    # share the single `pharmacy_cvs` box on the form.
     if a.pharmacy_id:
-        receptionist.append({"id": "pharmacy", "value": "ON"})
+        from sqlalchemy.orm import object_session
+        from app.models.larc import LarcPharmacy
+        sess = object_session(a)
+        if sess is not None:
+            pharm = (sess.query(LarcPharmacy)
+                          .filter(LarcPharmacy.id == a.pharmacy_id).first())
+            pharm_name = (pharm.name if pharm else "") or ""
+            pharm_cb = None
+            if "CVS Specialty" in pharm_name:
+                pharm_cb = "pharmacy_cvs"
+            elif "AllianceRx" in pharm_name or "Walgreens Prime" in pharm_name:
+                pharm_cb = "pharmacy_AllianceRX"
+            elif "Humana" in pharm_name:
+                pharm_cb = "pharmacy_Humana"
+            elif "Magellan" in pharm_name:
+                pharm_cb = "pharmacy_Magellan"
+            if pharm_cb:
+                receptionist.append({"id": pharm_cb, "value": "ON"})
 
     # Provider credential checkbox — tick the row matching the inserting
     # provider's User.credential (MD/DO/NP/PA). Looked up via the
