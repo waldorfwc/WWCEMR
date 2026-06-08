@@ -29,6 +29,7 @@ const LEGACY_PERM_TO_TIER = {
   'surgery:read':       ['surgery', VIEW],
   'surgery:work':       ['surgery', WORK],
   'larc:read':          ['device_larc', VIEW],
+  'larc:checkout':      ['device_larc', WORK],
   'pellet:read':        ['pellets', VIEW],
   'checklist:manage':   ['my_checklist', MANAGE],
 }

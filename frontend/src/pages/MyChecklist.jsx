@@ -98,6 +98,8 @@ export default function MyChecklist() {
         <ResponsibilitiesDrawer onClose={() => setShowResponsibilities(false)} />
       )}
 
+      {canCheckoutLarc && <LarcCheckoutCard />}
+
       {/* Progress bar */}
       {total > 0 && (
         <div className="card">
@@ -119,9 +121,6 @@ export default function MyChecklist() {
       <PainPointResponsesCard />
 
       <MyTasksCard />
-
-
-      {canCheckoutLarc && <LarcCheckoutCard />}
 
       {!role && total === 0 && (
         <div className="card bg-amber-50 border-amber-200 text-sm text-amber-800">
