@@ -114,6 +114,8 @@ export default function LarcAssignment() {
       {/* Replacement chain banner (failed_used assignments only) */}
       {a.status === 'failed_used' && <ReplacementChainCard a={a} />}
 
+      <InsuranceCardCard a={a} />
+
       {/* Benefits calculator — always-visible card. The benefits_verified
           milestone still uses BenefitsBody under the hood, but this surfaces
           it without requiring the user to expand a milestone first. */}
@@ -1185,6 +1187,115 @@ function ConsumeBody({ a }) {
               disabled={save.isPending}>
         {save.isPending ? 'Saving…' : 'Mark device consumed'}
       </button>
+    </div>
+  )
+}
+
+
+function InsuranceCardCard({ a }) {
+  const qc = useQueryClient()
+  const [previewUrl, setPreviewUrl] = useState(null)
+  const [previewError, setPreviewError] = useState(null)
+  const fileInputRef = useState(() => ({ current: null }))[0]
+
+  // Load the card image as an object URL so the <img> tag can render
+  // it without separate auth handling. Re-load when the filename
+  // changes (after a re-upload).
+  useEffect(() => {
+    if (!a.has_insurance_card) { setPreviewUrl(null); return }
+    let revoked = false
+    api.get(`/larc/assignments/${a.id}/insurance-card`,
+            { responseType: 'blob' })
+      .then(r => {
+        if (revoked) return
+        const url = URL.createObjectURL(r.data)
+        setPreviewUrl(url)
+        setPreviewError(null)
+      })
+      .catch(e => setPreviewError(e?.response?.status === 404
+        ? 'File missing on storage'
+        : (e?.response?.data?.detail || e.message)))
+    return () => {
+      revoked = true
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [a.id, a.has_insurance_card, a.insurance_card_filename])
+
+  const upload = useMutation({
+    mutationFn: (file) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return api.post(`/larc/assignments/${a.id}/insurance-card`, fd,
+                      { headers: { 'Content-Type': 'multipart/form-data' } })
+                 .then(r => r.data)
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Upload failed'),
+  })
+
+  function pickFile() {
+    fileInputRef.current?.click()
+  }
+
+  const hasCard = !!a.has_insurance_card
+
+  return (
+    <div className="card mb-4">
+      <div className="flex items-center gap-2 mb-2">
+        <FileText size={14} className="text-plum-600" />
+        <h2 className="text-sm font-semibold text-gray-800">Insurance Card</h2>
+        <span className="text-[11px] text-gray-500">
+          Attached to every pharmacy enrollment envelope
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <input type="file" ref={el => fileInputRef.current = el}
+                 accept="image/*,application/pdf"
+                 className="hidden"
+                 onChange={e => {
+                   const f = e.target.files?.[0]
+                   if (f) upload.mutate(f)
+                 }} />
+          <button className="btn-secondary text-[11px]"
+                  onClick={pickFile}
+                  disabled={upload.isPending}>
+            {upload.isPending ? 'Uploading…' : hasCard ? 'Replace' : 'Upload'}
+          </button>
+        </div>
+      </div>
+
+      {!hasCard && (
+        <div className="text-[11px] text-amber-700 italic">
+          No insurance card on file. Pharmacies typically want to see it
+          along with the enrollment form — upload one before sending.
+        </div>
+      )}
+      {hasCard && previewError && (
+        <div className="text-[11px] text-danger">
+          Couldn't load preview: {previewError}
+        </div>
+      )}
+      {hasCard && !previewError && (
+        <div className="flex items-start gap-3">
+          <a href={previewUrl || '#'} target="_blank" rel="noopener noreferrer"
+             title="Open full size in a new tab">
+            {previewUrl ? (
+              <img src={previewUrl} alt="Insurance card"
+                   className="max-h-40 border border-gray-200 rounded"
+                   onError={() => setPreviewError('Could not render image')} />
+            ) : (
+              <div className="text-[10px] text-gray-400 italic">Loading…</div>
+            )}
+          </a>
+          <div className="text-[11px] text-gray-600 space-y-0.5">
+            <div className="font-mono">{a.insurance_card_filename || '(no filename)'}</div>
+            <a className="text-plum-700 hover:underline"
+               href={previewUrl || '#'} target="_blank" rel="noopener noreferrer">
+              Open full size →
+            </a>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
