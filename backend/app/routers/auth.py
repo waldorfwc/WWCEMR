@@ -201,7 +201,15 @@ def get_me(user: dict = Depends(get_current_user),
 
     email = (user.get("email") or "").lower().strip()
     user_row = db.query(User).filter(User.email == email).first()
-    is_super_admin = bool(user_row and user_row.is_super_admin)
+    # The User.is_super_admin column is the canonical flag, but membership
+    # in the "Super Admin" group is treated as equivalent — the group is
+    # how Office Managers grant super-admin in the admin UI, and we don't
+    # want the column flip step to leave them locked out of admin-gated
+    # frontend routes (e.g. /admin/reputation/*).
+    in_super_admin_group = bool(user_row and any(
+        (g.name or "").lower() == "super admin" for g in (user_row.groups or [])
+    ))
+    is_super_admin = bool(user_row and (user_row.is_super_admin or in_super_admin_group))
     active_ar_tier = effective_tier(db, email, Module.ACTIVE_AR)
     chart_tier     = effective_tier(db, email, Module.CHART)
 
