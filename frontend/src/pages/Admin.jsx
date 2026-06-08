@@ -684,6 +684,10 @@ export default function Admin() {
                 className="btn-secondary text-sm flex items-center gap-1">
             <Settings size={13} /> Practice Settings
           </Link>
+          <Link to="/admin/larc-pharmacies"
+                className="btn-secondary text-sm flex items-center gap-1">
+            <Settings size={13} /> LARC Pharmacies
+          </Link>
           {!adding && (
             <button className="btn-primary text-sm" onClick={() => setAdding(true)}>
               <Plus size={13} className="inline -mt-0.5" /> Add User

@@ -360,7 +360,7 @@ def _build_bayer_fields(
     bayer_checkbox_for = {
         "Kyleena": "kyleena",
         "Mirena":  "mirena",
-        "Skyla":   "Skyla",   # template uses capital S for this one only
+        "Skyla":   "skyla",
     }
     cb_id = bayer_checkbox_for.get(device_name)
     if cb_id:
