@@ -277,8 +277,20 @@ def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
               start_time: time, duration_minutes: int,
               procedure_kind: str) -> SurgerySlot:
     """Create a SurgerySlot after capacity check. Raises CapacityViolation
-    on rule failure."""
-    block_day = db.query(BlockDay).filter(BlockDay.id == block_day_id).first()
+    on rule failure.
+
+    Concurrency: the BlockDay row is locked SELECT FOR UPDATE so two
+    concurrent bookings on the same day (patient magic-link picker, staff
+    /book-slot, waitlist claim, self-schedule) can't both pass can_fit
+    and double-book MedStar / CRMC capacity. claim_slot_for_patient
+    already locks at its own entry point — re-locking the same row in
+    the same transaction is a Postgres no-op, so callers that already
+    hold the lock pay no cost.
+    """
+    block_day = (db.query(BlockDay)
+                   .filter(BlockDay.id == block_day_id)
+                   .with_for_update()
+                   .first())
     if not block_day:
         raise ValueError("block day not found")
     surgery = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -288,6 +300,17 @@ def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
     ok, reason = can_fit(db, block_day, procedure_kind)
     if not ok:
         raise CapacityViolation(reason)
+
+    # Time-overlap check, evaluated *after* the row lock so T2 sees any
+    # slot T1 just committed. can_fit only counts cases by kind — it
+    # doesn't catch two bookings at the same start_time.
+    from app.services.surgery_slot_conflict import overlapping_slot
+    conflict = overlapping_slot(db, block_day.id, start_time, duration_minutes)
+    if conflict:
+        raise CapacityViolation(
+            f"That time conflicts with an existing slot at "
+            f"{conflict.start_time.strftime('%H:%M')} — pick another."
+        )
 
     slot = SurgerySlot(
         block_day_id=block_day.id,
