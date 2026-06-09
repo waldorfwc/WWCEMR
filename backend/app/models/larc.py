@@ -167,8 +167,13 @@ class LarcDevice(Base):
 
 class LarcAssignment(Base):
     """Ties a physical LARC device to a specific patient and drives the
-    workflow milestones. Only ONE active assignment per device at a time
-    (enforced by the partial unique constraint below).
+    workflow milestones. Exactly one active assignment per device at a
+    time — enforced by the partial unique index
+    `ix_larc_assignment_active_unique` (created in
+    database._apply_lightweight_migrations on Postgres). The composite
+    `ix_larc_assignment_active` index below is the read-side companion
+    for dashboard queries; it intentionally remains non-unique so
+    SQLAlchemy doesn't try to manage two indexes on the same columns.
     """
     __tablename__ = "larc_assignments"
     __table_args__ = (

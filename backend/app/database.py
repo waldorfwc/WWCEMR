@@ -486,6 +486,43 @@ def _apply_lightweight_migrations():
             conn.execute(text(
                 f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({cols_clause})"))
 
+    # Partial UNIQUE indexes — Postgres only (syntax differs in SQLite,
+    # and tests use SQLite). Each entry is the DB-layer enforcement of an
+    # invariant the application code also tries to maintain.
+    if dialect == "postgresql":
+        partial_unique_indexes = [
+            # LARC: exactly one active assignment per device. The
+            # application-level check (larc.py: "active assignment exists")
+            # is racy under two concurrent checkout-direct calls; this
+            # closes the race at the only layer that can actually enforce
+            # mutual exclusion. NULL device_id is excluded so pharmacy-
+            # order assignments (which have no device until receipt) don't
+            # clash with each other.
+            ("ix_larc_assignment_active_unique",
+             "larc_assignments",
+             "device_id",
+             "is_active = true AND device_id IS NOT NULL"),
+        ]
+        for idx_name, table, cols, where in partial_unique_indexes:
+            if table not in existing_tables:
+                continue
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        f"CREATE UNIQUE INDEX IF NOT EXISTS {idx_name} "
+                        f"ON {table} ({cols}) WHERE {where}"))
+            except Exception as exc:
+                # If existing data already violates the invariant the
+                # CREATE will fail. We don't want that to block app
+                # boot — log loudly so it surfaces in Cloud Run logs and
+                # an operator can clean up the offending rows, then
+                # rerun the boot.
+                import logging
+                logging.getLogger(__name__).error(
+                    "Failed to create partial unique index %s on %s — "
+                    "likely existing data violates uniqueness. Error: %s",
+                    idx_name, table, exc)
+
     # SUR-numbering sequence. Smartsheet used to own the numbering; now
     # the DB does. Create the sequence and prime it (once) to the highest
     # existing SUR number + 1, so we keep going where Smartsheet left
