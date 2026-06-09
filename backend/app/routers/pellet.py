@@ -4471,6 +4471,116 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
     }
 
 
+class DoseLotIdentifyIn(BaseModel):
+    """Body for POST /visits/{visit_id}/doses/{dose_id}/identify-lot —
+    retroactively record which lot was actually used on a confirmed
+    (inserted/added/etc.) dose. Stock is rebalanced: if a different
+    lot was previously debited, +1 is returned to it and -1 is taken
+    from the new lot."""
+    lot_id: str
+    reason: str   # e.g. "lot missed at pull-time, identified from paper log"
+
+
+@router.post("/visits/{visit_id}/doses/{dose_id}/identify-lot")
+def identify_dose_lot(visit_id: str, dose_id: str, payload: DoseLotIdentifyIn,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    """Retroactively identify (or correct) the lot recorded on a
+    confirmed dose. Used when the lot wasn't captured at pre-bag time
+    and staff later identified it from the paper manifest or photo.
+
+    Differs from PATCH /doses/{dose_id} (change_dose_lot) in that:
+      - the dose may already be in a terminal status (inserted, added,
+        reduced, returned, disposed)
+      - the audit row records a retroactive identification, not a
+        provider-room swap
+
+    Stock rebalancing:
+      - If the dose currently has a non-NULL lot_id, that lot was
+        debited at pull-time and shouldn't have been; +d.quantity is
+        added back to its stock at the visit's location.
+      - The new lot is debited -d.quantity (since that's the lot the
+        device actually came from). If the dose had no recorded lot
+        before, only the debit happens — a future inventory count
+        will catch any historical drift on an unidentified lot."""
+    if not (payload.reason or "").strip():
+        raise HTTPException(status_code=422, detail="reason is required")
+
+    d = (db.query(PelletVisitDose)
+           .options(joinedload(PelletVisitDose.dose_type))
+           .filter(PelletVisitDose.id == dose_id,
+                   PelletVisitDose.visit_id == visit_id).first())
+    if not d:
+        raise HTTPException(status_code=404, detail="dose entry not found")
+
+    v = db.query(PelletVisit).filter(PelletVisit.id == visit_id).first()
+    if not v:
+        raise HTTPException(status_code=404, detail="visit not found")
+
+    new_lot = (db.query(PelletLot)
+                 .filter(PelletLot.id == payload.lot_id).first())
+    if not new_lot:
+        raise HTTPException(status_code=404, detail="lot not found")
+    if new_lot.dose_type_id != d.dose_type_id:
+        raise HTTPException(status_code=409,
+            detail="lot dose type does not match the dose's dose type")
+
+    old_lot_id = d.lot_id
+    if str(old_lot_id) == str(new_lot.id):
+        raise HTTPException(status_code=409,
+            detail="the dose is already identified with that lot")
+
+    location = _require_visit_location(v)
+    by = current_user.get("email") or "system"
+
+    # Stock rebalance — return to the previously-debited lot first, then
+    # debit the newly-identified lot.
+    if old_lot_id is not None:
+        old_stock = _get_or_create_stock(db, old_lot_id, location)
+        old_stock.doses_on_hand += d.quantity
+        _audit(db, actor=by, action="dose_lot_retro_return",
+               lot_id=old_lot_id, location=location, delta_doses=d.quantity,
+               summary=(f"Retro lot fix: returned {d.quantity}× "
+                        f"{d.dose_type.label if d.dose_type else ''} "
+                        f"to stock (was debited in error)"),
+               detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
+                       "new_lot_id": str(new_lot.id),
+                       "reason": payload.reason.strip()})
+
+    new_stock = _get_or_create_stock(db, new_lot.id, location)
+    new_stock.doses_on_hand -= d.quantity
+    _audit(db, actor=by, action="dose_lot_retro_debit",
+           lot_id=new_lot.id, location=location, delta_doses=-d.quantity,
+           summary=(f"Retro lot fix: debited {d.quantity}× "
+                    f"{d.dose_type.label if d.dose_type else ''} "
+                    f"from lot {new_lot.qualgen_lot_number}"),
+           detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
+                   "previous_lot_id": str(old_lot_id) if old_lot_id else None,
+                   "reason": payload.reason.strip()})
+
+    d.lot_id = new_lot.id
+    _audit(db, actor=by, action="dose_lot_retroactive_identification",
+           lot_id=new_lot.id,
+           summary=(f"Retroactively identified lot for "
+                    f"{d.dose_type.label if d.dose_type else 'dose'} "
+                    f"on visit {visit_id}: {new_lot.qualgen_lot_number}"),
+           detail={"visit_id": str(visit_id),
+                   "visit_dose_id": str(d.id),
+                   "previous_lot_id": str(old_lot_id) if old_lot_id else None,
+                   "new_lot_id":      str(new_lot.id),
+                   "new_lot_number":  new_lot.qualgen_lot_number,
+                   "dose_status_at_change": d.status,
+                   "reason": payload.reason.strip()})
+    db.commit(); db.refresh(d)
+    return {
+        "dose_id": str(d.id),
+        "lot_id":  str(d.lot_id),
+        "qualgen_lot_number": new_lot.qualgen_lot_number,
+        "previous_lot_id": str(old_lot_id) if old_lot_id else None,
+        "new_lot_stock": new_stock.doses_on_hand,
+    }
+
+
 @router.delete("/visits/{visit_id}/doses/{dose_id}", status_code=204)
 def delete_visit_dose(visit_id: str, dose_id: str,
                         db: Session = Depends(get_db),
