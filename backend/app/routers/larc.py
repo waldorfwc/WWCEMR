@@ -1673,8 +1673,19 @@ def download_insurance_card(
     from app.services.storage import serve_blob
     import os
     local_root = os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs")
+    # Defense-in-depth: the key is UUID-derived today so path-traversal
+    # isn't reachable via current code paths, but normalize and confirm
+    # the resolved path stays under local_root so any future code path
+    # that ever stored a user-influenced key can't escape the docs
+    # directory.
+    raw_target = os.path.join(local_root, a.insurance_card_key)
+    target_real = os.path.realpath(raw_target)
+    root_real = os.path.realpath(local_root)
+    if target_real != root_real and not target_real.startswith(root_real + os.sep):
+        raise HTTPException(status_code=400,
+            detail="invalid insurance card storage key")
     return serve_blob(
-        local_path=os.path.join(local_root, a.insurance_card_key),
+        local_path=target_real,
         gcs_object=a.insurance_card_key,
         media_type=safe_type,
         filename=a.insurance_card_filename or "insurance_card",

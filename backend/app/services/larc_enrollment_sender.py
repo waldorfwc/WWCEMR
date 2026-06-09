@@ -216,17 +216,16 @@ def _build_nexplanon_fields(
         receptionist.append({"id": "provider_contact_preference", "value": "ON"})
 
     # ── Patient + Provider: signature-only roles (no prefill) ─────────
-    patient: list[dict] = []
-    provider: list[dict] = []
-
     # BoldSign rejects the send with "default value and read-only mode
     # should be same for same data synced fields" when the SAME field id
     # appears in multiple roles' existingFormFields arrays. Several
     # template fields (patient_dob, patient_full_name) are visible to
-    # both Receptionist + Patient — only set them once, via the first
-    # signer (Receptionist), and BoldSign auto-syncs to Patient.
-    recept_ids = {f["id"] for f in receptionist}
-    patient = [f for f in patient if f["id"] not in recept_ids]
+    # both Receptionist + Patient — Receptionist sets them, and BoldSign
+    # auto-syncs to Patient via dataSyncTag. If a future template change
+    # adds explicit Patient prefill here, dedup against recept_ids at the
+    # assignment site (see _build_paragard_fields for the pattern).
+    patient: list[dict] = []
+    provider: list[dict] = []
 
     return {
         "Receptionist": receptionist,

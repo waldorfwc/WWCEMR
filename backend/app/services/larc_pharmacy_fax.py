@@ -152,7 +152,12 @@ def fax_envelope(db: Session, env: LarcEnrollmentEnvelope,
     env.fax_status    = result.get("status") or "Queued"
     env.faxed_at      = datetime.utcnow()
     env.last_fax_error = None
-    if env.status == "signed":
+    # Reflect the successful send in env.status — previously only flipped
+    # signed→faxed, which left the row inconsistent when a fax_failed or
+    # pending row was successfully retried (faxed_at set, but status
+    # stuck on the old value). Skip terminal envelope statuses where a
+    # status flip would lose audit fidelity.
+    if env.status not in ("declined", "voided", "revoked", "expired"):
         env.status = "faxed"
 
     # Bump the assignment SLA clock — same milestone the manual /fax-pharmacy
@@ -189,7 +194,11 @@ def _record_failure(db: Session, env: LarcEnrollmentEnvelope,
     env.fax_attempts = (env.fax_attempts or 0) + 1
     env.fax_status = "fax_failed"
     env.last_fax_error = msg
-    if env.status == "signed":
+    # Mark envelope-level status as fax_failed when the row isn't already
+    # in a terminal state (declined/voided/revoked/expired) and hasn't
+    # been successfully faxed before. A failed retry of a previously
+    # successful send must not erase the prior 'faxed' state.
+    if env.status not in ("declined", "voided", "revoked", "expired", "faxed"):
         env.status = "fax_failed"
     log_action(
         db, "LARC_ENROLLMENT_FAX_FAILED", "larc_assignment",
