@@ -934,6 +934,18 @@ def delete_device(device_id: str,
             detail=("This device has assignment history and can't be "
                     "deleted. Use 'return to manufacturer' or edit its "
                     "status instead."))
+    # Belt + suspenders: the assignment-history check usually catches
+    # this, but a stale or orphan LarcCheckout pointing at the device
+    # would otherwise blow up at SQL commit (no ON DELETE cascade after
+    # 633bcc6). Surface a clean 409 instead.
+    has_checkouts = db.query(LarcCheckout).filter(
+        LarcCheckout.device_id == d.id).count() > 0
+    if has_checkouts:
+        raise HTTPException(
+            status_code=409,
+            detail=("This device has checkout history and can't be "
+                    "deleted. Use 'return to manufacturer' or edit its "
+                    "status instead."))
     # Audit BEFORE removing the row so the event has a persistent record.
     type_name = d.device_type.name if d.device_type else None
     log_audit(db,
@@ -3123,6 +3135,18 @@ def delete_manual_section(section_id: str,
     s = db.query(LarcManualSection).filter(LarcManualSection.id == section_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
+    log_audit(
+        db,
+        actor=current_user.get("email") or "system",
+        action="manual_section_deleted",
+        summary=f"Deleted LARC operating-procedure section: {s.title!r}",
+        detail={
+            "section_id":  str(s.id),
+            "title":       s.title,
+            "body_excerpt": (s.body or "")[:240],
+            "position":    s.position,
+        },
+    )
     db.delete(s); db.commit()
     return None
 
