@@ -502,6 +502,17 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
     BoldSign status values: InProgress | Completed | Declined | Expired |
     Revoked. Maps to the same status column used by the DocuSign version.
 
+    Idempotent + safe against out-of-order re-deliveries:
+      - Unknown / unmapped BoldSign status values are ignored rather
+        than written verbatim into the row's status column.
+      - Once the row reaches a terminal state (signed / declined /
+        voided / expired), a later webhook carrying a different status
+        is dropped — a re-delivered Declined arriving after Completed
+        must not clobber the canonical 'signed' state.
+      - signed_at / declined_at / voided_at all use first-write-wins;
+        duplicate Connect retries don't refresh the canonical
+        timestamp.
+
     Also captures the patient's per-signer completion timestamp into
     patient_signed_at — that's what the portal uses to distinguish
     'awaiting your signature' from 'awaiting countersignature'.
@@ -514,28 +525,42 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
         "expired": "expired",
         "revoked": "voided",
     }
-    row.status = mapping.get(raw_status, raw_status or row.status)
+    new_status = mapping.get(raw_status)
+    if new_status is None:
+        logging.getLogger(__name__).warning(
+            "BoldSign surgery webhook unknown status=%r for envelope %s — ignoring",
+            raw_status, row.boldsign_envelope_id)
+        return
+
+    TERMINAL = {"signed", "declined", "voided", "expired"}
+    if row.status in TERMINAL and new_status != row.status:
+        logging.getLogger(__name__).info(
+            "BoldSign surgery webhook ignored: envelope %s already %r, "
+            "incoming status=%r",
+            row.boldsign_envelope_id, row.status, new_status)
+        return
+
+    row.status = new_status
     row.last_synced_at = datetime.utcnow()
 
     if raw_status == "completed":
-        # First-write-wins so a duplicate Connect retry doesn't refresh
-        # signed_at — that's the canonical signature timestamp and shouldn't
-        # drift on every webhook re-fire.
         if not row.signed_at:
             row.signed_at = (
                 _parse_dt(env.get("completedDateTime") or env.get("completedAt"))
                 or datetime.utcnow()
             )
     elif raw_status == "declined":
-        row.declined_at = (
-            _parse_dt(env.get("declinedDateTime") or env.get("declinedAt"))
-            or datetime.utcnow()
-        )
+        if not row.declined_at:
+            row.declined_at = (
+                _parse_dt(env.get("declinedDateTime") or env.get("declinedAt"))
+                or datetime.utcnow()
+            )
     elif raw_status == "revoked":
-        row.voided_at = (
-            _parse_dt(env.get("revokedDateTime") or env.get("revokedAt"))
-            or datetime.utcnow()
-        )
+        if not row.voided_at:
+            row.voided_at = (
+                _parse_dt(env.get("revokedDateTime") or env.get("revokedAt"))
+                or datetime.utcnow()
+            )
 
     # Per-signer: look for the patient role (signerRole == "Patient" is the
     # canonical match we send when creating the envelope). Fall back to the
