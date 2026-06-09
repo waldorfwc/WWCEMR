@@ -1541,6 +1541,40 @@ def refax_envelope(envelope_id: str,
     return result
 
 
+_INSURANCE_CARD_ALLOWED_MIME = {
+    "image/jpeg", "image/jpg", "image/png", "image/webp",
+    "image/heic", "image/heif", "application/pdf",
+}
+_INSURANCE_CARD_MAX_BYTES = 10 * 1024 * 1024   # 10 MB
+
+# Magic-byte sniff so a caller can't pass a PDF labeled as image/png and
+# then re-fetch it inline as text/html. Maps the *trusted* media type to
+# the byte prefixes we accept.
+_INSURANCE_CARD_MAGIC = {
+    "image/jpeg": (b"\xff\xd8\xff",),
+    "image/jpg":  (b"\xff\xd8\xff",),
+    "image/png":  (b"\x89PNG\r\n\x1a\n",),
+    "image/webp": (b"RIFF",),                       # full check inspects bytes 8-12
+    "image/heic": (b"ftypheic", b"ftypheix", b"ftyphevc", b"ftyphevx"),
+    "image/heif": (b"ftypmif1", b"ftypmsf1", b"ftypheic", b"ftypheix"),
+    "application/pdf": (b"%PDF-",),
+}
+
+
+def _sniff_insurance_card(body: bytes, declared_type: str) -> bool:
+    """Return True iff the file's first bytes match the declared MIME."""
+    t = (declared_type or "").lower()
+    if t == "image/webp":
+        return len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP"
+    if t in ("image/heic", "image/heif"):
+        # HEIC/HEIF: brand is at offset 4 (4-byte size prefix), check 4–12
+        return len(body) >= 12 and any(b in body[4:32] for b in _INSURANCE_CARD_MAGIC[t])
+    for magic in _INSURANCE_CARD_MAGIC.get(t, ()):
+        if body.startswith(magic):
+            return True
+    return False
+
+
 @router.post("/assignments/{assignment_id}/insurance-card", status_code=201)
 async def upload_insurance_card(
     assignment_id: str,
@@ -1556,15 +1590,26 @@ async def upload_insurance_card(
     file at send time (sender reads insurance_card_key and pulls bytes
     via storage.read_blob)."""
     a = _load_assignment(db, assignment_id)
+    declared = (file.content_type or "").lower()
+    if declared not in _INSURANCE_CARD_ALLOWED_MIME:
+        raise HTTPException(status_code=415,
+            detail=f"insurance card must be one of: "
+                   f"{', '.join(sorted(_INSURANCE_CARD_ALLOWED_MIME))}")
     body = await file.read()
     if not body:
         raise HTTPException(status_code=422, detail="empty file")
+    if len(body) > _INSURANCE_CARD_MAX_BYTES:
+        raise HTTPException(status_code=413,
+            detail=f"file exceeds {_INSURANCE_CARD_MAX_BYTES // (1024*1024)} MB limit")
+    if not _sniff_insurance_card(body, declared):
+        raise HTTPException(status_code=415,
+            detail="file contents do not match the declared image/PDF type")
     from app.services.storage import save_blob
     key = save_blob(prefix="larc/insurance-cards", body=body,
                     filename=file.filename or "insurance_card")
     a.insurance_card_key = key
     a.insurance_card_filename = file.filename
-    a.insurance_card_content_type = file.content_type
+    a.insurance_card_content_type = declared
     log_audit(db, actor=current_user.get("email") or "system",
               action="insurance_card_uploaded",
               device=a.device, assignment=a,
@@ -1577,18 +1622,29 @@ async def upload_insurance_card(
 def download_insurance_card(
     assignment_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK)),
 ):
     a = _load_assignment(db, assignment_id)
     if not a.insurance_card_key:
         raise HTTPException(status_code=404, detail="no insurance card on file")
+    # PHI access logging: HIPAA requires we record every fetch of a
+    # patient's insurance card, not just the upload.
+    log_audit(db, actor=current_user.get("email") or "system",
+              action="insurance_card_viewed",
+              device=a.device, assignment=a,
+              summary=f"Viewed insurance card for {a.patient_name}")
+    db.commit()
+    # Pin the served Content-Type to the upload-time allow-list so a
+    # caller-controlled MIME can't be replayed as text/html for XSS.
+    stored = (a.insurance_card_content_type or "").lower()
+    safe_type = stored if stored in _INSURANCE_CARD_ALLOWED_MIME else "application/octet-stream"
     from app.services.storage import serve_blob
     import os
     local_root = os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs")
     return serve_blob(
         local_path=os.path.join(local_root, a.insurance_card_key),
         gcs_object=a.insurance_card_key,
-        media_type=a.insurance_card_content_type or "application/octet-stream",
+        media_type=safe_type,
         filename=a.insurance_card_filename or "insurance_card",
         disposition="inline",
     )
