@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { MessageSquare } from 'lucide-react'
 import api from '../utils/api'
@@ -14,6 +14,19 @@ export default function MessagesSection({ sid, flat = false }) {
     refetchInterval: 30_000,
     staleTime: 10_000,
   })
+
+  // The backend marks unread patient messages as read every time the
+  // staff thread is fetched. Without this, the global Messages-link
+  // badge keeps the old count cached until its 60s refetchInterval ticks.
+  // Drop the cache whenever the thread payload changes so the badge
+  // reflects the actual unread state right after you open the drawer.
+  useEffect(() => {
+    if (!thread) return
+    const hadPatientMsg = (thread.messages || []).some(m => m.author_kind === 'patient')
+    if (hadPatientMsg) {
+      qc.invalidateQueries({ queryKey: ['staff-inbox'] })
+    }
+  }, [thread, qc])
 
   const { data: templates } = useQuery({
     queryKey: ['message-templates'],
