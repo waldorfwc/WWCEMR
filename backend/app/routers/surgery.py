@@ -219,7 +219,20 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
                 "template_id": str(e.template_id),
                 "template_name": e.template.name if e.template else None,
                 "is_supplemental": bool(e.template.is_supplemental) if e.template else False,
-                "envelope_id": e.docusign_envelope_id,
+                # envelope_id is the display/debugging id. Prefer BoldSign
+                # (the live provider per the BoldSign migration) and fall
+                # back to DocuSign for legacy envelopes signed before the
+                # cutover. Either may be None for envelopes that have only
+                # been seeded but not yet sent.
+                "envelope_id": (e.boldsign_envelope_id
+                                  or e.docusign_envelope_id),
+                # Expose both raw fields so any caller that needs the
+                # provider-specific id explicitly can pick the right one.
+                "boldsign_envelope_id": e.boldsign_envelope_id,
+                "docusign_envelope_id": e.docusign_envelope_id,
+                "provider": ("boldsign" if e.boldsign_envelope_id
+                             else "docusign" if e.docusign_envelope_id
+                             else None),
                 "status": e.status,
                 "sent_at": e.sent_at.isoformat() if e.sent_at else None,
                 "signed_at": e.signed_at.isoformat() if e.signed_at else None,
