@@ -86,6 +86,17 @@ def larc_sweeps():
     _larc_sweeps()
 
 
+@register("larc_fax_retry")
+def larc_fax_retry():
+    """Drain the auto-fax retry queue: any envelope with fax_status=
+    fax_failed and next_fax_retry_at <= now() is retried once. Marked
+    terminally failed and emails info@ after the final allowed
+    attempt. Scheduled by larc-fax-retry-trigger every 5 minutes during
+    business hours."""
+    from app.services.larc_sweeps import run_fax_retry_sweep
+    run_fax_retry_sweep()
+
+
 @register("pellet_stale_sweep")
 def pellet_stale_sweep():
     from app.services.fax_poller import _pellet_stale_sweep

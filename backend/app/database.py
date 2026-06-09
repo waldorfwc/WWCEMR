@@ -289,6 +289,9 @@ def _apply_lightweight_migrations():
         ("larc_devices", "ownership",                  "VARCHAR(20) DEFAULT 'wwc_owned'"),
         ("larc_devices", "purchasing_patient_chart",   "VARCHAR(40)"),
         ("larc_devices", "purchasing_patient_name",    "VARCHAR(200)"),
+        # LARC enrollment-envelope auto-fax retry queue (audit #11)
+        ("larc_enrollment_envelopes", "next_fax_retry_at",        "DATETIME"),
+        ("larc_enrollment_envelopes", "fax_terminally_failed_at", "DATETIME"),
         # Billing (Phase 3)
         ("surgeries", "modmed_claim_number", "VARCHAR(80)"),
         ("surgeries", "billed_icd10_codes", "JSON"),

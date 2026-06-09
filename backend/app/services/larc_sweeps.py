@@ -153,6 +153,93 @@ def sweep_pharmacy_sla(db: Session) -> dict:
     return {"sla_alerts_logged": len(rows)}
 
 
+def sweep_fax_retry(db: Session) -> dict:
+    """Retry envelopes whose last auto-fax attempt failed and whose
+    next_fax_retry_at has come due. Concurrency-safe: each row is
+    claimed via the same conditional-UPDATE pattern as the webhook
+    handler (fix #2). Envelopes in a terminal state (voided/declined/
+    revoked/expired) or already terminally failed are skipped.
+
+    Returns a counter dict: {fax_retry_attempted, fax_retry_succeeded,
+    fax_retry_failed, fax_retry_terminal}.
+    """
+    from sqlalchemy import or_
+    from app.models.larc import LarcEnrollmentEnvelope
+    from app.services.larc_pharmacy_fax import fax_envelope
+
+    now = datetime.utcnow()
+    candidates = (db.query(LarcEnrollmentEnvelope)
+                    .filter(LarcEnrollmentEnvelope.fax_status == "fax_failed",
+                            LarcEnrollmentEnvelope.next_fax_retry_at.isnot(None),
+                            LarcEnrollmentEnvelope.next_fax_retry_at <= now,
+                            LarcEnrollmentEnvelope.fax_terminally_failed_at.is_(None),
+                            LarcEnrollmentEnvelope.status.notin_(
+                                ("declined", "voided", "revoked", "expired", "faxed")))
+                    .all())
+
+    attempted = 0
+    succeeded = 0
+    failed = 0
+    terminal = 0
+    for env in candidates:
+        # Atomic claim — flip fax_status to in_progress only if it is
+        # still fax_failed AND the retry slot is still due. Two
+        # concurrent sweep workers both see the row, both run this
+        # UPDATE, exactly one wins.
+        claimed = db.query(LarcEnrollmentEnvelope).filter(
+            LarcEnrollmentEnvelope.id == env.id,
+            LarcEnrollmentEnvelope.fax_status == "fax_failed",
+            LarcEnrollmentEnvelope.next_fax_retry_at.isnot(None),
+            LarcEnrollmentEnvelope.next_fax_retry_at <= now,
+        ).update(
+            {LarcEnrollmentEnvelope.fax_status: "in_progress"},
+            synchronize_session=False,
+        )
+        if claimed == 0:
+            continue   # another worker took it
+        db.refresh(env)
+        attempted += 1
+        try:
+            result = fax_envelope(db, env, by_email="system:retry-sweep",
+                                    force=True)
+        except Exception as exc:
+            # fax_envelope's own internal failures are already audited;
+            # any wrapper-level exception is a code bug — log and move on
+            # so one bad row doesn't poison the rest of the sweep.
+            log_audit_failure_internal_only(exc)
+            failed += 1
+            continue
+        if result.get("ok"):
+            succeeded += 1
+        else:
+            failed += 1
+            if result.get("terminal"):
+                terminal += 1
+
+    return {
+        "fax_retry_attempted": attempted,
+        "fax_retry_succeeded": succeeded,
+        "fax_retry_failed":    failed,
+        "fax_retry_terminal":  terminal,
+    }
+
+
+def log_audit_failure_internal_only(exc):
+    import logging
+    logging.getLogger(__name__).exception(
+        "sweep_fax_retry: unhandled exception in fax_envelope wrapper: %s",
+        exc)
+
+
+def run_fax_retry_sweep() -> dict:
+    """Entry point for the dedicated larc-fax-retry Cloud Run Job."""
+    db = SessionLocal()
+    try:
+        return sweep_fax_retry(db)
+    finally:
+        db.close()
+
+
 def run_all() -> dict:
     """Run all three sweeps in one transaction-safe pass."""
     db = SessionLocal()

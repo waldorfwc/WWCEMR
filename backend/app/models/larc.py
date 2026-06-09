@@ -561,6 +561,16 @@ class LarcEnrollmentEnvelope(Base):
     fax_to           = Column(String(40), nullable=True)
     fax_attempts     = Column(Integer, default=0, nullable=False)
     last_fax_error   = Column(Text, nullable=True)
+    # Auto-retry sweep state (audit finding #11). When fax_status flips
+    # to 'fax_failed', _record_failure sets next_fax_retry_at per the
+    # backoff schedule (5m / 30m / 2h / 6h / 24h). The sweep job in
+    # larc_sweeps.run_fax_retry_sweep picks up rows where the next
+    # retry is due and calls fax_envelope(force=True). After the final
+    # attempt fails, fax_terminally_failed_at is set and a notification
+    # email goes out — the row stays surfaced on the dashboard for
+    # manual handling.
+    next_fax_retry_at        = Column(DateTime, nullable=True)
+    fax_terminally_failed_at = Column(DateTime, nullable=True)
 
     # Bookkeeping
     sent_by      = Column(String(200), nullable=True)

@@ -14,8 +14,24 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
+
+
+# Auto-retry backoff schedule. Index = the attempt number we *just*
+# completed (1 = the original webhook attempt, 2..6 = retry attempts).
+# The value is the delay before the NEXT attempt. After attempt 6 the
+# row is marked terminally failed and a notification email goes out.
+# Chosen to converge fast on transient RingCentral / network blips
+# while still covering an overnight outage with the long tail.
+_FAX_RETRY_BACKOFF = [
+    timedelta(minutes=5),     # after attempt 1 (the original)
+    timedelta(minutes=30),    # after attempt 2
+    timedelta(hours=2),       # after attempt 3
+    timedelta(hours=6),       # after attempt 4
+    timedelta(hours=24),      # after attempt 5 (the last retry slot)
+]
+_FAX_MAX_ATTEMPTS = len(_FAX_RETRY_BACKOFF) + 1   # = 6
 
 import httpx
 from sqlalchemy.orm import Session, object_session
@@ -152,6 +168,10 @@ def fax_envelope(db: Session, env: LarcEnrollmentEnvelope,
     env.fax_status    = result.get("status") or "Queued"
     env.faxed_at      = datetime.utcnow()
     env.last_fax_error = None
+    # Clear retry state — a successful send (whether the original or a
+    # later sweep attempt) ends the retry queue for this envelope.
+    env.next_fax_retry_at = None
+    env.fax_terminally_failed_at = None
     # Reflect the successful send in env.status — previously only flipped
     # signed→faxed, which left the row inconsistent when a fax_failed or
     # pending row was successfully retried (faxed_at set, but status
@@ -189,8 +209,9 @@ def fax_envelope(db: Session, env: LarcEnrollmentEnvelope,
 
 def _record_failure(db: Session, env: LarcEnrollmentEnvelope,
                      by_email: str, msg: str) -> dict:
-    """Mark the fax attempt as failed + audit. Returns the failure dict
-    the caller can return to its own caller."""
+    """Mark the fax attempt as failed + audit. Schedules the next retry
+    or marks the envelope terminally failed and notifies. Returns the
+    failure dict the caller returns to its own caller."""
     env.fax_attempts = (env.fax_attempts or 0) + 1
     env.fax_status = "fax_failed"
     env.last_fax_error = msg
@@ -200,14 +221,88 @@ def _record_failure(db: Session, env: LarcEnrollmentEnvelope,
     # successful send must not erase the prior 'faxed' state.
     if env.status not in ("declined", "voided", "revoked", "expired", "faxed"):
         env.status = "fax_failed"
+
+    # Schedule the next retry (or give up). The sweep in larc_sweeps
+    # picks rows where next_fax_retry_at <= now() and runs them through
+    # fax_envelope(force=True).
+    now = datetime.utcnow()
+    if env.fax_attempts < _FAX_MAX_ATTEMPTS:
+        backoff = _FAX_RETRY_BACKOFF[env.fax_attempts - 1]
+        env.next_fax_retry_at = now + backoff
+        env.fax_terminally_failed_at = None
+        terminal = False
+    else:
+        env.next_fax_retry_at = None
+        env.fax_terminally_failed_at = now
+        terminal = True
+
     log_action(
-        db, "LARC_ENROLLMENT_FAX_FAILED", "larc_assignment",
+        db, ("LARC_ENROLLMENT_FAX_TERMINAL" if terminal
+             else "LARC_ENROLLMENT_FAX_FAILED"),
+        "larc_assignment",
         resource_id=str(env.assignment_id),
         user_name=by_email,
-        description=f"LARC enrollment fax failed: {msg}",
-        new_values={"error": msg, "attempts": env.fax_attempts},
+        description=(
+            f"LARC enrollment fax permanently failed after {env.fax_attempts} "
+            f"attempts: {msg}" if terminal
+            else f"LARC enrollment fax failed (attempt {env.fax_attempts}/"
+                 f"{_FAX_MAX_ATTEMPTS}): {msg}"),
+        new_values={"error": msg, "attempts": env.fax_attempts,
+                    "next_retry_at": (env.next_fax_retry_at.isoformat()
+                                       if env.next_fax_retry_at else None),
+                    "terminal": terminal},
         status="error",
         error_detail=msg,
     )
     db.commit()
-    return {"ok": False, "error": msg, "attempts": env.fax_attempts}
+
+    if terminal:
+        try:
+            _notify_terminal_fax_failure(db, env, msg)
+        except Exception:
+            log.exception("Failed to send LARC fax terminal-failure notification")
+
+    return {"ok": False, "error": msg, "attempts": env.fax_attempts,
+            "terminal": terminal}
+
+
+def _notify_terminal_fax_failure(db: Session,
+                                   env: LarcEnrollmentEnvelope, msg: str) -> None:
+    """Email the practice when an envelope has run out of retry attempts.
+    Address is configurable via LARC_FAX_FAILURE_NOTIFY_EMAIL (defaults
+    to info@waldorfwomenscare.com)."""
+    to_addr = os.environ.get("LARC_FAX_FAILURE_NOTIFY_EMAIL",
+                              "info@waldorfwomenscare.com").strip()
+    if not to_addr:
+        return
+    a: Optional[LarcAssignment] = env.assignment or (
+        db.query(LarcAssignment).filter(LarcAssignment.id == env.assignment_id)
+          .first())
+    pharm = None
+    if a and a.pharmacy_id:
+        pharm = (db.query(LarcPharmacy)
+                   .filter(LarcPharmacy.id == a.pharmacy_id).first())
+    patient_name = (a.patient_name if a else "<unknown>")
+    pharmacy_name = (pharm.name if pharm else "<unknown>")
+    pharmacy_fax = (pharm.fax if pharm else "<unknown>")
+    subject = f"[LARC] Pharmacy fax permanently failed — {patient_name}"
+    text = (
+        f"The LARC enrollment fax for {patient_name} could not be delivered to "
+        f"{pharmacy_name} ({pharmacy_fax}) after {env.fax_attempts} attempts.\n\n"
+        f"Last error: {msg}\n\n"
+        f"BoldSign envelope: {env.boldsign_envelope_id}\n"
+        f"Assignment: {env.assignment_id}\n\n"
+        f"Please re-fax manually from the LARC dashboard "
+        f"(Assignment -> Envelope -> Re-fax).\n"
+    )
+    html = (
+        f"<p>The LARC enrollment fax for <strong>{patient_name}</strong> could "
+        f"not be delivered to <strong>{pharmacy_name}</strong> "
+        f"({pharmacy_fax}) after {env.fax_attempts} attempts.</p>"
+        f"<p><strong>Last error:</strong> {msg}</p>"
+        f"<p>BoldSign envelope: <code>{env.boldsign_envelope_id}</code><br/>"
+        f"Assignment: <code>{env.assignment_id}</code></p>"
+        f"<p>Please re-fax manually from the LARC dashboard.</p>"
+    )
+    from app.services.checklist_notifications import send_email
+    send_email(to=to_addr, subject=subject, html_body=html, text_body=text)
