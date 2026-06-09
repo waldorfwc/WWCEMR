@@ -502,6 +502,19 @@ def _apply_lightweight_migrations():
              "larc_assignments",
              "device_id",
              "is_active = true AND device_id IS NOT NULL"),
+            # LARC: at most one in-flight checkout per device. A checkout
+            # is "in-flight" when the row hasn't been resolved yet —
+            # approval pending OR approved with no outcome recorded. Two
+            # staff clicking "Check Out" on the same device within
+            # milliseconds otherwise both pass the pending-check filter
+            # and both insert a LarcCheckout row referencing the same
+            # physical device. NULL device_id excluded so pharmacy-order
+            # rows (no device until receipt) don't clash.
+            ("ix_larc_checkout_inflight_unique",
+             "larc_checkouts",
+             "device_id",
+             "approval_status IN ('pending', 'approved') "
+             "AND outcome IS NULL AND device_id IS NOT NULL"),
         ]
         for idx_name, table, cols, where in partial_unique_indexes:
             if table not in existing_tables:

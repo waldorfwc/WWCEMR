@@ -21,6 +21,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
@@ -2017,7 +2018,16 @@ def request_checkout(assignment_id: str, payload: CheckoutRequestIn,
         c.approved_at = datetime.utcnow()
         device.status = "checked_out"
         _mark_milestone(a, "device_checked_out", status="done", by=by)
-    db.add(c); db.flush()
+    db.add(c)
+    try:
+        db.flush()
+    except IntegrityError:
+        # ix_larc_checkout_inflight_unique caught a parallel staff member
+        # who created a competing checkout in the same instant.
+        db.rollback()
+        raise HTTPException(status_code=409,
+            detail="Another staff member just checked out this device "
+                   "— refresh and try again")
 
     failure_reasons = []
     if not identity_ok:    failure_reasons.append("patient DOB mismatch")
@@ -2232,7 +2242,17 @@ def checkout_direct(assignment_id: str, payload: CheckoutDirectIn,
     )
     device.status = "checked_out"
     _mark_milestone(a, "device_checked_out", status="done", by=by)
-    db.add(c); db.flush()
+    db.add(c)
+    try:
+        db.flush()
+    except IntegrityError:
+        # ix_larc_checkout_inflight_unique caught a parallel staff member
+        # who created a competing checkout in the same instant. Roll back
+        # and surface a clean 409 instead of a 500.
+        db.rollback()
+        raise HTTPException(status_code=409,
+            detail="Another staff member just checked out this device "
+                   "— refresh and try again")
 
     log_audit(db, actor=by, action="checkout_direct",
               device=device, assignment=a, checkout=c,
