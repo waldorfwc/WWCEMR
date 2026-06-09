@@ -1244,10 +1244,17 @@ class ReceiptIn(BaseModel):
     location:             str = "white_plains"
     lots:                 list[LotIn]
     notes:                Optional[str] = None
-    # New: must reference one of order_id OR (is_replacement + replaces_disposal_id)
+    # A receipt must reference exactly one of:
+    #   (a) an existing open PelletOrder (the normal flow)
+    #   (b) a damaged-pellet replacement (is_replacement + replaces_disposal_id)
+    #   (c) "unscheduled" / found-in-cabinet: the practice physically has
+    #       a lot in hand that was never logged against an order. The
+    #       receipt still creates the PelletLot + PelletStock rows so
+    #       the lot becomes usable; the notes field must explain why.
     order_id:             Optional[str] = None
     is_replacement:       bool = False
     replaces_disposal_id: Optional[str] = None
+    is_unscheduled:       bool = False
 
 
 def _parse_date(s: Optional[str], field: str) -> Optional[_date]:
@@ -1292,10 +1299,22 @@ def create_receipt(payload: ReceiptIn,
                        .filter(PelletDisposal.id == payload.replaces_disposal_id).first())
         if not disposal:
             raise HTTPException(status_code=404, detail="disposal not found")
+    elif payload.is_unscheduled:
+        # Found-in-cabinet path. The lot exists physically but was never
+        # logged against a PelletOrder; we still need a paper trail so
+        # require an explanation in notes. The current_user becomes the
+        # receiver and a manifest verifier must still sign off before
+        # stock is incremented (same gate as the regular flow).
+        if not (payload.notes or "").strip():
+            raise HTTPException(status_code=422,
+                detail="unscheduled receipts require a notes field explaining "
+                       "why the lot is being recorded without an order")
     else:
         raise HTTPException(status_code=422,
-                            detail="a receipt must reference an order_id, or be marked "
-                                   "is_replacement=true with replaces_disposal_id set")
+                            detail="a receipt must reference an order_id, OR be "
+                                   "marked is_replacement=true with replaces_disposal_id "
+                                   "set, OR be marked is_unscheduled=true with a "
+                                   "notes explanation")
 
     by = current_user.get("email") or "system"
     r = PelletReceipt(

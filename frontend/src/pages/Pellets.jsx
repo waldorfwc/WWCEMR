@@ -1934,6 +1934,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
       order_id: mode === 'order' ? selectedOrderId : null,
       is_replacement: mode === 'replacement',
       replaces_disposal_id: mode === 'replacement' ? replacesDisposalId : null,
+      is_unscheduled: mode === 'unscheduled',
     }).then(r => r.data),
     onError: (e) => alert(e?.response?.data?.detail || 'Receive failed'),
   })
@@ -1971,7 +1972,8 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
   })
 
   const gatingOk = (mode === 'order' && selectedOrderId) ||
-                     (mode === 'replacement' && replacesDisposalId)
+                     (mode === 'replacement' && replacesDisposalId) ||
+                     (mode === 'unscheduled' && notes.trim().length >= 6)
 
   const canCreate = gatingOk && lots.length > 0 && lots.every(l =>
     l.dose_type_id && l.qualgen_lot_number && l.expiration_date &&
@@ -2008,15 +2010,15 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
         </div>
         <div className="p-5 space-y-3 text-sm">
           <div className="text-[12px] text-gray-600 bg-plum-50/50 border border-plum-100 rounded p-2">
-            A receipt must match an open Qualgen order — or be marked as a
-            damaged-pellet replacement. Pick one below, then enter every lot
-            from the shipping manifest. Saving creates the receipt; manifest
-            verification pushes doses into White Plains stock.
+            A receipt must match an open Qualgen order, or be a damaged-pellet
+            replacement, or — for lots that arrived without a tracked order —
+            be marked unscheduled with a written explanation. Saving creates
+            the receipt; manifest verification pushes doses into stock.
           </div>
 
-          {/* Mode selector: order vs replacement */}
+          {/* Mode selector: order vs replacement vs unscheduled */}
           <div className="border border-border-subtle rounded p-2 space-y-2">
-            <div className="flex items-center gap-3 text-[12px]">
+            <div className="flex items-center gap-3 text-[12px] flex-wrap">
               <label className="flex items-center gap-1 cursor-pointer">
                 <input type="radio" checked={mode === 'order'}
                         onChange={() => setMode('order')} />
@@ -2026,6 +2028,11 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                 <input type="radio" checked={mode === 'replacement'}
                         onChange={() => setMode('replacement')} />
                 <span>Damaged-pellet replacement</span>
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="radio" checked={mode === 'unscheduled'}
+                        onChange={() => setMode('unscheduled')} />
+                <span>Unscheduled (found in cabinet)</span>
               </label>
             </div>
             {mode === 'order' ? (
@@ -2052,7 +2059,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : mode === 'replacement' ? (
               <div>
                 <label className="text-[10px] uppercase text-gray-500 block mb-1">Replacing disposal *</label>
                 <select className="input text-sm w-full"
@@ -2070,6 +2077,14 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                   Replacement receipts skip the order — Qualgen is resending pellets
                   for a lot that was disposed (broken/dropped/etc.).
                 </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded p-2">
+                <strong>Unscheduled receive:</strong> use this only when the lot
+                physically exists but was never logged against a Qualgen
+                order. The notes field below is required so the chain-of-
+                custody record explains where the lot came from. A manifest
+                verifier still has to sign off before stock increments.
               </div>
             )}
           </div>
