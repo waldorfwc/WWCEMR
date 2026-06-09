@@ -1574,6 +1574,16 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
     if payload.reason not in ("patient", "anesthesia", "hospital", "medical",
                                 "unresponsive", "hold"):
         raise HTTPException(status_code=422, detail="invalid reason")
+    # Refuse to cancel a surgery whose status is already terminal —
+    # 'cancelled' is a no-op that would write a duplicate
+    # SurgeryCancellation row, and 'completed' would wipe scheduled_date
+    # and break post-op reporting. Use the dedicated patch / billing
+    # paths if the case actually needs amendment.
+    if s.status in ("cancelled", "completed"):
+        raise HTTPException(status_code=409,
+            detail=f"Surgery is already {s.status}; cannot cancel again. "
+                   "If the prior cancellation was a mistake, use the "
+                   "reopen path instead.")
 
     fee_required = False
     refund_required = False

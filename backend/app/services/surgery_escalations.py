@@ -41,7 +41,13 @@ def _current_milestone(s: Surgery) -> Optional[SurgeryMilestone]:
 
 
 def _milestone_age_days(m: SurgeryMilestone) -> int:
-    base = m.started_at or m.surgery.updated_at or m.surgery.created_at
+    # Anchor to m.started_at, falling back to the surgery's creation
+    # date when the milestone is still pending. Previously this fell
+    # back to surgery.updated_at — which gets bumped by every unrelated
+    # PATCH (SMS toggle, notes edit, surgeon swap), silently resetting
+    # the overdue clock on every still-open milestone. The result was
+    # that manager nudges never fired for genuinely-stale cases.
+    base = m.started_at or m.surgery.created_at
     if not base:
         return 0
     base_date = base.date() if hasattr(base, 'date') else base

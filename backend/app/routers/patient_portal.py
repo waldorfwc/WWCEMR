@@ -646,6 +646,21 @@ def portal_consent_sign_link(
         raise HTTPException(status_code=409,
                               detail="Envelope was not sent via BoldSign.")
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    # Refuse a sign link for a surgery that's no longer active. patient_cancel
+    # tries to void envelopes best-effort but the BoldSign API can fail — this
+    # guard makes sure the patient can never reach a signing flow for a
+    # cancelled / completed surgery regardless of whether the BoldSign void
+    # actually landed.
+    if s.status in ("cancelled", "completed"):
+        raise HTTPException(status_code=409,
+            detail=f"This surgery is {s.status} — call our office to reopen.")
+    # Refuse if the envelope itself is already terminal (signed / declined /
+    # voided / expired): re-issuing a sign link would either be a no-op or
+    # confuse the signer flow.
+    if (env.status or "").lower() in ("signed", "completed", "declined",
+                                       "voided", "expired"):
+        raise HTTPException(status_code=409,
+            detail=f"This envelope is {env.status} — no further signing is possible.")
     if not (s.email or "").strip():
         raise HTTPException(status_code=409,
                               detail="No email on file — call our office.")

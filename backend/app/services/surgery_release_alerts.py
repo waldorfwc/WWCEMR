@@ -272,10 +272,19 @@ def run_release_sweep(db: Session) -> dict:
     o_recipients = _office_release_recipients(db)
     o_result = send_office_release_alert(o_recipients, [], office_days, db)
 
-    # Mark each block day as alerted
-    for bd in hospital_days + office_days:
-        bd.release_alert_sent_at = now
-    if hospital_days or office_days:
+    # Stamp release_alert_sent_at ONLY when the corresponding bucket
+    # actually delivered to at least one recipient. Previously every
+    # candidate was stamped regardless of SMTP outcome, so a single
+    # full SMTP outage at sweep time permanently silenced the day.
+    h_delivered = h_result.get("sent", 0) > 0
+    o_delivered = o_result.get("sent", 0) > 0
+    if h_delivered:
+        for bd in hospital_days:
+            bd.release_alert_sent_at = now
+    if o_delivered:
+        for bd in office_days:
+            bd.release_alert_sent_at = now
+    if h_delivered or o_delivered:
         db.commit()
 
     return {

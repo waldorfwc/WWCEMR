@@ -579,7 +579,11 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
            .first())
     if not s:
         raise HTTPException(status_code=404)
-    if s.status in ("cancelled", "completed"):
+    # Tighten the previous "cancelled/completed only" guard. unresponsive
+    # means staff have already decided this case is closed; the patient
+    # shouldn't be able to reopen the surgery via a portal cancel that
+    # creates a new SurgeryCancellation row and a calendar churn.
+    if s.status in ("cancelled", "completed", "unresponsive"):
         raise HTTPException(status_code=409, detail="This surgery is no longer active.")
 
     fee_required = False
