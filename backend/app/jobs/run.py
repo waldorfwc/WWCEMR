@@ -97,6 +97,15 @@ def larc_fax_retry():
     run_fax_retry_sweep()
 
 
+@register("surgery_auto_unresponsive")
+def surgery_auto_unresponsive():
+    """Mark surgeries as Unresponsive when the patient hasn't engaged
+    for 30+ days past their pre-op visit. Scheduled by
+    surgery-auto-unresponsive-trigger at 1:15 AM ET Mon-Fri."""
+    from app.services.surgery_auto_unresponsive import run_auto_unresponsive_sweep
+    run_auto_unresponsive_sweep()
+
+
 @register("pellet_stale_sweep")
 def pellet_stale_sweep():
     from app.services.fax_poller import _pellet_stale_sweep

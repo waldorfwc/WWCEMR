@@ -335,6 +335,15 @@ class Surgery(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow,
                         onupdate=datetime.utcnow, nullable=False)
+    # Auto-unresponsive sweep tracking (audit finding #13). The sweep
+    # uses last_patient_activity_at (bumped on portal pick/reschedule/
+    # consent-signed/auth) so a late patient pick on day 31 resets the
+    # 30-day clock instead of immediately auto-flipping the row.
+    # auto_unresponsive_at records when the sweep actually performed
+    # the transition so the dashboard can distinguish "system-marked"
+    # from "staff-marked" unresponsive without an audit-log lookup.
+    last_patient_activity_at = Column(DateTime, nullable=True)
+    auto_unresponsive_at     = Column(DateTime, nullable=True)
 
     milestones = relationship("SurgeryMilestone", back_populates="surgery",
                               cascade="all, delete-orphan",

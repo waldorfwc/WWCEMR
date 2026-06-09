@@ -294,6 +294,9 @@ def _apply_lightweight_migrations():
         # under an earlier shape, otherwise they're no-ops).
         ("surgery_scheduler_notices", "channels", "VARCHAR(80)"),
         ("surgery_scheduler_notices", "detail",   "TEXT"),
+        # Auto-unresponsive sweep tracking (audit #13)
+        ("surgeries", "last_patient_activity_at", "DATETIME"),
+        ("surgeries", "auto_unresponsive_at",     "DATETIME"),
         # LARC enrollment-envelope auto-fax retry queue (audit #11)
         ("larc_enrollment_envelopes", "next_fax_retry_at",        "DATETIME"),
         ("larc_enrollment_envelopes", "fax_terminally_failed_at", "DATETIME"),

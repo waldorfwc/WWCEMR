@@ -179,6 +179,10 @@ def patient_auth(surgery_id: str, payload: AuthPayload,
                                    "Please double-check, or call our office at 240-252-2140.")
 
     _log_attempt(db, surgery_id, success=True, request=request)
+    # Auto-unresponsive sweep tracking (audit #13): a successful auth
+    # is the lightest engagement signal and resets the 30-day clock.
+    s.last_patient_activity_at = datetime.utcnow()
+    db.commit()
     token = _issue_patient_token(surgery_id)
     return {
         "token": token,
@@ -395,6 +399,10 @@ def patient_pick(surgery_id: str, payload: PickPayload,
         raise HTTPException(status_code=409,
             detail="This surgery was updated while you were picking a date "
                    "— please refresh and try again")
+    # Patient activity (audit #13): a date pick is the strongest
+    # possible engagement signal — reset the auto-unresponsive clock.
+    s.last_patient_activity_at = datetime.utcnow()
+    db.commit()
 
     try:
         from app.services.google_calendar_sync import upsert_event_for_surgery
@@ -470,6 +478,10 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
         raise HTTPException(status_code=409,
             detail="This surgery was updated while you were picking a date "
                    "— please refresh and try again")
+    # Patient activity (audit #13): reschedule resets the
+    # auto-unresponsive clock.
+    s.last_patient_activity_at = datetime.utcnow()
+    db.commit()
 
     try:
         from app.services.google_calendar_sync import upsert_event_for_surgery

@@ -241,6 +241,11 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
                 "last_error": e.last_error,
             } for e in (s.consent_envelopes or [])
         ],
+        # Auto-Unresponsive sweep signals (audit #13)
+        "last_patient_activity_at": (s.last_patient_activity_at.isoformat()
+                                       if s.last_patient_activity_at else None),
+        "auto_unresponsive_at":     (s.auto_unresponsive_at.isoformat()
+                                       if s.auto_unresponsive_at else None),
         "patient_responsibility": (str(s.patient_responsibility)
                                     if s.patient_responsibility is not None else None),
         "amount_paid": str(s.amount_paid) if s.amount_paid is not None else "0",

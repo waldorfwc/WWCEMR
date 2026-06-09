@@ -189,6 +189,13 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
         except Exception as e:
             log.warning("BoldSign reconcile after webhook failed: %s", e)
 
+        # Patient activity (audit #13): patient finished signing.
+        # Reset the auto-unresponsive clock if this represents a fresh
+        # signature (avoid bumping on duplicate webhook redeliveries).
+        if before != row.status and row.status == "signed":
+            surgery.last_patient_activity_at = datetime.utcnow()
+            db.commit()
+
         # Surface the change to surgery@. Idempotent on the
         # (surgery_id, event_kind, envelope_id) tuple so a re-delivered
         # webhook can't re-email the practice. Only fire when the
