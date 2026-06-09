@@ -108,16 +108,25 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
     refers to a documentId we don't have a row for (logged + 200 — we
     don't want BoldSign to retry forever for orphan events).
 
-    Setup mode: if BOLDSIGN_WEBHOOK_SECRET is unset, accept every request
-    and return 200 (logged at WARN). Lets BoldSign's "Verify" dashboard
-    button pass during initial setup. Once the secret is configured in
-    Cloud Run, full HMAC verification kicks back in."""
+    The receiver is fail-CLOSED: if BOLDSIGN_WEBHOOK_SECRET is missing,
+    every request is rejected. The previous "setup mode" let anyone on
+    the public Internet POST status updates while the secret was unset,
+    which is unsafe to keep in production. To re-enable the BoldSign
+    Verify-dashboard convenience during initial setup, the operator
+    must explicitly set BOLDSIGN_WEBHOOK_ALLOW_UNSIGNED=true alongside
+    the unset secret — that opt-in flag does not exist in normal
+    Cloud Run config."""
     body = await request.body()
     signature = request.headers.get("x-boldsign-signature", "")
     if not _webhook_secret():
-        log.warning("BoldSign webhook in SETUP MODE — no secret configured, "
-                     "accepting unverified request")
-        return {"received": True, "applied": False, "reason": "setup mode"}
+        if os.environ.get("BOLDSIGN_WEBHOOK_ALLOW_UNSIGNED", "").lower() == "true":
+            log.warning("BoldSign webhook in SETUP MODE — secret unset but "
+                        "BOLDSIGN_WEBHOOK_ALLOW_UNSIGNED=true is set; "
+                        "accepting unverified request")
+            return {"received": True, "applied": False, "reason": "setup mode"}
+        log.error("BoldSign webhook rejected — BOLDSIGN_WEBHOOK_SECRET is not set")
+        raise HTTPException(status_code=503,
+            detail="webhook not configured (secret missing)")
     if not _verify_signature(body, signature):
         raise HTTPException(status_code=400, detail="bad signature")
 
