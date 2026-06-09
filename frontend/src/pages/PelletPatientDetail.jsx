@@ -1355,7 +1355,10 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
   const showAddMid = visit.status === 'in_progress' &&
                        doses.some(d => ['pulled', 'added'].includes(d.status))
   const [swapDose, setSwapDose] = useState(null)
+  const [correctDose, setCorrectDose] = useState(null)   // retroactive identify-lot
   const [editProposedOpen, setEditProposedOpen] = useState(false)
+  const { has } = useCurrentUser()
+  const canCorrectLot = !!has?.('pellet:manage')
 
   return (
     <div className="border border-gray-200 rounded p-3 bg-gray-50/50">
@@ -1422,6 +1425,13 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
                       <Replace size={11}/>
                     </button>
                   )}
+                  {!isSwappable && canCorrectLot && (
+                    <button className="text-amber-700 hover:bg-amber-50 p-0.5 rounded"
+                            title="Correct lot retroactively (manager only) — for fixing a lot that wasn't captured at pre-bag time"
+                            onClick={() => setCorrectDose(d)}>
+                      <Edit3 size={11}/>
+                    </button>
+                  )}
                   {['pulled', 'added'].includes(d.status) && (
                     <button className="text-red-600 hover:bg-red-50 p-0.5 rounded"
                             title="Mid-procedure disposal (dropped / broken)"
@@ -1441,6 +1451,13 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
           visit={visit}
           dose={swapDose}
           onClose={() => setSwapDose(null)}
+        />
+      )}
+      {correctDose && (
+        <CorrectLotDrawer
+          visit={visit}
+          dose={correctDose}
+          onClose={() => setCorrectDose(null)}
         />
       )}
       {editProposedOpen && (
@@ -1686,6 +1703,133 @@ function LotSwapDrawer({ visit, dose, onClose }) {
                             disabled={isCurrent || swap.isPending}
                             onClick={() => swap.mutate(l.id)}>
                       {isCurrent ? 'Current' : 'Use this lot'}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {error && (
+            <div className="text-[12px] text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function CorrectLotDrawer({ visit, dose, onClose }) {
+  // Retroactive lot identification for terminal-status doses (inserted /
+  // added / reduced / returned / disposed). Uses the manager-only
+  // POST /pellets/visits/{vid}/doses/{did}/identify-lot endpoint which
+  // rebalances stock (returns to the prior lot, debits the new one) and
+  // records a 3-row audit trail. The reason string is required.
+  const qc = useQueryClient()
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState(null)
+  const { data, isLoading } = useQuery({
+    queryKey: ['correct-lot-options', dose.dose_type_id, visit.location],
+    queryFn: () => api.get('/pellets/lots', {
+      params: { dose_type_id: dose.dose_type_id, location: visit.location },
+    }).then(r => r.data),
+  })
+
+  const identify = useMutation({
+    mutationFn: (lot_id) =>
+      api.post(`/pellets/visits/${visit.id}/doses/${dose.id}/identify-lot`,
+                { lot_id, reason: reason.trim() })
+         .then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-patient', visit.patient_id] })
+      qc.invalidateQueries({ queryKey: ['pellet-upcoming-calendar'] })
+      qc.invalidateQueries({ queryKey: ['pellet-audit'] })
+      onClose()
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Correction failed'))
+    },
+  })
+
+  const lots = data?.lots || []
+  const reasonOk = reason.trim().length >= 6
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-[15px] font-semibold text-gray-900">
+              Correct lot · {dose.quantity}× {dose.dose_label}
+            </h2>
+            <div className="text-[10px] text-amber-700 uppercase tracking-wide">
+              Manager-only · retroactive
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="text-[12px] bg-amber-50 border border-amber-200 rounded p-2 text-amber-900">
+            This dose is already <strong className="font-mono">{dose.status}</strong>.
+            Use this when the lot wasn't captured at pre-bag time or
+            the wrong lot was recorded. Stock is rebalanced (returned
+            to the previously-debited lot, debited from the new one)
+            and every change is audited.
+          </div>
+          <div className="text-[12px] text-gray-600">
+            Current lot:{' '}
+            <strong className="font-mono">{dose.qualgen_lot || 'none recorded'}</strong>
+            {dose.lot_expiration_date && <> · exp {fmt.date(dose.lot_expiration_date)}</>}
+            {' · '}at {visit.location}
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-700 mb-1">
+              Reason <span className="text-red-600">*</span>{' '}
+              <span className="text-gray-400">(min 6 chars)</span>
+            </label>
+            <textarea
+              rows={2}
+              className="w-full text-[12px] border border-gray-300 rounded px-2 py-1"
+              placeholder="e.g. lot identified from paper bag manifest"
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+            />
+          </div>
+          {isLoading ? (
+            <div className="text-[12px] text-gray-500 italic">Loading lots…</div>
+          ) : lots.length === 0 ? (
+            <div className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+              No lots of {dose.dose_label} exist for {visit.location}.
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {lots.map(l => {
+                const isCurrent = String(l.id) === String(dose.lot_id)
+                const stockHere = l.balances?.[visit.location] || 0
+                return (
+                  <li key={l.id} className="py-2 flex items-center justify-between gap-2">
+                    <div className="text-[12px]">
+                      <div className="font-mono">{l.qualgen_lot_number}</div>
+                      <div className="text-[11px] text-gray-500">
+                        exp {l.expiration_date ? fmt.date(l.expiration_date) : '—'}
+                        {' · '}{stockHere} at {visit.location}
+                      </div>
+                    </div>
+                    <button
+                      className="text-[11px] px-2 py-1 rounded border border-amber-300 bg-white text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                      disabled={isCurrent || !reasonOk || identify.isPending}
+                      onClick={() => identify.mutate(l.id)}
+                      title={isCurrent ? 'Already identified with this lot'
+                        : !reasonOk ? 'Provide a reason (min 6 chars) first'
+                        : 'Identify this lot — debits its stock, returns any prior debit'}>
+                      {isCurrent ? 'Current' : 'Identify this lot'}
                     </button>
                   </li>
                 )

@@ -31,6 +31,8 @@ const LEGACY_PERM_TO_TIER = {
   'larc:read':          ['device_larc', VIEW],
   'larc:checkout':      ['device_larc', WORK],
   'pellet:read':        ['pellets', VIEW],
+  'pellet:work':        ['pellets', WORK],
+  'pellet:manage':      ['pellets', MANAGE],
   'checklist:manage':   ['my_checklist', MANAGE],
 }
 
