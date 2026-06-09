@@ -1184,6 +1184,24 @@ def _load_assignment(db: Session, assignment_id: str) -> LarcAssignment:
     return a
 
 
+def _block_if_closed_or_billed(a: LarcAssignment, action: str) -> None:
+    """Reject mutations on assignments that have already been billed or
+    explicitly closed. Used by every status-mutating endpoint to prevent
+    silent rewrites of a finished row (re-allocating a billed device,
+    re-consuming, re-checking-out a cancelled assignment, etc.). The
+    audit explicitly called this gap out (#7 in the LARC audit).
+    Operators who genuinely need to amend a closed row must go through
+    an explicit reopen path."""
+    if a.status == "billed":
+        raise HTTPException(status_code=409,
+            detail=f"cannot {action} — assignment has already been billed; "
+                   "use the reopen / amend flow if the claim must be corrected")
+    if a.is_active is False:
+        raise HTTPException(status_code=409,
+            detail=f"cannot {action} — assignment is closed (status={a.status}); "
+                   "reopen it first if you need to make this change")
+
+
 class BenefitsIn(BaseModel):
     primary_insurance: Optional[str] = None
     # Calculator inputs — all optional; missing → treated as 0 in the math
@@ -1403,6 +1421,8 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
         raise HTTPException(status_code=422, detail=f"outcome must be one of {sorted(VALID_OUTCOMES)}")
     if payload.outcome == "other" and not (payload.notes and payload.notes.strip()):
         raise HTTPException(status_code=422, detail="notes required when outcome='other'")
+
+    _block_if_closed_or_billed(a, action="change outcome")
 
     by = current_user.get("email") or "system"
     a.failure_reason = payload.outcome if payload.outcome != "inserted" else None
@@ -1697,6 +1717,7 @@ def allocate_device(assignment_id: str,
 
     Returns 409 if any gate fails so the UI can surface the reason."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="allocate a device")
     if a.source_flow != "in_stock":
         raise HTTPException(status_code=409,
                             detail="Allocation only applies to in-stock assignments")
@@ -1945,6 +1966,7 @@ def request_checkout(assignment_id: str, payload: CheckoutRequestIn,
       - Device is currently 'assigned' (not lost/defective/inserted/billed)
     """
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="request a checkout")
     if not a.device_id:
         raise HTTPException(status_code=409,
                             detail="No device bound to this assignment yet — receive the pharmacy order first")
@@ -2172,6 +2194,7 @@ def checkout_direct(assignment_id: str, payload: CheckoutDirectIn,
     safeguard is that the user must physically read the device's our_id
     off the label and type it back in. Mismatches are rejected."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="check out a device")
     if not a.device_id:
         raise HTTPException(status_code=409,
                             detail="No device bound to this assignment yet")
@@ -2412,6 +2435,7 @@ def consume_device(assignment_id: str, payload: ConsumeIn = ConsumeIn(),
     procedure). Device.status → 'inserted' (we reuse the LARC term so the
     rest of the dashboard works). Next: record claim # via /bill."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="consume this device")
     if a.source_flow != "office_procedure":
         raise HTTPException(status_code=409,
                             detail="Consume only applies to office_procedure assignments")
