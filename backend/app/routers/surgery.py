@@ -3858,7 +3858,11 @@ def consent_reset(surgery_id: str,
 
     m = next((mm for mm in s.milestones if mm.kind == "consent"), None)
     if m:
-        m.status        = "todo"
+        # Valid milestone statuses per the model header are
+        # locked | pending | in_progress | done | skipped | not_applicable.
+        # The prior value "todo" wasn't in that set and silently broke
+        # dashboard buckets that filter on the enum.
+        m.status        = "pending"
         m.started_at    = None
         m.completed_at  = None
         m.completed_by  = None
