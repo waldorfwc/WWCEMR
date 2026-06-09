@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from datetime import date as _date, datetime, time as _time, timedelta
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 from app.models.surgery import SurgeryFile
 
@@ -34,6 +34,17 @@ from app.services.surgery_blackout_conflict import is_date_blacked_out
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
+
+
+# ─── Money sanity ceiling ────────────────────────────────────────────
+# Per project memory feedback_money_sanity_ceiling: any value >$50K in a
+# money column is a column-shift / fat-finger artifact and must be
+# rejected at the boundary, not silently stored where it contaminates
+# reports. Apply to every Optional[float] money field on the surgery
+# payloads (PATCH /surgeries/{id}, POST /surgeries/{id}/benefits) so
+# Pydantic emits a 422 before the value reaches the row.
+DollarAmount = Annotated[float, Field(ge=0, le=50_000)]
+PercentAmount = Annotated[float, Field(ge=0, le=100)]
 
 
 # ─── Behind-schedule helper ──────────────────────────────────────────
@@ -1106,11 +1117,11 @@ class SurgeryPatch(BaseModel):
     cardiologist_fax: Optional[str] = None
     sterilization_consent_required: Optional[bool] = None
     sterilization_consent_status: Optional[str] = None
-    deductible: Optional[float] = None
-    copay: Optional[float] = None
-    allowed_amount: Optional[float] = None
-    patient_responsibility: Optional[float] = None
-    amount_paid: Optional[float] = None
+    deductible:             Optional[DollarAmount] = None
+    copay:                  Optional[DollarAmount] = None
+    allowed_amount:         Optional[DollarAmount] = None
+    patient_responsibility: Optional[DollarAmount] = None
+    amount_paid:            Optional[DollarAmount] = None
     is_urgent: Optional[bool] = None
     notes: Optional[str] = None
     latest_comment: Optional[str] = None
@@ -3292,21 +3303,21 @@ class BenefitsPayload(BaseModel):
     """All fields optional. Missing values → treated as $0 / 0%.
     The calculator runs on whatever's provided; staff can save partial
     inputs and refine later."""
-    deductible: Optional[float] = None         # annual plan deductible
-    deductible_met: Optional[float] = None     # how much patient has paid toward it
-    copay: Optional[float] = None              # fixed copay for the visit
-    coinsurance_pct: Optional[float] = None    # 20.0 = 20%
-    oop_max: Optional[float] = None            # annual out-of-pocket max
-    oop_met: Optional[float] = None
-    allowed_amount: Optional[float] = None     # insurance-allowed for this surgery
+    deductible:      Optional[DollarAmount]  = None    # annual plan deductible
+    deductible_met:  Optional[DollarAmount]  = None    # patient progress
+    copay:           Optional[DollarAmount]  = None    # fixed copay
+    coinsurance_pct: Optional[PercentAmount] = None    # 20.0 = 20%
+    oop_max:         Optional[DollarAmount]  = None    # annual OOP max
+    oop_met:         Optional[DollarAmount]  = None
+    allowed_amount:  Optional[DollarAmount]  = None    # insurance-allowed
     # Secondary insurance — when present, runs a second pass that reduces
     # the primary responsibility by what secondary covers.
-    secondary_deductible:      Optional[float] = None
-    secondary_deductible_met:  Optional[float] = None
-    secondary_copay:           Optional[float] = None
-    secondary_coinsurance_pct: Optional[float] = None
-    secondary_oop_max:         Optional[float] = None
-    secondary_oop_met:         Optional[float] = None
+    secondary_deductible:      Optional[DollarAmount]  = None
+    secondary_deductible_met:  Optional[DollarAmount]  = None
+    secondary_copay:           Optional[DollarAmount]  = None
+    secondary_coinsurance_pct: Optional[PercentAmount] = None
+    secondary_oop_max:         Optional[DollarAmount]  = None
+    secondary_oop_met:         Optional[DollarAmount]  = None
     # Card-on-file metadata
     card_on_file: Optional[bool] = None
     save: bool = True   # set False to preview without persisting
