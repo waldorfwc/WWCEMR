@@ -1246,6 +1246,17 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         if data["status"] not in SURGERY_STATUS_VALUES:
             raise HTTPException(status_code=422,
                                 detail=f"unknown status: {data['status']}")
+        # Block transitions that bypass dedicated pipelines. Going to
+        # 'cancelled' must run cancel_surgery (SurgeryCancellation row,
+        # BoldSign envelope void, slot release, audit log, calendar
+        # delete). 'completed' is a post-op terminal state that no
+        # caller in the codebase sets via PATCH today; keep it locked
+        # behind a dedicated endpoint when one is built.
+        if data["status"] in ("cancelled", "completed"):
+            raise HTTPException(status_code=409,
+                detail=("cannot set status via PATCH — use "
+                        f"POST /surgery/{{id}}/cancel for 'cancelled'; "
+                        "'completed' is not yet reachable via API"))
     if "selected_facility" in data and data["selected_facility"] is not None:
         if data["selected_facility"] not in SURGERY_FACILITY_VALUES:
             raise HTTPException(status_code=422,
