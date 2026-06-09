@@ -545,13 +545,23 @@ function BlackoutForm({ onClose, qc }) {
   }
 
   async function submit() {
-    if (dates.length === 0) return
-    setProgress({ done: 0, total: dates.length, errors: [] })
+    // Auto-include a date the user typed into the picker but never
+    // clicked "+ Add" for — common mistake that used to silently
+    // do nothing on submit.
+    let effective = dates
+    if (effective.length === 0 && dateDraft) {
+      effective = [dateDraft]
+    }
+    if (effective.length === 0) {
+      alert("Pick at least one date first — use the date picker above and click '+ Add', or pick a range.")
+      return
+    }
+    setProgress({ done: 0, total: effective.length, errors: [] })
     const errors = []
-    for (let i = 0; i < dates.length; i++) {
+    for (let i = 0; i < effective.length; i++) {
       try {
         await api.post('/surgery/admin/blackouts', {
-          blackout_date: dates[i],
+          blackout_date: effective[i],
           scope: form.scope,
           reason: form.reason,
           label: form.label,
@@ -559,15 +569,23 @@ function BlackoutForm({ onClose, qc }) {
           owner_email: form.scope === 'provider' ? form.owner_email : null,
           facility: form.scope === 'facility' ? form.facility : null,
         })
-        setProgress({ done: i + 1, total: dates.length, errors })
+        setProgress({ done: i + 1, total: effective.length, errors })
       } catch (err) {
-        errors.push({ date: dates[i], msg: err?.response?.data?.detail || err.message })
-        setProgress({ done: i + 1, total: dates.length, errors })
+        errors.push({ date: effective[i], msg: err?.response?.data?.detail || err.message })
+        setProgress({ done: i + 1, total: effective.length, errors })
       }
     }
     qc.invalidateQueries({ queryKey: ['surgery-blackouts'] })
     if (errors.length === 0) {
       onClose()
+    } else {
+      // Surface a clear alert so the user notices the inline error list
+      // even if it scrolled below the visible viewport.
+      alert(
+        `${errors.length} of ${effective.length} date(s) failed:\n` +
+        errors.slice(0, 5).map(e => `  • ${e.date}: ${e.msg}`).join('\n') +
+        (errors.length > 5 ? `\n  …and ${errors.length - 5} more` : '')
+      )
     }
   }
 
@@ -697,12 +715,14 @@ function BlackoutForm({ onClose, qc }) {
         </button>
         <button className="btn-primary text-sm"
                 onClick={submit}
-                disabled={submitting || dates.length === 0
+                disabled={submitting || (dates.length === 0 && !dateDraft)
                           || (form.scope === 'provider' && !form.owner_email)
                           || (form.scope === 'facility' && !form.facility)}>
           {submitting ? 'Saving…' :
+            (dates.length === 0 && dateDraft) ? 'Add 1 blackout' :
             dates.length === 1 ? 'Add 1 blackout' :
-            `Add ${dates.length || ''} blackouts`}
+            dates.length === 0 ? 'Add blackout' :
+            `Add ${dates.length} blackouts`}
         </button>
       </div>
     </div>
