@@ -159,8 +159,16 @@ class LarcDevice(Base):
                         onupdate=datetime.utcnow, nullable=False)
 
     device_type = relationship("LarcDeviceType")
-    assignments = relationship("LarcAssignment", back_populates="device",
-                                cascade="all, delete-orphan")
+    # IMPORTANT: no cascade. Assignment rows carry audit history and must
+    # outlive the device row in the rare case a device is hard-deleted
+    # via the ORM. The router-level guard in /devices/{id} DELETE refuses
+    # to delete a device with any assignment history (HIPAA-relevant
+    # audit trail), but a non-router code path that called db.delete(d)
+    # would silently nuke that history under "all, delete-orphan". The
+    # underlying FK has no ON DELETE clause (default RESTRICT in Postgres),
+    # so without the cascade SQLAlchemy will surface a FK violation if a
+    # caller ever bypasses the router check — which is the safe failure.
+    assignments = relationship("LarcAssignment", back_populates="device")
 
 
 # ─── Patient assignment (the workflow row) ──────────────────────────
