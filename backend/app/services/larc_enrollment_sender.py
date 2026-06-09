@@ -21,6 +21,7 @@ from datetime import date, datetime
 from typing import Optional
 
 import httpx
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.larc import LarcAssignment, LarcEnrollmentEnvelope
@@ -811,16 +812,43 @@ def apply_webhook_event(db, env, data: dict) -> str:
 
     # Trigger auto-fax to the pharmacy on completion. Imports lazy to
     # avoid a circular import (fax service pulls LarcAssignment models).
+    #
+    # Idempotency: BoldSign routinely re-delivers the same Completed
+    # event (timeout retries, dashboard "Resend"). Without a guard, two
+    # concurrent deliveries both see faxed_at IS NULL, both fetch the
+    # PDF, and both fax PHI to the pharmacy. The atomic claim below
+    # transitions fax_status to "in_progress" only when it isn't
+    # already; PostgreSQL row-level locking serializes the two UPDATEs,
+    # so exactly one webhook wins the slot and the loser sees
+    # rowcount=0 and skips the fax call entirely.
     if raw_status == "completed" and not env.faxed_at:
-        try:
-            from app.services.larc_pharmacy_fax import fax_envelope
-            fax_envelope(db, env, by_email="system:webhook")
-        except Exception as exc:
-            # Swallow — webhook handler logs + returns 200 regardless.
-            # The failure is recorded on the row by fax_envelope itself
-            # (last_fax_error / fax_status), or here for unexpected exits.
-            env.last_fax_error = str(exc)
-            env.fax_status = "fax_failed"
-            log.exception("LARC auto-fax raised unexpectedly")
+        claimed = db.query(LarcEnrollmentEnvelope).filter(
+            LarcEnrollmentEnvelope.id == env.id,
+            LarcEnrollmentEnvelope.faxed_at.is_(None),
+            or_(LarcEnrollmentEnvelope.fax_status.is_(None),
+                LarcEnrollmentEnvelope.fax_status.notin_(
+                    ("in_progress", "Queued", "Sent", "Delivered"))),
+        ).update(
+            {LarcEnrollmentEnvelope.fax_status: "in_progress"},
+            synchronize_session=False,
+        )
+        db.flush()
+        if claimed == 0:
+            log.info("LARC envelope %s — auto-fax already claimed by "
+                     "another webhook delivery; skipping",
+                     env.boldsign_envelope_id)
+        else:
+            db.refresh(env)   # pull the new fax_status into the ORM copy
+            try:
+                from app.services.larc_pharmacy_fax import fax_envelope
+                fax_envelope(db, env, by_email="system:webhook")
+            except Exception as exc:
+                # Swallow — webhook handler logs + returns 200 regardless.
+                # The failure is recorded on the row by fax_envelope itself
+                # (last_fax_error / fax_status), or here for unexpected
+                # exits.
+                env.last_fax_error = str(exc)
+                env.fax_status = "fax_failed"
+                log.exception("LARC auto-fax raised unexpectedly")
 
     return env.status
