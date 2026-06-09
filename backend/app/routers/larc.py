@@ -18,8 +18,19 @@ from __future__ import annotations
 from datetime import date as _date, datetime, timedelta
 from typing import Optional
 
+from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+# Sanity bounds on user-entered money fields. The practice's
+# "money sanity ceiling" rule (project memory feedback_money_sanity_ceiling)
+# treats anything above $50K as a column-shift artifact; staff typing in a
+# benefits worksheet shouldn't ever cross that line on a single line-item
+# field. Reject the input (Pydantic 422) instead of silently storing
+# unrealistic numbers that later contaminate reports.
+DollarAmount = Annotated[float, Field(ge=0, le=50_000)]
+PercentAmount = Annotated[float, Field(ge=0, le=100)]
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -1206,15 +1217,15 @@ def _block_if_closed_or_billed(a: LarcAssignment, action: str) -> None:
 class BenefitsIn(BaseModel):
     primary_insurance: Optional[str] = None
     # Calculator inputs — all optional; missing → treated as 0 in the math
-    allowed_amount:   Optional[float] = None
-    deductible:       Optional[float] = None
-    deductible_met:   Optional[float] = None
-    copay:            Optional[float] = None
-    coinsurance_pct:  Optional[float] = None
-    oop_max:          Optional[float] = None
-    oop_met:          Optional[float] = None
+    allowed_amount:   Optional[DollarAmount]  = None
+    deductible:       Optional[DollarAmount]  = None
+    deductible_met:   Optional[DollarAmount]  = None
+    copay:            Optional[DollarAmount]  = None
+    coinsurance_pct:  Optional[PercentAmount] = None
+    oop_max:          Optional[DollarAmount]  = None
+    oop_met:          Optional[DollarAmount]  = None
     # Legacy direct override — if provided, replaces the computed value.
-    patient_responsibility: Optional[float] = None
+    patient_responsibility: Optional[DollarAmount] = None
     notes:            Optional[str] = None
     save:             bool = True   # False = preview-only
 
@@ -1672,7 +1683,7 @@ def download_insurance_card(
 
 
 class PaymentIn(BaseModel):
-    amount: Optional[float] = None   # dollars; None = no amount recorded
+    amount: Optional[DollarAmount] = None   # dollars; None = no amount recorded
     notes:  Optional[str] = None
 
 
@@ -2374,7 +2385,7 @@ class OfficeProcedureAssignmentIn(BaseModel):
     primary_insurance: Optional[str] = None
     linked_surgery_id: Optional[str] = None    # foreign-key-style string to a Surgery row
     appt_date: Optional[str] = None
-    patient_responsibility: Optional[float] = None
+    patient_responsibility: Optional[DollarAmount] = None
     notes: Optional[str] = None
 
 
