@@ -289,6 +289,11 @@ def _apply_lightweight_migrations():
         ("larc_devices", "ownership",                  "VARCHAR(20) DEFAULT 'wwc_owned'"),
         ("larc_devices", "purchasing_patient_chart",   "VARCHAR(40)"),
         ("larc_devices", "purchasing_patient_name",    "VARCHAR(200)"),
+        # surgery_scheduler_notices columns (table is created via
+        # create_all on a fresh DB; these add columns if the table existed
+        # under an earlier shape, otherwise they're no-ops).
+        ("surgery_scheduler_notices", "channels", "VARCHAR(80)"),
+        ("surgery_scheduler_notices", "detail",   "TEXT"),
         # LARC enrollment-envelope auto-fax retry queue (audit #11)
         ("larc_enrollment_envelopes", "next_fax_retry_at",        "DATETIME"),
         ("larc_enrollment_envelopes", "fax_terminally_failed_at", "DATETIME"),

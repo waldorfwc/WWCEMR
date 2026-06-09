@@ -640,6 +640,31 @@ class SurgeryCancellation(Base):
     notes = Column(Text, nullable=True)
 
 
+class SurgerySchedulerNotice(Base):
+    """Idempotency ledger for the surgery_scheduler_notify service. One
+    row per (surgery, event_kind, event_id) the practice has been
+    notified about. Lets the BoldSign webhook retry safely without
+    re-emailing surgery@ on every redelivery."""
+    __tablename__ = "surgery_scheduler_notices"
+    __table_args__ = (
+        Index("ix_surg_notice_surgery", "surgery_id"),
+        UniqueConstraint("surgery_id", "event_kind", "event_id",
+                          name="uq_surg_notice_dedup"),
+    )
+
+    id = Column(GUID(), primary_key=True, default=new_uuid)
+    surgery_id = Column(GUID(),
+                         ForeignKey("surgeries.id", ondelete="CASCADE"),
+                         nullable=False)
+    event_kind = Column(String(40), nullable=False)
+    # Stable per-event id (BoldSign event id, or "{surgery_id}:{ISO ts}"
+    # for portal actions where there's no external id).
+    event_id = Column(String(120), nullable=False)
+    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    channels = Column(String(80), nullable=True)   # csv: "email,sms"
+    detail = Column(Text, nullable=True)
+
+
 class PatientAuthAttempt(Base):
     """Failed soft-auth attempts on the public patient date picker.
     Used to enforce a 3-fail / 15-minute lockout."""

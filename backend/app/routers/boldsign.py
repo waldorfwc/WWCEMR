@@ -189,6 +189,32 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
         except Exception as e:
             log.warning("BoldSign reconcile after webhook failed: %s", e)
 
+        # Surface the change to surgery@. Idempotent on the
+        # (surgery_id, event_kind, envelope_id) tuple so a re-delivered
+        # webhook can't re-email the practice. Only fire when the
+        # transition crossed into a terminal state — _apply_status_to_row
+        # itself guards against re-writes from out-of-order deliveries.
+        if before != row.status and row.status in ("signed", "declined"):
+            event_kind = ("consent_signed" if row.status == "signed"
+                          else "consent_declined")
+            try:
+                from app.services.surgery_scheduler_notify import notify_scheduler
+                extra = {"envelope_id": str(row.id),
+                         "boldsign_envelope_id": row.boldsign_envelope_id}
+                if row.status == "signed":
+                    open_envs = [e for e in (surgery.consent_envelopes or [])
+                                  if (e.status or "").lower() not in
+                                  ("signed", "completed", "voided", "declined", "expired")]
+                    extra["all_signed"] = len(open_envs) == 0
+                else:
+                    extra["decline_reason"] = (data.get("declineReason")
+                                                 or data.get("DeclineReason"))
+                notify_scheduler(db, event_kind=event_kind, surgery=surgery,
+                                  event_id=f"{row.boldsign_envelope_id}:{row.status}",
+                                  extra=extra)
+            except Exception as e:
+                log.warning("scheduler notify after consent webhook failed: %s", e)
+
     log.info("BoldSign webhook applied: documentId=%s status %s → %s",
               doc_id, before, row.status)
     return {"received": True, "applied": True, "kind": "surgery",

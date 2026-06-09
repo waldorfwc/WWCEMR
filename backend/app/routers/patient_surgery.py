@@ -403,6 +403,13 @@ def patient_pick(surgery_id: str, payload: PickPayload,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("confirmation email failed: %s", e)
+    try:
+        from app.services.surgery_scheduler_notify import notify_scheduler
+        notify_scheduler(db, event_kind="date_picked", surgery=s,
+                          event_id=f"{s.id}:{datetime.utcnow().isoformat()}")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("scheduler notify (pick) failed: %s", e)
 
     return {
         "ok": True,
@@ -440,6 +447,7 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
                     "14 days must be handled by our office — please call us."),
         )
 
+    prev_date_str = s.scheduled_date.strftime("%m/%d/%Y") if s.scheduled_date else None
     try:
         result = pick_or_reschedule(db, s,
                                       block_day_id=payload.block_day_id,
@@ -454,6 +462,14 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+    try:
+        from app.services.surgery_scheduler_notify import notify_scheduler
+        notify_scheduler(db, event_kind="rescheduled", surgery=s,
+                          event_id=f"{s.id}:{datetime.utcnow().isoformat()}",
+                          extra={"prev_date": prev_date_str})
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("scheduler notify (reschedule) failed: %s", e)
 
     return {
         "ok": True,
@@ -589,6 +605,16 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+    try:
+        from app.services.surgery_scheduler_notify import notify_scheduler
+        notify_scheduler(db, event_kind="cancelled", surgery=s,
+                          event_id=f"{s.id}:{datetime.utcnow().isoformat()}",
+                          extra={"fee_required": fee_required,
+                                 "refund_required": refund_required,
+                                 "reason": (payload.reason_text or "").strip() or None})
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("scheduler notify (cancel) failed: %s", e)
 
     # Void any still-live BoldSign consent envelopes so the patient can't
     # complete a consent for a surgery they just cancelled. Skip terminal
