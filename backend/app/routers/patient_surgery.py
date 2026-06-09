@@ -24,6 +24,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Up
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.config import settings
 from app.database import get_db
@@ -387,6 +388,13 @@ def patient_pick(surgery_id: str, payload: PickPayload,
                                       enforce_patient_min=True)
     except DatePickerError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except StaleDataError:
+        # Surgery row was updated by staff (or another patient action)
+        # mid-flight — Surgery.version_id changed under us. Surface a
+        # clean 409 instead of a 500. SQLAlchemy already rolled back.
+        raise HTTPException(status_code=409,
+            detail="This surgery was updated while you were picking a date "
+                   "— please refresh and try again")
 
     try:
         from app.services.google_calendar_sync import upsert_event_for_surgery
@@ -455,6 +463,13 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
                                       enforce_patient_min=True)
     except DatePickerError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except StaleDataError:
+        # Surgery row was updated by staff (or another patient action)
+        # mid-flight — Surgery.version_id changed under us. Surface a
+        # clean 409 instead of a 500. SQLAlchemy already rolled back.
+        raise HTTPException(status_code=409,
+            detail="This surgery was updated while you were picking a date "
+                   "— please refresh and try again")
 
     try:
         from app.services.google_calendar_sync import upsert_event_for_surgery
@@ -598,7 +613,17 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
         refund_required=refund_required,
         notes=notes,
     ))
-    db.commit()
+    try:
+        db.commit()
+    except StaleDataError:
+        # Staff updated the surgery in parallel — the StaleDataError
+        # means SQLAlchemy's optimistic lock fired and our commit was
+        # aborted. Surface a clean 409 so the portal can prompt the
+        # patient to retry.
+        db.rollback()
+        raise HTTPException(status_code=409,
+            detail="This surgery was updated while you were cancelling "
+                   "— please refresh and try again")
     try:
         from app.services.google_calendar_sync import delete_event_for_surgery
         delete_event_for_surgery(db, s)

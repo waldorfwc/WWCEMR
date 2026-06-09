@@ -17,6 +17,7 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Upload
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, func, desc
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm.exc import StaleDataError
 
 from app.database import get_db
 from app.models.surgery import (
@@ -34,6 +35,24 @@ from app.services.surgery_blackout_conflict import is_date_blacked_out
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
+
+
+def _commit_or_409(db: Session, surgery_id: str | None = None) -> None:
+    """Commit, translating StaleDataError -> 409 with a clean message.
+
+    Surgery rows are SQLAlchemy-versioned (Surgery.version_id is the
+    version_id_col), so the ORM emits UPDATE ... WHERE version_id = :v
+    and raises StaleDataError if 0 rows match — meaning another worker
+    committed first. Catch that here and surface a clean 409 instead
+    of a 500. The caller is expected to rollback its own session
+    after re-raising."""
+    try:
+        db.commit()
+    except StaleDataError:
+        db.rollback()
+        raise HTTPException(status_code=409,
+            detail="This surgery was updated by another user while you were "
+                   "editing — refresh and try again")
 
 
 # ─── Money sanity ceiling ────────────────────────────────────────────
@@ -1413,7 +1432,7 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                     m.status = "pending"
                     m.completed_at = None
 
-    db.commit(); db.refresh(s)
+    _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
 
     # If the staff just changed anything that drives the calendar event
     # (date, start time, facility, surgeon), re-push so the event on the
@@ -1581,7 +1600,7 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
         refund_required=refund_required,
         notes=payload.notes,
     ))
-    db.commit(); db.refresh(s)
+    _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
     try:
         from app.services.google_calendar_sync import delete_event_for_surgery
         delete_event_for_surgery(db, s)
