@@ -524,13 +524,29 @@ def _apply_lightweight_migrations():
             # staff clicking "Check Out" on the same device within
             # milliseconds otherwise both pass the pending-check filter
             # and both insert a LarcCheckout row referencing the same
-            # physical device. NULL device_id excluded so pharmacy-order
-            # rows (no device until receipt) don't clash.
+            # physical device. NULL device_id excluded so pharmacy-
+            # order assignments (which have no device until receipt) don't
+            # clash with each other.
             ("ix_larc_checkout_inflight_unique",
              "larc_checkouts",
              "device_id",
              "approval_status IN ('pending', 'approved') "
              "AND outcome IS NULL AND device_id IS NOT NULL"),
+            # Pellet: at most one non-cancelled count per (location, day).
+            # start_count has an app-level existence check, but two staff
+            # clicking "Start count" within the same second both pass it
+            # and create duplicate counts whose finishes then both rewrite
+            # stock. (Fable audit #10.) The cross-overlap rule between
+            # 'all'-scope counts and per-site counts stays in app code —
+            # this index only catches exact same-day duplicates.
+            ("ix_pellet_counts_one_per_day",
+             "pellet_counts",
+             "location, (started_at::date)",
+             "status != 'cancelled'"),
+            # NB: receipt-level dedup is enforced in app code (see
+            # create_receipt) — historical data contains duplicates so a
+            # DB unique index would fail to create. The race window in
+            # practice is small; the app-level check is sufficient.
         ]
         for idx_name, table, cols, where in partial_unique_indexes:
             if table not in existing_tables:

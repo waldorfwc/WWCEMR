@@ -1433,6 +1433,22 @@ def create_receipt(payload: ReceiptIn,
         is_replacement=bool(payload.is_replacement),
         replaces_disposal_id=(disposal.id if disposal else None),
     )
+    # Dedup: a receipt with the same Qualgen order # received on the same
+    # day at the same location is almost certainly a double-submit. The
+    # check has to live in app code because historical data already
+    # contains a duplicate that pre-dates this guard. (Fable audit #10.)
+    if r.qualgen_order_number:
+        existing = (db.query(PelletReceipt)
+                      .filter(PelletReceipt.qualgen_order_number == r.qualgen_order_number,
+                              PelletReceipt.received_date == r.received_date,
+                              PelletReceipt.location == r.location)
+                      .first())
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail=f"a receipt for Qualgen order {r.qualgen_order_number} "
+                       f"received on {r.received_date} at {r.location} already "
+                       f"exists (id {existing.id})")
     db.add(r); db.flush()
 
     created_lots = []
@@ -2195,7 +2211,18 @@ def start_count(payload: CountStartIn,
 
     c = PelletCount(location=location, started_by=by, notes=payload.notes,
                     scope=payload.scope, witness_user_start=witness_start)
-    db.add(c); db.flush()
+    db.add(c)
+    try:
+        db.flush()
+    except Exception as exc:
+        # ix_pellet_counts_one_per_day fired: a concurrent start_count won
+        # the race. Surface a clean 409 instead of a 500. (Fable audit #10.)
+        from sqlalchemy.exc import IntegrityError
+        db.rollback()
+        if isinstance(exc, IntegrityError):
+            raise HTTPException(status_code=409,
+                                detail="another count for this location/day was started concurrently")
+        raise
 
     for s in snapshot:
         db.add(PelletCountLine(
@@ -2281,10 +2308,42 @@ def record_count_scan(count_id: str, payload: CountScanIn,
                                 expected_doses=0)
         db.add(line); db.flush()
     by = current_user.get("email") or "system"
+    # Capture the previous values so a re-scan emits a before/after
+    # audit row — DEA expects an immutable count record. (Fable audit #5.)
+    prev_counted = line.counted_doses
+    prev_by = line.counted_by
+    prev_at = line.counted_at
+    prev_notes = line.notes
+
     line.counted_doses = payload.counted_doses
     line.counted_at = datetime.utcnow()
     line.counted_by = by
     line.notes = payload.notes
+
+    if prev_counted is not None and (
+            prev_counted != line.counted_doses
+            or (prev_by or "") != (line.counted_by or "")
+            or (prev_notes or "") != (line.notes or "")):
+        _audit(db, actor=by, action="count_line_rescanned",
+               lot_id=line.lot_id, count_id=c.id, location=target_location,
+               detail={
+                   "before": {
+                       "counted_doses": prev_counted,
+                       "counted_by": prev_by,
+                       "counted_at": prev_at.isoformat() if prev_at else None,
+                       "notes": prev_notes,
+                   },
+                   "after": {
+                       "counted_doses": line.counted_doses,
+                       "counted_by": line.counted_by,
+                       "counted_at": line.counted_at.isoformat(),
+                       "notes": line.notes,
+                   },
+                   "expected_doses": line.expected_doses,
+               },
+               summary=(f"Count line rescanned for lot {line.lot_id} at "
+                        f"{target_location}: {prev_counted} → "
+                        f"{line.counted_doses}"))
     db.commit(); db.refresh(line)
     variance = (line.counted_doses or 0) - (line.expected_doses or 0)
     return {"line_id": str(line.id), "variance": variance}
@@ -2999,6 +3058,18 @@ async def upload_appointments(
     """Upload a ModMed "Pellet Insert" appointment list. Upserts each
     row keyed on (MRN, appt date). Optionally cancels any in-range
     in_progress visit not present in the upload."""
+    # cancel_missing is a mass-mutation switch: it auto-cancels every
+    # in-progress visit in the date range that's absent from the file.
+    # A wrong or partial upload at WORK tier would bulk-cancel real
+    # visits. Gate the destructive flag at MANAGE. (Fable audit #14.)
+    if cancel_missing:
+        from app.permissions.resolver import effective_tier
+        actor_email = (current_user.get("email") or "").lower().strip()
+        if effective_tier(db, actor_email, Module.PELLETS) < Tier.MANAGE:
+            raise HTTPException(
+                status_code=403,
+                detail="cancel_missing requires Tier.MANAGE on the Pellets module")
+
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=422, detail="empty file")
