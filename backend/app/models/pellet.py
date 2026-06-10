@@ -298,6 +298,10 @@ class PelletTransfer(Base):
     courier_notes          = Column(Text, nullable=True)
     received_at     = Column(DateTime, nullable=True)
     received_by     = Column(String(120), nullable=True)
+    # Set by cancel_transfer when the packed/in_transit transfer is
+    # voided and source stock is refunded.
+    cancelled_at    = Column(DateTime, nullable=True)
+    cancelled_by    = Column(String(120), nullable=True)
     status          = Column(String(20), default="packed", nullable=False)
     # values: packed | in_transit | received | cancelled
     notes           = Column(Text, nullable=True)

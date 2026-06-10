@@ -384,6 +384,8 @@ def _apply_lightweight_migrations():
         ("pellet_transfers", "courier_user",         "VARCHAR(120)"),
         ("pellet_transfers", "courier_picked_up_at", "DATETIME"),
         ("pellet_transfers", "courier_notes",        "TEXT"),
+        ("pellet_transfers", "cancelled_at",         "DATETIME"),
+        ("pellet_transfers", "cancelled_by",         "VARCHAR(120)"),
         # Pellet visits: historical-import flag
         ("pellet_visits", "is_historical", "BOOLEAN DEFAULT 0"),
         # Pellet patient-level ModMed deep link (Qlik redirect from export)

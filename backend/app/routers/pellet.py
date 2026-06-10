@@ -165,6 +165,20 @@ def _require_visit_location(v: PelletVisit) -> str:
     return loc
 
 
+def _assert_is_pdf(contents: bytes, filename: Optional[str]) -> None:
+    """Magic-byte check before persisting an attachment. Fable audit #16:
+    upload_*_attachment used to trust the .pdf extension and the client-
+    supplied content_type only, so any byte stream renamed to .pdf
+    would land in storage and be served back with content-type
+    application/pdf. PDFs always start with the four bytes %PDF.
+    """
+    if not contents or contents[:4] != b"%PDF":
+        raise HTTPException(
+            status_code=422,
+            detail=f"{filename or 'upload'} is not a valid PDF "
+                   "(missing %PDF header) — try re-exporting from your PDF reader")
+
+
 def _validate_witness(db: Session, witness_user: Optional[str],
                        actor_email: str, *, controlled: bool) -> str:
     """Validate a controlled-substance witness against the User table.
@@ -464,15 +478,16 @@ def _count_blockers_by_location(db: Session) -> dict:
                       PelletVisit.is_historical.is_(False),
                       PelletVisitDose.status.in_(proposed_statuses))
               .distinct().all())
-    total = 0
     for vid, loc in rows:
         if loc in visit_ids_by_loc:
             visit_ids_by_loc[loc].add(vid)
         else:
             visit_ids_by_loc.setdefault("(unset)", set()).add(vid)
-        total += 1
+    # total is the count of *distinct* blocking visits (Fable audit #18:
+    # a visit with multiple proposed doses used to inflate the banner).
+    distinct_visit_ids = set().union(*visit_ids_by_loc.values())
     return {
-        "total": total,
+        "total": len(distinct_visit_ids),
         "locations": {loc: len(ids) for loc, ids in visit_ids_by_loc.items()},
     }
 
@@ -732,8 +747,12 @@ def export_lots_xlsx(
                                       search=search, in_stock_only=in_stock_only)
     meta = {"hormone": hormone, "location": location, "search": search,
             "in_stock_only": "yes" if in_stock_only else "no"}
-    xlsx = build_xlsx(rows, filters_meta=meta,
-                       generated_by=current_user.get("email") or "system")
+    by = current_user.get("email") or "system"
+    xlsx = build_xlsx(rows, filters_meta=meta, generated_by=by)
+    _audit(db, actor=by, action="inventory_export",
+           detail={"format": "xlsx", "row_count": len(rows), "filters": meta},
+           summary=(f"Exported pellet inventory ({len(rows)} lots) as xlsx"))
+    db.commit()
     fname = f"pellet-inventory-{_date.today().isoformat()}.xlsx"
     return Response(
         content=xlsx,
@@ -758,8 +777,12 @@ def export_lots_pdf(
                                       search=search, in_stock_only=in_stock_only)
     meta = {"hormone": hormone, "location": location, "search": search,
             "in_stock_only": "yes" if in_stock_only else "no"}
-    pdf = build_pdf(rows, filters_meta=meta,
-                     generated_by=current_user.get("email") or "system")
+    by = current_user.get("email") or "system"
+    pdf = build_pdf(rows, filters_meta=meta, generated_by=by)
+    _audit(db, actor=by, action="inventory_export",
+           detail={"format": "pdf", "row_count": len(rows), "filters": meta},
+           summary=(f"Exported pellet inventory ({len(rows)} lots) as pdf"))
+    db.commit()
     fname = f"pellet-inventory-{_date.today().isoformat()}.pdf"
     return Response(
         content=pdf,
@@ -1255,6 +1278,7 @@ async def upload_order_attachment(order_id: str,
         raise HTTPException(status_code=422, detail="empty upload")
     if len(contents) > 25 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="file too large (25MB max)")
+    _assert_is_pdf(contents, file.filename)
 
     key = save_blob(prefix="pellet-attachments", body=contents,
                     filename=file.filename or "upload.pdf")
@@ -1490,6 +1514,28 @@ def create_receipt(payload: ReceiptIn,
     _audit(db, actor=by, action="receipt_created", receipt_id=r.id,
            summary=f"Created receipt {r.qualgen_order_number or '(no order #)'} "
                    f"with {len(created_lots)} lot(s)")
+
+    # Unscheduled receipts that bring controlled (Schedule III) testosterone
+    # into inventory without an order paper trail get an explicit audit row
+    # so DEA reporting can surface them as "acquired without a 222-equivalent
+    # record." (Fable audit #19.) The receipt already requires notes; this
+    # makes the controlled flag visible without scraping notes text.
+    if payload.is_unscheduled:
+        controlled_lots = [l for l in created_lots
+                           if l.dose_type and l.dose_type.is_controlled]
+        if controlled_lots:
+            _audit(db, actor=by, action="unscheduled_controlled_receipt",
+                   receipt_id=r.id, location=r.location,
+                   delta_doses=sum(l.doses_originally_received for l in controlled_lots),
+                   detail={
+                       "lot_ids": [str(l.id) for l in controlled_lots],
+                       "lot_numbers": [l.qualgen_lot_number for l in controlled_lots],
+                       "notes": payload.notes,
+                   },
+                   summary=(f"Unscheduled controlled (Sch III) receipt at "
+                            f"{r.location}: {len(controlled_lots)} lot(s) entered "
+                            f"without an order — flagged for DEA review"))
+
     db.commit(); db.refresh(r)
     return {"receipt_id": str(r.id), "lots": [str(l.id) for l in created_lots]}
 
@@ -1616,6 +1662,7 @@ async def upload_receipt_attachment(receipt_id: str,
         raise HTTPException(status_code=422, detail="empty upload")
     if len(contents) > 25 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="file too large (25MB max)")
+    _assert_is_pdf(contents, file.filename)
 
     key = save_blob(prefix="pellet-attachments", body=contents,
                     filename=file.filename or "upload.pdf")
@@ -1930,6 +1977,76 @@ def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
            summary=f"Transfer received {t.doses} → {t.to_location}")
     db.commit()
     return {"ok": True, "received_at": t.received_at.isoformat()}
+
+
+class TransferCancelIn(BaseModel):
+    reason:       str   # short reason: lost | wrong_send | not_needed | other
+    witness_user: Optional[str] = None    # required when lot is controlled
+    notes:        Optional[str] = None
+
+
+@router.post("/transfers/{transfer_id}/cancel")
+def cancel_transfer(transfer_id: str, payload: TransferCancelIn,
+                      db: Session = Depends(get_db),
+                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    """Cancel a packed or in-transit transfer and refund the source stock.
+
+    The model has had a 'cancelled' status forever but no endpoint to set
+    it; a transfer that never shipped used to strand doses in limbo
+    forever, surfacing only as a count variance at month-end.
+    (Fable audit #12.)
+    """
+    if not (payload.reason or "").strip():
+        raise HTTPException(status_code=422, detail="reason is required")
+
+    t = (db.query(PelletTransfer)
+           .options(joinedload(PelletTransfer.lot).joinedload(PelletLot.dose_type))
+           .filter(PelletTransfer.id == transfer_id).first())
+    if not t:
+        raise HTTPException(status_code=404, detail="transfer not found")
+    if t.status not in ("packed", "in_transit"):
+        raise HTTPException(status_code=409,
+                            detail=f"transfer is {t.status}; only packed or in_transit "
+                                   "can be cancelled")
+
+    by = current_user.get("email") or "system"
+    is_controlled = bool(t.lot and t.lot.dose_type and t.lot.dose_type.is_controlled)
+    witness = _validate_witness(db, payload.witness_user, by,
+                                  controlled=is_controlled)
+
+    # Atomic claim — same pattern as receive_transfer. Two concurrent
+    # cancels would otherwise both pass the status check and both refund
+    # source stock, double-crediting the lot at the from_location.
+    now = datetime.utcnow()
+    claimed = db.execute(
+        update(PelletTransfer)
+          .where(PelletTransfer.id == t.id,
+                 PelletTransfer.status.in_(["packed", "in_transit"]))
+          .values(status="cancelled",
+                  cancelled_at=now,
+                  cancelled_by=by)
+    ).rowcount
+    if not claimed:
+        db.refresh(t)
+        raise HTTPException(status_code=409,
+                            detail=f"transfer is {t.status}")
+    db.refresh(t)
+
+    # Refund the source stock — the pack step debited it.
+    src = _get_or_create_stock(db, t.lot_id, t.from_location)
+    _adjust_stock(db, src, t.doses)
+
+    _audit(db, actor=by, action="transfer_cancelled",
+           lot_id=t.lot_id, transfer_id=t.id, location=t.from_location,
+           delta_doses=t.doses,
+           detail={"reason": payload.reason, "witness": witness,
+                   "from": t.from_location, "to": t.to_location,
+                   "doses": t.doses, "notes": payload.notes,
+                   "controlled": is_controlled},
+           summary=(f"Transfer cancelled: {t.doses} refunded to "
+                    f"{t.from_location} (reason: {payload.reason})"))
+    db.commit()
+    return {"ok": True, "cancelled_at": now.isoformat(), "refunded_doses": t.doses}
 
 
 @router.get("/transfers")
@@ -2533,6 +2650,12 @@ def download_count_pdf(count_id: str,
     if is_legacy_local_path(att.storage_path):
         raise HTTPException(status_code=410,
                               detail="This file is from before the cloud migration and is no longer available.")
+    by = current_user.get("email") or "system"
+    _audit(db, actor=by, action="count_pdf_downloaded",
+           count_id=count_id,
+           detail={"attachment_id": str(att.id), "filename": att.filename},
+           summary=f"Downloaded count PDF {att.filename}")
+    db.commit()
     return serve_blob(
         local_path=None,
         gcs_object=att.storage_path,
@@ -2712,10 +2835,25 @@ def patch_manual(section_id: str, payload: ManualPatch,
     s = db.query(PelletManualSection).filter(PelletManualSection.id == section_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
+    # Capture before-state for audit (Fable audit #17). Manual edits
+    # affect SOP documentation referenced by DEA-relevant procedures, so
+    # mutate-without-audit was inconsistent with the module's posture.
+    before = {"title": s.title, "sort_order": s.sort_order,
+              "body_md_len": len(s.body_md or "")}
     data = payload.model_dump(exclude_unset=True)
+    changed = []
     for k, v in data.items():
-        setattr(s, k, v)
-    s.updated_by = current_user.get("email") or "system"
+        if getattr(s, k, None) != v:
+            changed.append(k)
+            setattr(s, k, v)
+    by = current_user.get("email") or "system"
+    s.updated_by = by
+    if changed:
+        _audit(db, actor=by, action="manual_section_edited",
+               detail={"section_id": str(s.id), "slug": s.slug,
+                       "fields_changed": changed, "before": before,
+                       "new_body_len": len(s.body_md or "")},
+               summary=f"Edited manual section {s.slug!r}: {', '.join(changed)}")
     db.commit(); db.refresh(s)
     return {"id": str(s.id), "slug": s.slug, "title": s.title,
             "sort_order": s.sort_order, "body_md": s.body_md,
@@ -2939,8 +3077,21 @@ def patch_mammo_facility(facility_id: str, payload: MammoFacilityPatch,
     f = db.query(PelletMammoFacility).filter(PelletMammoFacility.id == facility_id).first()
     if not f:
         raise HTTPException(status_code=404, detail="facility not found")
-    for k, v in payload.model_dump(exclude_unset=True).items():
-        setattr(f, k, v)
+    data = payload.model_dump(exclude_unset=True)
+    before = {k: getattr(f, k, None) for k in data.keys()}
+    changed = []
+    for k, v in data.items():
+        if before.get(k) != v:
+            changed.append(k)
+            setattr(f, k, v)
+    by = current_user.get("email") or "system"
+    if changed:
+        # Fable audit #17: mutate-without-audit was inconsistent with the
+        # module's posture. Mammo facility records drive recall faxes.
+        _audit(db, actor=by, action="mammo_facility_edited",
+               detail={"facility_id": str(f.id), "fields_changed": changed,
+                       "before": before},
+               summary=f"Edited mammo facility {f.name!r}: {', '.join(changed)}")
     db.commit(); db.refresh(f)
     return _mammo_fac_dict(f)
 
@@ -2952,6 +3103,11 @@ def delete_mammo_facility(facility_id: str,
     f = db.query(PelletMammoFacility).filter(PelletMammoFacility.id == facility_id).first()
     if not f:
         raise HTTPException(status_code=404, detail="facility not found")
+    by = current_user.get("email") or "system"
+    _audit(db, actor=by, action="mammo_facility_deleted",
+           detail={"facility_id": str(f.id), "name": f.name,
+                   "address": getattr(f, "address", None)},
+           summary=f"Deleted mammo facility {f.name!r}")
     db.delete(f); db.commit()
     return
 
@@ -3698,6 +3854,15 @@ def get_patient(patient_id: str,
            .filter(PelletPatient.id == patient_id).first())
     if not p:
         raise HTTPException(status_code=404, detail="patient not found")
+    # HIPAA access logging: record who read this chart (Fable audit #13).
+    # The audit log is the same write-only table the rest of the module
+    # uses; phi_access_chart_view is its own action so reporting can
+    # filter views vs. mutations.
+    _audit(db, actor=current_user.get("email") or "system",
+           action="phi_access_chart_view",
+           detail={"patient_id": str(p.id), "chart_number": p.chart_number},
+           summary=f"Viewed patient chart {p.chart_number or p.id}")
+    db.commit()
     out = _patient_dict(p, include_visits=False)
     out["visits"] = [_visit_dict(v) for v in (p.visits or [])]
     out["mammos"] = [_mammo_dict(m) for m in (p.mammos or [])]
