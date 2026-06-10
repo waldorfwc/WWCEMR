@@ -29,3 +29,8 @@ class PatientPortalAuthCode(Base):
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
     sent_to_phone   = Column(String(40), nullable=True)
     # For audit only. The phone is already on the Surgery row.
+    purpose         = Column(String(20), nullable=True)
+    # values: login | payment | review
+    # verify_code requires the caller to pass the same purpose the
+    # challenge was issued for — without this, a login code could be
+    # replayed to authorize a payment step-up. (Fable portal audit C1.)

@@ -371,6 +371,7 @@ def patient_pick(surgery_id: str, payload: PickPayload,
                   _token: str = Depends(require_patient_token)):
     """Initial date pick (refuses if a date is already set — use /reschedule)."""
     from app.services.surgery_date_picker import pick_or_reschedule, DatePickerError
+    from app.services.surgery_self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
            .options(joinedload(Surgery.milestones))
@@ -384,6 +385,10 @@ def patient_pick(surgery_id: str, payload: PickPayload,
             detail=f"This surgery already has a scheduled date ({s.scheduled_date}). "
                    "Use the reschedule option instead.",
         )
+    # Same payment/status gate the portal flow runs (Fable portal audit C2).
+    allowed, reason = schedule_gate_for_surgery(s)
+    if not allowed:
+        raise HTTPException(status_code=409, detail=reason)
 
     try:
         result = pick_or_reschedule(db, s,
@@ -443,6 +448,7 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
     just tracks how many times each patient has rescheduled so staff can
     intervene if it gets out of hand."""
     from app.services.surgery_date_picker import pick_or_reschedule, DatePickerError
+    from app.services.surgery_self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
            .options(joinedload(Surgery.milestones))
@@ -453,6 +459,11 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
     if not s.scheduled_date:
         raise HTTPException(status_code=409,
                             detail="No date is set yet — use Pick a date instead of Reschedule.")
+    # Same payment/status gate as patient_pick / portal_claim_slot.
+    # (Fable portal audit C2.)
+    allowed, reason = schedule_gate_for_surgery(s)
+    if not allowed:
+        raise HTTPException(status_code=409, detail=reason)
 
     # 14-day rule for patient reschedules: must call office instead.
     days_to_surgery = (s.scheduled_date - date.today()).days
@@ -554,13 +565,22 @@ def patient_select_slot(
     _token: str = Depends(require_patient_token),
 ):
     """Patient self-schedules into a specific block-day slot by start time.
-    Magic-link flow. Portal flow uses /api/patient/portal/{sid}/slots/.../claim."""
+    Magic-link flow. Portal flow uses /api/patient/portal/{sid}/slots/.../claim.
+
+    Applies the same schedule_gate_for_surgery check the portal flow runs
+    — without it, a patient with an unpaid balance or a cancelled
+    surgery could self-schedule via the magic link (the UI gated, the
+    API did not). (Fable portal audit C2.)
+    """
     from app.services.surgery_self_schedule import (
-        claim_slot_for_patient, SelfScheduleError,
+        claim_slot_for_patient, SelfScheduleError, schedule_gate_for_surgery,
     )
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
+    allowed, reason = schedule_gate_for_surgery(s)
+    if not allowed:
+        raise HTTPException(status_code=409, detail=reason)
     try:
         result = claim_slot_for_patient(
             db, s,
@@ -754,42 +774,44 @@ async def patient_upload_fmla(
     db: Session = Depends(get_db),
     _token: str = Depends(require_patient_token),
 ):
-    """Patient uploads their FMLA paperwork via the portal. Saves as a
-    SurgeryFile of kind='fmla'."""
+    """Patient uploads their FMLA paperwork via the magic-link portal.
+
+    Routes through store_upload (same path the regular portal uses)
+    instead of os.path.join with the attacker-controlled file.filename
+    against a hardcoded developer-laptop path. The old code wrote
+    PHI to a path that didn't exist on Cloud Run and was an
+    arbitrary-file-write via '../' in file.filename. Saved as
+    kind='fmla_completed' so the portal_fmla view sees it and the
+    fmla_status='submitted' transition fires. (Fable portal audit C1.)
+    """
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404)
 
-    # Accept PDFs / images only, max 10 MB
-    if file.content_type not in ("application/pdf", "image/jpeg", "image/png",
-                                  "image/jpg", "image/heic"):
-        raise HTTPException(status_code=422,
-                            detail="File must be a PDF or image (JPG / PNG / HEIC).")
     contents = await file.read()
-    if len(contents) > 10 * 1024 * 1024:
-        raise HTTPException(status_code=413,
-                            detail="File is too large (max 10 MB).")
+    from app.services.surgery_uploads import store_upload, UploadError
+    try:
+        doc = store_upload(
+            db, s, kind="fmla_completed",
+            filename=file.filename or "fmla.pdf",
+            file_bytes=contents,
+            content_type=file.content_type or "application/octet-stream",
+            uploaded_by="patient:self-service",
+        )
+    except UploadError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
 
-    uploads_dir = "/Users/wwcclaudecode/Documents/wwc-era-project/backend/uploads/surgery_files"
-    os.makedirs(uploads_dir, exist_ok=True)
-    safe_name = f"{s.chart_number}_fmla_{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{file.filename}"
-    save_path = os.path.join(uploads_dir, safe_name)
-    with open(save_path, "wb") as f:
-        f.write(contents)
+    # Mirror portal_fmla_upload's transition logic — if the fee was
+    # paid, the upload completes the FMLA submission flow.
+    if s.fmla_fee_paid and not s.fmla_status:
+        s.fmla_status = "submitted"
+        db.commit()
 
-    row = SurgeryFile(
-        surgery_id=s.id,
-        kind="fmla",
-        filename=file.filename,
-        path=save_path,
-        mime_type=file.content_type,
-        size_bytes=len(contents),
-        uploaded_by="patient:self-service",
-        notes="Uploaded by patient via portal",
-    )
-    db.add(row); db.commit()
     return {
         "ok": True,
-        "filename": file.filename,
+        "id": str(doc.id),
+        "filename": doc.filename,
+        "kind": doc.kind,
+        "fmla_status": s.fmla_status,
         "message": "Thanks! Your FMLA paperwork has been received.",
     }

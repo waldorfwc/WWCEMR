@@ -123,6 +123,7 @@ def send_patient_sms(
     to_phone: Optional[str] = None,
     chart_number: Optional[str] = None,
     ad_hoc_body: Optional[str] = None,
+    consent_override: bool = False,
 ) -> PatientSms:
     """Send a patient SMS and write the audit row.
 
@@ -132,23 +133,57 @@ def send_patient_sms(
       Ad-hoc send    — pass `kind=None` + `ad_hoc_body`.
 
     The `surgery` argument is required for template sends (to look up
-    consent + cell_phone). For ad-hoc, pass a Surgery row if you have
-    one, or None + explicit `to_phone` + `chart_number` to bypass.
+    consent + cell_phone). For ad-hoc to an unknown patient (no Surgery
+    row), pass `consent_override=True` along with `to_phone` +
+    `chart_number` — the override is recorded in `failure_reason` for
+    audit. Without that override, surgery=None now raises rather than
+    silently skipping the consent check. (Fable portal audit C2-sms.)
     """
     # Resolve recipient
     phone = to_phone or (surgery.cell_phone if surgery else None)
     phone = (phone or "").strip()
 
-    # Consent gate
-    if surgery is not None and not surgery.sms_consent:
-        return _record(db,
-            surgery_id=(surgery.id if surgery else None),
-            chart_number=chart_number or (surgery.chart_number if surgery else None),
-            to_phone=phone or "(missing)",
-            kind=kind, body="(unsent — no consent)",
-            status="skipped",
-            failure_reason="patient has not opted in to SMS",
-            sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+    # Consent gate — must be evaluated regardless of whether the caller
+    # passed a Surgery row.
+    if surgery is not None:
+        if not surgery.sms_consent:
+            return _record(db,
+                surgery_id=surgery.id,
+                chart_number=chart_number or surgery.chart_number,
+                to_phone=phone or "(missing)",
+                kind=kind, body="(unsent — no consent)",
+                status="skipped",
+                failure_reason="patient has not opted in to SMS",
+                sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+    else:
+        # No Surgery row — the consent check has to be made explicit.
+        # If a related Surgery exists for this chart_number, check it;
+        # otherwise refuse unless the caller passes consent_override.
+        related = None
+        if chart_number:
+            related = (db.query(Surgery)
+                         .filter(Surgery.chart_number == chart_number)
+                         .order_by(Surgery.created_at.desc())
+                         .first())
+        if related is not None and not related.sms_consent:
+            return _record(db,
+                surgery_id=related.id,
+                chart_number=chart_number,
+                to_phone=phone or "(missing)",
+                kind=kind, body="(unsent — no consent)",
+                status="skipped",
+                failure_reason="patient has not opted in to SMS",
+                sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+        if related is None and not consent_override:
+            return _record(db,
+                surgery_id=None,
+                chart_number=chart_number,
+                to_phone=phone or "(missing)",
+                kind=kind, body="(unsent — no consent record)",
+                status="skipped",
+                failure_reason=("no Surgery row to check consent and "
+                                "consent_override=False — refusing to send"),
+                sent_by=sent_by, context=context, segments=None, twilio_sid=None)
 
     # Resolve body
     if kind:

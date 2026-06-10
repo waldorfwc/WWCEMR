@@ -126,7 +126,7 @@ def login(payload: LoginPayload, request: Request,
                    f"office at 240-252-2140.",
         )
 
-    challenge_token, _code = auth.issue_challenge(db, matched)
+    challenge_token = auth.issue_challenge(db, matched, purpose="login")
     _log_attempt(db, matched.id, success=True, request=request)
     return {"challenge_token": challenge_token}
 
@@ -149,7 +149,8 @@ def verify(payload: VerifyPayload, db: Session = Depends(get_db)):
     code = "".join(c for c in (payload.code or "") if c.isdigit())
     if len(code) != 6:
         raise HTTPException(status_code=401, detail="Invalid code")
-    surgery_id = auth.verify_code(db, payload.challenge_token, code)
+    surgery_id = auth.verify_code(db, payload.challenge_token, code,
+                                    purpose="login")
     if surgery_id is None:
         raise HTTPException(status_code=401, detail="Invalid code")
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -411,7 +412,7 @@ def portal_payments_step_up(
         raise HTTPException(status_code=409,
                               detail="No phone on file — call our office at "
                                      "240-252-2140.")
-    challenge_token, _code = auth.issue_challenge(db, s, purpose="payment")
+    challenge_token = auth.issue_challenge(db, s, purpose="payment")
     return {"step_up_token": challenge_token}
 
 
@@ -442,6 +443,31 @@ def portal_payments_checkout(
     if not stripe_svc.is_configured():
         raise HTTPException(status_code=503,
                               detail="Payments aren't available right now.")
+
+    # Idempotency: reuse a recent open Checkout session for the same
+    # amount instead of minting a new one. A double-click (or a second
+    # browser tab) used to create two live Stripe Checkout sessions for
+    # the full balance — both chargeable — because s.amount_paid only
+    # updates on the webhook so the next call still sees the original
+    # outstanding amount. Window the lookup tight enough that a stale
+    # amount (after a manual payment or benefits recalc) can't be
+    # replayed. (Fable portal audit C3.)
+    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    recent = (db.query(SurgeryPayment)
+                .filter(SurgeryPayment.surgery_id == s.id,
+                        SurgeryPayment.kind == "patient_balance",
+                        SurgeryPayment.status == "requested",
+                        SurgeryPayment.amount_requested == amount,
+                        SurgeryPayment.paid_at.is_(None),
+                        SurgeryPayment.checkout_url.isnot(None),
+                        SurgeryPayment.requested_at >= cutoff)
+                .order_by(SurgeryPayment.requested_at.desc())
+                .first())
+    if recent:
+        return {"checkout_url": recent.checkout_url,
+                "payment_id": str(recent.id),
+                "reused": True}
+
     try:
         pay = stripe_svc.create_checkout_session(
             db, s, amount=amount,
@@ -1235,7 +1261,7 @@ def portal_fmla_step_up(
         raise HTTPException(status_code=409,
                               detail="No phone on file — call our office at "
                                      "240-252-2140.")
-    challenge_token, _code = auth.issue_challenge(db, s, purpose="payment")
+    challenge_token = auth.issue_challenge(db, s, purpose="payment")
     return {"step_up_token": challenge_token}
 
 
@@ -1265,6 +1291,25 @@ def portal_fmla_checkout(
     if not stripe_svc.is_configured():
         raise HTTPException(status_code=503,
                               detail="Payments aren't available right now.")
+
+    # Idempotency — same rationale as portal_payments_checkout.
+    # (Fable portal audit C3.)
+    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    recent = (db.query(SurgeryPayment)
+                .filter(SurgeryPayment.surgery_id == s.id,
+                        SurgeryPayment.kind == "fmla_fee",
+                        SurgeryPayment.status == "requested",
+                        SurgeryPayment.amount_requested == fee,
+                        SurgeryPayment.paid_at.is_(None),
+                        SurgeryPayment.checkout_url.isnot(None),
+                        SurgeryPayment.requested_at >= cutoff)
+                .order_by(SurgeryPayment.requested_at.desc())
+                .first())
+    if recent:
+        return {"checkout_url": recent.checkout_url,
+                "payment_id": str(recent.id),
+                "reused": True}
+
     try:
         pay = stripe_svc.create_checkout_session(
             db, s, amount=fee,

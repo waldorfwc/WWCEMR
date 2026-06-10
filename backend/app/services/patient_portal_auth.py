@@ -48,20 +48,21 @@ def _generate_code() -> str:
 
 
 def issue_challenge(db: Session, surgery: Surgery,
-                      purpose: str = "login") -> tuple[str, str]:
-    """Generate a code, persist its hash, SMS the plaintext to the surgery's
-    cell_phone. Returns (challenge_token, plaintext_code).
+                      purpose: str = "login") -> str:
+    """Generate a code, persist its hash + purpose, SMS the plaintext to
+    the surgery's cell_phone. Returns the challenge_token (the plaintext
+    code is never returned — it only travels via SMS).
 
-    `purpose` picks the SMS copy — "login" (default, sign-in) or "payment"
-    (step-up before charge). The lifecycle is identical; only the body
-    text changes. The PatientPortalAuthCode row does NOT store purpose —
-    the caller is responsible for invoking verify_code from the matching
-    endpoint context (and route-level checks prevent cross-purpose abuse).
+    `purpose` picks the SMS copy AND is persisted on the row, so a code
+    issued for purpose="login" cannot be replayed at verify_code(...,
+    purpose="payment"). (Fable portal audit C1/C3.)
 
     Precondition: surgery.cell_phone or surgery.phone must be non-empty.
     If both are blank, the SMS silently no-ops and the patient cannot
     complete the action. Endpoints must validate before calling.
     """
+    if purpose not in PURPOSE_COPY:
+        raise ValueError(f"unknown purpose: {purpose!r}")
     code = _generate_code()
     challenge_token = secrets.token_urlsafe(32)
     row = PatientPortalAuthCode(
@@ -70,18 +71,26 @@ def issue_challenge(db: Session, surgery: Surgery,
         code_hash=_bcrypt.hashpw(code.encode(), _bcrypt.gensalt()).decode(),
         expires_at=_now() + timedelta(minutes=CODE_TTL_MINUTES),
         sent_to_phone=surgery.cell_phone or surgery.phone or "",
+        purpose=purpose,
     )
     db.add(row); db.commit()
     phone = row.sent_to_phone
-    template = PURPOSE_COPY.get(purpose, PURPOSE_COPY["login"])
+    template = PURPOSE_COPY[purpose]
     body = template.format(code=code, ttl=CODE_TTL_MINUTES)
     send_sms(phone, body)
-    return challenge_token, code
+    return challenge_token
 
 
-def verify_code(db: Session, challenge_token: str, code: str) -> Optional[str]:
+def verify_code(db: Session, challenge_token: str, code: str,
+                  *, purpose: str = "login") -> Optional[str]:
     """Return surgery_id on success, None on any failure. Replay-safe
-    (used_at is stamped on the first successful check)."""
+    (used_at is stamped on the first successful check).
+
+    `purpose` must match the purpose the challenge was issued with —
+    otherwise the verify silently fails. Legacy rows with NULL purpose
+    are treated as 'login' for back-compat so in-flight challenges
+    don't break the moment this deploys.
+    """
     # TODO: tighten with SELECT ... FOR UPDATE to close the TOCTOU window
     # between the read below and the used_at/fail_count write. Two
     # concurrent requests with the right code could both succeed today.
@@ -93,6 +102,14 @@ def verify_code(db: Session, challenge_token: str, code: str) -> Optional[str]:
     if _now() > row.expires_at:
         return None
     if row.fail_count >= CODE_MAX_FAILS:
+        return None
+    # Purpose binding (Fable portal audit C1). NULL = legacy row, treat
+    # as 'login' for back-compat. Mismatch increments fail_count so a
+    # cross-purpose probe burns the challenge.
+    row_purpose = row.purpose or "login"
+    if row_purpose != purpose:
+        row.fail_count += 1
+        db.commit()
         return None
     if not _bcrypt.checkpw(code.encode(), row.code_hash.encode()):
         row.fail_count += 1
