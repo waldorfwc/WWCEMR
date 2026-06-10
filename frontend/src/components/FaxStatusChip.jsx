@@ -16,10 +16,10 @@ export default function FaxStatusChip({ row, onRetry }) {
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${style}`}>
       {label}
       {row.status === 'delivered' && row.delivered_at && (
-        <span className="ml-1 opacity-75">· {fmt.faxDate(row.delivered_at)}</span>
+        <span className="ml-1 opacity-75">· {fmt.time(row.delivered_at)}</span>
       )}
       {row.status === 'sent' && row.sent_at && (
-        <span className="ml-1 opacity-75">· {fmt.faxDate(row.sent_at)}</span>
+        <span className="ml-1 opacity-75">· {fmt.time(row.sent_at)}</span>
       )}
     </span>
   )
