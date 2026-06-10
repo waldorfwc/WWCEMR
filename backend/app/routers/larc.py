@@ -1263,6 +1263,20 @@ def get_assignment(assignment_id: str,
            .filter(LarcAssignment.id == assignment_id).first())
     if not a:
         raise HTTPException(status_code=404, detail="assignment not found")
+
+    # Self-heal: legacy assignments may have been created before
+    # spawn_milestones existed, or via a path that skipped it. Without
+    # milestones the detail page renders only the Benefits Calculator
+    # and the user has no way to step through the workflow. Spawn the
+    # catalog the first time anyone opens the page; spawn_milestones is
+    # idempotent (`if assignment.milestones: return`) so this is safe.
+    # Race window between two simultaneous GETs is microseconds; the
+    # idempotency check inside spawn_milestones is the safety net.
+    if not a.milestones:
+        spawn_milestones(db, a)
+        db.commit()
+        db.refresh(a)
+
     # PHI access logging (Fable LARC audit M6). The assignment dict
     # exposes DOB, demographics, insurance policy info; central audit
     # makes those reads queryable for misuse investigation.

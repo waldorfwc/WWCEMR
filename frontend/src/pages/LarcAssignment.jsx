@@ -18,6 +18,23 @@ const MILESTONE_ICON = {
 }
 
 
+/**
+ * Invalidate every list query that could be showing this assignment.
+ * Any mutation that flips a.status OR completes a milestone changes
+ * which bucket the row lives in — without invalidating these four
+ * keys, the user sees the row "stuck" on the dashboard or Owed list
+ * until a hard refresh. Keep this in lockstep with the queries used
+ * by Larc.jsx (`larc-dashboard`, `larc-assignments`) and
+ * LarcOwed.jsx (`larc-owed`).
+ */
+function invalidateLarcLists(qc, assignmentId) {
+  qc.invalidateQueries({ queryKey: ['larc-assignment', assignmentId] })
+  qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
+  qc.invalidateQueries({ queryKey: ['larc-assignments'] })
+  qc.invalidateQueries({ queryKey: ['larc-owed'] })
+}
+
+
 export default function LarcAssignment() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -295,7 +312,7 @@ function BenefitsBody({ a }) {
       save: true,
     }).then(r => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+      invalidateLarcLists(qc, a.id)
       setSavedFlash(true)
       setTimeout(() => setSavedFlash(false), 4000)
     },
@@ -446,7 +463,7 @@ function ResponsibilityModmedBody({ a }) {
   const toggle = useMutation({
     mutationFn: (confirmed) => api.post(`/larc/assignments/${a.id}/responsibility-in-modmed`,
                                          { confirmed }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
   })
   return (
     <label className="flex items-start gap-2 text-[12px] cursor-pointer">
@@ -474,7 +491,7 @@ function EnrollmentSentBody({ a }) {
       dispense, provider_contact_preference: providerContact,
     }).then(r => r.data),
     onMutate: () => setError(null),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => setError(e?.response?.data?.detail || 'Send failed'),
   })
 
@@ -558,7 +575,7 @@ function ClinicianPicker({ a, kind }) {
   const save = useMutation({
     mutationFn: (body) => api.post(endpoint, body).then(r => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+      invalidateLarcLists(qc, a.id)
       setSaved(true); setTimeout(() => setSaved(false), 1200)
     },
   })
@@ -700,7 +717,7 @@ function EnrollmentSignedBody({ a }) {
   const toggle = useMutation({
     mutationFn: (confirmed) => api.post(`/larc/assignments/${a.id}/enrollment-signed`,
                                           { confirmed }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
   })
   const done = !!a.enrollment_signed_at
   return (
@@ -744,7 +761,7 @@ function FaxPharmacyBody({ a }) {
       pharmacy_id: pharmacyId || null,
       notes: notes || null,
     }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
   })
 
   if (a.request_faxed_at) {
@@ -832,7 +849,7 @@ function ReceiveDeviceBody({ a }) {
       purchase_price: price === '' ? null : Number(price),
       device_type_id: typeId || null,
     }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
 
@@ -919,7 +936,7 @@ function NotifyBody({ a }) {
   const send = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/notify`,
                                 { message_body: msg }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
   })
 
   function copy() {
@@ -956,7 +973,7 @@ function ApptBody({ a }) {
   const save = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/schedule-appt`,
                                 { appt_date: date }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
   return (
@@ -989,7 +1006,7 @@ function CheckoutPlaceholderBody({ a }) {
     }).then(r => r.data),
     onSuccess: (data) => {
       setResult(data)
-      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+      invalidateLarcLists(qc, a.id)
     },
     onError: (e) => alert(e?.response?.data?.detail || 'Request failed'),
   })
@@ -1060,7 +1077,7 @@ function OutcomeBody({ a }) {
       notes: notes || null,
       loss_value: loss === '' ? null : Number(loss),
     }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
 
@@ -1114,17 +1131,7 @@ function BilledBody({ a }) {
   const save = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/bill`,
                                 { claim_number: claim }).then(r => r.data),
-    onSuccess: () => {
-      // Recording the claim # moves the assignment to status='billed' and
-      // off the active dashboard, the Outstanding/Owed buckets, and the
-      // /larc-owed list. Invalidate all of them so the row actually
-      // disappears from the lists the user came from — previously only
-      // the detail page refreshed, so the row looked stuck.
-      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
-      qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
-      qc.invalidateQueries({ queryKey: ['larc-assignments'] })
-      qc.invalidateQueries({ queryKey: ['larc-owed'] })
-    },
+    onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
 
@@ -1184,7 +1191,7 @@ function ConsumeBody({ a }) {
   const save = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/consume`,
                                 { notes: notes || null }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
 
@@ -1221,7 +1228,10 @@ function AllocateInventoryCard({ a }) {
   if (a.source_flow !== 'in_stock' || a.device_id) return null
 
   const qc = useQueryClient()
-  const refetch = () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+  // payment-received → patient_paid_at flips, device allocation moves
+  // the row out of "Awaiting payment" bucket; both need the list views
+  // refreshed, not just the detail.
+  const refetch = () => invalidateLarcLists(qc, a.id)
   const benefitsDone = !!a.benefits_verified_at
   const paidDone     = !!a.patient_paid_at
   const ready        = benefitsDone && paidDone
@@ -1394,7 +1404,7 @@ function InsuranceCardCard({ a }) {
                       { headers: { 'Content-Type': 'multipart/form-data' } })
                  .then(r => r.data)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => alert(e?.response?.data?.detail || 'Upload failed'),
   })
 
@@ -1494,7 +1504,7 @@ function ReplacementChainCard({ a }) {
     }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['larc-device', a.device_id] })
-      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+      invalidateLarcLists(qc, a.id)
       setStep('receive')
     },
     onError: (e) => alert(e?.response?.data?.detail || 'Return failed'),
@@ -1511,8 +1521,7 @@ function ReplacementChainCard({ a }) {
     }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['larc-device', a.device_id] })
-      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
-      qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
+      invalidateLarcLists(qc, a.id)
     },
     onError: (e) => alert(e?.response?.data?.detail || 'Receive failed'),
   })
