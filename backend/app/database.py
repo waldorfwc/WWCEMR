@@ -189,6 +189,10 @@ def _apply_lightweight_migrations():
         # Precomputed timely-filing deadline (Fable cross-cutting audit #13).
         ("active_claims", "tf_deadline_date", "DATE"),
         ("active_claims", "tf_days_allowed", "INTEGER"),
+        # Idempotency key for send-batch (Fable recalls audit C3).
+        ("fax_logs", "client_request_id", "VARCHAR(80)"),
+        # Persist cover text so retries can resend it (Fable recalls H6).
+        ("fax_logs", "cover_text", "TEXT"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),
@@ -583,6 +587,16 @@ def _apply_lightweight_migrations():
              "pellet_counts",
              "location, (started_at::date)",
              "status != 'cancelled'"),
+            # Fax: at most one FaxLog row per (chart_number,
+            # client_request_id). DB-side guarantee that a retried POST
+            # (double-click, network retry) cannot re-fax the same docs.
+            # The endpoint also checks application-side first to return a
+            # 200 with the existing row; this index closes the race.
+            # (Fable recalls/messaging audit C3.)
+            ("ix_fax_logs_client_request_unique",
+             "fax_logs",
+             "chart_number, client_request_id",
+             "client_request_id IS NOT NULL"),
             # NB: receipt-level dedup is enforced in app code (see
             # create_receipt) — historical data contains duplicates so a
             # DB unique index would fail to create. The race window in

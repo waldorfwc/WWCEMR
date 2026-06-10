@@ -91,6 +91,13 @@ def fax_document(
 
 
 @router.get("/status/{message_id}")
-def fax_status(message_id: str, db: Session = Depends(get_db)):
-    """Check fax delivery status."""
+def fax_status(
+    message_id: str,
+    db: Session = Depends(get_db),
+    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
+):
+    """Check fax delivery status. Validates id is numeric to avoid
+    URL-injection into RingCentral's message-store path (Fable L2)."""
+    if not message_id.isdigit():
+        raise HTTPException(status_code=422, detail="message_id must be numeric")
     return check_fax_status(message_id)

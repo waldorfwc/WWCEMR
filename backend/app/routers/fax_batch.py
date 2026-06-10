@@ -30,6 +30,11 @@ class SendBatchPayload(BaseModel):
     dest_fax: str
     grouping_mode: str = "separate"
     cover_text: Optional[str] = None
+    # Idempotency key. If supplied and a FaxLog row already exists for
+    # (chart_number, client_request_id), the endpoint returns the prior
+    # batch instead of re-faxing. Frontend should generate a UUID once
+    # per Send-click. (Fable recalls audit C3.)
+    client_request_id: Optional[str] = None
 
 
 def _patient_name(db: Session, chart_number: str) -> str:
@@ -48,6 +53,7 @@ def _send_one_and_log(
     grouping_mode: str,
     sent_by: Optional[str] = None,
     not_found_error: Optional[str] = None,
+    client_request_id: Optional[str] = None,
 ) -> dict:
     """Create FaxLog row, call RingCentral (unless pre-failed), return payload row dict."""
     log = FaxLog(
@@ -56,6 +62,8 @@ def _send_one_and_log(
         grouping_mode=grouping_mode,
         dest_fax=dest_fax,
         sent_by=sent_by,
+        cover_text=cover_text,
+        client_request_id=client_request_id,
     )
     db.add(log)
     db.flush()
@@ -126,6 +134,29 @@ def _send_batch_core(
     if payload.grouping_mode not in {m.value for m in GroupingMode}:
         raise HTTPException(status_code=400, detail=f"Invalid grouping_mode: {payload.grouping_mode}")
 
+    # Idempotency short-circuit: if the client supplied a request id and a
+    # FaxLog already exists for this (chart, client_request_id), return the
+    # prior batch unchanged. A double-clicked Send button (or retried HTTP
+    # call) hits this path and we don't re-fax. (Fable recalls audit C3.)
+    if payload.client_request_id:
+        prior = (db.query(FaxLog)
+                    .filter(FaxLog.chart_number == payload.chart_number,
+                            FaxLog.client_request_id == payload.client_request_id)
+                    .order_by(FaxLog.created_at.asc())
+                    .all())
+        if prior:
+            return {
+                "batch_id": None,
+                "faxes": [{
+                    "fax_log_id": str(r.id),
+                    "doc_ids": r.doc_ids or [],
+                    "status": r.status.value if hasattr(r.status, "value") else r.status,
+                    "error": r.error,
+                    "ringcentral_message_id": r.ringcentral_message_id,
+                } for r in prior],
+                "idempotent_replay": True,
+            }
+
     patient_name = _patient_name(db, payload.chart_number)
     mode = payload.grouping_mode
 
@@ -134,15 +165,22 @@ def _send_batch_core(
                description=f"Batch fax chart={payload.chart_number} docs={len(payload.doc_ids)} mode={mode} to {payload.dest_fax}")
 
     faxes = []
+    # Wrong-patient guard: a doc id that resolves to a different chart
+    # is treated as not-found. Without this, a fat-fingered chart_number
+    # would fax patient A's PHI while the FaxLog/cover-page name patient B.
+    # (Fable C2.)
+    def _owns_chart(doc) -> bool:
+        return bool(doc) and doc.chart_number == payload.chart_number
     if mode == "separate":
         for doc_id in payload.doc_ids:
             doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
-            if not doc:
+            if not _owns_chart(doc):
                 faxes.append(_send_one_and_log(
                     db, payload.chart_number, payload.dest_fax, [doc_id],
                     file_path=None, cover_text=payload.cover_text,
                     patient_name=patient_name, grouping_mode=mode,
                     sent_by=sent_by,
+                    client_request_id=payload.client_request_id,
                     not_found_error=f"Document {doc_id} not found",
                 ))
                 continue
@@ -151,14 +189,16 @@ def _send_batch_core(
                 file_path=doc.file_path, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
                 sent_by=sent_by,
+                client_request_id=payload.client_request_id,
             ))
     elif mode == "combined":
-        # Validate every doc exists first.
+        # Validate every doc exists AND belongs to the requested chart.
+        # (Fable C2.)
         docs = []
         missing = []
         for doc_id in payload.doc_ids:
             doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
-            if not doc:
+            if not _owns_chart(doc):
                 missing.append(doc_id)
             else:
                 docs.append(doc)
@@ -170,6 +210,7 @@ def _send_batch_core(
                 file_path=None, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
                 sent_by=sent_by,
+                client_request_id=payload.client_request_id,
                 not_found_error=f"Documents not found: {', '.join(missing)}",
             ))
             return {"batch_id": None, "faxes": faxes}
@@ -183,6 +224,7 @@ def _send_batch_core(
                 file_path=merged_path, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
                 sent_by=sent_by,
+                client_request_id=payload.client_request_id,
             ))
         except (FileNotFoundError, ValueError) as e:
             faxes.append(_send_one_and_log(
@@ -191,6 +233,7 @@ def _send_batch_core(
                 file_path=None, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
                 sent_by=sent_by,
+                client_request_id=payload.client_request_id,
                 not_found_error=f"PDF merge failed: {e}",
             ))
         finally:
@@ -198,11 +241,12 @@ def _send_batch_core(
                 os.unlink(merged_path)
     elif mode == "by_type":
         # Group loaded docs by their doc_type, merge each group, send one fax per group.
+        # Same wrong-chart guard as the other modes. (Fable C2.)
         loaded = []
         missing = []
         for doc_id in payload.doc_ids:
             doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
-            if doc is None:
+            if not _owns_chart(doc):
                 missing.append(doc_id)
             else:
                 loaded.append(doc)
@@ -213,6 +257,7 @@ def _send_batch_core(
                 file_path=None, cover_text=payload.cover_text,
                 patient_name=patient_name, grouping_mode=mode,
                 sent_by=sent_by,
+                client_request_id=payload.client_request_id,
                 not_found_error=f"Documents not found: {', '.join(missing)}",
             ))
             return {"batch_id": None, "faxes": faxes}
@@ -232,6 +277,7 @@ def _send_batch_core(
                         file_path=group[0].file_path, cover_text=payload.cover_text,
                         patient_name=patient_name, grouping_mode=mode,
                         sent_by=sent_by,
+                        client_request_id=payload.client_request_id,
                     ))
                     continue
 
@@ -242,6 +288,7 @@ def _send_batch_core(
                     file_path=merged_path, cover_text=payload.cover_text,
                     patient_name=patient_name, grouping_mode=mode,
                     sent_by=sent_by,
+                    client_request_id=payload.client_request_id,
                 ))
             except (FileNotFoundError, ValueError) as e:
                 faxes.append(_send_one_and_log(
@@ -250,6 +297,7 @@ def _send_batch_core(
                     file_path=None, cover_text=payload.cover_text,
                     patient_name=patient_name, grouping_mode=mode,
                     sent_by=sent_by,
+                    client_request_id=payload.client_request_id,
                     not_found_error=f"PDF merge failed for doc_type={doc_type}: {e}",
                 ))
             finally:
@@ -265,6 +313,7 @@ def fax_recent(
     window: Optional[int] = None,  # days; None = no window
     status: Optional[str] = None,
     db: Session = Depends(get_db),
+    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Recent fax activity for Dashboard card AND Charts-page fax-log pane."""
     q = db.query(FaxLog)
@@ -313,7 +362,11 @@ def fax_recent(
 
 
 @router.get("/by-chart/{chart_number}")
-def fax_by_chart(chart_number: str, db: Session = Depends(get_db)):
+def fax_by_chart(
+    chart_number: str,
+    db: Session = Depends(get_db),
+    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
+):
     """Every fax attempt for a single chart, newest first. Used by the chart-view chips."""
     rows = (
         db.query(FaxLog)
@@ -338,15 +391,43 @@ def fax_by_chart(chart_number: str, db: Session = Depends(get_db)):
 @router.post("/retry/{fax_log_id}")
 def fax_retry(
     fax_log_id: str,
+    force: bool = False,
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Resend a fax with the same doc_ids / dest / grouping as the original.
     Creates a new FaxLog row that points back to the original via retry_of.
+
+    Refuses to retry an already-SENT fax (and an already-DELIVERED fax)
+    unless ?force=true is passed — protects against accidental re-fax of
+    a successfully transmitted document. Also blocks rapid double-retries
+    of the same original (in-flight retry within the last 60 seconds).
+    (Fable recalls audit C3.)
     """
     original = db.query(FaxLog).filter(FaxLog.id == fax_log_id).first()
     if not original:
         raise HTTPException(status_code=404, detail="Fax log not found")
+    status_val = original.status.value if hasattr(original.status, "value") else original.status
+    if not force and status_val in ("sent", "delivered"):
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Fax already {status_val} — pass ?force=true to "
+                    "re-send anyway. Most often this means the previous "
+                    "delivery worked and a retry would re-transmit PHI."))
+    # In-flight retry guard. If anyone retried this original in the last
+    # 60s, refuse — covers the double-click case where the user clicks
+    # Retry twice before the first one finishes.
+    from datetime import timedelta
+    recent_retry = (db.query(FaxLog)
+                       .filter(FaxLog.retry_of == original.id,
+                               FaxLog.created_at
+                                   >= datetime.utcnow() - timedelta(seconds=60))
+                       .first())
+    if recent_retry and not force:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"A retry is already in flight (fax_log {recent_retry.id}). "
+                    "Wait for it to finish or pass ?force=true."))
     mode = original.grouping_mode.value if hasattr(original.grouping_mode, "value") else original.grouping_mode
     batch = _send_batch_core(
         SendBatchPayload(
@@ -354,7 +435,7 @@ def fax_retry(
             doc_ids=list(original.doc_ids or []),
             dest_fax=original.dest_fax,
             grouping_mode=mode,
-            cover_text=None,
+            cover_text=original.cover_text,
         ),
         db=db,
         sent_by=current_user.get("email"),
@@ -378,6 +459,7 @@ def fax_log_list(
     page: int = 1,
     page_size: int = 50,
     db: Session = Depends(get_db),
+    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     page = max(1, page)
     page_size = max(1, min(page_size, 200))
@@ -431,7 +513,10 @@ def fax_log_list(
 
 
 @router.get("/chart-summary")
-def fax_chart_summary(db: Session = Depends(get_db)):
+def fax_chart_summary(
+    db: Session = Depends(get_db),
+    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
+):
     """Per-chart fax aggregates for the patient-list fax indicator.
     Returns one row per chart_number that has any FaxLog activity."""
     from sqlalchemy import func as sql_func

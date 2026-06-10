@@ -38,10 +38,24 @@ class FaxLog(Base):
 
     retry_of = Column(GUID(), ForeignKey("fax_logs.id"), nullable=True)
 
+    # Client-supplied idempotency key. A double-clicked Send button (or
+    # retried HTTP call) sends the same client_request_id and we return
+    # the existing row instead of re-faxing. Optional; absent means the
+    # call falls back to ordinary (non-idempotent) send. (Fable C3.)
+    client_request_id = Column(String(80), nullable=True)
+
+    # Cover-page text persisted at send so a fax_retry can resend with
+    # the same recipient instructions instead of a context-free document.
+    # (Fable recalls audit H6.)
+    cover_text = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     __table_args__ = (
         Index("ix_fax_chart_sent", "chart_number", "sent_at"),
         Index("ix_fax_status_checked", "status", "last_checked_at"),
+        # Idempotency: at most one fax_log per (chart, client_request_id)
+        # when client supplies an id. Partial index is added by the
+        # lightweight-migration on Postgres only.
     )
