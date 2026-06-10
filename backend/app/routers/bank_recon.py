@@ -26,7 +26,7 @@ from app.database import get_db
 from app.models.bai2 import Bai2Import, Bai2Transaction
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
-from app.permissions.dependencies import requires_tier
+from app.permissions.dependencies import requires_super_admin, requires_tier
 from app.services.bai2_generator import (
     FilterOptions, parse_csv_from_bytes, render_bai2, make_filename,
 )
@@ -527,53 +527,13 @@ def sweep_preview_csvs(
     db: Session = Depends(get_db),
     ttl_hours: int = Query(24, ge=1, le=24 * 30),
     hard_ttl_days: int = Query(7, ge=1, le=90),
-    current_user: dict = Depends(
-        requires_tier(Module.BANK_RECON, Tier.WORK)),
+    current_user: dict = Depends(requires_super_admin()),
 ):
-    """Delete preview CSVs that have either been consumed (matching
-    Bai2Import row > ttl_hours old) or that are simply older than
-    hard_ttl_days regardless. (Fable cross-cutting audit #20.)
-
-    Every /preview write used to leave a CSV at bank-recon-csv/{uuid}
-    forever. Bank account data sitting in storage is unbounded growth
-    + a passive exposure surface; cron this hourly.
+    """Manual trigger for the bank-recon-csv/ sweep. The primary scheduled
+    runner is the `bank_recon_sweep` Cloud Run Job (Cloud Scheduler →
+    hourly). This endpoint is kept for one-off ops triggering, hence
+    super-admin only — not a coordinator workflow. (Fable design review
+    note 6.)
     """
-    from datetime import datetime, timezone, timedelta
-    from app.services.storage import (
-        list_blob_keys, blob_metadata, delete_blob,
-    )
-    now = datetime.now(timezone.utc)
-    consumed_cutoff = now - timedelta(hours=ttl_hours)
-    hard_cutoff = now - timedelta(days=hard_ttl_days)
-
-    # Consumed previews — Bai2Import.csv_path is set; delete if generated_at
-    # is old enough.
-    consumed_keys = {
-        r.csv_path
-        for r in db.query(Bai2Import).filter(
-            Bai2Import.csv_path.isnot(None),
-            Bai2Import.generated_at < consumed_cutoff,
-        ).all()
-        if r.csv_path
-    }
-
-    deleted = 0
-    inspected = 0
-    for key in list_blob_keys("bank-recon-csv/"):
-        inspected += 1
-        if key in consumed_keys:
-            if delete_blob(key):
-                deleted += 1
-            continue
-        meta = blob_metadata(key)
-        if not meta or not meta.get("created"):
-            continue
-        created = meta["created"]
-        if created < hard_cutoff:
-            if delete_blob(key):
-                deleted += 1
-
-    log.info("bank-recon preview CSV sweep: inspected=%d deleted=%d",
-             inspected, deleted)
-    return {"inspected": inspected, "deleted": deleted,
-            "ttl_hours": ttl_hours, "hard_ttl_days": hard_ttl_days}
+    from app.services.bank_recon_sweep import sweep_preview_csvs as _sweep
+    return _sweep(db, ttl_hours=ttl_hours, hard_ttl_days=hard_ttl_days)

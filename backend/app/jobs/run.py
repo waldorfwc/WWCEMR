@@ -118,6 +118,16 @@ def missing_charges_weekly():
     _missing_charges_weekly_emails()
 
 
+@register("bank_recon_sweep")
+def bank_recon_sweep():
+    """Hourly sweep of bank-recon-csv/ — deletes consumed preview CSVs
+    and any blob older than the hard TTL. Logic lives in
+    app.services.bank_recon_sweep so the router endpoint can stay a
+    thin wrapper. (Fable design review note 6.)"""
+    from app.services.bank_recon_sweep import sweep_preview_csvs
+    sweep_preview_csvs()
+
+
 def main():
     if len(sys.argv) < 2:
         log.error("usage: python -m app.jobs.run <job_name>")
