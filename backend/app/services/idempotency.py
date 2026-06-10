@@ -1,6 +1,31 @@
 """Idempotency-key middleware-style helper.
 
-Usage in a route:
+# Convention (Fable design review note 12)
+
+The codebase has three idempotency mechanisms; each addresses a
+different shape of "don't do this twice." Pick by the problem, not by
+familiarity:
+
+  1. **IdempotencyChecker (this module)** — generic Idempotency-Key
+     HTTP header cache, keyed on (actor, route, header). Use when a
+     client retries a POST after a network blip and the response is
+     expensive/destructive. Per-call opt-in; no header = no caching.
+
+  2. **Per-row client_request_id columns** (e.g. fax_logs) — when the
+     domain entity itself has a natural idempotency key the database
+     should enforce, like a "send fax" intent that maps 1:1 to a
+     FaxLog row. The unique partial index is the durable guarantee.
+
+  3. **Postgres advisory locks** (bank_recon preview→generate) —
+     when two requests would race on the SAME computed resource
+     (preview_id) and need to be serialized but neither is a "retry."
+     Not idempotency — mutual exclusion.
+
+If you're tempted to add a fourth: it's almost certainly one of these.
+
+# Usage
+
+Simple form (handler shape):
 
     @router.post("/era/commit")
     def commit_era(
@@ -12,6 +37,12 @@ Usage in a route:
         result = do_the_work(...)
         idem.store(result, status_code=200)
         return result
+
+Sugar form for routes whose body is one function call:
+
+    @router.post("/era/commit")
+    def commit_era(..., idem=Depends(idempotency_for("POST /era/commit"))):
+        return idem.run(lambda: do_the_work(...))
 
 The dependency reads the `Idempotency-Key` header. If absent the request
 runs normally without caching (idempotency is opt-in per call). If
@@ -76,6 +107,21 @@ class IdempotencyChecker:
                 actor=self.actor, route=self.route, key=self.key,
                 status_code=status_code, response_body=serialized,
             ))
+
+    def run(self, fn, status_code: int = 200):
+        """Sugar wrapper: short-circuit on cached, else run + store.
+
+        Usage:
+            return idem.run(lambda: do_the_work(...))
+
+        Without an Idempotency-Key header, behaves as if not cached —
+        runs `fn` and returns the result without caching.
+        """
+        if self.cached is not None:
+            return self.cached
+        result = fn()
+        self.store(result, status_code=status_code)
+        return result
 
 
 def idempotency_for(route_name: str):
