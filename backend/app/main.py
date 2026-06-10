@@ -123,11 +123,15 @@ app.include_router(intake.router, prefix="/api",
 app.include_router(chart.router, prefix="/api",
                    dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(fax.router, prefix="/api",
-                   dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
+                   dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(auth.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.MANAGE))])
-app.include_router(fax_batch.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
-app.include_router(fax_batch.log_router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
+# Fax routers gate on CHART (not ACTIVE_AR) — faxing is a chart-context
+# workflow that both clinical and billing staff use to send PHI off the
+# chart. Per-endpoint elevations live in the routers themselves and use
+# CHART:WORK for write actions. (Fable design review note 2.)
+app.include_router(fax_batch.router, prefix="/api", dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
+app.include_router(fax_batch.log_router, prefix="/api", dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(admin_users.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
 app.include_router(admin_groups.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
 # admin_tiers does its own per-route auth (Super Admin / per-module Admin),

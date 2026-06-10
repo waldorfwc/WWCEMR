@@ -129,7 +129,7 @@ def _send_one_and_log(
 def send_batch(
     payload: SendBatchPayload,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.WORK)),
 ):
     return _send_batch_core(payload, db, sent_by=current_user.get("email"))
 
@@ -335,9 +335,9 @@ def fax_recent(
     window: Optional[int] = None,  # days; None = no window
     status: Optional[str] = None,
     db: Session = Depends(get_db),
-    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
-    """Recent fax activity for Dashboard card AND Charts-page fax-log pane."""
+    """Recent fax activity for Dashboard card AND Charts-page fax-log pane.
+    Router-level CHART:VIEW gate is sufficient — no per-endpoint elevation."""
     q = db.query(FaxLog)
     if window:
         from datetime import datetime, timedelta
@@ -387,7 +387,6 @@ def fax_recent(
 def fax_by_chart(
     chart_number: str,
     db: Session = Depends(get_db),
-    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Every fax attempt for a single chart, newest first. Used by the chart-view chips."""
     rows = (
@@ -415,7 +414,7 @@ def fax_retry(
     fax_log_id: str,
     force: bool = False,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.WORK)),
 ):
     """Resend a fax with the same doc_ids / dest / grouping as the original.
     Creates a new FaxLog row that points back to the original via retry_of.
@@ -481,7 +480,6 @@ def fax_log_list(
     page: int = 1,
     page_size: int = 50,
     db: Session = Depends(get_db),
-    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     page = max(1, page)
     page_size = max(1, min(page_size, 200))
@@ -537,7 +535,6 @@ def fax_log_list(
 @router.get("/chart-summary")
 def fax_chart_summary(
     db: Session = Depends(get_db),
-    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Per-chart fax aggregates for the patient-list fax indicator.
     Returns one row per chart_number that has any FaxLog activity."""

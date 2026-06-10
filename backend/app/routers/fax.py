@@ -22,7 +22,7 @@ router = APIRouter(prefix="/fax", tags=["fax"])
 def fax_document(
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.WORK)),
 ):
     """
     Legacy single-doc fax. Delegates to the new send-batch path so every
@@ -91,13 +91,11 @@ def fax_document(
 
 
 @router.get("/status/{message_id}")
-def fax_status(
-    message_id: str,
-    db: Session = Depends(get_db),
-    _perm: dict = Depends(requires_tier(Module.ACTIVE_AR, Tier.WORK)),
-):
-    """Check fax delivery status. Validates id is numeric to avoid
-    URL-injection into RingCentral's message-store path (Fable L2)."""
+def fax_status(message_id: str):
+    """Check fax delivery status. The router-level CHART:VIEW gate is
+    sufficient — there's no elevation needed for status polling.
+    Validates id is numeric to avoid URL-injection into RingCentral's
+    message-store path (Fable L2)."""
     if not message_id.isdigit():
         raise HTTPException(status_code=422, detail="message_id must be numeric")
     return check_fax_status(message_id)
