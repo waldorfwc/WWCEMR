@@ -12,6 +12,7 @@ for it. Two backends are supported, selected via STORAGE_BACKEND env var:
 In production on Cloud Run, the backend's service account has
 storage.objectAdmin on the bucket, so credentials come from ADC.
 """
+import functools
 import mimetypes
 import os
 import unicodedata
@@ -46,16 +47,12 @@ _GCS_BUCKET = settings.documents_gcs_bucket
 _CHUNK_SIZE = 64 * 1024  # 64 KB streaming chunks
 
 
+@functools.lru_cache(maxsize=1)
 def _gcs_client():
     """Lazy import + cache the GCS client. Avoids forcing the dependency
     on local-dev installs that don't have google-cloud-storage."""
-    global _client
-    try:
-        return _client
-    except NameError:
-        from google.cloud import storage  # type: ignore
-        _client = storage.Client()
-        return _client
+    from google.cloud import storage  # type: ignore
+    return storage.Client()
 
 
 def serve_blob(
