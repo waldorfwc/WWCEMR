@@ -125,8 +125,32 @@ app.add_middleware(
 # session committed an update between our SELECT and UPDATE). Surfaces as
 # a friendly 409 so the client can refetch + retry instead of crashing.
 from sqlalchemy.orm.exc import StaleDataError
-from fastapi import Request
+from fastapi import HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+
+# Unified error envelope: every error response carries {detail, code}
+# so the frontend can switch on `code` instead of sniffing for the
+# right shape. (Fable design review note 9.)
+#   - detail: the human-readable message (or the validation error list)
+#   - code:   short machine slug. Examples: "stale_data",
+#             "validation_error", "internal_error", "unauthorized".
+# HTTP status code is what it always was; nothing breaks for existing
+# clients that only read `detail`.
+
+
+def _http_code_default(status_code: int) -> str:
+    """Default `code` slug when an HTTPException doesn't supply one."""
+    if status_code == 401: return "unauthorized"
+    if status_code == 403: return "forbidden"
+    if status_code == 404: return "not_found"
+    if status_code == 409: return "conflict"
+    if status_code == 422: return "unprocessable"
+    if status_code == 429: return "rate_limited"
+    if 500 <= status_code < 600: return "server_error"
+    return "http_error"
 
 
 @app.exception_handler(StaleDataError)
@@ -136,9 +160,52 @@ async def _stale_data_handler(request: Request, exc: StaleDataError):
         content={
             "detail": "This record was modified by another user since you "
                       "opened it. Refresh and try again.",
-            "error": "stale_data",
+            "code": "stale_data",
         },
     )
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors(), "code": "validation_error"},
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    # Preserve the caller's detail (str or dict). If the detail is a
+    # dict with a "code" key, surface that as the envelope code so
+    # callers can attach machine-readable slugs by passing
+    # `raise HTTPException(409, detail={"code": "duplicate", ...})`.
+    detail = exc.detail
+    code = None
+    if isinstance(detail, dict):
+        code = detail.get("code")
+    if not code:
+        code = _http_code_default(exc.status_code)
+    headers = getattr(exc, "headers", None)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": detail, "code": code},
+        headers=headers,
+    )
+
+
+def api_error(status_code: int, code: str, message: str, **extra) -> HTTPException:
+    """Helper for routes that want to attach a machine-readable `code`
+    to an error response. The exception handler surfaces `code` in the
+    response envelope alongside the human-readable detail.
+
+    Example:
+        raise api_error(409, "duplicate",
+                         "A document with identical contents already exists.",
+                         existing_id=str(existing.id))
+    """
+    detail: dict = {"code": code, "message": message}
+    detail.update(extra)
+    return HTTPException(status_code=status_code, detail=detail)
 
 app.include_router(imports.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
 app.include_router(claims.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
