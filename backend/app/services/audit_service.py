@@ -55,6 +55,7 @@ def log_action(
     new_values: Optional[Dict] = None,
     status: str = "success",
     error_detail: Optional[str] = None,
+    defer_commit: bool = False,
 ) -> AuditLog:
     """Record an action in the HIPAA audit log.
 
@@ -68,6 +69,19 @@ def log_action(
       Calls with NO actor of any kind raise ValueError — a silent
       missing actor on a PHI access is a HIPAA gap. (Fable design
       review note 3.)
+
+    Transaction:
+      By default (`defer_commit=False`), this helper commits the audit
+      row in its own transaction immediately. That preserves the
+      "audit always lands" behavior the older codebase assumes.
+
+      Pass `defer_commit=True` to instead just flush the row into the
+      caller's session — the audit row will land atomically with the
+      caller's next `db.commit()`, and roll back together if the
+      caller raises. Use this for any action where the audit row is
+      meaningless without the business write also succeeding (e.g.,
+      `log "Hard-deleted X"` before actually deleting X). New code
+      should prefer the deferred form. (Fable design review note 4.)
     """
     actor_uid, actor_uname = _derive_actor(actor)
     user_id = user_id or actor_uid
@@ -96,8 +110,11 @@ def log_action(
         error_detail=error_detail,
     )
     db.add(entry)
-    db.commit()
-    db.refresh(entry)
+    if defer_commit:
+        db.flush()  # caller's commit makes the row durable
+    else:
+        db.commit()
+        db.refresh(entry)
     return entry
 
 

@@ -503,17 +503,22 @@ def delete_import(
     imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
     if not imp:
         raise HTTPException(status_code=404, detail="import not found")
-    actor = current_user.get("email")
+    # Defer the audit commit so the row lands atomically with the
+    # delete. The old shape was: log_action auto-committed "I deleted
+    # X" BEFORE db.delete(imp); if the delete failed, the audit log
+    # would be lying. (Fable design review note 4.)
     log_action(
         db, action="BAI2_IMPORT_DELETED", resource_type="bai2_import",
+        actor=current_user,
         resource_id=str(imp.id),
-        user_id=(actor or "").lower() or None, user_name=actor,
         description=(f"Hard-deleted BAI2 import {imp.csv_filename or imp.id} "
                      f"({imp.transactions_included} txns, "
                      f"${imp.total_amount or 0:.2f}). dedup_keys are gone — "
                      "re-importing the same transactions is now possible."),
+        defer_commit=True,
     )
-    db.delete(imp); db.commit()
+    db.delete(imp)
+    db.commit()
     return {"deleted": True}
 
 
