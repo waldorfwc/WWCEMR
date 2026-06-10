@@ -78,7 +78,12 @@ async def preview_csv(
     skip_stripe: bool = Form(True),
     skip_zero: bool = Form(True),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    # preview_csv writes the uploaded CSV to GCS (and the snapshot.json)
+    # — that's a side-effect on shared storage, not a read. Align the
+    # gate with /generate (Tier.WORK) so VIEW-tier users can't push
+    # arbitrary blobs into the bank-recon-csv/ prefix. (Fable design
+    # review note 2.)
+    current_user: dict = Depends(requires_tier(Module.BANK_RECON, Tier.WORK)),
 ):
     """Save the CSV, parse + filter + dedup, and return a list of
     transactions for the user to review BEFORE the BAI2 file is generated.
