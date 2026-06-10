@@ -2321,6 +2321,20 @@ function SchedulerDatePicker({ surgery, onClose }) {
     staleTime: 30_000,
   })
 
+  // Auto-pick the first non-current day on load so the time picker
+  // is immediately visible — otherwise the modal's "Pick a date above"
+  // CTA hides the fact that times are selectable.
+  useEffect(() => {
+    if (selected || !data?.days?.length) return
+    const firstOpen = data.days.find(
+      d => d.block_day_id !== data.current_block_day_id
+    )
+    if (firstOpen) {
+      setSelected(firstOpen)
+      setSelectedTime(firstOpen.proposed_start_time)
+    }
+  }, [data, selected])
+
   // Once the coordinator picks a date, pull the full list of 30-min
   // start times for that block day. The patient flow shows only the
   // first available time per date; the coordinator picks any open time.
