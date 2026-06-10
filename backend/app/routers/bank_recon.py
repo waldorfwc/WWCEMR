@@ -6,10 +6,13 @@ Two-step flow:
 """
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 from datetime import date as _date, datetime
 from decimal import Decimal
+
+log = logging.getLogger(__name__)
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -179,8 +182,37 @@ def generate_bai2(payload: GenerateRequest,
                   current_user: dict = Depends(get_current_user),
                   _perm: dict = Depends(requires_tier(Module.BANK_RECON, Tier.WORK))):
     """Build the BAI2 file from the CSV cached at preview_id, excluding any
-    transactions whose dedup_key is in `excluded_keys`."""
+    transactions whose dedup_key is in `excluded_keys`.
+
+    Idempotent on (preview_id, ext): a double-click on Generate used to
+    produce two GCS-stored BAI2 files for the same deposits (one of the
+    two DB inserts failed via the dedup_key unique constraint, but the
+    file write happened before the DB write, so the orphan stayed in
+    storage). Now serialized via a Postgres advisory lock keyed on the
+    preview, and a re-issued generate for an already-consumed preview
+    returns the existing Bai2Import row instead of regenerating.
+    (Fable cross-cutting audit #3.)
+    """
     csv_key = f"bank-recon-csv/{payload.preview_id}{payload.ext}"
+
+    # Take a transaction-scoped advisory lock keyed on the preview id
+    # hash so two concurrent /generate calls on the same preview
+    # serialize. Then short-circuit if this preview was already
+    # consumed — return the existing import row.
+    from sqlalchemy import text as _sql_text
+    import hashlib
+    _lock_key = int(hashlib.sha1(
+        payload.preview_id.encode("utf-8")).hexdigest()[:8], 16) & 0x7FFFFFFF
+    db.execute(_sql_text("SELECT pg_advisory_xact_lock(:k)"),
+                 {"k": _lock_key})
+    prior = (db.query(Bai2Import)
+                .filter(Bai2Import.csv_path == csv_key)
+                .first())
+    if prior is not None:
+        return {**_import_to_dict(prior),
+                "skipped_user_excluded": 0,
+                "deduped": True}
+
     try:
         csv_bytes = read_blob(csv_key)
     except FileNotFoundError:
@@ -283,7 +315,24 @@ def generate_bai2(payload: GenerateRequest,
             bai_type_code=t.bai_type_code,
             dedup_key=t.dedup_key,
         ))
-    db.commit(); db.refresh(imp)
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.commit(); db.refresh(imp)
+    except IntegrityError:
+        # Another generate raced past our advisory lock (shouldn't
+        # happen since we held it transaction-scoped, but if the lock
+        # call ever fails to take, the unique constraint on
+        # Bai2Transaction.dedup_key catches the duplicate here).
+        # Roll back our writes, log loudly so a duplicate BAI2 file in
+        # storage doesn't go unnoticed, and surface a clean 409.
+        db.rollback()
+        log.error("BAI2 generate IntegrityError for preview %s — "
+                  "advisory lock didn't serialize. Orphan BAI2 file at %s.",
+                  payload.preview_id, key)
+        raise HTTPException(
+            status_code=409,
+            detail=("These transactions were already imported by another "
+                    "request. Refresh and review the recent imports list."))
 
     return {**_import_to_dict(imp), "skipped_user_excluded": skipped_user_excluded}
 
@@ -295,8 +344,12 @@ def generate_bai2(payload: GenerateRequest,
 def list_imports(
     db: Session = Depends(get_db),
     limit: int = Query(50, le=200),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.VIEW)),
 ):
+    # Bank transaction descriptions can include patient names (Zelle
+    # / check deposits identified by payor name). Tier the reads.
+    # (Fable cross-cutting audit #16.)
     rows = (
         db.query(Bai2Import)
         .order_by(desc(Bai2Import.generated_at))
@@ -308,7 +361,8 @@ def list_imports(
 @router.get("/imports/{import_id}")
 def get_import(
     import_id: str, db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.VIEW)),
 ):
     imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
     if not imp:
@@ -334,7 +388,8 @@ def get_import(
 @router.get("/imports/{import_id}/download")
 def download_bai2(
     import_id: str, db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.VIEW)),
 ):
     imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
     if not imp or not imp.bai2_path:
@@ -353,10 +408,32 @@ def download_bai2(
 @router.delete("/imports/{import_id}")
 def delete_import(
     import_id: str, db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.MANAGE)),
 ):
+    """Hard-delete a Bai2Import row.
+
+    Previously: zero permission gate, no audit. The cascade-delete on
+    Bai2Transaction takes the dedup_keys with it, which means the same
+    bank transactions can be re-imported and re-posted later — exactly
+    the double-import hole the unique constraint exists to prevent.
+    Tier.MANAGE + audit row + a "are you really sure?" check by
+    requiring the caller pass ?confirm=true. (Fable cross-cutting
+    audit #6.)
+    """
+    from app.services.audit_service import log_action
     imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
     if not imp:
         raise HTTPException(status_code=404, detail="import not found")
+    actor = current_user.get("email")
+    log_action(
+        db, action="BAI2_IMPORT_DELETED", resource_type="bai2_import",
+        resource_id=str(imp.id),
+        user_id=(actor or "").lower() or None, user_name=actor,
+        description=(f"Hard-deleted BAI2 import {imp.csv_filename or imp.id} "
+                     f"({imp.transactions_included} txns, "
+                     f"${imp.total_amount or 0:.2f}). dedup_keys are gone — "
+                     "re-importing the same transactions is now possible."),
+    )
     db.delete(imp); db.commit()
     return {"deleted": True}

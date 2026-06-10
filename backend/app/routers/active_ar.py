@@ -188,8 +188,21 @@ async def upload_unpaid_claims(
                     "only when the export represents the full current AR.",
     ),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
+    # The mark_missing_as_closed flag is a mass-mutation switch that
+    # bulk-closes every prior-existing AR claim not in the file. The
+    # whole router is gated at Tier.VIEW; routine imports require
+    # WORK; the destructive flag additionally requires MANAGE.
+    # (Fable cross-cutting audit #5.)
+    if mark_missing_as_closed:
+        from app.permissions.resolver import effective_tier
+        actor_email = (current_user.get("email") or "").lower().strip()
+        if effective_tier(db, actor_email, Module.ACTIVE_AR) < Tier.MANAGE:
+            raise HTTPException(
+                status_code=403,
+                detail="mark_missing_as_closed requires Tier.MANAGE on Active AR")
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in (".xls", ".xlsx"):
         raise HTTPException(status_code=422, detail="file must be .xls or .xlsx")
@@ -209,7 +222,17 @@ async def upload_unpaid_claims(
             mark_missing_as_closed=mark_missing_as_closed,
         )
     except Exception as exc:
-        raise HTTPException(status_code=422, detail=f"import failed: {exc}")
+        # Log the traceback server-side. Importer exceptions frequently
+        # quote row content (patient names, policy numbers) in their
+        # messages, which would land in this HTTP response and any
+        # access log. (Fable cross-cutting audit #10.)
+        import logging
+        logging.getLogger(__name__).exception(
+            "active_ar upload failed (upload_id=%s)", upload_id)
+        raise HTTPException(
+            status_code=422,
+            detail=(f"Import failed. Reference upload_id={upload_id} when "
+                    "asking IT to look at the server log."))
 
     return {
         "filename": file.filename,
@@ -243,8 +266,18 @@ def list_active_claims(
 ):
     q = db.query(ActiveClaim)
 
-    # Default to non-closed claims (active workload)
-    q = q.filter(ActiveClaim.workflow_state.notin_(["paid", "rebilled_modmed", "written_off", "closed"]))
+    # workflow_state: caller can request any state explicitly; otherwise
+    # default to the active-workload set (everything except closed
+    # variants). The previous form rebuilt the query from scratch via
+    # `q = db.query(ActiveClaim)...` inside the workflow_state branch,
+    # which silently wiped the aged-claim filter and any earlier
+    # predicate — behavior depended on parameter order in code, not
+    # user intent. (Fable cross-cutting audit #1.)
+    if workflow_state:
+        q = q.filter(ActiveClaim.workflow_state == workflow_state)
+    else:
+        q = q.filter(ActiveClaim.workflow_state.notin_(
+            ["paid", "rebilled_modmed", "written_off", "closed"]))
 
     # Hide claims with DOS > 2 years old by default — aged-out write-off
     # candidates that clutter the working queue. They remain searchable
@@ -252,10 +285,6 @@ def list_active_claims(
     if not include_aged:
         two_years_ago = date.today() - timedelta(days=730)
         q = q.filter(or_(ActiveClaim.dos.is_(None), ActiveClaim.dos >= two_years_ago))
-
-    if workflow_state:
-        # caller can override the default by specifying explicitly
-        q = db.query(ActiveClaim).filter(ActiveClaim.workflow_state == workflow_state)
     if payer:
         q = q.filter(ActiveClaim.insurance_company.ilike(f"%{payer}%"))
     if plan:
@@ -495,7 +524,8 @@ def get_active_claim(claim_id: str, db: Session = Depends(get_db),
 @router.post("/claims/{claim_id}/notes")
 def add_note(claim_id: str, payload: NoteCreate,
              db: Session = Depends(get_db),
-             current_user: dict = Depends(get_current_user)):
+             current_user: dict = Depends(
+                 requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     c = db.query(ActiveClaim).filter(ActiveClaim.id == claim_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="claim not found")
@@ -510,7 +540,8 @@ def add_note(claim_id: str, payload: NoteCreate,
 @router.patch("/claims/{claim_id}")
 def update_claim_status(claim_id: str, payload: StatusUpdate,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(get_current_user)):
+                        current_user: dict = Depends(
+                            requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     c = db.query(ActiveClaim).filter(ActiveClaim.id == claim_id).first()
     if not c:
         raise HTTPException(status_code=404, detail="claim not found")
@@ -579,7 +610,15 @@ def post_insurance_payment(payload: PaymentCreate,
 
     affected = []
     for a in payload.allocations:
-        c = db.query(ActiveClaim).filter(ActiveClaim.id == a.active_claim_id).first()
+        # SELECT ... FOR UPDATE on the claim row so two concurrent
+        # /payments postings against the same claim can't both read
+        # the same starting paid_amount/insurance_balance and both
+        # commit the increment — silently losing one payment.
+        # (Fable cross-cutting audit #2.)
+        c = (db.query(ActiveClaim)
+                .filter(ActiveClaim.id == a.active_claim_id)
+                .with_for_update()
+                .first())
         if not c:
             db.rollback()
             raise HTTPException(status_code=404,
@@ -762,7 +801,8 @@ async def upload_document(
     document_type: str = Query("Other"),
     description: Optional[str] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     c = db.query(ActiveClaim).filter(ActiveClaim.id == claim_id).first()
     if not c:
@@ -890,7 +930,8 @@ def download_document(claim_id: str, doc_id: str,
 @router.delete("/claims/{claim_id}/documents/{doc_id}")
 def delete_document(claim_id: str, doc_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(get_current_user)):
+                    current_user: dict = Depends(
+                        requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     doc = db.query(ActiveClaimDocument).filter(
         ActiveClaimDocument.id == doc_id,
         ActiveClaimDocument.active_claim_id == claim_id,
@@ -966,7 +1007,8 @@ def list_assignees(db: Session = Depends(get_db),
 def sync_claim_status(
     claim_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Query Waystar for this single claim's status, persist the response,
     log an activity entry, and auto-attach a matching ERA if found."""
@@ -989,7 +1031,8 @@ def sync_status_batch(
                     "or were checked > 24h ago.",
     ),
     max_count: int = Query(50, le=500),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Run Waystar status sync across a filter set. Returns per-claim results."""
     from app.services.active_ar_waystar_sync import sync_many
@@ -1035,7 +1078,8 @@ def sync_status_batch(
 async def enrich_active_claims_from_charge_analysis(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     """Upload a Charge Analysis XLS and enrich existing active_claims with
     procedure codes, dx codes, provider NPIs, secondary insurance, etc.
@@ -1148,9 +1192,30 @@ def settle_service_line(
     insurance_paid, patient_balance from the inputs. Updates the claim-level
     rollups so the EOB Details card shows accurate totals."""
     import json as _json
-    c = db.query(ActiveClaim).filter(ActiveClaim.id == claim_id).first()
+    # SELECT ... FOR UPDATE on the claim so two concurrent
+    # /service-lines/{n} settles don't both read+modify+write the
+    # service_lines_json blob and silently erase one of them.
+    # (Fable cross-cutting audit #2.)
+    c = (db.query(ActiveClaim)
+            .filter(ActiveClaim.id == claim_id)
+            .with_for_update()
+            .first())
     if not c:
         raise HTTPException(status_code=404, detail="claim not found")
+
+    # Dual-writer guard. If check-level allocations exist on this claim
+    # via /payments, _recompute_claim_rollup below would overwrite
+    # paid_amount/insurance_balance from line JSON, silently destroying
+    # the posted increments. Refuse line-settle on claims with
+    # allocations; the operator should add the EOB amounts via the
+    # check-level payment instead. (Fable cross-cutting audit #4.)
+    if c.allocations:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Claim has {len(c.allocations)} check-level payment "
+                    "allocation(s) — settle EOB lines on the payment "
+                    "directly to keep paid_amount accurate. Line-settle "
+                    "would overwrite the posted payments."))
 
     if not c.service_lines_json:
         raise HTTPException(status_code=422, detail="claim has no service lines (not enriched)")
@@ -1422,11 +1487,19 @@ def list_appeals_for_claim(claim_id: str,
 @router.patch("/appeals/{appeal_id}")
 def update_appeal(appeal_id: str, payload: AppealUpdate,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(get_current_user)):
+                  current_user: dict = Depends(
+                      requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     from app.models.appeal_letters import AppealLetter
     a = db.query(AppealLetter).filter(AppealLetter.id == appeal_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="appeal not found")
+    # Block edits to a sent appeal — rewriting the body or recipient of
+    # an already-faxed legal document would silently revise history.
+    # (Fable cross-cutting audit #18.)
+    if (a.status or "").lower() == "sent":
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot edit an appeal that has already been sent.")
     for field in ("subject", "body", "additional_verbiage",
                   "recipient_name", "recipient_address", "recipient_fax",
                   "signer_name", "signer_credentials", "signer_title",
@@ -1444,7 +1517,8 @@ def update_appeal(appeal_id: str, payload: AppealUpdate,
 @router.post("/appeals/{appeal_id}/generate-pdf")
 def generate_appeal_pdf(appeal_id: str,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(get_current_user)):
+                        current_user: dict = Depends(
+                            requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     """Render the appeal letter to PDF and save to GCS. Auto-attaches to claim."""
     a = db.query(AppealLetter).filter(AppealLetter.id == appeal_id).first()
     if not a:
@@ -1500,13 +1574,19 @@ def download_appeal_pdf(appeal_id: str,
 @router.post("/appeals/{appeal_id}/send-fax")
 def send_appeal_fax(appeal_id: str,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(get_current_user)):
+                    current_user: dict = Depends(
+                        requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     """Queue the generated appeal PDF for fax delivery to the recipient_fax."""
     from app.models.appeal_letters import AppealLetter
     a = db.query(AppealLetter).filter(AppealLetter.id == appeal_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="appeal not found")
-    if not a.pdf_path or not os.path.exists(a.pdf_path):
+    # pdf_path used to be a local-disk path; after the GCS migration
+    # it's an object key, so os.path.exists is always False even when
+    # the PDF exists. Just check the key is non-empty — the fax
+    # service will fail loudly if the blob isn't there. (Fable
+    # cross-cutting audit Low #21.)
+    if not a.pdf_path:
         raise HTTPException(status_code=422, detail="generate the PDF first")
     if not a.recipient_fax:
         raise HTTPException(status_code=422, detail="no recipient fax number on file")
@@ -1548,13 +1628,22 @@ def mark_appeal_sent(appeal_id: str,
                      sent_via: str = Query("mail"),
                      sent_to: Optional[str] = Query(None),
                      db: Session = Depends(get_db),
-                     current_user: dict = Depends(get_current_user)):
+                     current_user: dict = Depends(
+                         requires_tier(Module.ACTIVE_AR, Tier.WORK))):
     """Mark an appeal as sent (used when sent manually outside the system —
     e.g., printed and mailed, or sent via portal upload)."""
     from app.models.appeal_letters import AppealLetter
     a = db.query(AppealLetter).filter(AppealLetter.id == appeal_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="appeal not found")
+    # State guard: must have a generated PDF first, can't re-mark sent.
+    # (Fable cross-cutting audit #18.)
+    if (a.status or "").lower() == "sent":
+        raise HTTPException(status_code=409,
+                            detail="Appeal is already marked sent.")
+    if not a.pdf_path:
+        raise HTTPException(status_code=409,
+                            detail="Generate the PDF before marking the appeal sent.")
     a.status = "sent"
     a.sent_via = sent_via
     a.sent_at = datetime.utcnow()

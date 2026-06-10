@@ -26,8 +26,16 @@ router = APIRouter(prefix="/chart", tags=["chart"])
 
 @router.get("/{chart_number}")
 def get_chart(chart_number: str, db: Session = Depends(get_db),
-              current_user: dict = Depends(get_current_user)):
-    """Full patient chart for a given chart number."""
+              current_user: dict = Depends(
+                  requires_tier(Module.CHART, Tier.VIEW))):
+    """Full patient chart for a given chart number.
+
+    Gated at Module.CHART Tier.VIEW — previously the endpoint only
+    required `get_current_user` so any authenticated user (front desk,
+    MA, billing) could pull the full chart (meds, problem list,
+    insurance). The module's tiers existed; the crown-jewel read was
+    just not using them. (Fable cross-cutting audit #17.)
+    """
     # Demographics
     patient = db.query(PatientDirectory).filter(
         PatientDirectory.chart_number == chart_number
@@ -35,9 +43,11 @@ def get_chart(chart_number: str, db: Session = Depends(get_db),
     if not patient:
         raise HTTPException(status_code=404, detail=f"Patient {chart_number} not found")
 
+    # Audit row — drop the patient name to avoid redundant PHI in the
+    # description (chart_number already in resource_id + patient_id).
     log_view(db, "patient_chart", resource_id=chart_number,
              current_user=current_user, patient_id=chart_number,
-             description=f"Viewed chart for {patient.patient_name}")
+             description="Viewed patient chart")
 
     # Medical History
     pmh = db.query(MedicalHistory).filter(
@@ -205,8 +215,13 @@ def _bg_import_clinical():
 
 
 @router.get("/import-status/clinical")
-def clinical_import_status(db: Session = Depends(get_db)):
-    """Check how many records are loaded per table."""
+def clinical_import_status(db: Session = Depends(get_db),
+                            current_user: dict = Depends(
+                                requires_tier(Module.CHART, Tier.VIEW))):
+    """Check how many records are loaded per table. Gated at VIEW —
+    counts are practice-internal and used by the admin UI.
+    (Fable cross-cutting audit #19.)
+    """
     return {
         "medical_history": db.query(func.count(MedicalHistory.id)).scalar() or 0,
         "surgical_history": db.query(func.count(SurgicalHistory.id)).scalar() or 0,
