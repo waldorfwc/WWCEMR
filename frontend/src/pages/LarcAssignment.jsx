@@ -1114,7 +1114,17 @@ function BilledBody({ a }) {
   const save = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/bill`,
                                 { claim_number: claim }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] }),
+    onSuccess: () => {
+      // Recording the claim # moves the assignment to status='billed' and
+      // off the active dashboard, the Outstanding/Owed buckets, and the
+      // /larc-owed list. Invalidate all of them so the row actually
+      // disappears from the lists the user came from — previously only
+      // the detail page refreshed, so the row looked stuck.
+      qc.invalidateQueries({ queryKey: ['larc-assignment', a.id] })
+      qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['larc-assignments'] })
+      qc.invalidateQueries({ queryKey: ['larc-owed'] })
+    },
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
 
