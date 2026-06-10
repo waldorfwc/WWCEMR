@@ -19,7 +19,7 @@ from app.models.patient_sms import (
 )
 from app.models.surgery import Surgery
 from app.services.checklist_notifications import send_sms
-from app.services.surgery_klara_drafter import FACILITY_SHORT
+from app.services.surgery_klara_drafter import FACILITY_SHORT, arrival_time_str
 
 log = logging.getLogger(__name__)
 
@@ -28,9 +28,73 @@ _VAR_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
 
 
 def render(body: str, context: dict) -> str:
+    """Render {{var}} placeholders against `context`. Missing variables
+    render as empty (template authors expect this) but are logged so a
+    typo like {{paitent_name}} doesn't silently ship a blank to the
+    patient with no signal. (Fable portal audit M4.)
+    """
+    log = logging.getLogger(__name__)
+    missing: list[str] = []
+
     def _repl(m):
-        return str(context.get(m.group(1), ""))
-    return _VAR_RE.sub(_repl, body)
+        key = m.group(1)
+        if key not in context:
+            missing.append(key)
+            return ""
+        return str(context[key])
+
+    out = _VAR_RE.sub(_repl, body)
+    if missing:
+        log.warning("SMS template missing variables: %s", sorted(set(missing)))
+    return out
+
+
+# Twilio segment thresholds — GSM-7 (160/153 first/continuation) vs.
+# UCS-2 / Unicode (70/67). Patient names with smart quotes / accents
+# fall into UCS-2 in practice. (Fable portal audit M3.)
+_GSM7_CHARS = (
+    " \n\r"
+    "0123456789"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "!\"#$%&'()*+,-./:;<=>?@_¡¿"
+    "ÄÅÆÇÉÑÖØÜßàäåæèéìñòöøùü"
+    "ΔΦΓΛΩΠΨΣΘΞ"
+    "£¤¥§"
+    # GSM-7 extension table (counts as 2 chars each)
+    "{}[]~^|€\\"
+)
+_GSM7_SET = frozenset(_GSM7_CHARS)
+
+
+def _is_gsm7_only(text: str) -> bool:
+    return all(c in _GSM7_SET for c in text)
+
+
+def _extract_first_name(surgery: Surgery) -> str:
+    """Best-effort first-name extraction. Prefers Surgery.first_name when
+    set; otherwise parses patient_name. Handles "Last, First Middle"
+    (canonical) and "First Last" (no comma) without producing the
+    empty string on the trailing-comma edge. (Fable portal audit M6.)
+    """
+    if (surgery.first_name or "").strip():
+        return surgery.first_name.strip()
+    raw = (surgery.patient_name or "").strip()
+    if not raw:
+        return ""
+    if "," in raw:
+        # "Last, First Middle" — take what's after the LAST comma so
+        # "Smith Jr., Mary" still extracts "Mary".
+        after_comma = raw.rsplit(",", 1)[-1].strip()
+        first = after_comma.split(" ")[0].strip() if after_comma else ""
+        if first:
+            return first
+        # Trailing-comma edge ("Last, ") — fall through to first token of
+        # the part BEFORE the comma.
+        before_comma = raw.rsplit(",", 1)[0].strip()
+        return before_comma.split(" ")[0].strip()
+    # No comma: assume "First Last" — take first token.
+    return raw.split(" ")[0].strip()
 
 
 def build_sms_context(surgery: Surgery, **extras) -> dict:
@@ -51,19 +115,23 @@ def build_sms_context(surgery: Surgery, **extras) -> dict:
     `practice_phone` comes from the WWC_PRACTICE_PHONE env var. If unset, the
     var renders as an empty string — visible in QA but not a runtime error.
     """
-    first = (surgery.first_name
-             or (surgery.patient_name or "").split(",")[-1].strip().split(" ")[0]
-             or "")
+    first = _extract_first_name(surgery)
 
     surgery_date = ""
     if surgery.scheduled_date:
-        # "Wed Jun 3" — terse for SMS, drops the year
-        surgery_date = surgery.scheduled_date.strftime("%a %b %-d")
+        # "Wed Jun 3" — terse for SMS, drops the year. lstrip the day
+        # to be platform-portable (%-d is glibc-only). (Fable M1.)
+        surgery_date = (
+            surgery.scheduled_date.strftime("%a %b ")
+            + str(surgery.scheduled_date.day))
 
     surgery_time = ""
     if surgery.scheduled_start_time:
-        # "7:30 AM" — strip leading zero on hour for shorter SMS
-        surgery_time = surgery.scheduled_start_time.strftime("%-I:%M %p")
+        # "7:30 AM" — strip leading zero on hour for shorter SMS.
+        # Same portability fix as surgery_date. (Fable M1.)
+        t = surgery.scheduled_start_time
+        h12 = ((t.hour - 1) % 12) + 1
+        surgery_time = f"{h12}:{t.minute:02d} {'AM' if t.hour < 12 else 'PM'}"
 
     facility_name = ""
     if surgery.selected_facility:
@@ -82,13 +150,21 @@ def build_sms_context(surgery: Surgery, **extras) -> dict:
 
     # Patient-facing arrival time (24h source → "1:30 PM"-style render).
     # Hospitals = surgery − 2h, office = surgery − 15min.
-    from app.services.surgery_klara_drafter import arrival_time_str as _arr
-    arrival_24 = _arr(surgery.scheduled_start_time, surgery.selected_facility)
+    arrival_24 = arrival_time_str(surgery.scheduled_start_time,
+                                    surgery.selected_facility)
     arrival_time = ""
     if arrival_24:
-        hh, mm = (int(p) for p in arrival_24.split(":"))
-        arrival_time = (datetime.min.replace(hour=hh, minute=mm)
-                         .strftime("%-I:%M %p"))
+        # Accept HH:MM and HH:MM:SS — earlier code unpacked exactly 2,
+        # which raised ValueError on the seconds-bearing form. Cap at
+        # the first two parts. (Fable portal audit M5.)
+        parts = arrival_24.split(":")
+        if len(parts) >= 2:
+            try:
+                hh, mm = int(parts[0]), int(parts[1])
+                h12 = ((hh - 1) % 12) + 1
+                arrival_time = f"{h12}:{mm:02d} {'AM' if hh < 12 else 'PM'}"
+            except ValueError:
+                arrival_time = ""
 
     ctx = {
         "patient_name":   first,
@@ -104,13 +180,18 @@ def build_sms_context(surgery: Surgery, **extras) -> dict:
 
 
 def _segments(text: str) -> int:
-    """Twilio segment count: 160 chars per single-segment SMS (GSM-7
-    encoding). Multi-segment messages use 153 chars per segment because
-    of UDH overhead. Cheap approximation — Twilio's actual count may
-    differ for emojis/Unicode."""
-    if len(text) <= 160:
-        return 1
-    return (len(text) + 152) // 153
+    """Twilio segment count.
+
+    GSM-7 encoding: 160 chars per single-segment SMS, 153 chars per
+    continuation segment (UDH overhead).
+    Unicode / UCS-2 (any non-GSM-7 char, including smart quotes and
+    accented letters that show up in patient names): 70 single, 67
+    continuation. (Fable portal audit M3.)
+    """
+    if _is_gsm7_only(text):
+        return 1 if len(text) <= 160 else (len(text) + 152) // 153
+    # UCS-2 — any non-GSM-7 char forces the entire body to UCS-2
+    return 1 if len(text) <= 70 else (len(text) + 66) // 67
 
 
 def send_patient_sms(

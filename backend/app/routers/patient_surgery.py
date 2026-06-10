@@ -87,33 +87,57 @@ LOCKOUT_WINDOW_MIN = 15
 PATIENT_TOKEN_AUDIENCE = "wwc:patient-surgery"
 
 
-def _issue_patient_token(surgery_id: str) -> str:
+def _issue_patient_token(surgery_id: str, ptv: int = 0) -> str:
     expire = datetime.utcnow() + timedelta(hours=PATIENT_TOKEN_TTL_HOURS)
     return jwt.encode(
-        {"sub": str(surgery_id), "aud": PATIENT_TOKEN_AUDIENCE, "exp": expire},
+        {"sub": str(surgery_id), "aud": PATIENT_TOKEN_AUDIENCE,
+         "exp": expire, "iat": datetime.utcnow(), "ptv": int(ptv)},
         settings.secret_key,
         algorithm=settings.algorithm,
     )
 
 
-def _verify_patient_token(token: str, surgery_id: str) -> bool:
+def _decode_patient_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, settings.secret_key,
+        return jwt.decode(token, settings.secret_key,
                              algorithms=[settings.algorithm],
                              audience=PATIENT_TOKEN_AUDIENCE)
     except JWTError:
+        return None
+
+
+def _verify_patient_token(token: str, surgery_id: str) -> bool:
+    payload = _decode_patient_token(token)
+    if payload is None:
         return False
     return payload.get("sub") == str(surgery_id)
 
 
 def require_patient_token(surgery_id: str,
+                            db: Session = Depends(get_db),
                             authorization: Optional[str] = Header(None)) -> str:
-    """Raises 401 if the token doesn't match this surgery."""
+    """Raises 401 if the token doesn't match this surgery.
+
+    Also enforces the per-surgery portal_token_version (`ptv`) claim so
+    a cancel_surgery / consent_reset can revoke outstanding magic-link
+    tokens. (Fable portal audit H5-auth.)
+    """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing patient token")
     token = authorization[7:]
-    if not _verify_patient_token(token, surgery_id):
+    payload = _decode_patient_token(token)
+    if payload is None or payload.get("sub") != str(surgery_id):
         raise HTTPException(status_code=401, detail="Invalid or expired patient token")
+    s_row = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s_row is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    current_ptv = int(getattr(s_row, "portal_token_version", 0) or 0)
+    token_ptv = payload.get("ptv")
+    if token_ptv is None:
+        if current_ptv != 0:
+            raise HTTPException(status_code=401, detail="Token revoked")
+    elif int(token_ptv) != current_ptv:
+        raise HTTPException(status_code=401, detail="Token revoked")
     return token
 
 
@@ -183,7 +207,10 @@ def patient_auth(surgery_id: str, payload: AuthPayload,
     # is the lightest engagement signal and resets the 30-day clock.
     s.last_patient_activity_at = datetime.utcnow()
     db.commit()
-    token = _issue_patient_token(surgery_id)
+    token = _issue_patient_token(
+        surgery_id,
+        ptv=int(getattr(s, "portal_token_version", 0) or 0),
+    )
     return {
         "token": token,
         "expires_in_seconds": PATIENT_TOKEN_TTL_HOURS * 3600,

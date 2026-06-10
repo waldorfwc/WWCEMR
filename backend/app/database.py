@@ -389,6 +389,9 @@ def _apply_lightweight_migrations():
         # Patient portal: bind challenge codes to a purpose so a login
         # code can't authorize a payment (Fable portal audit C1).
         ("patient_portal_auth_codes", "purpose", "VARCHAR(20)"),
+        # Per-surgery portal-token version for revocation
+        # (Fable portal audit H5-auth).
+        ("surgeries", "portal_token_version", "INTEGER DEFAULT 0 NOT NULL"),
         # Pellet visits: historical-import flag
         ("pellet_visits", "is_historical", "BOOLEAN DEFAULT 0"),
         # Pellet patient-level ModMed deep link (Qlik redirect from export)
@@ -618,6 +621,33 @@ def _apply_lightweight_migrations():
                     "Failed to add CHECK constraint %s on %s — likely "
                     "existing data violates the invariant. Error: %s",
                     name, table, exc)
+
+        # Make surgery_patient_auth_attempts.surgery_id nullable so the
+        # failed-attempt log can record unmatched / DOB-only-match
+        # attempts without charging them to a specific patient.
+        # (Fable portal audit H1-router.)
+        if "surgery_patient_auth_attempts" in existing_tables:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE surgery_patient_auth_attempts "
+                        "ALTER COLUMN surgery_id DROP NOT NULL"))
+            except Exception as exc:
+                # Already nullable, or older Postgres / SQLite — idempotent.
+                import logging
+                logging.getLogger(__name__).debug(
+                    "ALTER surgery_patient_auth_attempts.surgery_id "
+                    "DROP NOT NULL skipped: %s", exc)
+        # ix_pat_auth_ip_time (model-defined) is created by metadata-
+        # create on fresh DBs, but a long-lived DB needs an explicit
+        # CREATE INDEX IF NOT EXISTS.
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_pat_auth_ip_time "
+                    "ON surgery_patient_auth_attempts (ip_address, attempted_at)"))
+        except Exception:
+            pass
 
     # SUR-numbering sequence. Smartsheet used to own the numbering; now
     # the DB does. Create the sequence and prime it (once) to the highest

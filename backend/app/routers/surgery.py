@@ -1742,6 +1742,12 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
                   "unresponsive" if payload.reason == "unresponsive" else "cancelled")
     s.status = new_status
 
+    # Revoke all outstanding patient portal / magic-link JWTs for this
+    # surgery. Their ptv claim is now stale; require_portal_token and
+    # require_patient_token will 401 them. (Fable portal audit H5-auth.)
+    from app.services.patient_portal_auth import bump_portal_token_version
+    bump_portal_token_version(db, s)
+
     # Free the booked slot so the time becomes available for waitlisters.
     # Capture the freed block_day_id so the frontend can chain into the
     # waitlist-matches drawer on success.
@@ -4485,6 +4491,12 @@ def consent_reset(surgery_id: str,
     s.consent_sent_at    = None
     s.consent_signed_at  = None
     s.consent_doc_id     = None
+
+    # Revoke patient JWTs so a stale token can't continue acting on the
+    # surgery after the consent state has been wiped. (Fable portal
+    # audit H5-auth.)
+    from app.services.patient_portal_auth import bump_portal_token_version
+    bump_portal_token_version(db, s)
 
     m = next((mm for mm in s.milestones if mm.kind == "consent"), None)
     if m:

@@ -61,6 +61,15 @@ class Surgery(Base):
     version_id = Column(Integer, default=1, nullable=False)
     __mapper_args__ = {"version_id_col": version_id}
 
+    # Per-surgery portal-token version. Patient JWTs embed this as the
+    # `ptv` claim; require_portal_token / require_patient_token reject
+    # tokens whose ptv doesn't match the current row. Bumped by
+    # cancel_surgery and consent_reset so a cancelled patient's still-
+    # outstanding token (valid up to scheduled_date + 30 days) can't
+    # be used post-cancellation. (Fable portal audit H5-auth.)
+    portal_token_version = Column(Integer, default=0, nullable=False,
+                                    server_default="0")
+
     # External IDs
     smartsheet_row_id = Column(String(40), nullable=True)
     surgery_number = Column(String(40), nullable=True)   # SUR00304 etc.
@@ -676,16 +685,22 @@ class SurgerySchedulerNotice(Base):
 
 class PatientAuthAttempt(Base):
     """Failed soft-auth attempts on the public patient date picker.
-    Used to enforce a 3-fail / 15-minute lockout."""
+    Used to enforce a 3-fail / 15-minute lockout.
+
+    surgery_id is nullable so an unmatched / DOB-only-match attempt
+    can be logged without charging it against an arbitrary patient
+    (Fable portal audit H1-router — otherwise anyone with a patient's
+    DOB could lock that patient out with 3 garbage requests)."""
     __tablename__ = "surgery_patient_auth_attempts"
     __table_args__ = (
         Index("ix_pat_auth_surgery_time", "surgery_id", "attempted_at"),
+        Index("ix_pat_auth_ip_time", "ip_address", "attempted_at"),
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
     surgery_id = Column(GUID(),
                          ForeignKey("surgeries.id", ondelete="CASCADE"),
-                         nullable=False)
+                         nullable=True)
     attempted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     success = Column(Boolean, default=False, nullable=False)
     ip_address = Column(String(45), nullable=True)

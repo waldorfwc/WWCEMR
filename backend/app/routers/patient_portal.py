@@ -39,6 +39,28 @@ def _is_locked_out(db: Session, surgery_id: str) -> bool:
     return fails >= LOCKOUT_FAILS
 
 
+def _is_locked_out_by_ip(db: Session, ip: Optional[str]) -> bool:
+    """Lockout decision for the no-match path: count failed attempts
+    from this IP in the window.
+
+    Without this, anyone who knows a patient's DOB could log 3 failed
+    attempts against the patient's surgery_id (the first DOB match)
+    and trigger a 15-minute lockout for the real patient — a free DoS.
+    Charging the lockout to the IP that's actually guessing means the
+    attacker locks themselves out, not the patient. (Fable portal
+    audit H1-router.)
+    """
+    if not ip:
+        return False
+    cutoff = datetime.utcnow() - timedelta(minutes=LOCKOUT_WINDOW_MIN)
+    fails = (db.query(PatientAuthAttempt)
+                .filter(PatientAuthAttempt.ip_address == ip,
+                         PatientAuthAttempt.success.is_(False),
+                         PatientAuthAttempt.attempted_at >= cutoff)
+                .count())
+    return fails >= LOCKOUT_FAILS
+
+
 def _log_attempt(db: Session, surgery_id, *, success: bool,
                   request: Request) -> None:
     ip = request.client.host if request.client else None
@@ -59,12 +81,20 @@ def _match_surgery(
     """Find the Surgery row that matches both DOB and last-4 of phone.
 
     Returns (matched, attempted):
-    - matched: the Surgery if both DOB and last4 match; else None.
-    - attempted: the first Surgery whose DOB matched (even if last4 failed);
-      used by the caller to log a failed attempt so lockout works.
+    - matched: the Surgery if exactly one row matches both DOB and last4.
+      If MORE THAN ONE patient matches (twins, shared household phone +
+      DOB, duplicate demographics), returns None — the caller surfaces
+      an "ambiguous match — call the office" message instead of
+      silently issuing a JWT for an arbitrary one of them.
+      (Fable portal audit H2-router.)
+    - attempted: the first Surgery whose DOB matched (still useful for
+      diagnostics; lockout uses IP now, not surgery_id).
 
     Validation errors (bad date format / bad last4 length) raise HTTPException
     422 directly.
+
+    Ambiguous match raises HTTPException 409 directly so the caller can't
+    accidentally treat a None match as "no surgery found."
     """
     try:
         dob = datetime.strptime(dob_str[:10], "%Y-%m-%d").date()
@@ -76,13 +106,35 @@ def _match_surgery(
                              detail="Please enter the last 4 digits of your phone number")
 
     first_dob_match: Surgery | None = None
+    full_matches: list[Surgery] = []
     for s in db.query(Surgery).filter(Surgery.dob == dob).all():
         if first_dob_match is None:
             first_dob_match = s
         on_file = s.cell_phone or s.phone or ""
         digits = _normalize_last4(on_file)
         if len(digits) >= 4 and digits[-4:] == last4_in:
-            return s, s
+            full_matches.append(s)
+
+    if len(full_matches) > 1:
+        # Distinct patients can collide if they happen to share DOB and
+        # the last 4 digits of a household phone, or if the demographic
+        # roster has dupes. Either way, we can't pick one safely.
+        distinct_charts = {
+            (s.chart_number or "").strip() for s in full_matches
+            if (s.chart_number or "").strip()
+        }
+        if len(distinct_charts) > 1:
+            raise HTTPException(
+                status_code=409,
+                detail=("We found more than one patient that matches that "
+                        "information. Please call our office at 240-252-2140 "
+                        "to confirm your identity."))
+        # Same chart_number across multiple surgery rows is fine — pick
+        # the most recent one as canonical.
+        full_matches.sort(key=lambda x: x.created_at or datetime.min, reverse=True)
+
+    if full_matches:
+        return full_matches[0], full_matches[0]
 
     # DOB matched at least one row but last4 didn't (or nothing matched at all)
     return None, first_dob_match
@@ -100,21 +152,25 @@ def login(payload: LoginPayload, request: Request,
             db: Session = Depends(get_db)):
     """Step 1 of sign-in. Generic error on no match (don't leak which field failed)."""
     last4 = _normalize_last4(payload.phone_last4)
+    ip_address = request.client.host if request.client else None
     matched, attempted = _match_surgery(db, payload.dob, last4)
 
     if matched is None:
-        # Log a failed attempt against the DOB-matched surgery (if any) so
-        # that repeated wrong-last4 guesses for a known patient accumulate
-        # toward lockout. If nothing matched at all, we can't track by surgery.
-        if attempted is not None:
-            if _is_locked_out(db, attempted.id):
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Too many failed attempts. Please wait "
-                           f"{LOCKOUT_WINDOW_MIN} minutes or call our "
-                           f"office at 240-252-2140.",
-                )
-            _log_attempt(db, attempted.id, success=False, request=request)
+        # IP-based lockout for the no-match path. Previously the failed
+        # attempt was logged against the first DOB-matched surgery —
+        # which let anyone who knew a patient's DOB lock that patient
+        # out with 3 garbage requests. Now we log without a surgery_id
+        # (the row is still useful for IP-level brute-force detection)
+        # and check the IP's recent failure count for the lockout
+        # decision. (Fable portal audit H1-router.)
+        if _is_locked_out_by_ip(db, ip_address):
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many failed attempts. Please wait "
+                       f"{LOCKOUT_WINDOW_MIN} minutes or call our "
+                       f"office at 240-252-2140.",
+            )
+        _log_attempt(db, None, success=False, request=request)
         raise HTTPException(status_code=404,
                              detail="No surgery matches that information")
 
@@ -126,7 +182,10 @@ def login(payload: LoginPayload, request: Request,
                    f"office at 240-252-2140.",
         )
 
-    challenge_token = auth.issue_challenge(db, matched, purpose="login")
+    try:
+        challenge_token = auth.issue_challenge(db, matched, purpose="login")
+    except auth.SmsSendError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     _log_attempt(db, matched.id, success=True, request=request)
     return {"challenge_token": challenge_token}
 
@@ -169,11 +228,17 @@ def verify(payload: VerifyPayload, db: Session = Depends(get_db)):
 def require_portal_token(
     request: Request,
     surgery_id: str,
+    db: Session = Depends(get_db),
     authorization: str = Header(default=""),
 ) -> str:
     """Validate Bearer token; ensure it's for THIS surgery_id. When the
     token's viewer claim is a staff impersonation (starts with 'staff:'),
-    reject non-GET requests — coordinators preview, they don't act."""
+    reject non-GET requests — coordinators preview, they don't act.
+
+    Checks the per-surgery portal_token_version (`ptv`) claim against
+    the current Surgery row so tokens issued before a cancel /
+    consent_reset can be revoked. (Fable portal audit H5-auth.)
+    """
     if not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing token")
     token = authorization.split(" ", 1)[1].strip()
@@ -183,6 +248,19 @@ def require_portal_token(
     sub = payload.get("sub")
     if sub != surgery_id:
         raise HTTPException(status_code=403, detail="Wrong surgery")
+    # Per-surgery token version check. Tokens with no ptv claim are
+    # legacy (issued before this fix shipped); accept them only when the
+    # current row's version is still 0.
+    token_ptv = payload.get("ptv")
+    s_row = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s_row is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    current_ptv = int(getattr(s_row, "portal_token_version", 0) or 0)
+    if token_ptv is None:
+        if current_ptv != 0:
+            raise HTTPException(status_code=401, detail="Token revoked")
+    elif int(token_ptv) != current_ptv:
+        raise HTTPException(status_code=401, detail="Token revoked")
     viewer = payload.get("viewer") or ""
     if viewer.startswith("staff:") and request.method != "GET":
         raise HTTPException(status_code=403,
@@ -412,7 +490,10 @@ def portal_payments_step_up(
         raise HTTPException(status_code=409,
                               detail="No phone on file — call our office at "
                                      "240-252-2140.")
-    challenge_token = auth.issue_challenge(db, s, purpose="payment")
+    try:
+        challenge_token = auth.issue_challenge(db, s, purpose="payment")
+    except auth.SmsSendError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     return {"step_up_token": challenge_token}
 
 
@@ -1261,7 +1342,10 @@ def portal_fmla_step_up(
         raise HTTPException(status_code=409,
                               detail="No phone on file — call our office at "
                                      "240-252-2140.")
-    challenge_token = auth.issue_challenge(db, s, purpose="payment")
+    try:
+        challenge_token = auth.issue_challenge(db, s, purpose="payment")
+    except auth.SmsSendError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     return {"step_up_token": challenge_token}
 
 
