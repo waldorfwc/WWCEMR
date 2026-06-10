@@ -17,6 +17,10 @@
  *     route still requires login (the parent guard in App.jsx ensures it).
  *   - children: for layouts that wrap nested routes (Billing). The parent
  *     entry can omit module/tier — each child carries its own gate.
+ *   - nav: { label, order, module?, tier? } — when present, this route
+ *     appears in TopNav. Visibility re-uses module/tier from the route;
+ *     pass nav.module / nav.tier to override (used by layouts whose route
+ *     gate differs from what should drive nav visibility).
  */
 import { Navigate } from 'react-router-dom'
 
@@ -119,11 +123,13 @@ const M = MODULE
 export const ROUTES = [
   // ── Personal — every authenticated staff user ───────────────────
   { path: '/me',        element: <MyProfile /> },
-  { path: '/checklist', element: <MyChecklist /> },
+  { path: '/checklist', element: <MyChecklist />,
+      nav: { label: 'My Checklist', order: 10 } },
 
   // ── Active AR + claims ─────────────────────────────────────────
   { path: '/ar',             element: <ARDashboard />,    module: M.ACTIVE_AR, tier: TIER.VIEW },
-  { path: '/active-ar',      element: <ActiveAR />,       module: M.ACTIVE_AR, tier: TIER.VIEW },
+  { path: '/active-ar',      element: <ActiveAR />,       module: M.ACTIVE_AR, tier: TIER.VIEW,
+      nav: { label: 'Active AR', order: 30 } },
   { path: '/active-ar/:id',  element: <ActiveARDetail />, module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/claims',         element: <Claims />,         module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/claims/:id',     element: <ClaimDetail />,    module: M.ACTIVE_AR, tier: TIER.VIEW },
@@ -133,9 +139,14 @@ export const ROUTES = [
 
   // ── Billing layout + nested billing tools ──────────────────────
   // The /billing layout itself has no gate — each child carries one.
+  // The nav entry uses active_ar:VIEW as a coarse shorthand for "billing
+  // staff", matching the existing isBilling role flag. Anyone with
+  // bank-recon-only access can still navigate via deep link.
   // Legacy /bank-recon URL → redirect to nested route.
   { path: '/bank-recon', element: <Navigate to="/billing/bank-recon" replace /> },
-  { path: '/billing', element: <Billing />, children: [
+  { path: '/billing', element: <Billing />,
+      nav: { label: 'Billing', order: 40, module: M.ACTIVE_AR, tier: TIER.VIEW },
+      children: [
     { path: '',                  element: <Navigate to="bank-recon" replace /> },
     { path: 'bank-recon',         element: <BankRecon />,           module: M.BANK_RECON,         tier: TIER.VIEW },
     { path: 'missing-charges',    element: <MissingCharges />,      module: M.MISSING_CHARGES,    tier: TIER.VIEW },
@@ -147,14 +158,17 @@ export const ROUTES = [
   ]},
 
   // ── Manager dashboard — checklist owners ───────────────────────
-  { path: '/manager-dashboard', element: <ManagerDashboard />, module: M.MY_CHECKLIST, tier: TIER.MANAGE },
+  { path: '/manager-dashboard', element: <ManagerDashboard />, module: M.MY_CHECKLIST, tier: TIER.MANAGE,
+      nav: { label: 'Manager', order: 90 } },
 
   // ── Recalls ────────────────────────────────────────────────────
-  { path: '/recalls', element: <Recalls />, module: M.RECALL, tier: TIER.WORK },
+  { path: '/recalls', element: <Recalls />, module: M.RECALL, tier: TIER.WORK,
+      nav: { label: 'Recalls', order: 50 } },
 
   // ── Surgery ────────────────────────────────────────────────────
   // Specific paths before /surgery/:id so they don't get swallowed.
-  { path: '/surgery',                element: <Surgery />,             module: M.SURGERY, tier: TIER.VIEW },
+  { path: '/surgery',                element: <Surgery />,             module: M.SURGERY, tier: TIER.VIEW,
+      nav: { label: 'Surgery', order: 60 } },
   { path: '/surgery/rules',          element: <SurgeryRules />,        module: M.SURGERY, tier: TIER.MANAGE },
   { path: '/surgery/block-schedule', element: <SurgeryBlockSchedule />, module: M.SURGERY, tier: TIER.MANAGE },
   { path: '/surgery/waitlist',       element: <SurgeryWaitlist />,     module: M.SURGERY, tier: TIER.WORK },
@@ -165,7 +179,8 @@ export const ROUTES = [
   { path: '/surgery/:id',            element: <SurgeryDetail />,       module: M.SURGERY, tier: TIER.VIEW },
 
   // ── LARC device tracking ───────────────────────────────────────
-  { path: '/larc',                  element: <Larc />,                module: M.LARC, tier: TIER.VIEW },
+  { path: '/larc',                  element: <Larc />,                module: M.LARC, tier: TIER.VIEW,
+      nav: { label: 'Device Tracking', order: 70 } },
   { path: '/larc/assignments/:id',  element: <LarcAssignment />,      module: M.LARC, tier: TIER.WORK },
   { path: '/larc/checkouts',        element: <LarcCheckouts />,       module: M.LARC, tier: TIER.VIEW },
   { path: '/larc/audit',            element: <LarcAudit />,           module: M.LARC, tier: TIER.MANAGE },
@@ -179,7 +194,10 @@ export const ROUTES = [
   { path: '/larc/manual',           element: <LarcManual />,          module: M.LARC, tier: TIER.VIEW },
 
   // ── Pellets (DEA Schedule III) ─────────────────────────────────
-  { path: '/pellets',                 element: <Navigate to="/pellets/patients" replace /> },
+  // The /pellets redirect is itself the nav target — clicking the link
+  // lands on /pellets/patients (gated on PELLETS:VIEW just below).
+  { path: '/pellets',                 element: <Navigate to="/pellets/patients" replace />,
+      nav: { label: 'Pellets', order: 80, module: M.PELLETS, tier: TIER.VIEW } },
   { path: '/pellets/inventory',       element: <Pellets />,              module: M.PELLETS, tier: TIER.VIEW },
   { path: '/pellets/counts',          element: <PelletCounts />,         module: M.PELLETS, tier: TIER.WORK },
   { path: '/pellets/counts/:id',      element: <PelletCountDetail />,    module: M.PELLETS, tier: TIER.WORK },
@@ -190,7 +208,8 @@ export const ROUTES = [
   { path: '/pellets/dose-types',      element: <PelletDoseTypes />,      module: M.PELLETS, tier: TIER.MANAGE },
 
   // ── Chart / documents / patients ───────────────────────────────
-  { path: '/documents',         element: <Documents />,    module: M.CHART, tier: TIER.VIEW },
+  { path: '/documents',         element: <Documents />,    module: M.CHART, tier: TIER.VIEW,
+      nav: { label: 'Charts', order: 20 } },
   { path: '/chart/:chartNumber', element: <PatientChart />, module: M.CHART, tier: TIER.VIEW },
   { path: '/patients',          element: <Patients />,      module: M.CHART, tier: TIER.VIEW },
   { path: '/patients/:id',      element: <PatientDetail />, module: M.CHART, tier: TIER.VIEW },

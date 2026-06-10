@@ -1,56 +1,43 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, History, LogOut, Shield, User as UserIcon } from 'lucide-react'
 import logoMark from '../../assets/wwc-logo.png'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
-import { MODULE, TIER } from '../../routes.jsx'
-import api from '../../utils/api'
+import { ROUTES } from '../../routes.jsx'
 
-const baseNav = [
-  { to: '/checklist', label: 'My Checklist' },
-  { to: '/documents', label: 'Charts' },
-  { to: '/active-ar', label: 'Active AR' },
-  { to: '/billing', label: 'Billing' },
-]
 
-const RECALLS_ENTRY = { to: '/recalls', label: 'Recalls' }
-const SURGERY_ENTRY = { to: '/surgery', label: 'Surgery' }
-const LARC_ENTRY = { to: '/larc', label: 'Device Tracking' }
-const PELLET_ENTRY = { to: '/pellets', label: 'Pellets' }
-const MANAGER_ENTRY = { to: '/manager-dashboard', label: 'Manager' }
+/**
+ * Pull the visible nav items from the routes table. Each entry that
+ * carries a `nav: { label, order, module?, tier? }` shows up here,
+ * filtered by the same module/tier gate as the route guard (or by
+ * nav.module / nav.tier when the entry overrides it — used by layouts
+ * whose route gate differs from the nav-visibility gate, e.g. /billing).
+ */
+function useVisibleNav() {
+  const { tier, isSuperAdmin } = useCurrentUser()
+  return useMemo(() => {
+    const entries = []
+    for (const r of ROUTES) {
+      if (!r.nav) continue
+      const mod = r.nav.module ?? r.module
+      const minTier = r.nav.tier ?? r.tier
+      let visible = true
+      if (r.superAdmin) {
+        visible = isSuperAdmin
+      } else if (mod && minTier != null) {
+        visible = tier(mod, minTier)
+      }
+      if (visible) entries.push({ to: r.path, label: r.nav.label, order: r.nav.order })
+    }
+    entries.sort((a, b) => a.order - b.order)
+    return entries
+  }, [tier, isSuperAdmin])
+}
 
-const CLINICAL_NAV = [
-  { to: '/checklist', label: 'My Checklist' },
-  { to: '/documents', label: 'Charts' },
-]
 
 export default function TopNav({ user, onLogout }) {
-  const { isAdmin, isBilling, isClinical, tier } = useCurrentUser()
-  const canRecall = tier(MODULE.RECALL, TIER.WORK)
-  const canSurgery = tier(MODULE.SURGERY, TIER.VIEW)
-  const canLarc = tier(MODULE.LARC, TIER.VIEW)
-  const canPellet = tier(MODULE.PELLETS, TIER.VIEW)
-  const canManageChecklist = tier(MODULE.MY_CHECKLIST, TIER.MANAGE)
-  // Build nav based on permissions
-  let visibleNav
-  if (isClinical) {
-    visibleNav = canRecall ? [...CLINICAL_NAV, RECALLS_ENTRY] : CLINICAL_NAV
-  } else {
-    visibleNav = canRecall ? [...baseNav, RECALLS_ENTRY] : baseNav
-  }
-  if (canSurgery) {
-    visibleNav = [...visibleNav, SURGERY_ENTRY]
-  }
-  if (canLarc) {
-    visibleNav = [...visibleNav, LARC_ENTRY]
-  }
-  if (canPellet) {
-    visibleNav = [...visibleNav, PELLET_ENTRY]
-  }
-  if (canManageChecklist) {
-    visibleNav = [...visibleNav, MANAGER_ENTRY]
-  }
+  const { isAdmin, isBilling } = useCurrentUser()
+  const visibleNav = useVisibleNav()
   const canSeeAudit = isAdmin || isBilling
 
   return (
