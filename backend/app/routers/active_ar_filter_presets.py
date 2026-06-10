@@ -10,6 +10,7 @@ when the user lands on the Active AR queue.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -75,7 +76,7 @@ def create_preset(payload: FilterPresetIn,
     if existing:
         existing.filters_json = payload.filters_json or {}
         existing.is_default   = bool(payload.is_default)
-        existing.updated_at   = datetime.utcnow()
+        existing.updated_at   = now_utc_naive()
         if existing.is_default:
             _clear_other_defaults(db, email, existing.id)
         db.commit(); db.refresh(existing)
@@ -108,7 +109,7 @@ def update_preset(preset_id: str, payload: FilterPresetIn,
     row.name         = payload.name.strip() or row.name
     row.filters_json = payload.filters_json or {}
     row.is_default   = bool(payload.is_default)
-    row.updated_at   = datetime.utcnow()
+    row.updated_at   = now_utc_naive()
     if row.is_default:
         _clear_other_defaults(db, email, row.id)
     db.commit(); db.refresh(row)

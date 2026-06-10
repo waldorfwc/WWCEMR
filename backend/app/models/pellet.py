@@ -16,6 +16,7 @@ loss, no manufacturer return.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer,
     JSON, Numeric, String, Text, UniqueConstraint,
@@ -62,7 +63,7 @@ class PelletDoseType(Base):
     typical_cost_per_dose = Column(Numeric(8, 2), nullable=True)
     notes              = Column(Text, nullable=True)
     is_active          = Column(Boolean, default=True, nullable=False)
-    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at         = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 # ─── Lots (Qualgen shipment batches) ────────────────────────────────
@@ -86,7 +87,7 @@ class PelletLot(Base):
     pack_size                   = Column(Integer, nullable=True)
     receipt_id                  = Column(GUID(), ForeignKey("pellet_receipts.id"),
                                           nullable=True, index=True)
-    received_at                 = Column(DateTime, default=datetime.utcnow, nullable=False)
+    received_at                 = Column(DateTime, default=now_utc_naive, nullable=False)
     received_by                 = Column(String(120), nullable=True)
     notes                       = Column(Text, nullable=True)
     # Acquisition cost — copied from the linked PelletOrderLine at
@@ -117,8 +118,8 @@ class PelletStock(Base):
     location  = Column(String(40), nullable=False)
     doses_on_hand = Column(Integer, default=0, nullable=False)
     status    = Column(String(20), default="active", nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                         onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                         onupdate=now_utc_naive, nullable=False)
 
     lot = relationship("PelletLot", back_populates="stock_rows")
 
@@ -161,9 +162,9 @@ class PelletOrder(Base):
                                        nullable=True)
 
     notes                   = Column(Text, nullable=True)
-    created_at              = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at              = Column(DateTime, default=datetime.utcnow,
-                                       onupdate=datetime.utcnow, nullable=False)
+    created_at              = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at              = Column(DateTime, default=now_utc_naive,
+                                       onupdate=now_utc_naive, nullable=False)
 
     lines      = relationship("PelletOrderLine",
                                 cascade="all, delete-orphan",
@@ -193,7 +194,7 @@ class PelletOrderLine(Base):
     unit_cost       = Column(Numeric(10, 2), nullable=False)   # cost per pack
     doses_received  = Column(Integer, default=0, nullable=False)
     notes           = Column(Text, nullable=True)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=now_utc_naive, nullable=False)
 
     order     = relationship("PelletOrder", back_populates="lines")
     dose_type = relationship("PelletDoseType")
@@ -214,7 +215,7 @@ class PelletOrderAttachment(Base):
     content_type  = Column(String(80),  nullable=True)
     size_bytes    = Column(Integer, nullable=True)
     storage_path  = Column(Text, nullable=False)   # absolute path on disk
-    uploaded_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at   = Column(DateTime, default=now_utc_naive, nullable=False)
     uploaded_by   = Column(String(120), nullable=False)
 
 
@@ -233,7 +234,7 @@ class PelletReceipt(Base):
     id                    = Column(GUID(), primary_key=True, default=new_uuid)
     qualgen_order_number  = Column(String(80), nullable=True)
     ordered_date          = Column(Date, nullable=True)
-    received_date         = Column(Date, default=lambda: datetime.utcnow().date(),
+    received_date         = Column(Date, default=lambda: now_utc_naive().date(),
                                     nullable=False)
     received_by           = Column(String(120), nullable=False)
     location              = Column(String(40), default="white_plains", nullable=False)
@@ -241,7 +242,7 @@ class PelletReceipt(Base):
     manifest_verified_by  = Column(String(120), nullable=True)
     manifest_verified_at  = Column(DateTime, nullable=True)
     notes                 = Column(Text, nullable=True)
-    created_at            = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at            = Column(DateTime, default=now_utc_naive, nullable=False)
 
     # New: receipt → order link. Nullable because replacement receipts
     # skip the order and point at a disposal row instead.
@@ -272,7 +273,7 @@ class PelletReceiptAttachment(Base):
     content_type  = Column(String(80),  nullable=True)
     size_bytes    = Column(Integer, nullable=True)
     storage_path  = Column(Text, nullable=False)
-    uploaded_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at   = Column(DateTime, default=now_utc_naive, nullable=False)
     uploaded_by   = Column(String(120), nullable=False)
 
 
@@ -289,7 +290,7 @@ class PelletTransfer(Base):
     from_location   = Column(String(40), nullable=False)
     to_location     = Column(String(40), nullable=False)
     doses           = Column(Integer, nullable=False)
-    sent_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at         = Column(DateTime, default=now_utc_naive, nullable=False)
     sent_by         = Column(String(120), nullable=False)
     # Courier handoff (middle leg of chain-of-custody). Sch III transfers
     # cannot be received until the courier has signed in here.
@@ -321,7 +322,7 @@ class PelletDisposal(Base):
     location      = Column(String(40), nullable=False)
     doses         = Column(Integer, nullable=False)
     reason        = Column(String(30), nullable=False)   # dropped|broken|expired|other
-    occurred_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    occurred_at   = Column(DateTime, default=now_utc_naive, nullable=False)
     performed_by  = Column(String(120), nullable=False)
     witness_user  = Column(String(120), nullable=True)   # required for controlled
     notes         = Column(Text, nullable=True)
@@ -339,7 +340,7 @@ class PelletCount(Base):
 
     id            = Column(GUID(), primary_key=True, default=new_uuid)
     location      = Column(String(40), nullable=False, index=True)
-    started_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at    = Column(DateTime, default=now_utc_naive, nullable=False)
     started_by    = Column(String(120), nullable=False)
     finished_at   = Column(DateTime, nullable=True)
     finished_by   = Column(String(120), nullable=True)
@@ -372,7 +373,7 @@ class PelletCountAttachment(Base):
     filename      = Column(String(255), nullable=False)
     storage_path  = Column(Text, nullable=False)
     size_bytes    = Column(Integer, nullable=True)
-    generated_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    generated_at  = Column(DateTime, default=now_utc_naive, nullable=False)
     generated_by  = Column(String(120), nullable=False)
 
 
@@ -416,7 +417,7 @@ class PelletAuditEvent(Base):
     )
 
     id           = Column(GUID(), primary_key=True, default=new_uuid)
-    at           = Column(DateTime, default=datetime.utcnow, nullable=False)
+    at           = Column(DateTime, default=now_utc_naive, nullable=False)
     actor        = Column(String(120), nullable=False)
     action       = Column(String(60), nullable=False)
     # examples: receipt | manifest_verified | transfer_sent | transfer_received
@@ -503,10 +504,10 @@ class PelletPatient(Base):
     preferred_mammo_facility_address = Column(Text, nullable=True)
 
     notes           = Column(Text, nullable=True)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by      = Column(String(120), nullable=True)
-    updated_at      = Column(DateTime, default=datetime.utcnow,
-                              onupdate=datetime.utcnow, nullable=False)
+    updated_at      = Column(DateTime, default=now_utc_naive,
+                              onupdate=now_utc_naive, nullable=False)
 
     visits = relationship("PelletVisit",
                             back_populates="patient",
@@ -542,7 +543,7 @@ class PelletPatientMammo(Base):
     facility_address = Column(Text, nullable=True)
     notes        = Column(Text, nullable=True)
     verified_by  = Column(String(120), nullable=True)
-    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 class PelletPatientLab(Base):
@@ -561,7 +562,7 @@ class PelletPatientLab(Base):
     estradiol    = Column(String(40), nullable=True)
     notes        = Column(Text, nullable=True)
     verified_by  = Column(String(120), nullable=True)
-    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 class PelletPatientNote(Base):
@@ -576,7 +577,7 @@ class PelletPatientNote(Base):
                             nullable=False)
     author       = Column(String(120), nullable=False)
     body         = Column(Text,        nullable=False)
-    created_at   = Column(DateTime,    default=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime,    default=now_utc_naive, nullable=False)
 
 
 class PelletVisit(Base):
@@ -636,10 +637,10 @@ class PelletVisit(Base):
     billed_at       = Column(DateTime, nullable=True)
     billed_by       = Column(String(120), nullable=True)
 
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by      = Column(String(120), nullable=True)
-    updated_at      = Column(DateTime, default=datetime.utcnow,
-                              onupdate=datetime.utcnow, nullable=False)
+    updated_at      = Column(DateTime, default=now_utc_naive,
+                              onupdate=now_utc_naive, nullable=False)
     notes           = Column(Text, nullable=True)
     # Historical-import flag: True when this row was created to capture a
     # past visit from an old system. Historical visits never touch
@@ -737,9 +738,9 @@ class PelletMammoFacility(Base):
     notes       = Column(Text, nullable=True)
     is_active   = Column(Boolean, default=True, nullable=False)
     sort_order  = Column(Integer, default=100, nullable=False)
-    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at  = Column(DateTime, default=datetime.utcnow,
-                          onupdate=datetime.utcnow, nullable=False)
+    created_at  = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at  = Column(DateTime, default=now_utc_naive,
+                          onupdate=now_utc_naive, nullable=False)
 
 
 # ─── Filter presets ─────────────────────────────────────────────────
@@ -758,9 +759,9 @@ class PelletFilterPreset(Base):
     name         = Column(String(120), nullable=False)
     filters_json = Column(JSON, nullable=False, default=dict)
     is_default   = Column(Boolean, default=False, nullable=False)
-    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at   = Column(DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at   = Column(DateTime, default=now_utc_naive,
+                            onupdate=now_utc_naive, nullable=False)
 
 
 # ─── Editable manual (mirror LARC manual) ───────────────────────────
@@ -776,6 +777,6 @@ class PelletManualSection(Base):
     sort_order    = Column(Integer, default=100, nullable=False)
     body_md       = Column(Text, nullable=False)
     updated_by    = Column(String(120), nullable=True)
-    updated_at    = Column(DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow, nullable=False)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=now_utc_naive,
+                            onupdate=now_utc_naive, nullable=False)
+    created_at    = Column(DateTime, default=now_utc_naive, nullable=False)

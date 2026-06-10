@@ -11,6 +11,7 @@ Auth flow (2-step):
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from app.utils.dt import now_utc_naive
 from decimal import Decimal
 from typing import Optional
 
@@ -30,7 +31,7 @@ LOCKOUT_WINDOW_MIN = 15
 
 
 def _is_locked_out(db: Session, surgery_id: str) -> bool:
-    cutoff = datetime.utcnow() - timedelta(minutes=LOCKOUT_WINDOW_MIN)
+    cutoff = now_utc_naive() - timedelta(minutes=LOCKOUT_WINDOW_MIN)
     fails = (db.query(PatientAuthAttempt)
                 .filter(PatientAuthAttempt.surgery_id == surgery_id,
                          PatientAuthAttempt.success.is_(False),
@@ -52,7 +53,7 @@ def _is_locked_out_by_ip(db: Session, ip: Optional[str]) -> bool:
     """
     if not ip:
         return False
-    cutoff = datetime.utcnow() - timedelta(minutes=LOCKOUT_WINDOW_MIN)
+    cutoff = now_utc_naive() - timedelta(minutes=LOCKOUT_WINDOW_MIN)
     fails = (db.query(PatientAuthAttempt)
                 .filter(PatientAuthAttempt.ip_address == ip,
                          PatientAuthAttempt.success.is_(False),
@@ -533,7 +534,7 @@ def portal_payments_checkout(
     # outstanding amount. Window the lookup tight enough that a stale
     # amount (after a manual payment or benefits recalc) can't be
     # replayed. (Fable portal audit C3.)
-    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    cutoff = now_utc_naive() - timedelta(minutes=15)
     recent = (db.query(SurgeryPayment)
                 .filter(SurgeryPayment.surgery_id == s.id,
                         SurgeryPayment.kind == "patient_balance",
@@ -999,7 +1000,7 @@ def _flip_if_unset(surgery: Surgery, flag_attr: str, ts_attr: str) -> None:
     """Idempotent flip: only stamps the first time the flag goes True."""
     if not getattr(surgery, flag_attr, False):
         setattr(surgery, flag_attr, True)
-        setattr(surgery, ts_attr, datetime.utcnow())
+        setattr(surgery, ts_attr, now_utc_naive())
 
 
 @router.post("/{surgery_id}/self-report/labs")
@@ -1378,7 +1379,7 @@ def portal_fmla_checkout(
 
     # Idempotency — same rationale as portal_payments_checkout.
     # (Fable portal audit C3.)
-    cutoff = datetime.utcnow() - timedelta(minutes=15)
+    cutoff = now_utc_naive() - timedelta(minutes=15)
     recent = (db.query(SurgeryPayment)
                 .filter(SurgeryPayment.surgery_id == s.id,
                         SurgeryPayment.kind == "fmla_fee",
@@ -1453,7 +1454,7 @@ def portal_messages_get(
     if not is_preview:
         for m in msgs:
             if m.author_kind == "staff" and m.read_by_patient_at is None:
-                m.read_by_patient_at = datetime.utcnow()
+                m.read_by_patient_at = now_utc_naive()
         db.commit()
     return {"messages": [_msg_dict(m) for m in msgs]}
 

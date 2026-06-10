@@ -16,6 +16,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from pathlib import Path
 from typing import Optional
 
@@ -145,7 +146,7 @@ def suggest_and_save_billing(db: Session, s: Surgery, *, saved_by: str) -> dict:
 
     s.billed_icd10_codes = icd10
     s.billed_cpt_codes = cpts
-    s.billed_at = datetime.utcnow()
+    s.billed_at = now_utc_naive()
     s.billed_by = saved_by
     s.billing_ai_notes = payload.get("notes") or None
     db.commit()

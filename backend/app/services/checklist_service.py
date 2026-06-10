@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from app.utils.dt import now_utc_naive
 from typing import List, Optional, Set
 
 from sqlalchemy import and_
@@ -323,7 +324,7 @@ def record_answer(
     inst.followup_count = followup_count if answer == "no" else None
     inst.followup_text = (followup_text or None) if answer == "no" else None
     inst.status = "done"
-    inst.completed_at = datetime.utcnow()
+    inst.completed_at = now_utc_naive()
     inst.completed_by = by_email
     db.commit(); db.refresh(inst)
     return inst
@@ -334,7 +335,7 @@ def mark_skipped(db: Session, instance_id: str, by_email: str, reason: str) -> T
     if inst is None:
         raise ValueError(f"task instance {instance_id} not found")
     inst.status = "skipped"
-    inst.completed_at = datetime.utcnow()
+    inst.completed_at = now_utc_naive()
     inst.completed_by = by_email
     inst.skipped_reason = reason
     db.commit(); db.refresh(inst)

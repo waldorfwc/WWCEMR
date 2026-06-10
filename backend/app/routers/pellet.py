@@ -11,6 +11,7 @@ DEA compliance:
 from __future__ import annotations
 
 from datetime import date as _date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from decimal import Decimal
 from typing import Annotated, Optional
 
@@ -423,7 +424,7 @@ STALE_IN_TRANSIT_HOURS = 24 # courier has it but no destination receive
 def _transfer_dashboard_entry(t) -> dict:
     """Build the per-transfer payload for the dashboard, including
     chain-of-custody fields and a stale flag."""
-    now = datetime.utcnow()
+    now = now_utc_naive()
     if t.status == "packed":
         anchor = t.sent_at
         hours_in_state = int((now - anchor).total_seconds() // 3600) if anchor else 0
@@ -1572,7 +1573,7 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
     # caller's UPDATE matches 0 rows because manifest_verified is now true,
     # so the second caller raises 409 instead of double-crediting stock.
     # (Fable audit #2.)
-    now = datetime.utcnow()
+    now = now_utc_naive()
     claimed = db.execute(
         update(PelletReceipt)
           .where(PelletReceipt.id == r.id,
@@ -1851,7 +1852,7 @@ def create_transfer(payload: TransferIn,
         sent_by=by,
         notes=payload.notes,
         courier_user=courier,
-        courier_picked_up_at=(datetime.utcnow() if courier else None),
+        courier_picked_up_at=(now_utc_naive() if courier else None),
         courier_notes=(payload.courier_notes or None) if courier else None,
         status=("in_transit" if courier else "packed"),
     )
@@ -1906,7 +1907,7 @@ def take_custody(transfer_id: str, payload: TransferPickupIn,
 
     by = current_user.get("email") or "system"
     t.courier_user = courier
-    t.courier_picked_up_at = datetime.utcnow()
+    t.courier_picked_up_at = now_utc_naive()
     t.courier_notes = (payload.courier_notes or None)
     t.status = "in_transit"
 
@@ -1954,7 +1955,7 @@ def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
     # transition; the second caller's rowcount is 0 → 409.
     # (Fable audit #2.)
     allowed_from = ["in_transit"] if is_controlled else ["packed", "in_transit"]
-    now = datetime.utcnow()
+    now = now_utc_naive()
     claimed = db.execute(
         update(PelletTransfer)
           .where(PelletTransfer.id == t.id,
@@ -2017,7 +2018,7 @@ def cancel_transfer(transfer_id: str, payload: TransferCancelIn,
     # Atomic claim — same pattern as receive_transfer. Two concurrent
     # cancels would otherwise both pass the status check and both refund
     # source stock, double-crediting the lot at the from_location.
-    now = datetime.utcnow()
+    now = now_utc_naive()
     claimed = db.execute(
         update(PelletTransfer)
           .where(PelletTransfer.id == t.id,
@@ -2433,7 +2434,7 @@ def record_count_scan(count_id: str, payload: CountScanIn,
     prev_notes = line.notes
 
     line.counted_doses = payload.counted_doses
-    line.counted_at = datetime.utcnow()
+    line.counted_at = now_utc_naive()
     line.counted_by = by
     line.notes = payload.notes
 
@@ -2546,7 +2547,7 @@ def finish_count(count_id: str, payload: CountFinishIn,
                    summary=f"Count reconciliation: {delta:+d} doses on lot {l.lot_id}")
 
     c.status = "finished"
-    c.finished_at = datetime.utcnow()
+    c.finished_at = now_utc_naive()
     c.finished_by = by
     c.witness_user = witness
     if payload.notes:
@@ -2596,7 +2597,7 @@ def cancel_count(count_id: str,
                             detail=f"only in-progress counts can be cancelled (this one is {c.status})")
     by = current_user.get("email") or "system"
     c.status = "cancelled"
-    c.finished_at = datetime.utcnow()
+    c.finished_at = now_utc_naive()
     c.finished_by = by
     _audit(db, actor=by, action="count_cancelled",
             count_id=c.id, location=c.location,
@@ -2770,7 +2771,7 @@ def list_audit(
     days: int = 30,
     page: int = 1, per_page: int = 200,
 ):
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = now_utc_naive() - timedelta(days=days)
     q = db.query(PelletAuditEvent).filter(PelletAuditEvent.at >= cutoff)
     if action:
         q = q.filter(PelletAuditEvent.action == action)
@@ -2952,7 +2953,7 @@ def create_or_upsert_preset(payload: FilterPresetIn,
     if existing:
         existing.filters_json = payload.filters_json or {}
         existing.is_default   = bool(payload.is_default)
-        existing.updated_at   = datetime.utcnow()
+        existing.updated_at   = now_utc_naive()
         if existing.is_default:
             _clear_other_pellet_defaults(db, email, existing.id)
         db.commit(); db.refresh(existing)
@@ -2982,7 +2983,7 @@ def update_preset(preset_id: str, payload: FilterPresetIn,
     row.name         = payload.name.strip() or row.name
     row.filters_json = payload.filters_json or {}
     row.is_default   = bool(payload.is_default)
-    row.updated_at   = datetime.utcnow()
+    row.updated_at   = now_utc_naive()
     if row.is_default:
         _clear_other_pellet_defaults(db, email, row.id)
     db.commit(); db.refresh(row)
@@ -3959,7 +3960,7 @@ def verify_mammo(patient_id: str, payload: MammoIn,
         p.mammo_date = dt
         p.mammo_result = payload.mammo_result.strip()
         p.mammo_verified_by = by
-        p.mammo_verified_at = datetime.utcnow()
+        p.mammo_verified_at = now_utc_naive()
 
     _complete_visit_milestone_for_patient(db, p, "mammo_verified", by)
     _audit(db, actor=by, action="mammo_verified",
@@ -4044,7 +4045,7 @@ def verify_labs(patient_id: str, payload: LabsIn,
         p.labs_tsh = payload.labs_tsh
         p.labs_estradiol = payload.labs_estradiol
         p.labs_verified_by = by
-        p.labs_verified_at = datetime.utcnow()
+        p.labs_verified_at = now_utc_naive()
 
     _complete_visit_milestone_for_patient(db, p, "labs_verified", by)
     _audit(db, actor=by, action="labs_verified",
@@ -4188,7 +4189,7 @@ def _complete_visit_milestone_for_patient(db: Session, p: PelletPatient,
     m = next((m for m in v.milestones if m.kind == kind), None)
     if m and m.status == "pending":
         m.status = "done"
-        m.completed_at = datetime.utcnow()
+        m.completed_at = now_utc_naive()
         m.completed_by = by
 
 
@@ -4422,7 +4423,7 @@ def _complete_milestone(v: PelletVisit, kind: str, by: str,
     if not m or m.status not in ("pending",):
         return False
     m.status = "done"
-    m.completed_at = datetime.utcnow()
+    m.completed_at = now_utc_naive()
     m.completed_by = by
     if notes:
         m.notes = notes
@@ -4573,7 +4574,7 @@ def cancel_visit(visit_id: str, payload: VisitCancelIn,
                                  f"(visit cancelled)"),
                         detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
             d.status = "returned"
-            d.resolved_at = datetime.utcnow()
+            d.resolved_at = now_utc_naive()
             d.resolved_by = by
 
     v.status  = "cancelled"
@@ -4600,7 +4601,7 @@ def klara_sent(visit_id: str,
         raise HTTPException(status_code=404, detail="visit not found")
     by = current_user.get("email") or "system"
     v.payment_status = "sent"
-    v.klara_sent_at = datetime.utcnow()
+    v.klara_sent_at = now_utc_naive()
     v.klara_sent_by = by
     _audit(db, actor=by, action="klara_sent",
             summary=f"Klara payment link sent (${v.price_amount}) for visit {v.id}",
@@ -4619,7 +4620,7 @@ def payment_collected(visit_id: str,
         raise HTTPException(status_code=404, detail="visit not found")
     by = current_user.get("email") or "system"
     v.payment_status = "collected"
-    v.payment_collected_at = datetime.utcnow()
+    v.payment_collected_at = now_utc_naive()
     v.payment_collected_by = by
     _complete_milestone(v, "payment_collected", by)
     _audit(db, actor=by, action="payment_collected",
@@ -4704,7 +4705,7 @@ def set_dose_card(visit_id: str, payload: DoseCardIn,
         db.add(PelletVisitDose(
             visit_id=v.id, dose_type_id=dt.id, quantity=qty,
             lot_id=lot.id, position=i, status="planned",
-            pulled_at=datetime.utcnow(), pulled_by=by,
+            pulled_at=now_utc_naive(), pulled_by=by,
         ))
         _audit(db, actor=by, action="dose_proposed_pull",
                 lot_id=lot.id, location=location, delta_doses=-qty,
@@ -4777,7 +4778,7 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
         d = PelletVisitDose(
             visit_id=v.id, dose_type_id=dt.id, quantity=payload.quantity,
             position=pos, status="inserted",
-            resolved_at=v.inserted_at or datetime.utcnow(),
+            resolved_at=v.inserted_at or now_utc_naive(),
             resolved_by=by, notes=payload.notes,
         )
         db.add(d); db.flush()
@@ -4801,7 +4802,7 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
         d = PelletVisitDose(
             visit_id=v.id, dose_type_id=dt.id, quantity=payload.quantity,
             lot_id=lot.id, position=pos, status="planned",
-            pulled_at=datetime.utcnow(), pulled_by=by,
+            pulled_at=now_utc_naive(), pulled_by=by,
             notes=payload.notes,
         )
         db.add(d); db.flush()
@@ -4874,7 +4875,7 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
     # Pull from the new lot
     _adjust_stock(db, new_stock, -(d.quantity))
     d.lot_id = new_lot.id
-    d.pulled_at = datetime.utcnow()
+    d.pulled_at = now_utc_naive()
     d.pulled_by = by
 
     _audit(db, actor=by, action="dose_proposed_pull",
@@ -5108,7 +5109,7 @@ def fill_bag(visit_id: str, payload: BagFillIn,
         _adjust_stock(db, stock, -(d.quantity))
         d.lot_id = lot.id
         d.status = "pulled"
-        d.pulled_at = datetime.utcnow()
+        d.pulled_at = now_utc_naive()
         d.pulled_by = by
 
         _audit(db, actor=by, action="dose_pulled",
@@ -5121,7 +5122,7 @@ def fill_bag(visit_id: str, payload: BagFillIn,
     # Mark bagged milestone
     all_pulled = all(d.status != "planned" for d in v.doses)
     if all_pulled:
-        v.bagged_at = datetime.utcnow()
+        v.bagged_at = now_utc_naive()
         v.bagged_by = by
         _complete_milestone(v, "bagged", by)
 
@@ -5162,9 +5163,9 @@ def record_insertion(visit_id: str, payload: InsertionOutcomeIn,
         for d in v.doses:
             if d.status in ("pulled", "added"):
                 d.status = "inserted"
-                d.resolved_at = datetime.utcnow()
+                d.resolved_at = now_utc_naive()
                 d.resolved_by = by
-        v.inserted_at = datetime.utcnow()
+        v.inserted_at = now_utc_naive()
         v.inserted_by = by
         v.outcome = "perfect"
         v.status = "inserted"
@@ -5185,7 +5186,7 @@ def record_insertion(visit_id: str, payload: InsertionOutcomeIn,
                                     f"({payload.outcome})",
                             detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
                 d.status = "returned"
-                d.resolved_at = datetime.utcnow()
+                d.resolved_at = now_utc_naive()
                 d.resolved_by = by
         v.outcome = payload.outcome
         v.status = "cancelled" if payload.outcome == "cancelled" else "rescheduled"
@@ -5227,7 +5228,7 @@ def confirm_doses_as_planned(visit_id: str,
 
     by = current_user.get("email") or "system"
     location = _require_visit_location(v)
-    now = datetime.utcnow()
+    now = now_utc_naive()
 
     # First pass: validate every planned dose has a FIFO lot available.
     for d in proposed:
@@ -5349,7 +5350,7 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
 
     by = current_user.get("email") or "system"
     location = _require_visit_location(v)
-    now = datetime.utcnow()
+    now = now_utc_naive()
     by_dose = {str(d.id): d for d in (v.doses or [])}
 
     # ── 1. Validate every line up front (so partial commits don't happen) ──
@@ -5582,7 +5583,7 @@ def add_dose_mid_procedure(visit_id: str, payload: MidAddIn,
     d = PelletVisitDose(
         visit_id=v.id, dose_type_id=dt.id, lot_id=lot.id,
         quantity=payload.quantity, position=pos,
-        status="added", pulled_at=datetime.utcnow(), pulled_by=by,
+        status="added", pulled_at=now_utc_naive(), pulled_by=by,
         notes=payload.notes,
     )
     db.add(d); db.flush()
@@ -5642,7 +5643,7 @@ def dispose_visit_dose(visit_id: str, payload: VisitDoseDisposalIn,
     )
     db.add(disposal); db.flush()
     d.status = "disposed"
-    d.resolved_at = datetime.utcnow()
+    d.resolved_at = now_utc_naive()
     d.resolved_by = by
 
     _audit(db, actor=by, action="dose_disposed_mid",
@@ -5674,7 +5675,7 @@ def bill_visit(visit_id: str, payload: BillIn,
         raise HTTPException(status_code=422, detail="claim_number required")
     by = current_user.get("email") or "system"
     v.claim_number = payload.claim_number.strip()
-    v.billed_at = datetime.utcnow()
+    v.billed_at = now_utc_naive()
     v.billed_by = by
     v.status = "billed"
     _complete_milestone(v, "billed", by)
@@ -5763,7 +5764,7 @@ def revert_visit_status(visit_id: str, payload: RevertIn,
                             detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
                                     "reason": reason})
                 d.status = "returned"
-                d.resolved_at = datetime.utcnow()
+                d.resolved_at = now_utc_naive()
                 d.resolved_by = by
         v.bagged_at = None
         v.bagged_by = None
@@ -5835,7 +5836,7 @@ def advance_milestone(visit_id: str, milestone_id: str,
         m.completed_at = None
         m.completed_by = None
     else:
-        m.completed_at = datetime.utcnow()
+        m.completed_at = now_utc_naive()
         m.completed_by = by
     if payload.notes is not None:
         m.notes = payload.notes
@@ -5848,7 +5849,7 @@ def advance_milestone(visit_id: str, milestone_id: str,
         if payload.status == "done":
             if v.payment_status == "not_sent":
                 v.payment_status = "sent"
-            v.klara_sent_at = v.klara_sent_at or datetime.utcnow()
+            v.klara_sent_at = v.klara_sent_at or now_utc_naive()
             v.klara_sent_by = v.klara_sent_by or by
         elif payload.status == "pending":
             if v.payment_status == "sent":
@@ -5858,7 +5859,7 @@ def advance_milestone(visit_id: str, milestone_id: str,
     elif m.kind == "payment_collected":
         if payload.status == "done":
             v.payment_status = "collected"
-            v.payment_collected_at = v.payment_collected_at or datetime.utcnow()
+            v.payment_collected_at = v.payment_collected_at or now_utc_naive()
             v.payment_collected_by = v.payment_collected_by or by
         elif payload.status == "pending":
             # If klara was sent, fall back to "sent", otherwise "not_sent"

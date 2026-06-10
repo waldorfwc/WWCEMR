@@ -25,6 +25,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -124,7 +125,7 @@ def run_sync(db: Session, *, triggered_by: str = "system:cron") -> dict:
     if not is_configured():
         run.status = "error"
         run.error_message = "Google Workspace sync not configured (missing env vars)"
-        run.finished_at = datetime.utcnow()
+        run.finished_at = now_utc_naive()
         db.commit()
         log.info("Google sync skipped — not configured")
         return _run_dict(run)
@@ -134,7 +135,7 @@ def run_sync(db: Session, *, triggered_by: str = "system:cron") -> dict:
     except Exception as exc:
         run.status = "error"
         run.error_message = f"Directory API call failed: {exc}"
-        run.finished_at = datetime.utcnow()
+        run.finished_at = now_utc_naive()
         db.commit()
         log.exception("Google sync API call failed")
         return _run_dict(run)
@@ -144,7 +145,7 @@ def run_sync(db: Session, *, triggered_by: str = "system:cron") -> dict:
     our_users = {u.email: u for u in db.query(User).all()}
     google_emails = {gu["email"] for gu in google_users}
 
-    now = datetime.utcnow()
+    now = now_utc_naive()
     created = activated = suspended = excluded = 0
     detail = {"created": [], "activated": [], "suspended": []}
 
@@ -205,7 +206,7 @@ def run_sync(db: Session, *, triggered_by: str = "system:cron") -> dict:
     run.suspended = suspended
     run.excluded = excluded
     run.status = "success"
-    run.finished_at = datetime.utcnow()
+    run.finished_at = now_utc_naive()
     run.detail_json = detail
 
     db.commit()

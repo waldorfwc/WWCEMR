@@ -9,6 +9,7 @@ in supposedly-closed periods).
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Column, String, Date, DateTime, Integer, Numeric, Text, ForeignKey, Index,
@@ -49,7 +50,7 @@ class ImportAuditLog(Base):
     rows_changed = Column(Integer, nullable=True)
 
     imported_by = Column(String(255), nullable=True)
-    imported_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    imported_at = Column(DateTime, nullable=False, default=now_utc_naive)
 
     fingerprints = relationship(
         "ImportRowFingerprint",

@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Date, DateTime, Numeric, ForeignKey, Text, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import enum
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -40,8 +41,8 @@ class Payment(Base):
     posted_by = Column(String(100), nullable=True)
     notes = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     patient = relationship("Patient")
     claim = relationship("Claim")

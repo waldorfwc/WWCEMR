@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import io
 from datetime import date as _date, datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 import pandas as pd
@@ -297,7 +298,7 @@ def _mark_visit_inserted(db: Session, v: PelletVisit, dt: _date, actor: str) -> 
                    PelletVisitMilestone.kind == "inserted").first())
     if m and m.status == "pending":
         m.status = "done"
-        m.completed_at = datetime.utcnow()
+        m.completed_at = now_utc_naive()
         m.completed_by = actor
     # Also mark the 'scheduled' one if not already
     sched = (db.query(PelletVisitMilestone)
@@ -305,5 +306,5 @@ def _mark_visit_inserted(db: Session, v: PelletVisit, dt: _date, actor: str) -> 
                        PelletVisitMilestone.kind == "scheduled").first())
     if sched and sched.status == "pending":
         sched.status = "done"
-        sched.completed_at = datetime.utcnow()
+        sched.completed_at = now_utc_naive()
         sched.completed_by = actor

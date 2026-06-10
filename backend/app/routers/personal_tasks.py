@@ -12,6 +12,7 @@ Any of the above can see the task; only owner / assignee can mutate
 from __future__ import annotations
 
 from datetime import date as _date, datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -107,7 +108,7 @@ def _maybe_close_parent_if_all_subtasks_done(db: Session, parent_id, *, by: str)
                   .filter(PersonalTask.parent_id == parent_id).all())
     if siblings and all(s.status == "closed" for s in siblings):
         parent.status = "closed"
-        parent.closed_at = datetime.utcnow()
+        parent.closed_at = now_utc_naive()
         parent.closed_by = by
         parent.updated_by = by
         db.add(parent)
@@ -284,7 +285,7 @@ def patch_task(task_id: str, payload: PatchTaskIn,
         prior = t.status
         t.status = new_status
         if new_status == "closed":
-            t.closed_at = datetime.utcnow()
+            t.closed_at = now_utc_naive()
             t.closed_by = me
         elif prior == "closed":
             # Re-opening

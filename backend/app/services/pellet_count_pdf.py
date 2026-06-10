@@ -12,6 +12,7 @@ Saved under uploads/pellet_counts/ and registered as a PelletCountAttachment.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from io import BytesIO
 from typing import Tuple
 
@@ -46,7 +47,7 @@ def generate_count_pdf(db: Session, count: PelletCount) -> Tuple[bytes, str]:
     started_date = count.started_at.strftime("%Y%m%d") if count.started_at else "nodate"
     loc_slug = count.location or "loc"
     fname = (f"pellet-count_{loc_slug}_{started_date}_"
-             f"{datetime.utcnow().strftime('%H%M%S')}.pdf")
+             f"{now_utc_naive().strftime('%H%M%S')}.pdf")
     buf = BytesIO()
 
     doc = SimpleDocTemplate(buf, pagesize=letter,

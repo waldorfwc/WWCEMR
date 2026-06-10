@@ -21,6 +21,7 @@ Each sweep is idempotent and safe to run repeatedly.
 from __future__ import annotations
 
 from datetime import date as _date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from sqlalchemy.orm import Session, joinedload
@@ -99,7 +100,7 @@ def sweep_stale_assignments(db: Session, *, today: Optional[_date] = None) -> di
     """Assignments older than ASSIGNMENT_REALLOCATE_AFTER_DAYS with no
     insertion yet → patient goes on Owed list."""
     today = today or _date.today()
-    cutoff = datetime.utcnow() - timedelta(days=ASSIGNMENT_REALLOCATE_AFTER_DAYS)
+    cutoff = now_utc_naive() - timedelta(days=ASSIGNMENT_REALLOCATE_AFTER_DAYS)
     n_reallocated = 0
     candidates = (db.query(LarcAssignment)
                     .options(joinedload(LarcAssignment.device))
@@ -126,7 +127,7 @@ def sweep_pharmacy_sla(db: Session) -> dict:
     """Pharmacy orders faxed >SLA days ago with no device received → write
     audit row. The dashboard already surfaces them in real-time; this
     sweep adds a daily audit timestamp so the breach is on record."""
-    cutoff = datetime.utcnow() - timedelta(days=PHARMACY_ORDER_SLA_DAYS)
+    cutoff = now_utc_naive() - timedelta(days=PHARMACY_ORDER_SLA_DAYS)
     rows = (db.query(LarcAssignment)
               .options(joinedload(LarcAssignment.device))
               .filter(LarcAssignment.source_flow == "pharmacy_order",
@@ -135,12 +136,12 @@ def sweep_pharmacy_sla(db: Session) -> dict:
                       LarcAssignment.device_received_at.is_(None))
               .all())
     for a in rows:
-        days_overdue = (datetime.utcnow() - a.request_faxed_at).days - PHARMACY_ORDER_SLA_DAYS
+        days_overdue = (now_utc_naive() - a.request_faxed_at).days - PHARMACY_ORDER_SLA_DAYS
         # Only write once per assignment per day (idempotent-ish)
         recent = (db.query(LarcAuditEvent)
                     .filter(LarcAuditEvent.assignment_id == a.id,
                             LarcAuditEvent.action == "pharmacy_sla_breach",
-                            LarcAuditEvent.occurred_at >= datetime.utcnow() - timedelta(hours=20))
+                            LarcAuditEvent.occurred_at >= now_utc_naive() - timedelta(hours=20))
                     .first())
         if recent:
             continue
@@ -167,7 +168,7 @@ def sweep_fax_retry(db: Session) -> dict:
     from app.models.larc import LarcEnrollmentEnvelope
     from app.services.larc_pharmacy_fax import fax_envelope
 
-    now = datetime.utcnow()
+    now = now_utc_naive()
     candidates = (db.query(LarcEnrollmentEnvelope)
                     .filter(LarcEnrollmentEnvelope.fax_status == "fax_failed",
                             LarcEnrollmentEnvelope.next_fax_retry_at.isnot(None),
@@ -250,7 +251,7 @@ def sweep_unwedge_fax_in_progress(db: Session, *,
     cycle.
     """
     from app.models.larc import LarcEnrollmentEnvelope
-    now = datetime.utcnow()
+    now = now_utc_naive()
     cutoff = now - timedelta(minutes=max_age_minutes)
     wedged = (db.query(LarcEnrollmentEnvelope)
                 .filter(LarcEnrollmentEnvelope.fax_status == "in_progress",

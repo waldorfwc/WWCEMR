@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from decimal import Decimal
 from typing import Optional
 
@@ -355,7 +356,7 @@ def _handle_session_completed(db, event_type, obj):
                     amount_paid, pay.amount_requested, pay.id)
     pay.amount_paid = amount_paid
     pay.status = "paid"
-    pay.paid_at = datetime.utcnow()
+    pay.paid_at = now_utc_naive()
     pay.stripe_payment_intent_id = obj.get("payment_intent")
     pay.last_event_payload = obj
     s = (db.query(Surgery)
@@ -364,7 +365,7 @@ def _handle_session_completed(db, event_type, obj):
             .first())
     if s and pay.kind == "fmla_fee":
         s.fmla_fee_paid = True
-        s.fmla_fee_paid_at = datetime.utcnow()
+        s.fmla_fee_paid_at = now_utc_naive()
         s.fmla_fee_stripe_session_id = session_id
         has_blank = any(d.kind == "fmla_blank" for d in s.documents)
         if has_blank and not s.fmla_status:
@@ -441,7 +442,7 @@ def _handle_refund(db, event_type, obj):
 
     pay.amount_refunded = cumulative_refunded
     pay.last_event_payload = obj
-    pay.refunded_at = datetime.utcnow()
+    pay.refunded_at = now_utc_naive()
 
     # Final-state status: fully refunded only when cumulative refund
     # equals the original amount_paid. Otherwise it's a partial.
@@ -516,7 +517,7 @@ def _handle_payment_failed(db, event_type, obj):
         return
     before = pay.status
     pay.status = "failed"
-    pay.failed_at = datetime.utcnow()
+    pay.failed_at = now_utc_naive()
     err = obj.get("last_payment_error") or {}
     pay.failure_reason = err.get("message") or err.get("code")
     pay.last_event_payload = obj

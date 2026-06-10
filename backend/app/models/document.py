@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Date, DateTime, Integer, Index
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from app.database import Base
 from app.models.guid import GUID, new_uuid
 
@@ -16,7 +17,7 @@ class PatientDocument(Base):
     filename = Column(String(300), nullable=False)
     file_path = Column(String(500), nullable=False)
     file_size_kb = Column(Integer, default=0)
-    indexed_at = Column(DateTime, default=datetime.utcnow)
+    indexed_at = Column(DateTime, default=now_utc_naive)
 
     __table_args__ = (
         Index("ix_doc_chart_type", "chart_number", "doc_type"),

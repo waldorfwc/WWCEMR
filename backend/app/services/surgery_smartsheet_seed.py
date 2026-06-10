@@ -14,6 +14,7 @@ import logging
 import os
 import re
 from datetime import datetime, date
+from app.utils.dt import now_utc_naive
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -666,7 +667,7 @@ def _ensure_milestones(db: Session, s: Surgery, row: dict) -> None:
     catalog = OFFICE_MILESTONES if s.selected_facility == "office" else HOSPITAL_MILESTONES
 
     existing = {m.kind: m for m in s.milestones}
-    now = datetime.utcnow()
+    now = now_utc_naive()
     for pos, (kind, title, expected_days) in enumerate(catalog, 1):
         m_status, m_completed_at = _milestone_status_from_columns(kind, row)
         if kind in existing:

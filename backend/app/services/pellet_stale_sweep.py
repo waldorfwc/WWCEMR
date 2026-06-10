@@ -20,6 +20,7 @@ Safe to re-run; idempotent — once cancelled, the visit no longer matches.
 from __future__ import annotations
 
 from datetime import datetime, date, timedelta
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy.orm import Session, joinedload
 
@@ -71,7 +72,7 @@ def sweep_stale_visits(db: Session, *,
     doses_returned = 0
     stock_returned = 0
     skipped_no_location = 0
-    now = datetime.utcnow()
+    now = now_utc_naive()
 
     PELLET_LOCATIONS = ("white_plains", "brandywine", "arlington")
 

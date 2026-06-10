@@ -1,6 +1,7 @@
 """Per-insurance CPT fee schedule + CCI / Multiple-Procedure-Reduction
 edits used to estimate the allowed amount on a surgery."""
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Column, String, Text, DateTime, Numeric, Date,
@@ -32,9 +33,9 @@ class SurgeryFeeScheduleEntry(Base):
     notes           = Column(Text, nullable=True)
     effective_from  = Column(Date, nullable=True)
 
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at      = Column(DateTime, default=datetime.utcnow,
-                              onupdate=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at      = Column(DateTime, default=now_utc_naive,
+                              onupdate=now_utc_naive, nullable=False)
     created_by      = Column(String(120), nullable=True)
 
 
@@ -66,7 +67,7 @@ class SurgeryCciEdit(Base):
     action          = Column(String(20), nullable=False)
     notes           = Column(Text, nullable=True)
 
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by      = Column(String(120), nullable=True)
 
 

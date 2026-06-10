@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 import httpx
@@ -363,7 +364,7 @@ def send_consent_envelopes(
 
     sent: list[dict] = []
     skipped: list[dict] = []
-    now = datetime.utcnow()
+    now = now_utc_naive()
     sent_rows: list[SurgeryConsentEnvelope] = []
 
     for match in matches:
@@ -541,25 +542,25 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
         return
 
     row.status = new_status
-    row.last_synced_at = datetime.utcnow()
+    row.last_synced_at = now_utc_naive()
 
     if raw_status == "completed":
         if not row.signed_at:
             row.signed_at = (
                 _parse_dt(env.get("completedDateTime") or env.get("completedAt"))
-                or datetime.utcnow()
+                or now_utc_naive()
             )
     elif raw_status == "declined":
         if not row.declined_at:
             row.declined_at = (
                 _parse_dt(env.get("declinedDateTime") or env.get("declinedAt"))
-                or datetime.utcnow()
+                or now_utc_naive()
             )
     elif raw_status == "revoked":
         if not row.voided_at:
             row.voided_at = (
                 _parse_dt(env.get("revokedDateTime") or env.get("revokedAt"))
-                or datetime.utcnow()
+                or now_utc_naive()
             )
 
     # Per-signer: look for the patient role (signerRole == "Patient" is the
@@ -581,7 +582,7 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
             row.patient_signed_at = (
                 _parse_dt(patient.get("signedDateTime")
                             or patient.get("completedDateTime"))
-                or datetime.utcnow()
+                or now_utc_naive()
             )
 
 
@@ -600,7 +601,7 @@ def reconcile_surgery_consent(db: Session, s: Surgery) -> None:
     if all(e.status == "signed" for e in envs):
         s.consent_status = "signed"
         latest = max((e.signed_at for e in envs if e.signed_at), default=None)
-        s.consent_signed_at = latest or datetime.utcnow()
+        s.consent_signed_at = latest or now_utc_naive()
         m = next(
             (mm for mm in (s.milestones or []) if mm.kind == "consent"), None
         )
@@ -715,6 +716,6 @@ def void_envelope_row(
             f"BoldSign revoke failed: {r.status_code} {r.text[:300]}"
         )
     row.status = "voided"
-    row.voided_at = datetime.utcnow()
-    row.last_synced_at = datetime.utcnow()
+    row.voided_at = now_utc_naive()
+    row.last_synced_at = now_utc_naive()
     db.commit()

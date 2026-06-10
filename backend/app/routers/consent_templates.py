@@ -9,6 +9,7 @@ procedure-matched template.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -152,7 +153,7 @@ def update_template(template_id: str, payload: ConsentTemplateIn,
     t.min_days_before_surgery = payload.min_days_before_surgery
     t.notes = payload.notes
     t.is_active = bool(payload.is_active)
-    t.updated_at = datetime.utcnow()
+    t.updated_at = now_utc_naive()
     db.commit(); db.refresh(t)
     return _to_dict(t)
 

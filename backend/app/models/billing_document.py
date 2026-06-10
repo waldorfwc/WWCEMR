@@ -10,6 +10,7 @@ stores the on-disk filename and metadata.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Column, DateTime, ForeignKey, Integer, JSON, String, Text,
 )
@@ -56,7 +57,7 @@ class BillingDocument(Base):
     status            = Column(String(20), default="new",   nullable=False)
 
     uploaded_by       = Column(String(120), nullable=False)
-    uploaded_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at       = Column(DateTime, default=now_utc_naive, nullable=False)
 
     # JSON list of user emails. Empty list / null = unassigned (everyone sees).
     assigned_to       = Column(JSON, default=list, nullable=False)
@@ -85,7 +86,7 @@ class BillingDocumentNote(Base):
     document_id  = Column(GUID(), ForeignKey("billing_documents.id"), nullable=False, index=True)
     author       = Column(String(120), nullable=False)
     body         = Column(Text,        nullable=False)
-    created_at   = Column(DateTime,    default=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime,    default=now_utc_naive, nullable=False)
 
 
 class BillingDocumentAccess(Base):
@@ -99,5 +100,5 @@ class BillingDocumentAccess(Base):
     action       = Column(String(40),  nullable=False)
     # Examples: viewed | downloaded | classified | assigned | unassigned
     #           | worked | reopened | note_added
-    at           = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    at           = Column(DateTime, default=now_utc_naive, nullable=False, index=True)
     detail       = Column(JSON, nullable=True)

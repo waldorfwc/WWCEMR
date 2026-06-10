@@ -4,6 +4,7 @@ Spec: docs/superpowers/specs/2026-06-06-permissions-redesign-design.md
 Plan: docs/superpowers/plans/2026-06-06-permissions-redesign.md (Task 1)
 """
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
 
@@ -36,5 +37,5 @@ class UserModuleOverride(Base):
     )
     module    = Column(String(60), primary_key=True, nullable=False)
     tier      = Column(Integer, nullable=False)
-    added_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    added_at  = Column(DateTime, default=now_utc_naive, nullable=False)
     added_by  = Column(String(120), nullable=False)

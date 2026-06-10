@@ -5,6 +5,7 @@ portal JWT). These endpoints are gated by the staff session via
 get_current_user.
 """
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -76,7 +77,7 @@ def staff_mark_read(
                       SurgeryMessage.author_kind == "patient",
                       SurgeryMessage.read_by_staff_at.is_(None))
               .all())
-    now = datetime.utcnow()
+    now = now_utc_naive()
     for m in msgs:
         m.read_by_staff_at = now
     db.commit()

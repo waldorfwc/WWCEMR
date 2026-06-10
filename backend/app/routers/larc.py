@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date as _date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from typing import Annotated
@@ -308,12 +309,12 @@ def dashboard(db: Session = Depends(get_db),
                                   LarcAssignment.request_faxed_at.isnot(None),
                                   LarcAssignment.device_received_at.is_(None),
                                   LarcAssignment.request_faxed_at
-                                      <= datetime.utcnow() - timedelta(days=PHARMACY_ORDER_SLA_DAYS))
+                                      <= now_utc_naive() - timedelta(days=PHARMACY_ORDER_SLA_DAYS))
                           .order_by(LarcAssignment.request_faxed_at)
                           .limit(20).all())
 
     # Checkout outstanding ack
-    cutoff_ack = datetime.utcnow() - timedelta(hours=CHECKOUT_ACK_WINDOW_HOURS)
+    cutoff_ack = now_utc_naive() - timedelta(hours=CHECKOUT_ACK_WINDOW_HOURS)
     unack_checkouts = (db.query(LarcCheckout)
                          .options(joinedload(LarcCheckout.assignment))
                          .filter(LarcCheckout.approval_status == "approved",
@@ -343,7 +344,7 @@ def dashboard(db: Session = Depends(get_db),
                 "chart_number": a.chart_number,
                 "device_type_name": a.device.device_type.name if a.device and a.device.device_type else None,
                 "faxed_on": a.request_faxed_at.isoformat() if a.request_faxed_at else None,
-                "days_overdue": (datetime.utcnow() - a.request_faxed_at).days - PHARMACY_ORDER_SLA_DAYS
+                "days_overdue": (now_utc_naive() - a.request_faxed_at).days - PHARMACY_ORDER_SLA_DAYS
                                 if a.request_faxed_at else None,
             }
             for a in overdue_pharmacy
@@ -354,7 +355,7 @@ def dashboard(db: Session = Depends(get_db),
                 "patient_name": c.assignment.patient_name if c.assignment else None,
                 "requested_by": c.requested_by,
                 "requested_at": c.requested_at.isoformat(),
-                "hours_outstanding": int((datetime.utcnow() - c.requested_at).total_seconds() // 3600),
+                "hours_outstanding": int((now_utc_naive() - c.requested_at).total_seconds() // 3600),
             }
             for c in unack_checkouts
         ],
@@ -1306,10 +1307,10 @@ def _mark_milestone(a: LarcAssignment, kind: str, *, status: str, by: str,
         return None
     m.status = status
     if status in ("done", "skipped", "not_applicable"):
-        m.completed_at = datetime.utcnow()
+        m.completed_at = now_utc_naive()
         m.completed_by = by
     elif status == "in_progress":
-        m.started_at = m.started_at or datetime.utcnow()
+        m.started_at = m.started_at or now_utc_naive()
     if notes is not None:
         m.notes = notes
     return m
@@ -1472,7 +1473,7 @@ def toggle_responsibility_in_modmed(
     a = _load_assignment(db, assignment_id)
     by = current_user.get("email") or "system"
     if payload.confirmed:
-        a.patient_responsibility_in_modmed_at = datetime.utcnow()
+        a.patient_responsibility_in_modmed_at = now_utc_naive()
         a.patient_responsibility_in_modmed_by = by
         _mark_milestone(a, "patient_responsibility_modmed", status="done",
                          by=by, notes=payload.notes)
@@ -1501,7 +1502,7 @@ def mark_patient_notified(
     a = _load_assignment(db, assignment_id)
     _block_if_closed_or_billed(a, action="mark patient notified")
     by = current_user.get("email") or "system"
-    a.patient_notified_at = datetime.utcnow()
+    a.patient_notified_at = now_utc_naive()
     _mark_milestone(a, "patient_notified", status="done", by=by)
     log_audit(db, actor=by, action="patient_notified",
               device=a.device, assignment=a,
@@ -1527,7 +1528,7 @@ def schedule_appt(assignment_id: str, payload: ApptScheduledIn,
         a.appt_date = datetime.strptime(payload.appt_date[:10], "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=422, detail="appt_date must be YYYY-MM-DD")
-    a.appt_scheduled_at = datetime.utcnow()
+    a.appt_scheduled_at = now_utc_naive()
     _mark_milestone(a, "appt_scheduled", status="done", by=by)
     log_audit(db, actor=by, action="appt_scheduled",
               device=a.device, assignment=a,
@@ -1571,7 +1572,7 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
     by = current_user.get("email") or "system"
     a.failure_reason = payload.outcome if payload.outcome != "inserted" else None
     a.failure_notes = payload.notes
-    now = datetime.utcnow()
+    now = now_utc_naive()
     prev_assignment_status = a.status
     prev_device_status = a.device.status if a.device else None
 
@@ -1900,7 +1901,7 @@ def record_payment(assignment_id: str,
     a = _load_assignment(db, assignment_id)
     _block_if_closed_or_billed(a, action="record payment")
     by = current_user.get("email") or "system"
-    a.patient_paid_at = datetime.utcnow()
+    a.patient_paid_at = now_utc_naive()
     a.patient_paid_by = by
     if payload.amount is not None:
         a.patient_paid_amount = payload.amount
@@ -2082,7 +2083,7 @@ def mark_enrollment_signed(assignment_id: str,
     _block_if_closed_or_billed(a, action="mark enrollment signed")
     by = current_user.get("email") or "system"
     if payload.confirmed:
-        a.enrollment_signed_at = datetime.utcnow()
+        a.enrollment_signed_at = now_utc_naive()
         _mark_milestone(a, "enrollment_signed", status="done", by=by, notes=payload.notes)
         log_audit(db, actor=by, action="enrollment_signed",
                   device=a.device, assignment=a,
@@ -2141,10 +2142,10 @@ def fax_pharmacy(assignment_id: str, payload: FaxPharmacyIn = FaxPharmacyIn(),
                 detail=(f"Pharmacy on this assignment is "
                         f"{'inactive' if not ph.is_active else 'missing a fax number'}; "
                         "update the directory or pass a different pharmacy_id"))
-    a.request_faxed_at = datetime.utcnow()
+    a.request_faxed_at = now_utc_naive()
     # SLA: expect device within PHARMACY_ORDER_SLA_DAYS
     from app.services.larc_workflow import PHARMACY_ORDER_SLA_DAYS
-    a.expected_received_by = (datetime.utcnow().date() + timedelta(days=PHARMACY_ORDER_SLA_DAYS))
+    a.expected_received_by = (now_utc_naive().date() + timedelta(days=PHARMACY_ORDER_SLA_DAYS))
     _mark_milestone(a, "request_faxed", status="done", by=by, notes=payload.notes)
     log_audit(db, actor=by, action="request_faxed",
               device=a.device, assignment=a,
@@ -2212,7 +2213,7 @@ def receive_device(assignment_id: str, payload: ReceiveDeviceIn,
     )
     db.add(d); db.flush()
     a.device_id = d.id
-    a.device_received_at = datetime.utcnow()
+    a.device_received_at = now_utc_naive()
     _mark_milestone(a, "device_received", status="done", by=by, notes=payload.notes)
     log_audit(db, actor=by, action="device_received",
               device=d, assignment=a,
@@ -2294,7 +2295,7 @@ def request_checkout(assignment_id: str, payload: CheckoutRequestIn,
     )
     if approval_status == "approved":
         c.approved_by = "system:auto-approval"
-        c.approved_at = datetime.utcnow()
+        c.approved_at = now_utc_naive()
         device.status = "checked_out"
         _mark_milestone(a, "device_checked_out", status="done", by=by)
     db.add(c)
@@ -2355,7 +2356,7 @@ def decide_checkout(checkout_id: str, payload: CheckoutApprovalIn,
 
     by = current_user.get("email") or "system"
     c.approved_by = by
-    c.approved_at = datetime.utcnow()
+    c.approved_at = now_utc_naive()
     a = c.assignment
     if payload.approve:
         # Re-validate at approval time — the manager may be clearing a
@@ -2437,7 +2438,7 @@ def acknowledge_checkout(checkout_id: str,
                 "acknowledged_by": c.acknowledged_by}
 
     by = current_user.get("email") or "system"
-    c.acknowledged_at = datetime.utcnow()
+    c.acknowledged_at = now_utc_naive()
     c.acknowledged_by = by
 
     a = c.assignment
@@ -2556,7 +2557,7 @@ def checkout_direct(assignment_id: str, payload: CheckoutDirectIn,
         approval_kind="direct",
         approval_status="approved",
         approved_by=by,
-        approved_at=datetime.utcnow(),
+        approved_at=now_utc_naive(),
         given_to=payload.given_to,
     )
     device.status = "checked_out"
@@ -2614,7 +2615,7 @@ def mark_billed(assignment_id: str, payload: BilledIn,
                    "claim number or change the device's ownership first.")
     by = current_user.get("email") or "system"
     a.claim_number = payload.claim_number.strip()
-    a.billed_at = datetime.utcnow()
+    a.billed_at = now_utc_naive()
     a.billed_by = by
     a.status = "billed"
     _mark_milestone(a, "billed", status="done", by=by)
@@ -2715,7 +2716,7 @@ def create_office_procedure_assignment(
     m = next((mm for mm in a.milestones if mm.kind == "device_assigned"), None)
     if m:
         m.status = "done"
-        m.completed_at = datetime.utcnow()
+        m.completed_at = now_utc_naive()
         m.completed_by = by
     device.status = "assigned"
     log_audit(db, actor=by, action="op_assignment_created",
@@ -2747,7 +2748,7 @@ def consume_device(assignment_id: str, payload: ConsumeIn = ConsumeIn(),
     if not a.device_id:
         raise HTTPException(status_code=409, detail="No device on this assignment")
     by = current_user.get("email") or "system"
-    a.inserted_at = datetime.utcnow()
+    a.inserted_at = now_utc_naive()
     a.inserted_by = by
     a.status = "inserted"
     _mark_milestone(a, "device_consumed", status="done", by=by, notes=payload.notes)
@@ -2790,11 +2791,11 @@ def return_to_manufacturer(device_id: str, payload: ReturnToManufacturerIn,
         "rma_number": payload.rma_number,
         "return_method": payload.return_method,
         "tracking_number": payload.tracking_number,
-        "returned_at": datetime.utcnow().isoformat(),
+        "returned_at": now_utc_naive().isoformat(),
         "returned_by": by,
     }
     d.notes = ((d.notes or "") +
-               f"\n\n[returned to manufacturer {datetime.utcnow().date()}] " +
+               f"\n\n[returned to manufacturer {now_utc_naive().date()}] " +
                f"RMA={payload.rma_number or '—'}, method={payload.return_method or '—'}, " +
                f"tracking={payload.tracking_number or '—'}" +
                (f", notes: {payload.notes}" if payload.notes else ""))
@@ -2918,7 +2919,7 @@ def receive_replacement(device_id: str, payload: ReceiveReplacementIn,
         # The new device-received milestone is now done
         if (n := ms_new.get("device_received")) and n.status == "pending":
             n.status = "done"
-            n.completed_at = datetime.utcnow()
+            n.completed_at = now_utc_naive()
             n.completed_by = by
         active.is_active = False
         active.replacement_assignment_id = replacement.id
@@ -2996,7 +2997,7 @@ def resolve_owed(owed_id: str, payload: OwedResolveIn,
     if payload.resolution not in ("reallocated", "declined", "expired"):
         raise HTTPException(status_code=422, detail="invalid resolution")
     by = current_user.get("email") or "system"
-    o.resolved_at = datetime.utcnow()
+    o.resolved_at = now_utc_naive()
     o.resolved_by = by
     o.resolution = payload.resolution
     o.notes = (o.notes or "") + (f"\n{payload.notes}" if payload.notes else "")
@@ -3205,7 +3206,7 @@ def finish_count(count_id: str, payload: InventoryFinishIn = InventoryFinishIn()
                 continue
             d.status = "lost"
             d.notes = ((d.notes or "")
-                       + f"\n[lost in inventory count {c.id} on {datetime.utcnow().date()}]")
+                       + f"\n[lost in inventory count {c.id} on {now_utc_naive().date()}]")
             log_audit(db, actor=by, action="device_lost_at_count",
                       device=d,
                       summary=(f"Device {d.our_id} missing at inventory count — marked lost "
@@ -3214,7 +3215,7 @@ def finish_count(count_id: str, payload: InventoryFinishIn = InventoryFinishIn()
             actually_lost += 1
 
     c.status = "reconciled"
-    c.finished_at = datetime.utcnow()
+    c.finished_at = now_utc_naive()
     c.finished_by = by
     c.notes = payload.notes
     log_audit(db, actor=by, action="inventory_count_finished",

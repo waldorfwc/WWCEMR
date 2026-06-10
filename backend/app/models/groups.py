@@ -7,6 +7,7 @@ was dropped in Phase 4 of the permissions redesign.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import uuid
 
 from sqlalchemy import (
@@ -31,7 +32,7 @@ user_groups = Table(
            ForeignKey("users.email", ondelete="CASCADE"), primary_key=True),
     Column("group_id", String(36),
            ForeignKey("groups.id", ondelete="CASCADE"), primary_key=True),
-    Column("added_at", DateTime, default=datetime.utcnow),
+    Column("added_at", DateTime, default=now_utc_naive),
     Column("added_by", String(200), nullable=True),
 )
 
@@ -45,8 +46,8 @@ class Group(Base):
     # Cannot be deleted in the UI when True (the seeded groups).
     # Members and permissions can still be edited.
     system_protected = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     # Reverse side of the M2M defined on User.groups
     members = relationship(

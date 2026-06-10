@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date as _date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -87,7 +88,7 @@ def mark_unresponsive(db: Session, s: Surgery, *, by: str) -> bool:
     success, False on StaleDataError (caller can move on; the row will
     be picked up by the next sweep)."""
     s.status = "unresponsive"
-    s.auto_unresponsive_at = datetime.utcnow()
+    s.auto_unresponsive_at = now_utc_naive()
     notes = (
         f"Auto-transitioned to Unresponsive by the daily sweep — "
         f"30+ days past pre-op (preop_date={s.preop_date}) with no "

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Column, String, Date, DateTime, Numeric, Integer, ForeignKey, Text,
     UniqueConstraint, Index,
@@ -48,7 +49,7 @@ class Bai2Import(Base):
     total_amount = Column(Numeric(14, 2))
 
     notes = Column(Text, nullable=True)
-    generated_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    generated_at = Column(DateTime, default=now_utc_naive, nullable=False, index=True)
     generated_by = Column(String(120))
 
     transactions = relationship(
@@ -81,6 +82,6 @@ class Bai2Transaction(Base):
 
     dedup_key = Column(String(64), nullable=False, unique=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     import_ = relationship("Bai2Import", back_populates="transactions")

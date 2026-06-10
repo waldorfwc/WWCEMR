@@ -18,6 +18,7 @@ Statuses:
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Column, DateTime, ForeignKey, Index, JSON, Numeric, String, Text,
@@ -45,9 +46,9 @@ class StripeCustomer(Base):
     stripe_customer_id = Column(String(80), nullable=False, unique=True)
     email         = Column(String(200), nullable=True)
     name          = Column(String(200), nullable=True)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at    = Column(DateTime, default=datetime.utcnow,
-                              onupdate=datetime.utcnow, nullable=False)
+    created_at    = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at    = Column(DateTime, default=now_utc_naive,
+                              onupdate=now_utc_naive, nullable=False)
 
 
 class SurgeryPayment(Base):
@@ -82,7 +83,7 @@ class SurgeryPayment(Base):
     description                 = Column(Text, nullable=True)
     # Patient-facing line item shown on the Stripe Checkout page.
     requested_by                = Column(String(120), nullable=False)
-    requested_at                = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_at                = Column(DateTime, default=now_utc_naive, nullable=False)
     paid_at                     = Column(DateTime, nullable=True)
     refunded_at                 = Column(DateTime, nullable=True)
     failed_at                   = Column(DateTime, nullable=True)
@@ -104,7 +105,7 @@ class SurgeryPaymentHistory(Base):
     payment_id   = Column(GUID(),
                             ForeignKey("surgery_payments.id", ondelete="CASCADE"),
                             nullable=False)
-    at           = Column(DateTime, default=datetime.utcnow, nullable=False)
+    at           = Column(DateTime, default=now_utc_naive, nullable=False)
     actor        = Column(String(120), nullable=False)
     # Stripe webhook events use 'stripe:webhook' as actor; admin actions use
     # the staff email.
@@ -126,5 +127,5 @@ class ProcessedStripeEvent(Base):
     """
     __tablename__ = "processed_stripe_events"
     event_id  = Column(String(80), primary_key=True)
-    received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    received_at = Column(DateTime, default=now_utc_naive, nullable=False)
     event_type = Column(String(60), nullable=True)

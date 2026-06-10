@@ -7,6 +7,7 @@ look as the daily-count PDF without copy-paste drift.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from reportlab.lib.colors import HexColor
@@ -93,5 +94,5 @@ def meta_table(rows: list[list[str]], left_col_in: float = 1.5,
 
 def footer_line(extra: str, styles: dict) -> Paragraph:
     """Bottom-of-document generation timestamp + any extra identifier."""
-    when = datetime.utcnow().strftime("%B %d, %Y · %I:%M %p UTC")
+    when = now_utc_naive().strftime("%B %d, %Y · %I:%M %p UTC")
     return Paragraph(f"Generated {when} · {extra}", styles["muted"])

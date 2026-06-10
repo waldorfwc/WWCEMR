@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Date, DateTime, Numeric, ForeignKey, Text, Boolean, Enum as SAEnum, Integer
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import enum
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -61,8 +62,8 @@ class Denial(Base):
     appealable = Column(Boolean, default=True)
 
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     claim = relationship("Claim", back_populates="denials")
     service_line = relationship("ServiceLine")

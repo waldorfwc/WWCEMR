@@ -18,6 +18,7 @@ import logging
 import os
 from dataclasses import dataclass
 from datetime import date, datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 import httpx
@@ -574,7 +575,7 @@ def void_live_envelopes_for_assignment(
     for env in rows:
         if not env.boldsign_envelope_id:
             env.status = "voided"
-            env.voided_at = datetime.utcnow()
+            env.voided_at = now_utc_naive()
             processed.append(env)
             continue
         if not _is_configured():
@@ -598,7 +599,7 @@ def void_live_envelopes_for_assignment(
                     f"BoldSign revoke {r.status_code}: {r.text[:200]}")
             else:
                 env.status = "voided"
-                env.voided_at = datetime.utcnow()
+                env.voided_at = now_utc_naive()
         except Exception as e:
             env.last_fax_error = f"BoldSign revoke error: {e!r}"[:300]
         processed.append(env)
@@ -781,12 +782,12 @@ def send_enrollment_envelope(
         boldsign_template_id=template_id,
         boldsign_envelope_id=doc_id,
         status="sent",
-        sent_at=datetime.utcnow(),
+        sent_at=now_utc_naive(),
         sent_by=sent_by_email,
     )
     db.add(env)
     if not assignment.enrollment_sent_at:
-        assignment.enrollment_sent_at = datetime.utcnow()
+        assignment.enrollment_sent_at = now_utc_naive()
 
     log_action(
         db, "LARC_ENROLLMENT_SENT", "larc_assignment",
@@ -867,20 +868,20 @@ def apply_webhook_event(db, env, data: dict) -> str:
             new_status, env.status)
         new_status = env.status
     env.status = new_status
-    env.last_synced_at = datetime.utcnow()
+    env.last_synced_at = now_utc_naive()
 
     if raw_status == "completed" and not env.signed_at:
         env.signed_at = (_parse_dt(data.get("completedDateTime")
                                     or data.get("completedAt"))
-                          or datetime.utcnow())
+                          or now_utc_naive())
     elif raw_status == "declined" and not env.declined_at:
         env.declined_at = (_parse_dt(data.get("declinedDateTime")
                                       or data.get("declinedAt"))
-                            or datetime.utcnow())
+                            or now_utc_naive())
     elif raw_status in ("revoked", "expired") and not env.voided_at:
         env.voided_at = (_parse_dt(data.get("revokedDateTime")
                                     or data.get("revokedAt"))
-                          or datetime.utcnow())
+                          or now_utc_naive())
 
     # Per-signer timestamps — BoldSign sends `signerDetails` with one entry
     # per signer role; we mirror Reception / Patient / Provider onto the
@@ -894,7 +895,7 @@ def apply_webhook_event(db, env, data: dict) -> str:
             continue
         signed_at = (_parse_dt(s.get("signedDateTime")
                                 or s.get("completedDateTime"))
-                      or datetime.utcnow())
+                      or now_utc_naive())
         if role == "receptionist" and not env.receptionist_signed_at:
             env.receptionist_signed_at = signed_at
         elif role == "patient" and not env.patient_signed_at:

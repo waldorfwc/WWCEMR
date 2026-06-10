@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Column, String, Date, DateTime, Numeric, Integer, ForeignKey, Text,
     UniqueConstraint, Index,
@@ -32,8 +33,8 @@ class PayerAddress(Base):
     appeals_email = Column(String(200), nullable=True)
 
     notes = Column(Text, nullable=True)         # e.g. "First-level appeals only"
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
+    created_at = Column(DateTime, default=now_utc_naive)
 
 
 class AppealLetter(Base):
@@ -85,7 +86,7 @@ class AppealLetter(Base):
     # Metadata
     generated_by = Column(String(200))                # user email
     used_ai_drafting = Column(Integer, default=0)     # 0/1 (sqlite-friendly bool)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False)
 
     claim = relationship("ActiveClaim", backref="appeal_letters")

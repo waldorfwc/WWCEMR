@@ -1,6 +1,7 @@
 """Poll RingCentral for outstanding fax statuses and update FaxLog rows."""
 import os
 from datetime import datetime, timedelta
+from app.utils.dt import now_utc_naive
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -24,7 +25,7 @@ _IN_FLIGHT_STATES = {"Queued", "Sending"}
 
 def poll_outstanding_faxes(db: Session) -> int:
     """One polling pass. Returns the number of rows whose status transitioned."""
-    cutoff = datetime.utcnow() - timedelta(minutes=POLL_MAX_AGE_MINUTES)
+    cutoff = now_utc_naive() - timedelta(minutes=POLL_MAX_AGE_MINUTES)
     candidates = (
         db.query(FaxLog)
         .filter(
@@ -36,7 +37,7 @@ def poll_outstanding_faxes(db: Session) -> int:
     )
 
     changed = 0
-    now = datetime.utcnow()
+    now = now_utc_naive()
     for row in candidates:
         try:
             rc = check_fax_status(row.ringcentral_message_id)

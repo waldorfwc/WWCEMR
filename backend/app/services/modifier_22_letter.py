@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import os
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -75,7 +76,7 @@ def _render_pdf(s: Surgery, mod22_cpts: list[dict]) -> bytes:
     story.append(Spacer(1, 12))
 
     # Date + addressee
-    story.append(Paragraph(datetime.utcnow().strftime("%B %d, %Y"), st["body"]))
+    story.append(Paragraph(now_utc_naive().strftime("%B %d, %Y"), st["body"]))
     story.append(Spacer(1, 6))
     story.append(Paragraph(s.primary_insurance or "Primary Insurance Carrier", st["bold"]))
     story.append(Paragraph("Claims Review Department", st["body"]))
@@ -174,7 +175,7 @@ def generate_modifier_22_letter(db: Session, s: Surgery, mod22_cpts: list[dict])
 
     out_dir = Path(settings.export_dir) / "modifier_22_letters"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    stamp = now_utc_naive().strftime("%Y%m%d_%H%M%S")
     fname = f"modifier_22_{s.chart_number or s.id[:8]}_{stamp}.pdf"
     fpath = out_dir / fname
     fpath.write_bytes(pdf_bytes)

@@ -5,6 +5,7 @@ All endpoints require Recall:Work (read/write) or Recall:Manage (admin ops).
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -83,8 +84,8 @@ CLAIM_TTL = timedelta(minutes=5)
 def _ensure_claim_available(e: RecallEntry, my_email: str) -> None:
     """Raise 409 if another user owns an unexpired claim on this recall."""
     if e.claimed_by and e.claimed_by != my_email and e.claimed_until \
-            and e.claimed_until > datetime.utcnow():
-        mins_left = max(1, int((e.claimed_until - datetime.utcnow()).total_seconds() // 60))
+            and e.claimed_until > now_utc_naive():
+        mins_left = max(1, int((e.claimed_until - now_utc_naive()).total_seconds() // 60))
         raise HTTPException(
             status_code=409,
             detail=(f"{e.claimed_by} is currently working this recall "
@@ -94,14 +95,14 @@ def _ensure_claim_available(e: RecallEntry, my_email: str) -> None:
 
 def _take_claim(e: RecallEntry, my_email: str) -> None:
     e.claimed_by = my_email
-    e.claimed_until = datetime.utcnow() + CLAIM_TTL
+    e.claimed_until = now_utc_naive() + CLAIM_TTL
 
 
 def _release_claim(e: RecallEntry, my_email: Optional[str]) -> None:
     """Clear the claim — only if it was ours, OR if it has expired."""
     if e.claimed_by is None:
         return
-    if e.claimed_until and e.claimed_until <= datetime.utcnow():
+    if e.claimed_until and e.claimed_until <= now_utc_naive():
         e.claimed_by = None
         e.claimed_until = None
         return
@@ -112,7 +113,7 @@ def _release_claim(e: RecallEntry, my_email: Optional[str]) -> None:
 
 def _entry_to_dict(e: RecallEntry, dob: Optional[date] = None) -> dict:
     # Treat an expired claim as no claim
-    now = datetime.utcnow()
+    now = now_utc_naive()
     has_active_claim = (e.claimed_until is not None and e.claimed_until > now)
     return {
         "id": str(e.id),
@@ -170,7 +171,7 @@ def list_recalls(
             RecallEntry.primary_phone.ilike(like),
         ))
     if not include_cooldown:
-        now = datetime.utcnow()
+        now = now_utc_naive()
         q = q.filter(
             or_(RecallEntry.cooldown_until.is_(None),
                 RecallEntry.cooldown_until <= now)
@@ -368,7 +369,7 @@ def log_call_attempted(recall_id: str, db: Session = Depends(get_db),
         event_type="call_attempted", user_email=me,
     ))
     e.attempts = (e.attempts or 0) + 1
-    e.last_attempt_at = datetime.utcnow()
+    e.last_attempt_at = now_utc_naive()
     e.last_worked_by = me
     db.commit()
     return {"ok": True, "attempts": e.attempts}
@@ -412,7 +413,7 @@ def dial(recall_id: str, db: Session = Depends(get_db),
                                   RecallCallLog.user_email == user_email,
                                   RecallCallLog.event_type == "call_attempted",
                                   RecallCallLog.occurred_at
-                                      >= datetime.utcnow() - _td(seconds=30))
+                                      >= now_utc_naive() - _td(seconds=30))
                           .first())
     if recent_self_dial:
         raise HTTPException(
@@ -497,7 +498,7 @@ def dial(recall_id: str, db: Session = Depends(get_db),
         notes=f"RingOut session {rc_session_id} — status {rc_status}",
     ))
     e.attempts = (e.attempts or 0) + 1
-    e.last_attempt_at = datetime.utcnow()
+    e.last_attempt_at = now_utc_naive()
     e.last_worked_by = user_email
     db.commit()
 
@@ -546,7 +547,7 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
 
     user = current_user.get("email")
     e.last_outcome = payload.outcome
-    e.last_attempt_at = datetime.utcnow()
+    e.last_attempt_at = now_utc_naive()
     e.last_worked_by = user
     if payload.notes:
         e.latest_comment = payload.notes
@@ -576,14 +577,14 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
     elif payload.outcome in COMPLETED_OUTCOMES:
         e.status = "completed"
     elif payload.outcome in COOLDOWN_OUTCOMES:
-        e.cooldown_until = datetime.utcnow() + COOLDOWN_OUTCOMES[payload.outcome]
+        e.cooldown_until = now_utc_naive() + COOLDOWN_OUTCOMES[payload.outcome]
     elif payload.outcome == "Wrong number":
         # Hide for 30 days and stamp the latest_comment with a phone-fix
         # prompt so the dashboard / drawer surfaces "needs phone update"
         # instead of letting staff keep dialing the same wrong person.
         # (Fable recalls audit L1.)
         from datetime import timedelta as _td
-        e.cooldown_until = datetime.utcnow() + _td(days=30)
+        e.cooldown_until = now_utc_naive() + _td(days=30)
         flag = "[NEEDS PHONE UPDATE]"
         if flag not in (e.latest_comment or ""):
             e.latest_comment = (f"{flag} {payload.notes or ''}".strip()

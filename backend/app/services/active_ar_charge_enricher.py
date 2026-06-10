@@ -18,6 +18,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, date
+from app.utils.dt import now_utc_naive
 from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Optional
 
@@ -310,7 +311,7 @@ def enrich_from_charge_analysis(
             key = (ac.patient_external_id, ac.dos)
             db_claims.setdefault(key, []).append(ac)
 
-    now = datetime.utcnow()
+    now = now_utc_naive()
     for visit_id, vr in visit_rollups.items():
         key = (vr.get("patient_external_id"), vr.get("dos"))
         records = db_claims.get(key, [])

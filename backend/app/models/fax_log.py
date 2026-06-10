@@ -1,6 +1,7 @@
 """FaxLog model — one row per fax attempt. Persisted for audit, retry, status polling."""
 from sqlalchemy import Column, String, DateTime, Text, ForeignKey, JSON, Enum as SAEnum, Index
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import enum
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -30,7 +31,7 @@ class FaxLog(Base):
 
     ringcentral_message_id = Column(String(64), nullable=True, index=True)
     status = Column(SAEnum(FaxLogStatus), default=FaxLogStatus.QUEUED, nullable=False, index=True)
-    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = Column(DateTime, default=now_utc_naive, nullable=False)
     last_checked_at = Column(DateTime, nullable=True)
     delivered_at = Column(DateTime, nullable=True)
     error = Column(Text, nullable=True)
@@ -49,8 +50,8 @@ class FaxLog(Base):
     # (Fable recalls audit H6.)
     cover_text = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     __table_args__ = (
         Index("ix_fax_chart_sent", "chart_number", "sent_at"),

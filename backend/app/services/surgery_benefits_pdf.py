@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import os
 from datetime import date, datetime
+from app.utils.dt import now_utc_naive
 from decimal import Decimal
 from typing import Optional
 
@@ -342,7 +343,7 @@ def generate_and_attach(db: Session, surgery: Surgery, breakdown: dict,
     Persists through the storage adapter so the file works on Cloud Run + GCS."""
     pdf_bytes = generate_bytes(surgery, breakdown)
     fname = (f"patient_responsibility_estimate_{surgery.chart_number}_"
-              f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf")
+              f"{now_utc_naive().strftime('%Y%m%d-%H%M%S')}.pdf")
     key = save_blob(prefix="surgery-benefits-pdfs",
                      body=pdf_bytes,
                      filename=fname)

@@ -15,6 +15,7 @@ Four small tables back the admin UI on /surgery/rules:
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Integer, JSON, String, Text, UniqueConstraint,
@@ -29,8 +30,8 @@ class SurgeryConfig(Base):
 
     key        = Column(String(60), primary_key=True)
     value      = Column(JSON, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                            onupdate=now_utc_naive, nullable=False)
     updated_by = Column(String(120), nullable=True)
 
 
@@ -45,7 +46,7 @@ class SurgeryAlertRecipient(Base):
     # values: office_release | hospital_release
     email      = Column(String(200), nullable=False)
     added_by   = Column(String(120), nullable=True)
-    added_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    added_at   = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 class Facility(Base):
@@ -66,10 +67,10 @@ class Facility(Base):
     is_active  = Column(Boolean, default=True, nullable=False)
     sort_order = Column(Integer, default=100, nullable=False)
     created_by = Column(String(120), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     updated_by = Column(String(120), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                            onupdate=now_utc_naive, nullable=False)
 
 
 class SurgeryProcedureTemplate(Base):
@@ -87,7 +88,7 @@ class SurgeryProcedureTemplate(Base):
     default_cpt_code         = Column(String(20), nullable=True)
     is_active                = Column(Boolean, default=True, nullable=False)
     created_by               = Column(String(120), nullable=True)
-    created_at               = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at               = Column(DateTime, default=now_utc_naive, nullable=False)
     updated_by               = Column(String(120), nullable=True)
-    updated_at               = Column(DateTime, default=datetime.utcnow,
-                                          onupdate=datetime.utcnow, nullable=False)
+    updated_at               = Column(DateTime, default=now_utc_naive,
+                                          onupdate=now_utc_naive, nullable=False)

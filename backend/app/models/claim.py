@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Date, DateTime, Numeric, Integer, ForeignKey, Text, JSON, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import enum
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -74,8 +75,8 @@ class Claim(Base):
     last_submission_date = Column(Date, nullable=True)
     claim_state = Column(String(20), nullable=True)   # "Open" | "Closed"
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     patient = relationship("Patient", back_populates="claims")
     service_lines = relationship("ServiceLine", back_populates="claim", cascade="all, delete-orphan")
@@ -110,7 +111,7 @@ class ServiceLine(Base):
     other_adjustment = Column(Numeric(12, 2), default=0)
 
     diagnosis_codes = Column(JSON, default=list)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
 
     claim = relationship("Claim", back_populates="service_lines")
     adjustments = relationship("ServiceLineAdjustment", back_populates="service_line", cascade="all, delete-orphan")
@@ -160,7 +161,7 @@ class EraFile(Base):
     transaction_count = Column(Integer, default=0)
     status = Column(String(50), default="processed")
     error_log = Column(Text, nullable=True)
-    imported_at = Column(DateTime, default=datetime.utcnow)
+    imported_at = Column(DateTime, default=now_utc_naive)
     imported_by = Column(String(100), nullable=True)
 
     claims = relationship("Claim", back_populates="era_file")

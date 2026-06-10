@@ -4,6 +4,7 @@ See docs/superpowers/specs/2026-05-19-code-helper-design.md for the data
 model rationale + per-CPT JSON shape.
 """
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, JSON,
     String, Text,
@@ -24,7 +25,7 @@ class CodeHelperRequest(Base):
     )
 
     id            = Column(GUID(), primary_key=True, default=new_uuid)
-    requested_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_at  = Column(DateTime, default=now_utc_naive, nullable=False)
     requested_by  = Column(String(120), nullable=False)
 
     # Input — exactly one of (note_text, source_pdf_storage_filename) is set
@@ -64,6 +65,6 @@ class CodeHelperDenial(Base):
     reason      = Column(Text, nullable=True)
     is_active   = Column(Boolean, default=True, nullable=False)
     added_by    = Column(String(120), nullable=False)
-    added_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at  = Column(DateTime, default=datetime.utcnow,
-                          onupdate=datetime.utcnow, nullable=False)
+    added_at    = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at  = Column(DateTime, default=now_utc_naive,
+                          onupdate=now_utc_naive, nullable=False)

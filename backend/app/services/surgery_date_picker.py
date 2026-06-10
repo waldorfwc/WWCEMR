@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date as _date, datetime, time as _time, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -254,7 +255,7 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
 
     if is_reschedule:
         s.reschedule_count = (s.reschedule_count or 0) + 1
-        s.last_rescheduled_at = datetime.utcnow()
+        s.last_rescheduled_at = now_utc_naive()
         s.last_rescheduled_by = picked_by
         # Clear hospital-posting state since the new date needs a fresh
         # boarding slip / fax.
@@ -266,7 +267,7 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
         m_row = next((m for m in s.milestones if m.kind == "patient_picks_date"), None)
         if m_row and m_row.status not in ("done", "skipped"):
             m_row.status = "done"
-            m_row.completed_at = datetime.utcnow()
+            m_row.completed_at = now_utc_naive()
             m_row.completed_by = picked_by
 
     db.commit()

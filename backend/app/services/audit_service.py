@@ -1,6 +1,7 @@
 """HIPAA-compliant audit logging service."""
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Any, Dict, Optional, Union
 
 from sqlalchemy.orm import Session
@@ -95,7 +96,7 @@ def log_action(
         )
 
     entry = AuditLog(
-        timestamp=datetime.utcnow(),
+        timestamp=now_utc_naive(),
         user_id=user_id,
         user_name=user_name,
         ip_address=ip_address,

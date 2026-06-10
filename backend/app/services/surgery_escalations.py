@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from sqlalchemy.orm import Session, joinedload
@@ -124,7 +125,7 @@ def run_escalation_sweep(db: Session) -> dict:
         if result.get("sent"):
             sent += 1
 
-    now = datetime.utcnow().isoformat()
+    now = now_utc_naive().isoformat()
     for m in instances_to_mark:
         m.data_json = {**(m.data_json or {}), "escalation_sent_at": now}
     if instances_to_mark:

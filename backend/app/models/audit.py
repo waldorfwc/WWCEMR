@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, DateTime, Text, JSON
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from app.database import Base
 from app.models.guid import GUID, new_uuid
 
@@ -9,7 +10,7 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime, default=now_utc_naive, index=True)
     user_id = Column(String(100), nullable=True)
     user_name = Column(String(200), nullable=True)
     ip_address = Column(String(50), nullable=True)

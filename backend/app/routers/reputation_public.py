@@ -1,6 +1,7 @@
 """Public (no-auth) review endpoints for patients who scanned a QR."""
 import secrets
 from datetime import datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 import bcrypt as _bcrypt
@@ -50,7 +51,7 @@ def _profile(db: Session, token: str) -> ReputationProfile:
 def scan(token: str, request: Request, db: Session = Depends(get_db)):
     p = _profile(db, token)
     ip = _client_ip(request)
-    cutoff = datetime.utcnow() - timedelta(hours=SCAN_DEDUP_HOURS)
+    cutoff = now_utc_naive() - timedelta(hours=SCAN_DEDUP_HOURS)
     prior = (db.query(ReputationScan)
                  .filter(ReputationScan.profile_id == p.id,
                           ReputationScan.ip_address == ip,
@@ -91,7 +92,7 @@ def verify_start(token: str, payload: VerifyStart,
         challenge_token=challenge_token,
         code_hash=_bcrypt.hashpw(code.encode(), _bcrypt.gensalt()).decode(),
         phone=phone,
-        expires_at=datetime.utcnow() + timedelta(minutes=CHALLENGE_TTL_MINUTES),
+        expires_at=now_utc_naive() + timedelta(minutes=CHALLENGE_TTL_MINUTES),
     )
     db.add(c); db.commit()
     send_sms(phone,
@@ -113,7 +114,7 @@ def verify_check(token: str, payload: VerifyCheck,
              .filter(ReputationPhoneChallenge.challenge_token
                        == payload.challenge_token)
              .first())
-    if not c or c.expires_at < datetime.utcnow():
+    if not c or c.expires_at < now_utc_naive():
         raise HTTPException(status_code=401, detail="invalid or expired")
     code_digits = "".join(ch for ch in (payload.code or "") if ch.isdigit())
     if (len(code_digits) != 6 or not _bcrypt.checkpw(
@@ -177,7 +178,7 @@ def google_clicked(token: str, payload: GoogleClicked,
               .filter(ReputationReview.id == payload.review_id).first())
     if r is None:
         raise HTTPException(status_code=404, detail="review not found")
-    r.google_clicked_at = datetime.utcnow()
+    r.google_clicked_at = now_utc_naive()
     db.commit()
     return {"ok": True}
 

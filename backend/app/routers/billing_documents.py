@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -437,7 +438,7 @@ def patch_document(doc_id: str, payload: DocumentPatch,
         d.status = data["status"]
         if d.status == "worked":
             d.worked_by = actor
-            d.worked_at = datetime.utcnow()
+            d.worked_at = now_utc_naive()
             _log_access(db, d, actor, "worked", {"from": before})
         else:
             d.worked_by = None

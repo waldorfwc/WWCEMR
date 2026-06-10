@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, date
+from app.utils.dt import now_utc_naive
 from decimal import Decimal, InvalidOperation
 from typing import Any, List, Optional, Tuple
 
@@ -119,7 +120,7 @@ def import_unpaid_claims(
 
     seen_keys: set[Tuple[str, str]] = set()
     new_count = updated_count = unchanged_count = 0
-    now = datetime.utcnow()
+    now = now_utc_naive()
 
     for idx, raw in df.iterrows():
         try:

@@ -1,5 +1,6 @@
 """Reputation module — per-employee review pipeline."""
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text,
@@ -21,9 +22,9 @@ class ReputationProfile(Base):
     # review URL gets shown to 5-star reviewers.
     qr_token      = Column(String(40), nullable=False, unique=True, index=True)
     active        = Column(Boolean, default=True, nullable=False)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at    = Column(DateTime, default=datetime.utcnow,
-                              onupdate=datetime.utcnow, nullable=False)
+    created_at    = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at    = Column(DateTime, default=now_utc_naive,
+                              onupdate=now_utc_naive, nullable=False)
 
 
 class ReputationScan(Base):
@@ -37,7 +38,7 @@ class ReputationScan(Base):
                                 ForeignKey("reputation_profiles.id",
                                             ondelete="CASCADE"),
                                 nullable=False)
-    scanned_at      = Column(DateTime, default=datetime.utcnow,
+    scanned_at      = Column(DateTime, default=now_utc_naive,
                                 nullable=False)
     ip_address      = Column(String(45), nullable=True)
     user_agent      = Column(String(300), nullable=True)
@@ -68,7 +69,7 @@ class ReputationReview(Base):
     consent_to_display   = Column(Boolean, default=False, nullable=False)
     approved_for_embed   = Column(Boolean, default=False, nullable=False)
     google_clicked_at    = Column(DateTime, nullable=True)
-    submitted_at         = Column(DateTime, default=datetime.utcnow,
+    submitted_at         = Column(DateTime, default=now_utc_naive,
                                       nullable=False)
 
 
@@ -84,4 +85,4 @@ class ReputationPhoneChallenge(Base):
     code_hash       = Column(String(120), nullable=False)
     phone           = Column(String(20), nullable=False)
     expires_at      = Column(DateTime, nullable=False)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=now_utc_naive, nullable=False)

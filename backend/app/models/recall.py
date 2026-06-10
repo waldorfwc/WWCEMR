@@ -11,6 +11,7 @@ read time so we have one source of truth.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer,
     JSON, String, Text, UniqueConstraint,
@@ -59,8 +60,8 @@ class WWEVisit(Base):
     is_future = Column(Boolean, nullable=False, default=False)
     # When this row was last touched by an import — useful for staleness
     # debugging and for "most recent report wins" tie-breaks.
-    last_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    imported_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    imported_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 class RecallEntry(Base):
@@ -116,9 +117,9 @@ class RecallEntry(Base):
     claimed_until = Column(DateTime, nullable=True)
 
     # Audit
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
     source = Column(String(40), nullable=True)              # 'smartsheet' / 'manual' / 'auto'
     smartsheet_row_id = Column(String(40), nullable=True, index=True)
 
@@ -140,7 +141,7 @@ class RecallSuppression(Base):
     # do_not_call / declined / deceased / left_practice / unsubscribed / other
 
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by = Column(String(200), nullable=True)
 
 
@@ -163,7 +164,7 @@ class RecallCallLog(Base):
     # 'detail_viewed' / 'call_attempted' / 'outcome_logged' / 'note_added'
 
     user_email = Column(String(200), nullable=True)
-    occurred_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    occurred_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     outcome = Column(String(80), nullable=True)
     notes = Column(Text, nullable=True)
@@ -187,6 +188,6 @@ class RecallFilterPreset(Base):
     name         = Column(String(120), nullable=False)
     filters_json = Column(JSON, nullable=False, default=dict)
     is_default   = Column(Boolean, default=False, nullable=False)
-    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at   = Column(DateTime, default=datetime.utcnow,
-                          onupdate=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at   = Column(DateTime, default=now_utc_naive,
+                          onupdate=now_utc_naive, nullable=False)

@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 import jwt   # pyjwt
@@ -36,7 +37,7 @@ def mint_token(provider: str, *, ttl_days: int = TOKEN_TTL_DAYS) -> str:
     """Mint a self-service token for the named provider."""
     if not provider or not provider.strip():
         raise ValueError("provider is required")
-    now = datetime.utcnow()
+    now = now_utc_naive()
     payload = {
         "provider": provider.strip(),
         "iss": ISSUER,

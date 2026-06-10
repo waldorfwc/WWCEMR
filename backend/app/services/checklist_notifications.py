@@ -31,6 +31,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.utils.dt import now_utc_naive
 
 log = logging.getLogger(__name__)
 
@@ -419,7 +420,7 @@ def run_escalation_sweep(db: Session) -> dict:
     from sqlalchemy import and_
     from app.models.checklist import TaskInstance, TaskTemplate
 
-    now = datetime.utcnow()
+    now = now_utc_naive()
 
     rows = (db.query(TaskInstance, TaskTemplate)
               .join(TaskTemplate, TaskInstance.template_id == TaskTemplate.id)

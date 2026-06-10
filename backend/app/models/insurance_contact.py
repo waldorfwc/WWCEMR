@@ -12,6 +12,7 @@ Permissions:
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import Column, DateTime, JSON, String, Text
 
@@ -29,10 +30,10 @@ class InsuranceContact(Base):
     phones        = Column(JSON, nullable=False, default=list)
     notes         = Column(Text, nullable=True)
     created_by    = Column(String(120), nullable=False)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at    = Column(DateTime, default=now_utc_naive, nullable=False)
     updated_by    = Column(String(120), nullable=True)
-    updated_at    = Column(DateTime, default=datetime.utcnow,
-                              onupdate=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=now_utc_naive,
+                              onupdate=now_utc_naive, nullable=False)
 
 
 class InsuranceContactHistory(Base):
@@ -41,7 +42,7 @@ class InsuranceContactHistory(Base):
 
     id           = Column(GUID(), primary_key=True, default=new_uuid)
     contact_id   = Column(GUID(), nullable=False, index=True)
-    at           = Column(DateTime, default=datetime.utcnow, nullable=False)
+    at           = Column(DateTime, default=now_utc_naive, nullable=False)
     actor        = Column(String(120), nullable=False)
     action       = Column(String(30), nullable=False)
     # values: created | updated | deleted

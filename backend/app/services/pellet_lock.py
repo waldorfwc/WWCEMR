@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from fastapi import HTTPException
@@ -49,7 +50,7 @@ def set_lock_state(db: Session, *, locked: bool, by_email: str,
                     reason: Optional[str] = None) -> dict:
     payload = {
         "locked":    bool(locked),
-        "locked_at": datetime.utcnow().isoformat() if locked else None,
+        "locked_at": now_utc_naive().isoformat() if locked else None,
         "locked_by": by_email if locked else None,
         "reason":    (reason or "").strip() or None,
     }

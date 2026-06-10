@@ -12,6 +12,7 @@ import io
 import logging
 import os
 from datetime import date, datetime
+from app.utils.dt import now_utc_naive
 from pathlib import Path
 from typing import Optional
 
@@ -305,7 +306,7 @@ def generate_for_surgery(db: Session, s: Surgery, *, by_email: str,
     safe_chart = (s.chart_number or "unknown").replace("/", "_")
     fname = (
         f"{slug}_{safe_chart}_"
-        f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf"
+        f"{now_utc_naive().strftime('%Y%m%d-%H%M%S')}.pdf"
     )
     key = save_blob(prefix="surgery_boarding_slips",
                     body=pdf_bytes, filename=fname)

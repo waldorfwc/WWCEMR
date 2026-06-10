@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 from urllib.parse import quote
 
@@ -217,7 +218,7 @@ def send_provider_emails(db: Session, *, triggered_by: str = "system") -> dict:
 
         # Stamp last_emailed_at on every row included
         for c in rows:
-            c.last_emailed_at = datetime.utcnow()
+            c.last_emailed_at = now_utc_naive()
         db.commit()
 
         report["providers"].append({

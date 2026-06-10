@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, date, timedelta
+from app.utils.dt import now_utc_naive
 from decimal import Decimal, InvalidOperation
 from typing import List, Optional
 
@@ -600,7 +601,7 @@ def update_claim_status(claim_id: str, payload: StatusUpdate,
         changes.append(f"workflow_state {c.workflow_state} → {payload.workflow_state}")
         c.workflow_state = payload.workflow_state
         if payload.workflow_state == "written_off":
-            c.written_off_at = datetime.utcnow()
+            c.written_off_at = now_utc_naive()
             if payload.written_off_amount is not None:
                 c.written_off_amount = payload.written_off_amount
             if payload.written_off_reason is not None:
@@ -673,7 +674,7 @@ def post_insurance_payment(payload: PaymentCreate,
         c.insurance_balance = (c.insurance_balance or Decimal(0)) - a.amount_applied
         if (c.insurance_balance or Decimal(0)) <= Decimal("0.01"):
             c.workflow_state = "paid"
-            c.paid_in_full_at = datetime.utcnow()
+            c.paid_in_full_at = now_utc_naive()
         db.add(ActiveClaimNote(
             active_claim_id=c.id, user=user,
             action_type="payment_applied",
@@ -1127,7 +1128,7 @@ def sync_status_batch(
                 q = q.filter(ActiveClaim.dos <= hi)
 
     if only_unchecked:
-        cutoff = datetime.utcnow() - timedelta(hours=24)
+        cutoff = now_utc_naive() - timedelta(hours=24)
         q = q.filter(or_(
             ActiveClaim.last_status_check_at.is_(None),
             ActiveClaim.last_status_check_at < cutoff,
@@ -1412,7 +1413,7 @@ def settle_service_line(
         # Auto-mark settled if patient owes nothing further. patient_balance
         # already quantized to cents; compare in Decimal to avoid float fuzz.
         target["settled"] = _d(target.get("patient_balance")) <= Decimal("0.01")
-    target["settled_at"] = datetime.utcnow().isoformat() + "Z" if target.get("settled") else None
+    target["settled_at"] = now_utc_naive().isoformat() + "Z" if target.get("settled") else None
 
     # Persist + recompute claim rollup
     c.service_lines_json = _json.dumps(lines)
@@ -1476,7 +1477,7 @@ def settle_service_line(
 
         if c.workflow_state not in ("paid", "rebilled_modmed", "written_off", "closed"):
             c.workflow_state = "paid"
-            c.paid_in_full_at = datetime.utcnow()
+            c.paid_in_full_at = now_utc_naive()
 
     db.add(ActiveClaimNote(
         active_claim_id=c.id, user=current_user.get("email"),
@@ -1661,7 +1662,7 @@ def update_appeal(appeal_id: str, payload: AppealUpdate,
         if v is not None:
             setattr(a, field, v)
     if payload.response_outcome is not None and a.response_received_at is None:
-        a.response_received_at = datetime.utcnow()
+        a.response_received_at = now_utc_naive()
     db.commit()
     db.refresh(a)
     return _appeal_to_dict(a)
@@ -1768,7 +1769,7 @@ def send_appeal_fax(appeal_id: str,
         )
         a.status = "sent"
         a.sent_via = "fax"
-        a.sent_at = datetime.utcnow()
+        a.sent_at = now_utc_naive()
         a.sent_to = a.recipient_fax
         a.fax_log_id = result.get("fax_log_id") if isinstance(result, dict) else None
         db.add(ActiveClaimNote(
@@ -1812,7 +1813,7 @@ def mark_appeal_sent(appeal_id: str,
                             detail="Generate the PDF before marking the appeal sent.")
     a.status = "sent"
     a.sent_via = sent_via
-    a.sent_at = datetime.utcnow()
+    a.sent_at = now_utc_naive()
     a.sent_to = sent_to or a.recipient_address
     db.add(ActiveClaimNote(
         active_claim_id=a.active_claim_id, user=current_user.get("email"),

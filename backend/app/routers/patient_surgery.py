@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, time, timedelta
+from app.utils.dt import now_utc_naive
 from decimal import Decimal
 from typing import Optional
 
@@ -88,10 +89,10 @@ PATIENT_TOKEN_AUDIENCE = "wwc:patient-surgery"
 
 
 def _issue_patient_token(surgery_id: str, ptv: int = 0) -> str:
-    expire = datetime.utcnow() + timedelta(hours=PATIENT_TOKEN_TTL_HOURS)
+    expire = now_utc_naive() + timedelta(hours=PATIENT_TOKEN_TTL_HOURS)
     return jwt.encode(
         {"sub": str(surgery_id), "aud": PATIENT_TOKEN_AUDIENCE,
-         "exp": expire, "iat": datetime.utcnow(), "ptv": int(ptv)},
+         "exp": expire, "iat": now_utc_naive(), "ptv": int(ptv)},
         settings.secret_key,
         algorithm=settings.algorithm,
     )
@@ -144,7 +145,7 @@ def require_patient_token(surgery_id: str,
 # ─── Lockout check ──────────────────────────────────────────────────
 
 def _is_locked_out(db: Session, surgery_id: str) -> bool:
-    cutoff = datetime.utcnow() - timedelta(minutes=LOCKOUT_WINDOW_MIN)
+    cutoff = now_utc_naive() - timedelta(minutes=LOCKOUT_WINDOW_MIN)
     fails = (db.query(PatientAuthAttempt)
                .filter(PatientAuthAttempt.surgery_id == surgery_id,
                        PatientAuthAttempt.success.is_(False),
@@ -205,7 +206,7 @@ def patient_auth(surgery_id: str, payload: AuthPayload,
     _log_attempt(db, surgery_id, success=True, request=request)
     # Auto-unresponsive sweep tracking (audit #13): a successful auth
     # is the lightest engagement signal and resets the 30-day clock.
-    s.last_patient_activity_at = datetime.utcnow()
+    s.last_patient_activity_at = now_utc_naive()
     db.commit()
     token = _issue_patient_token(
         surgery_id,
@@ -433,7 +434,7 @@ def patient_pick(surgery_id: str, payload: PickPayload,
                    "— please refresh and try again")
     # Patient activity (audit #13): a date pick is the strongest
     # possible engagement signal — reset the auto-unresponsive clock.
-    s.last_patient_activity_at = datetime.utcnow()
+    s.last_patient_activity_at = now_utc_naive()
     db.commit()
 
     try:
@@ -454,7 +455,7 @@ def patient_pick(surgery_id: str, payload: PickPayload,
     try:
         from app.services.surgery_scheduler_notify import notify_scheduler
         notify_scheduler(db, event_kind="date_picked", surgery=s,
-                          event_id=f"{s.id}:{datetime.utcnow().isoformat()}")
+                          event_id=f"{s.id}:{now_utc_naive().isoformat()}")
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning("scheduler notify (pick) failed: %s", e)
@@ -518,7 +519,7 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
                    "— please refresh and try again")
     # Patient activity (audit #13): reschedule resets the
     # auto-unresponsive clock.
-    s.last_patient_activity_at = datetime.utcnow()
+    s.last_patient_activity_at = now_utc_naive()
     db.commit()
 
     try:
@@ -530,7 +531,7 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
     try:
         from app.services.surgery_scheduler_notify import notify_scheduler
         notify_scheduler(db, event_kind="rescheduled", surgery=s,
-                          event_id=f"{s.id}:{datetime.utcnow().isoformat()}",
+                          event_id=f"{s.id}:{now_utc_naive().isoformat()}",
                           extra={"prev_date": prev_date_str})
     except Exception as e:
         import logging
@@ -696,7 +697,7 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
     try:
         from app.services.surgery_scheduler_notify import notify_scheduler
         notify_scheduler(db, event_kind="cancelled", surgery=s,
-                          event_id=f"{s.id}:{datetime.utcnow().isoformat()}",
+                          event_id=f"{s.id}:{now_utc_naive().isoformat()}",
                           extra={"fee_required": fee_required,
                                  "refund_required": refund_required,
                                  "reason": (payload.reason_text or "").strip() or None})

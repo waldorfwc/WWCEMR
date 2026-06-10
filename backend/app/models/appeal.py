@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Text, Boolean, Enum as SAEnum, Integer
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import enum
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -38,7 +39,7 @@ class Appeal(Base):
     ai_model = Column(String(100), nullable=True)
 
     created_by = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     denial = relationship("Denial", back_populates="appeals")

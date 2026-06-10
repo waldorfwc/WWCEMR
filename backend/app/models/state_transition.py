@@ -11,6 +11,7 @@ querying happens through the audit dashboards.
 """
 from sqlalchemy import Column, DateTime, Index, JSON, String, Text
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -34,6 +35,6 @@ class StateTransitionAudit(Base):
     before_value = Column(String(120), nullable=True)
     after_value  = Column(String(120), nullable=True)
     actor        = Column(String(120), nullable=False)
-    at           = Column(DateTime,    default=datetime.utcnow, nullable=False)
+    at           = Column(DateTime,    default=now_utc_naive, nullable=False)
     detail       = Column(JSON,        nullable=True)
     summary      = Column(Text,        nullable=True)

@@ -5,6 +5,7 @@ audit rows. Used by the admin API endpoints (Task 6) and the Phase 2
 translation script.
 """
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy.orm import Session
 
@@ -80,13 +81,13 @@ def set_user_override(db: Session, *, user_email: str, module: Module,
     if row is None:
         row = UserModuleOverride(
             user_email=user_email, module=module.value, tier=int(tier),
-            added_by=actor_email, added_at=datetime.utcnow(),
+            added_by=actor_email, added_at=now_utc_naive(),
         )
         db.add(row)
     else:
         row.tier = int(tier)
         row.added_by = actor_email
-        row.added_at = datetime.utcnow()
+        row.added_at = now_utc_naive()
     spec = MODULE_REGISTRY[module]
     log_action(
         db, action="USER_PERMS_OVERRIDE", resource_type="user",

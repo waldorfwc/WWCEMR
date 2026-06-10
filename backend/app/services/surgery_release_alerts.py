@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from sqlalchemy.orm import Session, joinedload
@@ -262,7 +263,7 @@ def send_office_release_alert(scheduler_users: list[User],
 # ─── Orchestrator ───────────────────────────────────────────────
 
 def run_release_sweep(db: Session) -> dict:
-    now = datetime.utcnow()
+    now = now_utc_naive()
 
     hospital_days = find_hospital_release_candidates(db)
     h_recipients = _hospital_release_recipients(db)

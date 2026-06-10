@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Any, Optional
 
 from fastapi import Depends, Header, HTTPException, Request
@@ -51,7 +52,7 @@ class IdempotencyChecker:
                           .first())
             if existing:
                 # Honor TTL: stale rows act as if missing.
-                if (datetime.utcnow() - existing.created_at
+                if (now_utc_naive() - existing.created_at
                        <= timedelta(hours=CACHE_TTL_HOURS)):
                     try:
                         self.cached = json.loads(existing.response_body)
@@ -105,7 +106,7 @@ def idempotency_for(route_name: str):
 
 def sweep_stale_idempotency_keys(db: Session, ttl_hours: int = CACHE_TTL_HOURS) -> int:
     """Delete rows older than ttl_hours. Run from the nightly scheduler."""
-    cutoff = datetime.utcnow() - timedelta(hours=ttl_hours)
+    cutoff = now_utc_naive() - timedelta(hours=ttl_hours)
     n = (db.query(IdempotencyKey)
            .filter(IdempotencyKey.created_at < cutoff)
            .delete(synchronize_session=False))

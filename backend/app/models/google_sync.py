@@ -10,6 +10,7 @@ display on the admin page (last successful run, counts, errors).
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import Column, String, DateTime, Text, Integer, JSON
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -22,7 +23,7 @@ class GoogleSyncExclusion(Base):
     email = Column(String(200), primary_key=True)
     reason = Column(Text, nullable=True)
     added_by = Column(String(120), nullable=True)
-    added_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    added_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 class GoogleSyncRun(Base):
@@ -31,7 +32,7 @@ class GoogleSyncRun(Base):
     __tablename__ = "google_sync_runs"
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
-    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, default=now_utc_naive, nullable=False)
     finished_at = Column(DateTime, nullable=True)
 
     triggered_by = Column(String(120), nullable=True)  # email or "system:cron"

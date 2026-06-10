@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, Date, DateTime, Integer, Float, Index
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from app.database import Base
 from app.models.guid import GUID, new_uuid
 
@@ -23,7 +24,7 @@ class PatientDirectory(Base):
     phone = Column(String(30), nullable=True)
     email = Column(String(200), nullable=True)
     source_file = Column(String(300), nullable=True)
-    last_updated = Column(DateTime, default=datetime.utcnow)
+    last_updated = Column(DateTime, default=now_utc_naive)
 
     __table_args__ = (
         Index("ix_pd_lastname_dob", "last_name", "dob"),
@@ -52,7 +53,7 @@ class IntakeDocument(Base):
     match_confidence = Column(String(20), nullable=True)  # "exact", "fuzzy", "unmatched"
     match_score = Column(Float, default=0.0)
 
-    indexed_at = Column(DateTime, default=datetime.utcnow)
+    indexed_at = Column(DateTime, default=now_utc_naive)
 
     __table_args__ = (
         Index("ix_intake_name_dob", "patient_name_raw", "dob"),

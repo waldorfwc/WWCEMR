@@ -21,6 +21,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session, joinedload
@@ -193,7 +194,7 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
         # Reset the auto-unresponsive clock if this represents a fresh
         # signature (avoid bumping on duplicate webhook redeliveries).
         if before != row.status and row.status == "signed":
-            surgery.last_patient_activity_at = datetime.utcnow()
+            surgery.last_patient_activity_at = now_utc_naive()
             db.commit()
 
         # Surface the change to surgery@. Idempotent on the

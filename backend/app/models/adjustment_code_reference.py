@@ -12,6 +12,7 @@ from __future__ import annotations
 from sqlalchemy import Column, String, Text, DateTime, UniqueConstraint, Index, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import enum
 
 from app.database import Base
@@ -52,8 +53,8 @@ class AdjustmentCodeReference(Base):
     enrichment_source = Column(String(20), nullable=True)  # "llm" | "manual"
 
     last_enriched_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     note_revisions = relationship(
         "AdjustmentCodeNoteRevision",
@@ -86,7 +87,7 @@ class AdjustmentCodeComboCache(Base):
     how_to_fix = Column(Text, nullable=False)
     model_used = Column(String(50), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
 
 
 class AdjustmentCodeNoteRevision(Base):
@@ -108,6 +109,6 @@ class AdjustmentCodeNoteRevision(Base):
     )
     body = Column(Text, nullable=False)
     saved_by = Column(String(255), nullable=False)  # user email
-    saved_at = Column(DateTime, nullable=False, default=datetime.utcnow, index=True)
+    saved_at = Column(DateTime, nullable=False, default=now_utc_naive, index=True)
 
     code_ref = relationship("AdjustmentCodeReference", back_populates="note_revisions")

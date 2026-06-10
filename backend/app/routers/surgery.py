@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import date as _date, datetime, time as _time, timedelta
+from app.utils.dt import now_utc_naive
 from decimal import Decimal
 from typing import Annotated, Any, Optional
 
@@ -1534,7 +1535,7 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         m = next((m for m in s.milestones if m.kind == "prior_auth"), None)
         if m and m.status not in ("done", "skipped"):
             m.status = "done"
-            m.completed_at = datetime.utcnow()
+            m.completed_at = now_utc_naive()
             m.completed_by = current_user.get("email") or "system"
 
     # Assistant-surgeon milestone auto-transition based on the flag and
@@ -1546,7 +1547,7 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                 # Not required → mark not_applicable
                 if m.status not in ("done", "not_applicable", "skipped"):
                     m.status = "not_applicable"
-                    m.completed_at = datetime.utcnow()
+                    m.completed_at = now_utc_naive()
                     m.completed_by = current_user.get("email") or "system"
             else:
                 # Newly required (or re-required) → reopen if it was N/A
@@ -1630,7 +1631,7 @@ def milestone_action(
                             detail=f"surgery doesn't have milestone {kind}")
 
     me = current_user.get("email") or "system"
-    now = datetime.utcnow()
+    now = now_utc_naive()
     prev_status = m.status
 
     if action == "start":
@@ -2034,7 +2035,7 @@ def mark_block_day_released(block_day_id: str,
     # Idempotent: a second call returns the original timestamp instead of
     # overwriting it (avoids racing two schedulers stamping conflicting times).
     if bd.release_alert_sent_at is None:
-        bd.release_alert_sent_at = datetime.utcnow()
+        bd.release_alert_sent_at = now_utc_naive()
         db.commit()
     return {"ok": True, "released_at": bd.release_alert_sent_at.isoformat()}
 
@@ -2441,7 +2442,7 @@ def send_boarding_slip(surgery_id: str,
             except OSError: pass
         if result.get("error"):
             _record_send({
-                "at":     datetime.utcnow().isoformat(),
+                "at":     now_utc_naive().isoformat(),
                 "by":     actor,
                 "kind":   "fax",
                 "to":     payload.to.strip(),
@@ -2452,7 +2453,7 @@ def send_boarding_slip(surgery_id: str,
             raise HTTPException(status_code=502,
                                 detail=f"Fax send failed: {result['error']}")
         _record_send({
-            "at":         datetime.utcnow().isoformat(),
+            "at":         now_utc_naive().isoformat(),
             "by":         actor,
             "kind":       "fax",
             "to":         payload.to.strip(),
@@ -2512,7 +2513,7 @@ def send_boarding_slip(surgery_id: str,
             smtp.sendmail(cfg["from"], [payload.to.strip()], msg.as_string())
     except Exception as exc:
         _record_send({
-            "at":     datetime.utcnow().isoformat(),
+            "at":     now_utc_naive().isoformat(),
             "by":     actor,
             "kind":   "email",
             "to":     payload.to.strip(),
@@ -2524,7 +2525,7 @@ def send_boarding_slip(surgery_id: str,
                             detail=f"Email send failed: {exc}")
 
     _record_send({
-        "at":     datetime.utcnow().isoformat(),
+        "at":     now_utc_naive().isoformat(),
         "by":     actor,
         "kind":   "email",
         "to":     payload.to.strip(),
@@ -2744,7 +2745,7 @@ async def upload_file(
         m = next((m for m in s.milestones if m.kind == target), None)
         if m and m.status not in ("done", "skipped"):
             m.status = "done"
-            m.completed_at = datetime.utcnow()
+            m.completed_at = now_utc_naive()
             m.completed_by = current_user.get("email")
 
     # Auto-advance auth_status only on the happy path — i.e. when we
@@ -3328,7 +3329,7 @@ def toggle_modmed_scheduled(
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
     if payload.confirmed:
-        s.scheduled_in_modmed_at = datetime.utcnow()
+        s.scheduled_in_modmed_at = now_utc_naive()
         s.scheduled_in_modmed_by = current_user.get("email") or "system"
     else:
         s.scheduled_in_modmed_at = None
@@ -3352,7 +3353,7 @@ def toggle_office_meds_pickup(
         raise HTTPException(status_code=409,
                             detail="Med pickup only applies to office procedures.")
     if payload.confirmed:
-        s.office_meds_pickup_confirmed_at = datetime.utcnow()
+        s.office_meds_pickup_confirmed_at = now_utc_naive()
         s.office_meds_pickup_confirmed_by = current_user.get("email") or "system"
     else:
         s.office_meds_pickup_confirmed_at = None
@@ -3541,7 +3542,7 @@ def resolve_blocked_conflict(
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
     actor = current_user.get("email") or "system"
-    s.blocked_conflict_notified_at = datetime.utcnow()
+    s.blocked_conflict_notified_at = now_utc_naive()
     s.blocked_conflict_notified_by = actor
 
     # Audit trail
@@ -3653,7 +3654,7 @@ def save_post_op_appts(
         if all_required_appts_filled(s):
             if m.status != "done":
                 m.status = "done"
-                m.completed_at = datetime.utcnow()
+                m.completed_at = now_utc_naive()
                 m.completed_by = current_user.get("email") or "system"
         else:
             # If dates were cleared, reopen the milestone
@@ -3679,7 +3680,7 @@ def _maybe_complete_assistant_milestone(db: Session, s: Surgery, by: str) -> Non
     m = next((mm for mm in s.milestones if mm.kind == "assistant_surgeon"), None)
     if m and m.status not in ("done", "skipped"):
         m.status = "done"
-        m.completed_at = datetime.utcnow()
+        m.completed_at = now_utc_naive()
         m.completed_by = by
 
 
@@ -3700,7 +3701,7 @@ def assistant_surgeon_notify_office(
         raise HTTPException(status_code=409,
                             detail="Assistant surgeon is not required for this surgery.")
     by = current_user.get("email") or "system"
-    s.assistant_surgeon_office_notified_at = datetime.utcnow()
+    s.assistant_surgeon_office_notified_at = now_utc_naive()
     s.assistant_surgeon_office_notified_by = by
     _maybe_complete_assistant_milestone(db, s, by)
     db.commit(); db.refresh(s)
@@ -3736,7 +3737,7 @@ def assistant_surgeon_confirm_appt(
                 payload.appt_date[:10], "%Y-%m-%d").date()
         except ValueError:
             raise HTTPException(status_code=422, detail="appt_date must be YYYY-MM-DD")
-    s.assistant_surgeon_appt_confirmed_at = datetime.utcnow()
+    s.assistant_surgeon_appt_confirmed_at = now_utc_naive()
     s.assistant_surgeon_appt_confirmed_by = by
     _maybe_complete_assistant_milestone(db, s, by)
     db.commit(); db.refresh(s)
@@ -3986,7 +3987,7 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
         m = next((m for m in s.milestones if m.kind == "benefits_determined"), None)
         if m and m.status not in ("done", "skipped"):
             m.status = "done"
-            m.completed_at = datetime.utcnow()
+            m.completed_at = now_utc_naive()
             m.completed_by = current_user.get("email") or "system"
         _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
 
@@ -4056,7 +4057,7 @@ def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
     # two patients paying their copay within the same minute on
     # different surgeries) are unaffected — different surgery_id.
     # (Fable surgery audit H4.)
-    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    cutoff = now_utc_naive() - timedelta(seconds=60)
     recent = (db.query(SurgeryPayment)
                 .filter(SurgeryPayment.surgery_id == s.id,
                         SurgeryPayment.kind == "manual_offset",
@@ -4067,7 +4068,7 @@ def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
         raise HTTPException(
             status_code=409,
             detail=(f"a manual payment of ${amt:.2f} was just recorded on this "
-                    f"surgery {int((datetime.utcnow() - recent.paid_at).total_seconds())}s ago "
+                    f"surgery {int((now_utc_naive() - recent.paid_at).total_seconds())}s ago "
                     f"(id {recent.id}). If this is intentional, wait 60s and re-submit."))
 
     pretty = {"modpay": "ModMed Pay", "check": "Check",
@@ -4083,7 +4084,7 @@ def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
         kind="manual_offset",
         description=description,
         requested_by=current_user.get("email") or "system",
-        paid_at=datetime.utcnow(),
+        paid_at=now_utc_naive(),
     )
     db.add(pay)
 
@@ -4158,7 +4159,7 @@ def void_manual_payment(surgery_id: str, payment_id: str,
     amt = Decimal(str(pay.amount_paid or 0))
     pay.status = "voided"
     pay.amount_refunded = (pay.amount_refunded or Decimal(0)) + amt
-    pay.refunded_at = datetime.utcnow()
+    pay.refunded_at = now_utc_naive()
     s.amount_paid = Decimal(str(s.amount_paid or 0)) - amt
 
     db.add(SurgeryPaymentHistory(
@@ -4217,11 +4218,11 @@ def consent_mark_sent(surgery_id: str, payload: ConsentTransitionPayload = Conse
         raise HTTPException(status_code=404, detail="surgery not found")
 
     s.consent_status = "sent"
-    s.consent_sent_at = datetime.utcnow()
+    s.consent_sent_at = now_utc_naive()
     m = next((m for m in s.milestones if m.kind == "consent"), None)
     if m and m.status not in ("done", "skipped"):
         m.status = "in_progress"
-        m.started_at = m.started_at or datetime.utcnow()
+        m.started_at = m.started_at or now_utc_naive()
         if payload.notes:
             m.notes = payload.notes
     _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
@@ -4422,11 +4423,11 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
                     "the BoldSign envelope flow"))
 
     s.consent_status = "signed"
-    s.consent_signed_at = datetime.utcnow()
+    s.consent_signed_at = now_utc_naive()
     m = next((m for m in s.milestones if m.kind == "consent"), None)
     if m and m.status not in ("done", "skipped"):
         m.status = "done"
-        m.completed_at = datetime.utcnow()
+        m.completed_at = now_utc_naive()
         m.completed_by = current_user.get("email") or "system"
         if payload.notes:
             m.notes = payload.notes
@@ -4572,7 +4573,7 @@ def waitlist_remove(surgery_id: str,
            .first())
     if not w:
         raise HTTPException(status_code=404, detail="not on the waitlist")
-    w.removed_at = datetime.utcnow()
+    w.removed_at = now_utc_naive()
     w.removed_reason = reason or "manual"
     db.commit()
     return {"ok": True}
@@ -4724,10 +4725,10 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
     m_row = next((m for m in s.milestones if m.kind == "patient_picks_date"), None)
     if m_row and m_row.status not in ("done", "skipped"):
         m_row.status = "done"
-        m_row.completed_at = datetime.utcnow()
+        m_row.completed_at = now_utc_naive()
         m_row.completed_by = current_user.get("email") or "system:waitlist-claim"
 
-    w.removed_at = datetime.utcnow()
+    w.removed_at = now_utc_naive()
     w.removed_reason = "claimed_slot"
 
     from app.models.surgery import SurgeryNote
@@ -4955,7 +4956,7 @@ def patch_schedule_gate_override(
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
     s.schedule_gate_override = payload.enabled
-    s.schedule_gate_override_at = datetime.utcnow()
+    s.schedule_gate_override_at = now_utc_naive()
     s.schedule_gate_override_by = current_user.get("email") or "system"
     db.commit()
     return {

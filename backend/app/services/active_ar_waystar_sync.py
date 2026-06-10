@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -133,7 +134,7 @@ def sync_one(
     # Persist the raw response (truncated if pathologically large)
     raw = json.dumps(response, default=str)[:20_000]
     claim.last_status_response = raw
-    claim.last_status_check_at = datetime.utcnow()
+    claim.last_status_check_at = now_utc_naive()
 
     note_lines = [summary]
     era_attached = None

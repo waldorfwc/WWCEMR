@@ -7,6 +7,7 @@ for chart context only.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Boolean, Column, String, Date, DateTime, Numeric, Integer, ForeignKey,
     JSON, Text, UniqueConstraint, Index,
@@ -116,10 +117,10 @@ class ActiveClaim(Base):
     last_status_response = Column(Text, nullable=True)        # JSON string
 
     # Timestamps
-    imported_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    imported_at = Column(DateTime, default=now_utc_naive, nullable=False)
     last_seen_in_export_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False)
 
     notes = relationship(
         "ActiveClaimNote", back_populates="claim",
@@ -147,7 +148,7 @@ class ActiveClaimNote(Base):
     # values: note, status_check, phone_call, fax_sent, appeal_submitted,
     # paid, written_off, reassigned, status_changed, payment_applied, other
     note = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     claim = relationship("ActiveClaim", back_populates="notes")
 
@@ -165,7 +166,7 @@ class InsurancePayment(Base):
     payment_method = Column(String(40))                # Check, EFT, ACH, etc.
     notes = Column(Text)
     posted_by = Column(String(120))
-    posted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    posted_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     allocations = relationship(
         "PaymentAllocation", back_populates="payment",
@@ -192,7 +193,7 @@ class PaymentAllocation(Base):
                              nullable=False, index=True)
     amount_applied = Column(Numeric(12, 2), nullable=False)
     allocation_note = Column(String(200), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     payment = relationship("InsurancePayment", back_populates="allocations")
     claim = relationship("ActiveClaim", back_populates="allocations")
@@ -217,7 +218,7 @@ class ActiveClaimDocument(Base):
     description = Column(Text, nullable=True)
 
     uploaded_by = Column(String(120))
-    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     claim = relationship("ActiveClaim", back_populates="documents")
 
@@ -238,6 +239,6 @@ class ActiveARFilterPreset(Base):
     name         = Column(String(120), nullable=False)
     filters_json = Column(JSON, nullable=False, default=dict)
     is_default   = Column(Boolean, default=False, nullable=False)
-    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at   = Column(DateTime, default=datetime.utcnow,
-                          onupdate=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at   = Column(DateTime, default=now_utc_naive,
+                          onupdate=now_utc_naive, nullable=False)

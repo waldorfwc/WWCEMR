@@ -14,6 +14,7 @@ Audit is per-row in larc_audit_events — every state change writes one entry.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer,
     JSON, Numeric, String, Text, UniqueConstraint,
@@ -53,9 +54,9 @@ class LarcDeviceType(Base):
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
 
 
 # ─── Pharmacy directory (configurable) ──────────────────────────────
@@ -83,7 +84,7 @@ class LarcPharmacy(Base):
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 # ─── Physical device inventory ──────────────────────────────────────
@@ -154,9 +155,9 @@ class LarcDevice(Base):
 
     notes = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
 
     device_type = relationship("LarcDeviceType")
     # IMPORTANT: no cascade. Assignment rows carry audit history and must
@@ -317,10 +318,10 @@ class LarcAssignment(Base):
     app_npi   = Column(String(20),  nullable=True)
 
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by = Column(String(200), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
 
     device = relationship("LarcDevice", back_populates="assignments",
                           foreign_keys=[device_id])
@@ -383,7 +384,7 @@ class LarcCheckout(Base):
     assignment_id = Column(GUID(), ForeignKey("larc_assignments.id"), nullable=False)
 
     requested_by = Column(String(200), nullable=False)   # MA email
-    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    requested_at = Column(DateTime, default=now_utc_naive, nullable=False)
     # Hybrid approval: 'auto' for the common path, 'manager' when flagged
     approval_kind = Column(String(20), default="auto", nullable=False)
     approval_status = Column(String(20), default="pending", nullable=False)
@@ -429,7 +430,7 @@ class LarcOwedPatient(Base):
     patient_name = Column(String(200), nullable=False)
     original_assignment_id = Column(GUID(), ForeignKey("larc_assignments.id"), nullable=False)
     original_device_type_id = Column(GUID(), ForeignKey("larc_device_types.id"), nullable=False)
-    owed_since = Column(DateTime, default=datetime.utcnow, nullable=False)
+    owed_since = Column(DateTime, default=now_utc_naive, nullable=False)
     # The latest the patient can still claim the original device (typically
     # the original device's expiration date)
     expires_at = Column(Date, nullable=True)
@@ -455,9 +456,9 @@ class LarcManualSection(Base):
     title = Column(String(200), nullable=False)
     body_md = Column(Text, nullable=False, default="")
     sort_order = Column(Integer, default=0, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
     updated_by = Column(String(200), nullable=True)
 
 
@@ -471,7 +472,7 @@ class LarcInventoryCount(Base):
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
-    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, default=now_utc_naive, nullable=False)
     started_by = Column(String(200), nullable=False)
     finished_at = Column(DateTime, nullable=True)
     finished_by = Column(String(200), nullable=True)
@@ -500,7 +501,7 @@ class LarcAuditEvent(Base):
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
-    occurred_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    occurred_at = Column(DateTime, default=now_utc_naive, nullable=False)
     actor = Column(String(200), nullable=False)   # user email or 'system:<job>'
     action = Column(String(60), nullable=False)
     # Examples: device_added, device_assigned, device_checked_out, checkout_approved,
@@ -577,8 +578,8 @@ class LarcEnrollmentEnvelope(Base):
     last_synced_at = Column(DateTime, nullable=True)
     last_error   = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
 
     assignment = relationship("LarcAssignment")

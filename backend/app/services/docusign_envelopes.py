@@ -7,6 +7,7 @@ flips to 'signed' only when *every* envelope row reaches status='signed'.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 import httpx
@@ -146,7 +147,7 @@ def send_consent_envelopes(db: Session, s: Surgery, *,
 
     sent: list[dict] = []
     skipped: list[dict] = []
-    now = datetime.utcnow()
+    now = now_utc_naive()
 
     for match in matches:
         prior = existing_by_template.get(match.template.id)
@@ -266,14 +267,14 @@ def _apply_status_to_row(row: SurgeryConsentEnvelope, env: dict) -> None:
     """Update a SurgeryConsentEnvelope row from a DocuSign envelope payload."""
     status = (env.get("status") or "").lower()
     row.status = status or row.status
-    row.last_synced_at = datetime.utcnow()
+    row.last_synced_at = now_utc_naive()
     if status == "completed":
         row.status = "signed"
-        row.signed_at = _parse_dt(env.get("completedDateTime")) or datetime.utcnow()
+        row.signed_at = _parse_dt(env.get("completedDateTime")) or now_utc_naive()
     elif status == "declined":
-        row.declined_at = _parse_dt(env.get("declinedDateTime")) or datetime.utcnow()
+        row.declined_at = _parse_dt(env.get("declinedDateTime")) or now_utc_naive()
     elif status == "voided":
-        row.voided_at = _parse_dt(env.get("voidedDateTime")) or datetime.utcnow()
+        row.voided_at = _parse_dt(env.get("voidedDateTime")) or now_utc_naive()
 
 
 def reconcile_surgery_consent(db: Session, s: Surgery) -> None:
@@ -291,7 +292,7 @@ def reconcile_surgery_consent(db: Session, s: Surgery) -> None:
     if all(e.status == "signed" for e in envs):
         s.consent_status = "signed"
         latest = max((e.signed_at for e in envs if e.signed_at), default=None)
-        s.consent_signed_at = latest or datetime.utcnow()
+        s.consent_signed_at = latest or now_utc_naive()
         m = next((mm for mm in s.milestones if mm.kind == "consent"), None)
         if m and m.status != "done":
             m.status = "done"
@@ -346,8 +347,8 @@ def void_envelope_row(db: Session, row: SurgeryConsentEnvelope,
     if r.status_code not in (200, 201):
         raise DocuSignEnvelopeError(f"Void failed: {r.status_code} {r.text}")
     row.status = "voided"
-    row.voided_at = datetime.utcnow()
-    row.last_synced_at = datetime.utcnow()
+    row.voided_at = now_utc_naive()
+    row.last_synced_at = now_utc_naive()
     db.commit()
 
 

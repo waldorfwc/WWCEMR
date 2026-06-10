@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
@@ -134,7 +135,7 @@ def regenerate_code(
     row.plain_english = enr.plain_english
     row.how_to_fix = enr.how_to_fix
     row.enrichment_source = "llm"
-    row.last_enriched_at = datetime.utcnow()
+    row.last_enriched_at = now_utc_naive()
     db.commit()
     return _to_dict(row)
 
@@ -168,7 +169,7 @@ def save_notes(
     # Treat empty submission as a delete, still recorded in history.
     row.wwc_notes = new_body or None
     row.wwc_notes_updated_by = editor
-    row.wwc_notes_updated_at = datetime.utcnow()
+    row.wwc_notes_updated_at = now_utc_naive()
 
     db.add(AdjustmentCodeNoteRevision(
         code_ref_id=row.id,

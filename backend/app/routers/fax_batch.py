@@ -5,6 +5,7 @@ Combined and by_type modes are added in later tasks.
 import os
 from typing import Optional
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
@@ -115,7 +116,7 @@ def _send_one_and_log(
 
     log.status = FaxLogStatus.SENT
     log.ringcentral_message_id = result.get("message_id")
-    log.sent_at = datetime.utcnow()
+    log.sent_at = now_utc_naive()
     db.commit()
     log_action(db, "FAX_SENT", "fax", resource_id=str(log.id),
                user_name=sent_by,
@@ -341,7 +342,7 @@ def fax_recent(
     q = db.query(FaxLog)
     if window:
         from datetime import datetime, timedelta
-        q = q.filter(FaxLog.sent_at >= datetime.utcnow() - timedelta(days=window))
+        q = q.filter(FaxLog.sent_at >= now_utc_naive() - timedelta(days=window))
     if status:
         q = q.filter(FaxLog.status == status)
 
@@ -442,7 +443,7 @@ def fax_retry(
     recent_retry = (db.query(FaxLog)
                        .filter(FaxLog.retry_of == original.id,
                                FaxLog.created_at
-                                   >= datetime.utcnow() - timedelta(seconds=60))
+                                   >= now_utc_naive() - timedelta(seconds=60))
                        .first())
     if recent_retry and not force:
         raise HTTPException(

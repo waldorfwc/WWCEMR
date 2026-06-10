@@ -1,5 +1,6 @@
 """Patient<->staff messages per surgery + reusable message templates."""
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text
 
@@ -20,7 +21,7 @@ class SurgeryMessage(Base):
     author_kind         = Column(String(20), nullable=False)
     author_email        = Column(String(200), nullable=True)
     body                = Column(Text, nullable=False)
-    sent_at             = Column(DateTime, default=datetime.utcnow,
+    sent_at             = Column(DateTime, default=now_utc_naive,
                                     nullable=False)
     read_by_patient_at  = Column(DateTime, nullable=True)
     read_by_staff_at    = Column(DateTime, nullable=True)
@@ -32,6 +33,6 @@ class MessageTemplate(Base):
     id          = Column(GUID(), primary_key=True, default=new_uuid)
     name        = Column(String(120), nullable=False)
     body        = Column(Text, nullable=False)
-    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at  = Column(DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow, nullable=False)
+    created_at  = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at  = Column(DateTime, default=now_utc_naive,
+                            onupdate=now_utc_naive, nullable=False)

@@ -17,6 +17,7 @@ A row is fully resolved when its status is billed | no_show | canceled.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Column, Date, DateTime, ForeignKey, Integer, JSON, String, Text,
     UniqueConstraint,
@@ -47,7 +48,7 @@ class MissingChargeImport(Base):
     id              = Column(GUID(), primary_key=True, default=new_uuid)
     original_filename = Column(String(255), nullable=False)
     uploaded_by     = Column(String(120), nullable=False)
-    uploaded_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at     = Column(DateTime, default=now_utc_naive, nullable=False)
     total_rows      = Column(Integer, default=0)
     new_rows        = Column(Integer, default=0)
     duplicate_rows  = Column(Integer, default=0)
@@ -86,9 +87,9 @@ class MissingCharge(Base):
     source_import_id    = Column(GUID(), ForeignKey("missing_charge_imports.id"), nullable=True)
 
     # Lifecycle
-    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at          = Column(DateTime, default=datetime.utcnow,
-                                 onupdate=datetime.utcnow, nullable=False)
+    created_at          = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at          = Column(DateTime, default=now_utc_naive,
+                                 onupdate=now_utc_naive, nullable=False)
     resolved_at         = Column(DateTime, nullable=True)
     resolved_by         = Column(String(120), nullable=True)
 
@@ -117,7 +118,7 @@ class MissingChargeNote(Base):
     charge_id   = Column(GUID(), ForeignKey("missing_charges.id"), nullable=False, index=True)
     author      = Column(String(120), nullable=False)
     body        = Column(Text,        nullable=False)
-    created_at  = Column(DateTime,    default=datetime.utcnow, nullable=False)
+    created_at  = Column(DateTime,    default=now_utc_naive, nullable=False)
 
 
 class ProviderUserMapping(Base):
@@ -136,7 +137,7 @@ class ProviderUserMapping(Base):
     user_email    = Column(String(255), nullable=True)
     is_active     = Column(String(1),   default="Y", nullable=False)  # 'Y' | 'N'
     is_ignored    = Column(String(1),   default="N", nullable=False)  # 'Y' = skip, no email
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at    = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by    = Column(String(120), nullable=True)
-    updated_at    = Column(DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=now_utc_naive,
+                            onupdate=now_utc_naive, nullable=False)

@@ -8,6 +8,7 @@ plus `permissions_extra` / `permissions_revoked`.
 from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 import enum
 from app.database import Base
 from app.models.groups import user_groups  # ensure the Table is in metadata before mapper config
@@ -95,8 +96,8 @@ class User(Base):
     # the sender ticks based on this value.
     credential = Column(String(10), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     # Many-to-many to Group via user_groups join table
     groups = relationship(

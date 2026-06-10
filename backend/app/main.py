@@ -64,6 +64,29 @@ async def lifespan(app: FastAPI):
         raise
     except Exception:
         _log.exception("route_perm_catalog failed")
+
+    # Lint against reintroducing datetime.utcnow(). utils/dt.py is the
+    # canonical source of "now" — utcnow() is deprecated in 3.12 and
+    # produces naive datetimes that don't compare with tz-aware ones
+    # (e.g. storage.blob_metadata). Same Cloud Run-only enforcement
+    # pattern as the route audit. (Fable design review note 5.)
+    try:
+        from app.services.dt_lint import find_utcnow_hits
+        utcnow_hits = find_utcnow_hits()
+        if utcnow_hits and os.environ.get("K_SERVICE"):
+            preview = ", ".join(f"{f}:{ln}" for f, ln in utcnow_hits[:10])
+            more = f" (+{len(utcnow_hits) - 10} more)" if len(utcnow_hits) > 10 else ""
+            raise RuntimeError(
+                f"Refusing to start: {len(utcnow_hits)} datetime.utcnow "
+                f"reference(s) found in app/. Use now_utc_naive() from "
+                f"app/utils/dt.py instead — utcnow is deprecated and "
+                f"produces tz-naive datetimes. Hits: {preview}{more}."
+            )
+    except RuntimeError:
+        raise
+    except Exception:
+        _log.exception("dt_lint failed")
+
     try:
         yield
     finally:

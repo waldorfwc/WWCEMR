@@ -10,6 +10,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Any, Optional
 
 from sqlalchemy.orm import Session
@@ -311,7 +312,7 @@ def send_patient_sms(
     from datetime import timedelta as _td
     _PER_NUMBER_HOURLY = int(os.environ.get("PATIENT_SMS_PER_NUMBER_HOURLY", "5"))
     _GLOBAL_HOURLY = int(os.environ.get("PATIENT_SMS_GLOBAL_HOURLY", "200"))
-    one_hour_ago = datetime.utcnow() - _td(hours=1)
+    one_hour_ago = now_utc_naive() - _td(hours=1)
     per_num = (db.query(PatientSms)
                   .filter(PatientSms.to_phone == phone,
                           PatientSms.status == "sent",

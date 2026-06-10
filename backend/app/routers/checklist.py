@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date as _date, datetime, time as _time
+from app.utils.dt import now_utc_naive
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -655,7 +656,7 @@ def manager_dashboard(
     no_answers = []
     overdue = []
     direct_reports: set[str] = set()
-    now = datetime.utcnow()
+    now = now_utc_naive()
     for inst, tmpl in rows:
         direct_reports.add(inst.assigned_to_email)
         if inst.answer == "no":
@@ -945,7 +946,7 @@ def respond_to_pain_point(pp_id: str, payload: PainPointRespondPayload,
         raise HTTPException(status_code=404, detail="pain point not found")
     p.response = body
     p.reviewed_by = me
-    p.reviewed_at = datetime.utcnow()
+    p.reviewed_at = now_utc_naive()
     p.status = "in_progress"
     # Submitter must re-acknowledge after a new response
     p.acknowledged_at = None
@@ -976,7 +977,7 @@ def acknowledge_pain_point_response(pp_id: str,
     if p.status != "in_progress":
         raise HTTPException(status_code=409,
                             detail=f"pain point is {p.status}, not in_progress")
-    p.acknowledged_at = datetime.utcnow()
+    p.acknowledged_at = now_utc_naive()
     p.status = "completed"
     db.commit(); db.refresh(p)
     return _painpoint_to_dict(p)

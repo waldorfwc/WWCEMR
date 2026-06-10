@@ -16,6 +16,7 @@ cert is valid; expired certs are treated like none.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Column, String, DateTime, Date, Text, Integer, Boolean, ForeignKey, Index,
     UniqueConstraint,
@@ -43,7 +44,7 @@ class TrainerAuthorization(Base):
                          nullable=False)
 
     authorized_by = Column(String(120), nullable=False)   # the manager
-    authorized_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    authorized_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     revoked_at = Column(DateTime, nullable=True)
     revoked_by = Column(String(120), nullable=True)
@@ -77,7 +78,7 @@ class TrainingCertification(Base):
                          nullable=False)
 
     trainer_email = Column(String(120), nullable=False)
-    trainer_signed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    trainer_signed_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     trainee_signed_at = Column(DateTime, nullable=True)
 
@@ -90,5 +91,5 @@ class TrainingCertification(Base):
 
     notes = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False)

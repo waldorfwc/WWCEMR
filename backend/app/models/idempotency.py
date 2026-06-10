@@ -10,6 +10,7 @@ or "network flaked mid-commit". A cleanup sweep deletes stale rows.
 """
 from sqlalchemy import Column, DateTime, Index, Integer, String, Text, UniqueConstraint
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -28,4 +29,4 @@ class IdempotencyKey(Base):
     key          = Column(String(120), nullable=False)   # client-supplied header value
     status_code  = Column(Integer, nullable=False)
     response_body = Column(Text, nullable=False)         # JSON-encoded
-    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at   = Column(DateTime, default=now_utc_naive, nullable=False)

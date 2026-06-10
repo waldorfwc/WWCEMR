@@ -13,6 +13,7 @@ Statuses on PatientSms:
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Index, JSON, String, Text,
@@ -48,9 +49,9 @@ class SmsTemplate(Base):
     # SMS body — plain text, {{var}} substitution, no HTML.
     is_active   = Column(Boolean, default=True, nullable=False)
     notes       = Column(Text, nullable=True)
-    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at  = Column(DateTime, default=datetime.utcnow,
-                            onupdate=datetime.utcnow, nullable=False)
+    created_at  = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at  = Column(DateTime, default=now_utc_naive,
+                            onupdate=now_utc_naive, nullable=False)
     updated_by  = Column(String(120), nullable=True)
 
 
@@ -75,7 +76,7 @@ class PatientSms(Base):
     # >160 chars splits into more). We store the count for cost tracking.
     status          = Column(String(20), nullable=False, default="sent")
     failure_reason  = Column(Text, nullable=True)
-    sent_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at         = Column(DateTime, default=now_utc_naive, nullable=False)
     sent_by         = Column(String(120), nullable=True)
     context         = Column(JSON, nullable=True)
     twilio_sid      = Column(String(80), nullable=True)

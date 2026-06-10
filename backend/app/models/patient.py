@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Date, Text, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from app.database import Base
 from app.models.guid import GUID, new_uuid
 
@@ -27,8 +28,8 @@ class Patient(Base):
     tertiary_insurance_id = Column(String(100), nullable=True)
     tertiary_group_number = Column(String(100), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc_naive)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive)
 
     claims = relationship("Claim", back_populates="patient")
 

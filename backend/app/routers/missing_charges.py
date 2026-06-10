@@ -15,6 +15,7 @@ Endpoints here cover the *biller-facing* workflow. Provider self-service
 from __future__ import annotations
 
 from datetime import date as _date, datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -301,7 +302,7 @@ def patch_charge(charge_id: str, payload: ChargePatch,
                                 detail=f"unknown status: {data['status']}")
         c.status = data["status"]
         if c.status in TERMINAL_STATUSES:
-            c.resolved_at = datetime.utcnow()
+            c.resolved_at = now_utc_naive()
             c.resolved_by = actor
         else:
             c.resolved_at = None
@@ -313,7 +314,7 @@ def patch_charge(charge_id: str, payload: ChargePatch,
         if v and c.status != "billed":
             # Auto-advance to billed when a claim # lands.
             c.status = "billed"
-            c.resolved_at = datetime.utcnow()
+            c.resolved_at = now_utc_naive()
             c.resolved_by = actor
 
     if "provider_response_note" in data:

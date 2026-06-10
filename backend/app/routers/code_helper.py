@@ -111,7 +111,7 @@ def patch_denial(
         raise HTTPException(422, "code_type must be 'cpt' or 'icd10'")
     for k, v in data.items():
         setattr(d, k, v)
-    d.updated_at = datetime.utcnow()
+    d.updated_at = now_utc_naive()
     db.commit(); db.refresh(d)
     return _denial_dict(d)
 
@@ -241,6 +241,7 @@ def create_request(
 
 
 from datetime import date as _date  # noqa: E402
+from app.utils.dt import now_utc_naive
 
 
 class RequestPatch(BaseModel):

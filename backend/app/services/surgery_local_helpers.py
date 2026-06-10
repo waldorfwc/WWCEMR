@@ -9,6 +9,7 @@ unconditionally.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from sqlalchemy import text
@@ -43,7 +44,7 @@ def upsert_patient_directory(db: Session, s: Surgery) -> None:
             phone        = s.phone or s.cell_phone,
             email        = s.email,
             source_file  = "surgery_create",
-            last_updated = datetime.utcnow(),
+            last_updated = now_utc_naive(),
         ))
         return
     # Fill in any blanks from the new surgery; never overwrite values that
@@ -56,7 +57,7 @@ def upsert_patient_directory(db: Session, s: Surgery) -> None:
     if not row.address:      row.address      = addr
     if not row.phone:        row.phone        = s.phone or s.cell_phone
     if not row.email:        row.email        = s.email
-    row.last_updated = datetime.utcnow()
+    row.last_updated = now_utc_naive()
 
 
 def next_surgery_number(db: Session) -> str:

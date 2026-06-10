@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import logging
 from datetime import date, datetime
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from reportlab.pdfgen import canvas
@@ -155,7 +156,7 @@ def _build_pdf(s: Surgery) -> bytes:
         "Please return this completed form to the patient or fax to "
         "Waldorf Women's Care at 240-252-2141.")
     c.drawCentredString(width / 2, 0.45 * inch,
-        f"Generated {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}")
+        f"Generated {now_utc_naive().strftime('%Y-%m-%d %H:%M UTC')}")
 
     c.showPage()
     c.save()
@@ -170,7 +171,7 @@ def generate_for_surgery(db: Session, s: Surgery,
     safe_chart = (s.chart_number or "unknown").replace("/", "_")
     filename = (
         f"clearance_form_{safe_chart}_"
-        f"{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}.pdf"
+        f"{now_utc_naive().strftime('%Y%m%d-%H%M%S')}.pdf"
     )
     key = save_blob(prefix="surgery_clearance_forms",
                     body=pdf_bytes, filename=filename)

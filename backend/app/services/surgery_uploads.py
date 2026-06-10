@@ -17,6 +17,7 @@ import logging
 import os
 import re
 from datetime import datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 from google.cloud import storage
@@ -98,7 +99,7 @@ def store_upload(db: Session, surgery: Surgery, *, kind: str,
             status_code=415,
         )
 
-    ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+    ts = now_utc_naive().strftime("%Y%m%d-%H%M%S")
     safe = _safe_filename(filename)
     object_path = f"surgery-uploads/{surgery.id}/{kind}/{ts}_{safe}"
 

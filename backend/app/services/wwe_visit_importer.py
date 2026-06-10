@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime
+from app.utils.dt import now_utc_naive
 from typing import Iterable
 
 import pandas as pd
@@ -162,7 +163,7 @@ def import_modmed_xlsx(db: Session, path_or_buffer) -> dict:
     rows: list[dict] = []
     skipped_bad_data = 0
     skipped_non_wwe = 0
-    now = datetime.utcnow()
+    now = now_utc_naive()
 
     for _, r in df.iterrows():
         try:

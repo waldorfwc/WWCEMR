@@ -6,6 +6,7 @@ Notification preferences ride on the user record (added via lightweight migratio
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Column, String, Date, DateTime, Boolean, ForeignKey, JSON, Table, Text, Time, Integer,
     UniqueConstraint, Index,
@@ -119,9 +120,9 @@ class TaskTemplate(Base):
     notify_afternoon = Column(Boolean, default=False, nullable=False)
     notify_overdue = Column(Boolean, default=True, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by = Column(String(120), nullable=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False)
     updated_by = Column(String(120), nullable=True)
 
     instances = relationship("TaskInstance", back_populates="template",
@@ -169,8 +170,8 @@ class TaskInstance(Base):
     # escalation has been sent so we don't spam the manager.
     escalation_sent_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False)
 
     template = relationship("TaskTemplate", back_populates="instances")
 
@@ -201,5 +202,5 @@ class PainPoint(Base):
     # Submitter's acknowledgement of the response
     acknowledged_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive, onupdate=now_utc_naive, nullable=False)

@@ -20,6 +20,7 @@ milestone is overdue by >0h shows as stuck on the dashboard.
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey, Index, Integer,
     JSON, Numeric, String, Text, Time, UniqueConstraint,
@@ -341,9 +342,9 @@ class Surgery(Base):
     # Audit
     source = Column(String(20), nullable=True)         # smartsheet | upload | manual
     created_by = Column(String(200), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
     # Auto-unresponsive sweep tracking (audit finding #13). The sweep
     # uses last_patient_activity_at (bumped on portal pick/reschedule/
     # consent-signed/auth) so a late patient pick on day 31 resets the
@@ -458,7 +459,7 @@ class SurgeryFile(Base):
     size_bytes = Column(Integer, nullable=True)
     notes = Column(Text, nullable=True)
     uploaded_by = Column(String(200), nullable=True)
-    uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at = Column(DateTime, default=now_utc_naive, nullable=False)
     # Send log — list of {at, by, kind: fax|email, to, status, message_id?, error?}
     # appended each time this file is faxed or emailed.
     send_history = Column(JSON, nullable=True)
@@ -486,7 +487,7 @@ class SurgeryNotification(Base):
     # values: klara_initial | klara_reminder | klara_post_op |
     #         calendar_invite | waitlist_blast | clearance_followup |
     #         payment_request
-    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = Column(DateTime, default=now_utc_naive, nullable=False)
     sent_by = Column(String(200), nullable=True)
     body_preview = Column(Text, nullable=True)
 
@@ -516,11 +517,11 @@ class BlockSchedule(Base):
     block_kind = Column(String(20), nullable=False)
     # values: robotic_only | minor_only | major_only | mixed | office
 
-    effective_from = Column(Date, nullable=False, default=lambda: datetime.utcnow().date())
+    effective_from = Column(Date, nullable=False, default=lambda: now_utc_naive().date())
     effective_through = Column(Date, nullable=True)
 
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by = Column(String(200), nullable=True)
 
 
@@ -547,7 +548,7 @@ class BlockDay(Base):
     # Set when a release-the-day alert has been sent for this block day,
     # so the daily sweep doesn't spam the same notification.
     release_alert_sent_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by = Column(String(200), nullable=True)
 
     slots = relationship("SurgerySlot", back_populates="block_day",
@@ -610,7 +611,7 @@ class SurgeryBlackoutDay(Base):
     # Holidays auto-seeded for next 5 years are recurring=True; PTO is False
     notes = Column(Text, nullable=True)
     created_by = Column(String(200), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 class SurgeryWaitlist(Base):
@@ -626,7 +627,7 @@ class SurgeryWaitlist(Base):
                          nullable=False)
     # Minimum advance notice the patient needs (days)
     advance_notice_days = Column(Integer, default=7, nullable=False)
-    signed_up_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    signed_up_at = Column(DateTime, default=now_utc_naive, nullable=False)
     removed_at = Column(DateTime, nullable=True)
     removed_reason = Column(String(40), nullable=True)
     # values: claimed_slot | cancelled | declined_offer
@@ -645,7 +646,7 @@ class SurgeryCancellation(Base):
     surgery_id = Column(GUID(),
                          ForeignKey("surgeries.id", ondelete="CASCADE"),
                          nullable=False)
-    cancelled_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    cancelled_at = Column(DateTime, default=now_utc_naive, nullable=False)
     cancelled_by = Column(String(200), nullable=False)
     reason = Column(String(40), nullable=False)
     # values: patient | anesthesia | hospital | medical | unresponsive | hold
@@ -678,7 +679,7 @@ class SurgerySchedulerNotice(Base):
     # Stable per-event id (BoldSign event id, or "{surgery_id}:{ISO ts}"
     # for portal actions where there's no external id).
     event_id = Column(String(120), nullable=False)
-    sent_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = Column(DateTime, default=now_utc_naive, nullable=False)
     channels = Column(String(80), nullable=True)   # csv: "email,sms"
     detail = Column(Text, nullable=True)
 
@@ -701,7 +702,7 @@ class PatientAuthAttempt(Base):
     surgery_id = Column(GUID(),
                          ForeignKey("surgeries.id", ondelete="CASCADE"),
                          nullable=True)
-    attempted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    attempted_at = Column(DateTime, default=now_utc_naive, nullable=False)
     success = Column(Boolean, default=False, nullable=False)
     ip_address = Column(String(45), nullable=True)
 
@@ -727,7 +728,7 @@ class SurgeryNote(Base):
     # callers; current callers use: slot_scheduled |
     # slot_scheduled_by_coordinator | slot_duration_changed |
     # blocked_conflict_resolved | other
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 # ─── Saved filter presets (per-user, for the surgery list) ─────────
@@ -746,9 +747,9 @@ class SurgeryFilterPreset(Base):
     name = Column(String(120), nullable=False)
     filters_json = Column(JSON, nullable=False, default=dict)
     is_default = Column(Boolean, default=False, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
 
 
 # ─── Consent Templates + Envelopes ───────────────────────────────────
@@ -796,9 +797,9 @@ class ConsentTemplate(Base):
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
 
 
 class SurgeryConsentEnvelope(Base):
@@ -835,9 +836,9 @@ class SurgeryConsentEnvelope(Base):
     last_synced_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow,
-                        onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at = Column(DateTime, default=now_utc_naive,
+                        onupdate=now_utc_naive, nullable=False)
 
     surgery = relationship("Surgery", back_populates="consent_envelopes")
     template = relationship("ConsentTemplate")
@@ -861,5 +862,5 @@ class SurgeryDocument(Base):
     gcs_path     = Column(String(500), nullable=False)
     content_type = Column(String(100), nullable=True)
     size_bytes   = Column(Integer, nullable=True)
-    uploaded_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    uploaded_at  = Column(DateTime, default=now_utc_naive, nullable=False)
     uploaded_by  = Column(String(120), nullable=False)

@@ -18,6 +18,7 @@ Statuses on PatientEmail:
 from __future__ import annotations
 
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Boolean, Column, DateTime, ForeignKey, Index, JSON, String, Text,
@@ -63,9 +64,9 @@ class EmailTemplate(Base):
     # version of html_body.
     is_active   = Column(Boolean, default=True, nullable=False)
     notes       = Column(Text, nullable=True)
-    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at  = Column(DateTime, default=datetime.utcnow,
-                         onupdate=datetime.utcnow, nullable=False)
+    created_at  = Column(DateTime, default=now_utc_naive, nullable=False)
+    updated_at  = Column(DateTime, default=now_utc_naive,
+                         onupdate=now_utc_naive, nullable=False)
     updated_by  = Column(String(120), nullable=True)
 
 
@@ -92,7 +93,7 @@ class PatientEmail(Base):
     rendered_html    = Column(Text, nullable=False)
     status           = Column(String(20), nullable=False, default="sent")
     failure_reason   = Column(Text, nullable=True)
-    sent_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    sent_at          = Column(DateTime, default=now_utc_naive, nullable=False)
     sent_by          = Column(String(120), nullable=True)
     # Email of staff member who triggered, or 'system:cron' for reminders,
     # 'system:webhook' for Stripe receipts, etc.

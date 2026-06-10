@@ -17,6 +17,7 @@ Plus the state-transition helpers:
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Iterable, Optional, Set
 
 from sqlalchemy.orm import Session
@@ -130,7 +131,7 @@ def authorize_trainer(
             existing.revoked_by = None
             existing.revoked_reason = None
             existing.authorized_by = authorized_by
-            existing.authorized_at = datetime.utcnow()
+            existing.authorized_at = now_utc_naive()
             if notes:
                 existing.notes = notes
             db.commit(); db.refresh(existing)
@@ -160,7 +161,7 @@ def revoke_trainer(
         raise ValueError("trainer authorization not found")
     if row.revoked_at is not None:
         return row
-    row.revoked_at = datetime.utcnow()
+    row.revoked_at = now_utc_naive()
     row.revoked_by = revoked_by
     row.revoked_reason = reason
     db.commit(); db.refresh(row)
@@ -198,7 +199,7 @@ def certify(
                   .first())
     if existing:
         existing.trainer_email = trainer_email
-        existing.trainer_signed_at = datetime.utcnow()
+        existing.trainer_signed_at = now_utc_naive()
         existing.trainee_signed_at = None
         existing.status = "pending_trainee"
         existing.expires_on = None
@@ -214,7 +215,7 @@ def certify(
         user_email=trainee_email,
         template_id=template_id,
         trainer_email=trainer_email,
-        trainer_signed_at=datetime.utcnow(),
+        trainer_signed_at=now_utc_naive(),
         status="pending_trainee",
         notes=notes,
     )
@@ -241,7 +242,7 @@ def acknowledge(
     if row.status != "pending_trainee":
         raise ValueError(f"certification is not pending — current status {row.status}")
 
-    row.trainee_signed_at = datetime.utcnow()
+    row.trainee_signed_at = now_utc_naive()
     if confirm:
         row.status = "active"
         tmpl = db.query(TaskTemplate).filter(TaskTemplate.id == row.template_id).first()
@@ -263,7 +264,7 @@ def revoke_cert(
     if row is None:
         raise ValueError("certification not found")
     row.status = "revoked"
-    row.revoked_at = datetime.utcnow()
+    row.revoked_at = now_utc_naive()
     row.revoked_by = revoked_by
     row.revoked_reason = reason
     db.commit(); db.refresh(row)

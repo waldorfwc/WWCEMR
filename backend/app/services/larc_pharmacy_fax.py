@@ -15,6 +15,7 @@ import logging
 import os
 import tempfile
 from datetime import datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 
@@ -166,7 +167,7 @@ def fax_envelope(db: Session, env: LarcEnrollmentEnvelope,
 
     env.fax_message_id = result.get("message_id")
     env.fax_status    = result.get("status") or "Queued"
-    env.faxed_at      = datetime.utcnow()
+    env.faxed_at      = now_utc_naive()
     env.last_fax_error = None
     # Clear retry state — a successful send (whether the original or a
     # later sweep attempt) ends the retry queue for this envelope.
@@ -183,7 +184,7 @@ def fax_envelope(db: Session, env: LarcEnrollmentEnvelope,
     # Bump the assignment SLA clock — same milestone the manual /fax-pharmacy
     # endpoint sets when staff faxed by hand.
     if not a.request_faxed_at:
-        a.request_faxed_at = datetime.utcnow()
+        a.request_faxed_at = now_utc_naive()
 
     log_action(
         db, "LARC_ENROLLMENT_FAXED", "larc_assignment",
@@ -225,7 +226,7 @@ def _record_failure(db: Session, env: LarcEnrollmentEnvelope,
     # Schedule the next retry (or give up). The sweep in larc_sweeps
     # picks rows where next_fax_retry_at <= now() and runs them through
     # fax_envelope(force=True).
-    now = datetime.utcnow()
+    now = now_utc_naive()
     if env.fax_attempts < _FAX_MAX_ATTEMPTS:
         backoff = _FAX_RETRY_BACKOFF[env.fax_attempts - 1]
         env.next_fax_retry_at = now + backoff

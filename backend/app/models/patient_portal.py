@@ -1,6 +1,7 @@
 """Patient portal auth — SMS-code challenges issued during sign-in."""
 from __future__ import annotations
 from datetime import datetime
+from app.utils.dt import now_utc_naive
 
 from sqlalchemy import (
     Column, DateTime, ForeignKey, Index, Integer, String,
@@ -26,7 +27,7 @@ class PatientPortalAuthCode(Base):
     fail_count      = Column(Integer, default=0, nullable=False)
     expires_at      = Column(DateTime, nullable=False)
     used_at         = Column(DateTime, nullable=True)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at      = Column(DateTime, default=now_utc_naive, nullable=False)
     sent_to_phone   = Column(String(40), nullable=True)
     # For audit only. The phone is already on the Surgery row.
     purpose         = Column(String(20), nullable=True)

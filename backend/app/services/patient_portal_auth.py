@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import date, datetime, timedelta
+from app.utils.dt import now_utc_naive
 from typing import Optional
 
 import bcrypt as _bcrypt  # passlib's bcrypt backend is broken against bcrypt>=4; use raw package
@@ -51,7 +52,7 @@ class SmsSendError(Exception):
 
 
 def _now() -> datetime:
-    return datetime.utcnow()
+    return now_utc_naive()
 
 
 def _generate_code() -> str:
@@ -210,14 +211,14 @@ def issue_portal_token(surgery: Surgery, *,
     version. (Fable portal audit H5-auth.)
     """
     if ttl_minutes is not None:
-        exp = datetime.utcnow() + timedelta(minutes=ttl_minutes)
+        exp = now_utc_naive() + timedelta(minutes=ttl_minutes)
     else:
         exp = compute_token_exp(surgery)
     payload = {
         "sub": str(surgery.id),
         "aud": PORTAL_TOKEN_AUDIENCE,
         "exp": exp,
-        "iat": datetime.utcnow(),
+        "iat": now_utc_naive(),
         "ptv": int(getattr(surgery, "portal_token_version", 0) or 0),
     }
     if viewer:
