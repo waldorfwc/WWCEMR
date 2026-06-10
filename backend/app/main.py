@@ -10,6 +10,10 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
+from app.services.request_context import (
+    RequestIdMiddleware, install_request_id_logging,
+)
+
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
 from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, docusign as docusign_router, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts
@@ -36,6 +40,7 @@ from app.permissions.dependencies import requires_super_admin
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    install_request_id_logging()
     init_db()
     from app.services.fax_poller import start_scheduler
     sched = start_scheduler()
@@ -104,6 +109,12 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Request-ID middleware MUST be added first (executes last on the
+# request-going-in / first on the response-going-out — Starlette walks
+# its middleware stack in reverse). That guarantees CORS gets to see
+# the request_id when it logs, and the response carries X-Request-ID.
+app.add_middleware(RequestIdMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
