@@ -849,6 +849,23 @@ def apply_webhook_event(db, env, data: dict) -> str:
     """
     raw_status = (data.get("status") or data.get("Status") or "").lower()
     new_status = _STATUS_MAP.get(raw_status, raw_status or env.status)
+    # Terminal-state guard. BoldSign retries + out-of-order deliveries can
+    # send a late InProgress after Completed, or a stale Declined retry
+    # after Signed. Without this, env.status used to flip
+    # signed → sent (or signed → declined). Downstream dashboards then
+    # show the wrong consent state for a form that was already faxed.
+    # (Fable LARC audit H2.) Terminal-from-the-applier's POV is anything
+    # that the workflow can't legitimately undo via a webhook: signed /
+    # voided / declined / faxed / fax_failed. Voided/declined/faxed are
+    # final business states; signed is a precursor to faxed and never
+    # un-signs in BoldSign.
+    _TERMINAL = {"signed", "voided", "declined", "faxed", "fax_failed"}
+    if env.status in _TERMINAL and new_status not in _TERMINAL:
+        log.info(
+            "LARC envelope %s — webhook reports %r but envelope is already %r; "
+            "ignoring regressive status change", env.boldsign_envelope_id,
+            new_status, env.status)
+        new_status = env.status
     env.status = new_status
     env.last_synced_at = datetime.utcnow()
 
@@ -927,5 +944,24 @@ def apply_webhook_event(db, env, data: dict) -> str:
                 env.last_fax_error = str(exc)
                 env.fax_status = "fax_failed"
                 log.exception("LARC auto-fax raised unexpectedly")
+
+    # Advance the assignment workflow once the envelope is signed (and,
+    # if the auto-fax succeeded, mark request_faxed). Without this, the
+    # dashboard's needs_enrollment / needs_fax buckets stayed lit even
+    # after the webhook completed successfully, training staff to ignore
+    # them or manually re-fax. (Fable LARC audit M7.)
+    if env.signed_at:
+        assignment = env.assignment if hasattr(env, "assignment") else None
+        if assignment is None:
+            assignment = (db.query(LarcAssignment)
+                            .filter(LarcAssignment.id == env.assignment_id)
+                            .first())
+        if assignment is not None:
+            if not assignment.enrollment_signed_at:
+                assignment.enrollment_signed_at = env.signed_at
+            # request_faxed_at reflects the successful pharmacy fax; key
+            # off env.faxed_at (set by fax_envelope on Sent/Delivered).
+            if env.faxed_at and not assignment.request_faxed_at:
+                assignment.request_faxed_at = env.faxed_at
 
     return env.status

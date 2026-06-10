@@ -30,8 +30,8 @@ from pydantic import BaseModel, Field
 # benefits worksheet shouldn't ever cross that line on a single line-item
 # field. Reject the input (Pydantic 422) instead of silently storing
 # unrealistic numbers that later contaminate reports.
-DollarAmount = Annotated[float, Field(ge=0, le=50_000)]
-PercentAmount = Annotated[float, Field(ge=0, le=100)]
+DollarAmount = Annotated[float, Field(ge=0, le=50_000, allow_inf_nan=False)]
+PercentAmount = Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -45,6 +45,7 @@ from app.models.larc import (
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
+from app.services.audit_service import log_action
 from app.services.larc_workflow import (
     ALL_BUCKETS, ASSIGNMENT_REALLOCATE_AFTER_DAYS, CHECKOUT_ACK_WINDOW_HOURS,
     DEVICE_EXPIRY_HOLD_DAYS, LOCATIONS, LOCATION_LABELS,
@@ -410,7 +411,7 @@ class DeviceTypeIn(BaseModel):
     manufacturer: Optional[str] = None
     category: str = "larc"   # larc | office_procedure
     default_flow: str = "pharmacy_order"   # in_stock | pharmacy_order | office_procedure
-    typical_cost: Optional[float] = None
+    typical_cost: Optional[DollarAmount] = None
     reorder_threshold: Optional[int] = None
     reorder_quantity: Optional[int] = None
     enrollment_form_template: Optional[str] = None   # DocuSign template_id
@@ -457,7 +458,7 @@ class DeviceTypePatch(BaseModel):
     manufacturer: Optional[str] = None
     category: Optional[str] = None
     default_flow: Optional[str] = None
-    typical_cost: Optional[float] = None
+    typical_cost: Optional[DollarAmount] = None
     reorder_threshold: Optional[int] = None
     reorder_quantity: Optional[int] = None
     enrollment_form_template: Optional[str] = None
@@ -540,6 +541,26 @@ class PharmacyPatch(BaseModel):
     is_active: Optional[bool] = None
 
 
+def _validate_fax(fax: Optional[str], field: str = "fax") -> None:
+    """Reject obviously-bad fax numbers at the API boundary. A typo'd
+    digit on a pharmacy fax is the canonical HIPAA-misdirection path —
+    the entire enrollment form (demographics + insurance + card image)
+    gets faxed to a stranger. Strip out non-digits and require at least
+    10. (Fable LARC audit M3.)
+    """
+    if fax is None:
+        return
+    import re
+    raw = fax.strip()
+    if raw == "":
+        return
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) < 10:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{field} must contain at least 10 digits (got {raw!r})")
+
+
 def _pharmacy_dict(p: LarcPharmacy) -> dict:
     return {
         "id": str(p.id), "name": p.name, "fax": p.fax, "phone": p.phone,
@@ -576,6 +597,8 @@ def patch_pharmacy(pharmacy_id: str, payload: PharmacyPatch,
     if not p:
         raise HTTPException(status_code=404, detail="pharmacy not found")
     data = payload.model_dump(exclude_unset=True)
+    if "fax" in data:
+        _validate_fax(data["fax"], "fax")
     before = {k: getattr(p, k) for k in data}
     for k, v in data.items():
         setattr(p, k, v)
@@ -592,6 +615,7 @@ def patch_pharmacy(pharmacy_id: str, payload: PharmacyPatch,
 def create_pharmacy(payload: PharmacyIn,
                      db: Session = Depends(get_db),
                      current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
+    _validate_fax(payload.fax, "fax")
     p = LarcPharmacy(
         name=payload.name.strip(),
         fax=payload.fax, phone=payload.phone, address=payload.address,
@@ -612,13 +636,21 @@ class DeviceIn(BaseModel):
     manufacturer_lot: Optional[str] = None
     manufacturer_serial: Optional[str] = None
     purchase_date: Optional[str] = None
-    purchase_price: Optional[float] = None
+    purchase_price: Optional[DollarAmount] = None
     expiration_date: Optional[str] = None
     location: str = "white_plains"
     notes: Optional[str] = None
 
 
 ACTIVE_DEVICE_STATUSES = ["unassigned", "assigned", "received", "checked_out"]
+# Complete enum of legal LarcDevice.status values — validates PATCH so
+# typos like "Inserted"/"avaliable" can't silently drop devices from
+# dashboard filters / on-hand counts / checkout gates.
+# (Fable LARC audit M2.)
+DEVICE_STATUSES = frozenset({
+    "unassigned", "assigned", "checked_out", "inserted",
+    "defective", "lost", "expired", "received", "returned",
+})
 
 
 @router.get("/devices")
@@ -887,7 +919,7 @@ class DevicePatch(BaseModel):
     manufacturer_lot: Optional[str] = None
     manufacturer_serial: Optional[str] = None
     purchase_date: Optional[str] = None
-    purchase_price: Optional[float] = None
+    purchase_price: Optional[DollarAmount] = None
     expiration_date: Optional[str] = None
     location: Optional[str] = None
     status: Optional[str] = None
@@ -1007,6 +1039,18 @@ def delete_device(device_id: str,
                   "status":              d.status,
                   "location":            d.location,
               })
+    # NULL out the device_id FK on every audit row referencing this
+    # device. Without this, the cascade fails because every device has
+    # at least one device_added audit row at creation, so DELETE hits
+    # a foreign-key violation on every device that was created through
+    # the API. The audit rows' summary / detail still preserve our_id +
+    # serial / lot for forensic queries. (Fable LARC audit H5.)
+    from sqlalchemy import update as _sql_update
+    db.execute(
+        _sql_update(LarcAuditEvent)
+          .where(LarcAuditEvent.device_id == d.id)
+          .values(device_id=None)
+    )
     db.delete(d)
     db.commit()
     return None
@@ -1026,6 +1070,10 @@ def patch_device(device_id: str, payload: DevicePatch,
         data["expiration_date"] = _parse_date(data["expiration_date"], "expiration_date")
     if "location" in data and data["location"] not in LOCATIONS:
         raise HTTPException(status_code=422, detail=f"location must be one of {LOCATIONS}")
+    if "status" in data and data["status"] not in DEVICE_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"status must be one of {sorted(DEVICE_STATUSES)}")
     before = {k: getattr(d, k) for k in data}
     for k, v in data.items():
         setattr(d, k, v)
@@ -1215,6 +1263,19 @@ def get_assignment(assignment_id: str,
            .filter(LarcAssignment.id == assignment_id).first())
     if not a:
         raise HTTPException(status_code=404, detail="assignment not found")
+    # PHI access logging (Fable LARC audit M6). The assignment dict
+    # exposes DOB, demographics, insurance policy info; central audit
+    # makes those reads queryable for misuse investigation.
+    log_action(
+        db,
+        action="CHART_VIEW",
+        resource_type="larc_assignment",
+        resource_id=str(a.id),
+        patient_id=a.chart_number or None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=f"Viewed LARC assignment for {a.patient_name}",
+    )
     return _assignment_dict(a, include_milestones=True)
 
 
@@ -1324,6 +1385,7 @@ def record_benefits(assignment_id: str, payload: BenefitsIn,
     calculator, marks the benefits_verified milestone done, and stamps
     benefits_verified_at."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="record benefits")
 
     # Coalesce inputs: payload wins, then existing assignment value, then 0
     def _g(field: str) -> float:
@@ -1423,6 +1485,7 @@ def mark_patient_notified(
     """Mark that the patient was notified via Klara to schedule their
     insertion appointment."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="mark patient notified")
     by = current_user.get("email") or "system"
     a.patient_notified_at = datetime.utcnow()
     _mark_milestone(a, "patient_notified", status="done", by=by)
@@ -1444,6 +1507,7 @@ def schedule_appt(assignment_id: str, payload: ApptScheduledIn,
                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Record the patient's insertion appointment date."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="schedule appointment")
     by = current_user.get("email") or "system"
     try:
         a.appt_date = datetime.strptime(payload.appt_date[:10], "%Y-%m-%d").date()
@@ -1462,7 +1526,7 @@ class OutcomeIn(BaseModel):
     outcome: str   # inserted | failed_unused | failed_used | patient_no_show |
                    # patient_canceled | office_canceled | lost | other
     notes: Optional[str] = None
-    loss_value: Optional[float] = None
+    loss_value: Optional[DollarAmount] = None
 
 
 VALID_OUTCOMES = {
@@ -1553,12 +1617,36 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
     elif payload.outcome == "other":
         a.status = "other"
 
+    # Write the outcome onto the open LarcCheckout row so end_of_day_report
+    # can actually reconcile against the physical cabinet. Without this
+    # the EOD report renders c.outcome=None for every checkout, forever,
+    # and the cabinet-match audit is meaningless. (Fable LARC audit H4.)
+    open_checkout = (db.query(LarcCheckout)
+                       .filter(LarcCheckout.assignment_id == a.id,
+                               LarcCheckout.outcome.is_(None),
+                               LarcCheckout.approval_status.in_(
+                                   ["approved", "auto_approved"]))
+                       .order_by(LarcCheckout.created_at.desc())
+                       .first())
+    if open_checkout:
+        from decimal import Decimal as _Dec
+        open_checkout.outcome = payload.outcome
+        if payload.notes:
+            open_checkout.outcome_notes = payload.notes
+        if payload.loss_value is not None:
+            try:
+                open_checkout.outcome_loss_value = _Dec(str(payload.loss_value))
+            except Exception:
+                pass
+
     log_audit(db, actor=by, action="outcome_recorded",
               device=a.device, assignment=a,
               summary=f"{a.patient_name}: outcome={payload.outcome}" +
                        (f" — {payload.notes[:60]}" if payload.notes else ""),
               detail={"outcome": payload.outcome, "notes": payload.notes,
-                       "loss_value": payload.loss_value})
+                       "loss_value": payload.loss_value,
+                       "checkout_id": (str(open_checkout.id)
+                                        if open_checkout else None)})
 
     # Cross-module state-transition audit
     from app.services.state_audit import log_state_transition
@@ -1595,6 +1683,7 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
     prerequisites in the sender and surfaces actionable 409s — won't
     burn an envelope on missing patient_email / unwired template."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="send enrollment envelope")
     if a.source_flow != "pharmacy_order":
         raise HTTPException(status_code=409,
                             detail="Enrollment only applies to pharmacy_order flow")
@@ -1795,6 +1884,7 @@ def record_payment(assignment_id: str,
     benefits-verified) before an unassigned WWC device can be allocated
     from inventory."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="record payment")
     by = current_user.get("email") or "system"
     a.patient_paid_at = datetime.utcnow()
     a.patient_paid_by = by
@@ -1917,6 +2007,7 @@ def set_inserting_provider(
     one field (falls back to the practice-wide provider settings when
     the BoldSign envelope is sent)."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="set inserting provider")
     by = current_user.get("email") or "system"
     before = {
         "email": a.inserting_provider_email,
@@ -1974,6 +2065,7 @@ def mark_enrollment_signed(assignment_id: str,
                             current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
     """Manual mark that the enrollment form is signed and back in hand."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="mark enrollment signed")
     by = current_user.get("email") or "system"
     if payload.confirmed:
         a.enrollment_signed_at = datetime.utcnow()
@@ -2000,11 +2092,41 @@ def fax_pharmacy(assignment_id: str, payload: FaxPharmacyIn = FaxPharmacyIn(),
     """Record that the order was faxed to the pharmacy. Starts the
     2-week SLA clock — overdue orders surface on the dashboard."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="fax pharmacy order")
     if a.source_flow != "pharmacy_order":
         raise HTTPException(status_code=409, detail="Only pharmacy_order assignments")
     by = current_user.get("email") or "system"
+    # Verify the pharmacy actually exists, is active, and has a fax
+    # number on file before stamping request_faxed_at and starting the
+    # SLA clock. Without these checks fax_pharmacy used to record a fax
+    # that never went anywhere (PHI misdirection if a stale row had the
+    # wrong number). (Fable LARC audit M3.)
     if payload.pharmacy_id:
+        ph = (db.query(LarcPharmacy)
+                .filter(LarcPharmacy.id == payload.pharmacy_id).first())
+        if not ph:
+            raise HTTPException(status_code=404, detail="pharmacy not found")
+        if not ph.is_active:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Pharmacy {ph.name!r} is inactive — pick another")
+        if not (ph.fax or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail=f"Pharmacy {ph.name!r} has no fax number on file — "
+                       "set one in the pharmacy directory first")
         a.pharmacy_id = payload.pharmacy_id
+    elif a.pharmacy_id:
+        # Re-validate the existing pharmacy link too — staff may be
+        # faxing manually after marking pharmacy_id via assignment patch.
+        ph = (db.query(LarcPharmacy)
+                .filter(LarcPharmacy.id == a.pharmacy_id).first())
+        if ph and (not ph.is_active or not (ph.fax or "").strip()):
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Pharmacy on this assignment is "
+                        f"{'inactive' if not ph.is_active else 'missing a fax number'}; "
+                        "update the directory or pass a different pharmacy_id"))
     a.request_faxed_at = datetime.utcnow()
     # SLA: expect device within PHARMACY_ORDER_SLA_DAYS
     from app.services.larc_workflow import PHARMACY_ORDER_SLA_DAYS
@@ -2023,7 +2145,7 @@ class ReceiveDeviceIn(BaseModel):
     manufacturer_serial: Optional[str] = None
     expiration_date: Optional[str] = None
     location: str = "white_plains"
-    purchase_price: Optional[float] = None
+    purchase_price: Optional[DollarAmount] = None
     device_type_id: Optional[str] = None
     notes: Optional[str] = None
 
@@ -2036,6 +2158,7 @@ def receive_device(assignment_id: str, payload: ReceiveDeviceIn,
     our_id + lot, bind it to this assignment, and mark milestones done.
     Idempotent: re-running with the same our_id rejects."""
     a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="receive device")
     if a.source_flow != "pharmacy_order":
         raise HTTPException(status_code=409, detail="Only pharmacy_order assignments")
     if a.device_id:
@@ -2679,7 +2802,7 @@ class ReceiveReplacementIn(BaseModel):
     new_manufacturer_serial: Optional[str] = None
     new_expiration_date: Optional[str] = None
     new_location: str = "white_plains"
-    new_purchase_price: Optional[float] = None    # often 0 if manufacturer-replaced
+    new_purchase_price: Optional[DollarAmount] = None    # often 0 if manufacturer-replaced
     notes: Optional[str] = None
 
 
@@ -2736,13 +2859,25 @@ def receive_replacement(device_id: str, payload: ReceiveReplacementIn,
         old_assignment_id = active.id
         replacement = LarcAssignment(
             device_id=new_dev.id,
+            # Carry over every demographic / identity field needed to
+            # regenerate forms. Without the address / name-part columns
+            # a re-sent pharmacy enrollment used to arrive at the
+            # pharmacy with blank demographics. (Fable LARC audit L5.)
             chart_number=active.chart_number,
             patient_name=active.patient_name,
+            patient_first_name=active.patient_first_name,
+            patient_middle_initial=active.patient_middle_initial,
+            patient_last_name=active.patient_last_name,
             patient_dob=active.patient_dob,
             patient_email=active.patient_email,
             patient_phone=active.patient_phone,
+            patient_address=active.patient_address,
+            patient_city=active.patient_city,
+            patient_state=active.patient_state,
+            patient_zip=active.patient_zip,
             primary_insurance=active.primary_insurance,
             pharmacy_id=active.pharmacy_id,
+            device_type_id=active.device_type_id,
             source_flow=active.source_flow,
             status="in_progress",
             is_active=True,
@@ -2965,7 +3100,15 @@ def scan_for_count(count_id: str, payload: InventoryScanIn,
       - full QR-coded URL ('http://.../larc/devices/<id>') — extracts the id
       - bare device UUID
     """
-    c = db.query(LarcInventoryCount).filter(LarcInventoryCount.id == count_id).first()
+    # Lock the count row for the duration of this transaction so two
+    # concurrent scanners can't both read scanned_device_ids, both
+    # append, and let the later commit overwrite the first. Lost scans
+    # become false "missing" devices at finish_count → false 'lost'
+    # markings. (Fable LARC audit M9.)
+    c = (db.query(LarcInventoryCount)
+            .filter(LarcInventoryCount.id == count_id)
+            .with_for_update()
+            .first())
     if not c:
         raise HTTPException(status_code=404, detail="count not found")
     if c.status != "in_progress":
@@ -2989,7 +3132,13 @@ def scan_for_count(count_id: str, payload: InventoryScanIn,
     if str(d.id) not in scanned:
         scanned.append(str(d.id))
         c.scanned_device_ids = scanned
-        db.commit()
+        # Tell SQLAlchemy the JSON column changed — mutating a list
+        # in-place doesn't trigger the dirty flag on most JSON column
+        # types. The reassignment above usually does, but be explicit
+        # under the lock so the UPDATE definitely fires.
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(c, "scanned_device_ids")
+    db.commit()
     return {"scanned_count": len(scanned), "device_our_id": d.our_id}
 
 
@@ -3014,12 +3163,32 @@ def finish_count(count_id: str, payload: InventoryFinishIn = InventoryFinishIn()
     scanned = set(c.scanned_device_ids or [])
     missing = list(expected - scanned)
 
-    # Mark missing as 'lost' so the loss tracking captures them
+    # Mark missing as 'lost' so the loss tracking captures them — but
+    # skip devices whose status has moved off 'unassigned'/'received'
+    # since the count started. A device checked out, inserted, returned,
+    # or already-flagged-lost during the count window is "missing" from
+    # the cabinet for legitimate reasons; flipping it to 'lost' would
+    # silently overwrite the real state and break the billing path for
+    # that patient. (Fable LARC audit M4.)
+    actually_lost = 0
+    skipped_in_flight = []
     if missing:
         rows = (db.query(LarcDevice)
                   .options(joinedload(LarcDevice.device_type))
                   .filter(LarcDevice.id.in_(missing)).all())
         for d in rows:
+            if d.status not in ("unassigned", "received"):
+                # Device moved during the count window — record on the
+                # audit trail but don't overwrite its real status.
+                skipped_in_flight.append(
+                    {"our_id": d.our_id, "status": d.status})
+                log_audit(db, actor=by, action="count_skip_in_flight",
+                          device=d,
+                          summary=(f"Device {d.our_id} skipped at count finish — "
+                                   f"status moved to {d.status!r} during the count "
+                                   "window; not flipping to lost"),
+                          detail={"count_id": str(c.id), "status": d.status})
+                continue
             d.status = "lost"
             d.notes = ((d.notes or "")
                        + f"\n[lost in inventory count {c.id} on {datetime.utcnow().date()}]")
@@ -3028,6 +3197,7 @@ def finish_count(count_id: str, payload: InventoryFinishIn = InventoryFinishIn()
                       summary=(f"Device {d.our_id} missing at inventory count — marked lost "
                                f"(${d.purchase_price or 0:.2f})"),
                       detail={"count_id": str(c.id)})
+            actually_lost += 1
 
     c.status = "reconciled"
     c.finished_at = datetime.utcnow()
@@ -3035,13 +3205,17 @@ def finish_count(count_id: str, payload: InventoryFinishIn = InventoryFinishIn()
     c.notes = payload.notes
     log_audit(db, actor=by, action="inventory_count_finished",
               summary=(f"Finished inventory count — {len(scanned)}/{len(expected)} scanned, "
-                       f"{len(missing)} marked lost"),
+                       f"{actually_lost} marked lost, "
+                       f"{len(skipped_in_flight)} skipped (in-flight)"),
               detail={"count_id": str(c.id), "scanned": len(scanned),
-                       "expected": len(expected), "lost_count": len(missing)})
+                       "expected": len(expected),
+                       "lost_count": actually_lost,
+                       "skipped_in_flight": skipped_in_flight})
     db.commit()
     return {
         "id": str(c.id), "status": "reconciled",
-        "lost_count": len(missing),
+        "lost_count": actually_lost,
+        "skipped_in_flight": skipped_in_flight,
     }
 
 
@@ -3079,6 +3253,18 @@ def end_of_day_report(
     target = _parse_date(date, "date") if date else _date.today()
     start_dt = datetime.combine(target, datetime.min.time())
     end_dt = datetime.combine(target, datetime.max.time())
+    # PHI export audit (Fable LARC audit M6) — the report renders patient
+    # names + chart numbers for every checkout/insertion of the day.
+    log_action(
+        db,
+        action="LARC_EOD_REPORT_VIEWED",
+        resource_type="larc_eod_report",
+        resource_id=str(target),
+        patient_id=None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=f"Viewed LARC end-of-day reconciliation report for {target}",
+    )
 
     # Checkouts requested today (regardless of approval status)
     checkouts_today = (db.query(LarcCheckout)
@@ -3257,8 +3443,8 @@ def delete_manual_section(section_id: str,
         detail={
             "section_id":  str(s.id),
             "title":       s.title,
-            "body_excerpt": (s.body or "")[:240],
-            "position":    s.position,
+            "body_excerpt": (s.body_md or "")[:240],
+            "sort_order":  s.sort_order,
         },
     )
     db.delete(s); db.commit()

@@ -231,11 +231,64 @@ def log_audit_failure_internal_only(exc):
         exc)
 
 
+def sweep_unwedge_fax_in_progress(db: Session, *,
+                                    max_age_minutes: int = 15) -> dict:
+    """Reset envelopes whose fax_status='in_progress' is older than
+    max_age_minutes — they've wedged.
+
+    apply_webhook_event flips fax_status to 'in_progress' before calling
+    fax_envelope. If the Cloud Run instance is killed (OOM, deploy,
+    scale-in) between the claim and the fax call, the row stays
+    'in_progress' forever: sweep_fax_retry excludes it (only resets
+    'fax_failed'), and BoldSign webhook redeliveries are filtered out by
+    the in_progress guard. The pharmacy order silently never goes out.
+    (Fable LARC audit H3.)
+
+    Resets last_fax_error so the operator dashboard can see why we
+    reset, then flips fax_status back to 'fax_failed' with
+    next_fax_retry_at=now so sweep_fax_retry picks it up on its next
+    cycle.
+    """
+    from app.models.larc import LarcEnrollmentEnvelope
+    now = datetime.utcnow()
+    cutoff = now - timedelta(minutes=max_age_minutes)
+    wedged = (db.query(LarcEnrollmentEnvelope)
+                .filter(LarcEnrollmentEnvelope.fax_status == "in_progress",
+                        LarcEnrollmentEnvelope.faxed_at.is_(None),
+                        LarcEnrollmentEnvelope.last_synced_at <= cutoff,
+                        LarcEnrollmentEnvelope.fax_terminally_failed_at.is_(None),
+                        LarcEnrollmentEnvelope.status.notin_(
+                            ("declined", "voided", "revoked", "expired", "faxed")))
+                .all())
+    reset = 0
+    for env in wedged:
+        claimed = db.query(LarcEnrollmentEnvelope).filter(
+            LarcEnrollmentEnvelope.id == env.id,
+            LarcEnrollmentEnvelope.fax_status == "in_progress",
+        ).update(
+            {LarcEnrollmentEnvelope.fax_status: "fax_failed",
+             LarcEnrollmentEnvelope.last_fax_error:
+                 (f"sweep: in_progress > {max_age_minutes}min — "
+                  f"likely wedged by worker death; resetting"),
+             LarcEnrollmentEnvelope.next_fax_retry_at: now},
+            synchronize_session=False,
+        )
+        if claimed:
+            reset += 1
+    db.commit()
+    return {"unwedged_fax_in_progress": reset}
+
+
 def run_fax_retry_sweep() -> dict:
     """Entry point for the dedicated larc-fax-retry Cloud Run Job."""
     db = SessionLocal()
     try:
-        return sweep_fax_retry(db)
+        # Unwedge any rows that died mid-fax before retrying the rest —
+        # this brings them into the fax_failed bucket sweep_fax_retry
+        # picks up.
+        unwedge_result = sweep_unwedge_fax_in_progress(db)
+        retry_result = sweep_fax_retry(db)
+        return {**unwedge_result, **retry_result}
     finally:
         db.close()
 
