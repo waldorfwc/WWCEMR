@@ -1,75 +1,13 @@
 import { useState } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import TopNav from './components/layout/TopNav'
-import Claims from './pages/Claims'
-import ClaimDetail from './pages/ClaimDetail'
-import Patients from './pages/Patients'
-import PatientDetail from './pages/PatientDetail'
-import Denials from './pages/Denials'
-import Admin from './pages/Admin'
-import AdminTemplates from './pages/AdminTemplates'
-import AdminPermissions from './pages/admin/AdminPermissions'
-import PracticeSettings from './pages/admin/PracticeSettings'
-import AdminLarcPharmacies from './pages/admin/LarcPharmacies'
-import AdminConsentTemplates from './pages/AdminConsentTemplates'
-import SurgeryRules from './pages/SurgeryRules'
-import Larc from './pages/Larc'
-import LarcAssignment from './pages/LarcAssignment'
-import LarcCheckouts from './pages/LarcCheckouts'
-import LarcAudit from './pages/LarcAudit'
-import LarcDevices from './pages/LarcDevices'
-import LarcDevice from './pages/LarcDevice'
-import LarcOwed from './pages/LarcOwed'
-import LarcPharmacies from './pages/LarcPharmacies'
-import LarcDeviceTypes from './pages/LarcDeviceTypes'
-import LarcEodReport from './pages/LarcEodReport'
-import LarcInventoryCount from './pages/LarcInventoryCount'
-import LarcManual from './pages/LarcManual'
-import AdminTraining from './pages/AdminTraining'
-import AdminTrainingCards from './pages/AdminTrainingCards'
-import AdminGoogleSync from './pages/AdminGoogleSync'
-import Appeals from './pages/Appeals'
-import ImportFiles from './pages/ImportFiles'
-import AuditLog from './pages/AuditLog'
-import ARDashboard from './pages/ARDashboard'
-import ActiveAR from './pages/ActiveAR'
-import ActiveARDetail from './pages/ActiveARDetail'
-import BankRecon from './pages/BankRecon'
-import Billing from './pages/Billing'
-import MissingCharges from './pages/MissingCharges'
-import InsuranceDocuments from './pages/InsuranceDocuments'
-import InsuranceContacts from './pages/InsuranceContacts'
-import ProviderMissingChargesPortal from './pages/ProviderMissingChargesPortal'
-import Pellets from './pages/Pellets'
-import PelletCounts from './pages/PelletCounts'
-import PelletCountDetail from './pages/PelletCountDetail'
-import PelletAudit from './pages/PelletAudit'
-import PelletManual from './pages/PelletManual'
-import PelletPatients from './pages/PelletPatients'
-import PelletPatientDetail from './pages/PelletPatientDetail'
-import PelletDoseTypes from './pages/PelletDoseTypes'
-import MyChecklist from './pages/MyChecklist'
-import ManagerDashboard from './pages/ManagerDashboard'
-import MyProfile from './pages/MyProfile'
-import Recalls from './pages/Recalls'
-import Surgery from './pages/Surgery'
-import SurgeryDetail from './pages/SurgeryDetail'
-import SurgeryBulkImport from './pages/SurgeryBulkImport'
-import SurgeryFeeSchedule from './pages/SurgeryFeeSchedule'
-import StaffInbox from './pages/StaffInbox'
-import StaffMessageTemplates from './pages/StaffMessageTemplates'
-import SurgeryBlockSchedule from './pages/SurgeryBlockSchedule'
-import SurgeryWaitlist from './pages/SurgeryWaitlist'
-import SurgeryCalendar from './pages/SurgeryCalendar'
-import PatientSurgery from './pages/PatientSurgery'
-import Documents from './pages/Documents'
-import PatientChart from './pages/PatientChart'
 import { LoginPage, AuthCallback } from './pages/Login'
 import { useCurrentUser } from './hooks/useCurrentUser'
 import PrivateRoute from './components/PrivateRoute'
-import CodeHelper from './pages/CodeHelper'
-import CodeHelperDenials from './pages/CodeHelperDenials'
 import { ConfirmProvider } from './components/ui/ConfirmDialog'
+import { ROUTES } from './routes.jsx'
+import PatientSurgery from './pages/PatientSurgery'
+import ProviderMissingChargesPortal from './pages/ProviderMissingChargesPortal'
 import PortalLogin from './pages/portal/PortalLogin'
 import PortalVerify from './pages/portal/PortalVerify'
 import PortalShell from './pages/portal/PortalShell'
@@ -82,103 +20,50 @@ import Messages from './pages/portal/Messages'
 import PreviewPortal from './pages/portal/PreviewPortal'
 import ReviewForm from './pages/reputation/ReviewForm'
 import ReputationEmbed from './pages/reputation/Embed'
-import AdminReputationProfiles from './pages/AdminReputationProfiles'
-import AdminReputationLeaderboard from './pages/AdminReputationLeaderboard'
-import AdminReputationReviews from './pages/AdminReputationReviews'
+
+
+/** Wrap an element in <PrivateRoute> only when the route declares a gate. */
+function guard(route) {
+  if (route.superAdmin || (route.module && route.tier != null)) {
+    return (
+      <PrivateRoute
+        module={route.module}
+        tier={route.tier}
+        superAdmin={route.superAdmin}
+      >
+        {route.element}
+      </PrivateRoute>
+    )
+  }
+  return route.element
+}
+
+/** Render ROUTES (and any nested children) as <Route> elements. */
+function renderRoutes(routes) {
+  return routes.map(r => (
+    <Route key={r.path} path={r.path} element={guard(r)}>
+      {r.children ? renderRoutes(r.children) : null}
+    </Route>
+  ))
+}
+
+/** The default landing page depends on the user's role. */
+function RootRedirect() {
+  const { isClinical, isLoading } = useCurrentUser()
+  if (isLoading) return null
+  return <Navigate to={isClinical ? '/documents' : '/checklist'} replace />
+}
 
 function ProtectedApp({ user, onLogout }) {
-  const { isAdmin, isClinical, isLoading } = useCurrentUser()
-
   return (
     <div className="min-h-screen flex flex-col bg-plum-50">
       <TopNav user={user} onLogout={onLogout} />
       <main className="flex-1 overflow-auto">
         <div className="max-w-[1440px] mx-auto p-6">
           <Routes>
-            <Route path="/" element={
-              isLoading ? null
-                : (isClinical
-                    ? <Navigate to="/documents" replace />
-                    : <Navigate to="/checklist" replace />)
-            } />
-            <Route path="/ar"                  element={<ARDashboard />} />
-            <Route path="/active-ar"           element={<ActiveAR />} />
-            <Route path="/active-ar/:id"       element={<ActiveARDetail />} />
-            {/* Legacy URL — redirect to nested route */}
-            <Route path="/bank-recon"          element={<Navigate to="/billing/bank-recon" replace />} />
-            <Route path="/billing"             element={<Billing />}>
-              <Route index                     element={<Navigate to="bank-recon" replace />} />
-              <Route path="bank-recon"         element={<BankRecon />} />
-              <Route path="missing-charges"    element={<MissingCharges />} />
-              <Route path="insurance-documents" element={<InsuranceDocuments />} />
-              <Route path="insurance-contacts"  element={<InsuranceContacts />} />
-              <Route path="code-helper"         element={<CodeHelper />} />
-              <Route path="code-helper/denials" element={<CodeHelperDenials />} />
-            </Route>
-            <Route path="/checklist"           element={<MyChecklist />} />
-            <Route path="/manager-dashboard"   element={
-              <PrivateRoute perm="checklist:manage"><ManagerDashboard /></PrivateRoute>
-            } />
-            <Route path="/me"                  element={<MyProfile />} />
-            <Route path="/recalls"             element={<Recalls />} />
-            <Route path="/surgery"             element={<Surgery />} />
-            <Route path="/surgery/rules"           element={<SurgeryRules />} />
-            <Route path="/surgery/block-schedule" element={<SurgeryBlockSchedule />} />
-            <Route path="/surgery/waitlist"        element={<SurgeryWaitlist />} />
-            <Route path="/surgery/calendar"        element={<SurgeryCalendar />} />
-            <Route path="/surgery/bulk-import"     element={<SurgeryBulkImport />} />
-            <Route path="/surgery/fee-schedule"    element={<SurgeryFeeSchedule />} />
-            <Route path="/surgery/:id"         element={<SurgeryDetail />} />
-            <Route path="/surgery/messages"    element={<StaffInbox />} />
-            <Route path="/larc"                element={<Larc />} />
-            <Route path="/larc/assignments/:id" element={<LarcAssignment />} />
-            <Route path="/larc/checkouts"      element={<LarcCheckouts />} />
-            <Route path="/larc/audit"          element={<LarcAudit />} />
-            <Route path="/larc/devices"        element={<LarcDevices />} />
-            <Route path="/larc/devices/:id"    element={<LarcDevice />} />
-            <Route path="/larc/owed"           element={<LarcOwed />} />
-            <Route path="/larc/pharmacies"     element={<LarcPharmacies />} />
-            <Route path="/larc/device-types"   element={<LarcDeviceTypes />} />
-            <Route path="/larc/eod"            element={<LarcEodReport />} />
-            <Route path="/larc/inventory-count" element={<LarcInventoryCount />} />
-            <Route path="/larc/manual"         element={<LarcManual />} />
-            <Route path="/pellets"             element={<Navigate to="/pellets/patients" replace />} />
-            <Route path="/pellets/inventory"   element={<Pellets />} />
-            <Route path="/pellets/counts"      element={<PelletCounts />} />
-            <Route path="/pellets/counts/:id"  element={<PelletCountDetail />} />
-            <Route path="/pellets/audit"       element={<PelletAudit />} />
-            <Route path="/pellets/manual"      element={<PelletManual />} />
-            <Route path="/pellets/patients"    element={<PelletPatients />} />
-            <Route path="/pellets/patients/:id" element={<PelletPatientDetail />} />
-            <Route path="/pellets/dose-types"  element={<PelletDoseTypes />} />
-            <Route path="/documents"           element={<Documents />} />
-            <Route path="/chart/:chartNumber"  element={<PatientChart />} />
-            <Route path="/claims"              element={<Claims />} />
-            <Route path="/claims/:id"          element={<ClaimDetail />} />
-            <Route path="/patients"            element={<Patients />} />
-            <Route path="/patients/:id"        element={<PatientDetail />} />
-            <Route path="/denials"             element={<Denials />} />
-            <Route path="/appeals"             element={<Appeals />} />
-            <Route path="/import"              element={<ImportFiles />} />
-            <Route path="/audit"               element={<AuditLog />} />
-            <Route path="/admin"                   element={<PrivateRoute adminOnly><Admin /></PrivateRoute>} />
-            <Route path="/admin/permissions"       element={<PrivateRoute adminOnly><AdminPermissions /></PrivateRoute>} />
-            <Route path="/admin/practice-settings" element={<PrivateRoute adminOnly><PracticeSettings /></PrivateRoute>} />
-            <Route path="/admin/larc-pharmacies"   element={<PrivateRoute adminOnly><AdminLarcPharmacies /></PrivateRoute>} />
-            {/* Legacy permission URLs redirect to the unified page */}
-            <Route path="/admin/groups"            element={<Navigate to="/admin/permissions" replace />} />
-            <Route path="/admin/users/:email/tiers" element={<Navigate to="/admin/permissions" replace />} />
-            <Route path="/admin/groups/:groupId/tiers" element={<Navigate to="/admin/permissions" replace />} />
-            <Route path="/admin/templates"         element={<PrivateRoute adminOnly><AdminTemplates /></PrivateRoute>} />
-            <Route path="/admin/consent-templates" element={<PrivateRoute adminOnly><AdminConsentTemplates /></PrivateRoute>} />
-            <Route path="/admin/message-templates" element={<PrivateRoute adminOnly><StaffMessageTemplates /></PrivateRoute>} />
-            <Route path="/admin/training"          element={<PrivateRoute adminOnly><AdminTraining /></PrivateRoute>} />
-            <Route path="/admin/training/cards"    element={<PrivateRoute adminOnly><AdminTrainingCards /></PrivateRoute>} />
-            <Route path="/admin/google-sync"       element={<PrivateRoute adminOnly><AdminGoogleSync /></PrivateRoute>} />
-            <Route path="/admin/reputation/profiles"    element={<PrivateRoute adminOnly><AdminReputationProfiles /></PrivateRoute>} />
-            <Route path="/admin/reputation/leaderboard" element={<PrivateRoute adminOnly><AdminReputationLeaderboard /></PrivateRoute>} />
-            <Route path="/admin/reputation/reviews"     element={<PrivateRoute adminOnly><AdminReputationReviews /></PrivateRoute>} />
-            <Route path="*"                    element={<Navigate to="/" />} />
+            <Route path="/" element={<RootRedirect />} />
+            {renderRoutes(ROUTES)}
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>
       </main>

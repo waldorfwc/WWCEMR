@@ -26,10 +26,12 @@ const VIEW = 10, WORK = 20, MANAGE = 30, ADMIN = 40
 // "Super Admin only" so legacy gates fail closed rather than open.
 const LEGACY_PERM_TO_TIER = {
   'recall:work':        ['recall', WORK],
+  'recall:manage':      ['recall', MANAGE],
   'surgery:read':       ['surgery', VIEW],
   'surgery:work':       ['surgery', WORK],
   'larc:read':          ['device_larc', VIEW],
   'larc:checkout':      ['device_larc', WORK],
+  'larc:manage':        ['device_larc', MANAGE],
   'pellet:read':        ['pellets', VIEW],
   'pellet:work':        ['pellets', WORK],
   'pellet:manage':      ['pellets', MANAGE],
