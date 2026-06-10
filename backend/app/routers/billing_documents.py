@@ -31,6 +31,7 @@ from app.models.billing_document import (
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
+from app.permissions.resolver import effective_tier
 from app.services import billing_doc_storage as storage
 from app.services import billing_doc_classify as classifier
 from app.services.audit_service import log_action
@@ -39,20 +40,18 @@ from app.services.audit_service import log_action
 router = APIRouter(prefix="/billing/documents", tags=["billing-documents"])
 
 
-def _is_admin(user: dict) -> bool:
+def _is_admin(db: Session, user: dict) -> bool:
     """Caller has Insurance Documents Manage tier (or higher) — i.e. can
-    see/edit every doc regardless of assignment.
-
-    The `requires_tier` dependency injects the resolved tier on `user`
-    via `module_tier[<slug>]`. Falls back to False if the call-site
-    didn't go through that dependency (own visibility is then by
-    uploader/assignment only)."""
-    by_module = user.get("module_tier") or {}
-    return by_module.get(Module.INSURANCE_DOCS.value, 0) >= int(Tier.MANAGE)
+    see/edit every doc regardless of assignment. Resolved by direct
+    query on every call rather than relying on a dict injection that
+    only fires on specific Depends() shapes. (Fable design review
+    note 7.)"""
+    email = (user.get("email") or "").lower().strip()
+    return effective_tier(db, email, Module.INSURANCE_DOCS) >= Tier.MANAGE
 
 
-def _visible_to(d: BillingDocument, user: dict) -> bool:
-    if _is_admin(user):
+def _visible_to(db: Session, d: BillingDocument, user: dict) -> bool:
+    if _is_admin(db, user):
         return True
     me = (user.get("email") or "").lower()
     if d.uploaded_by and d.uploaded_by.lower() == me:
@@ -319,7 +318,7 @@ def list_documents(
     rows = q.order_by(BillingDocument.uploaded_at.desc()).all()
     # Filter by visibility in Python (assigned_to is JSON)
     me = (current_user.get("email") or "").lower()
-    visible = [d for d in rows if _visible_to(d, current_user)]
+    visible = [d for d in rows if _visible_to(db, d, current_user)]
     if assigned_to_me:
         visible = [d for d in visible if me in [a.lower() for a in (d.assigned_to or [])]]
     if unassigned_only:
@@ -347,7 +346,7 @@ def get_document(doc_id: str,
                   db: Session = Depends(get_db),
                   current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     d = _load(db, doc_id)
-    if not _visible_to(d, current_user):
+    if not _visible_to(db, d, current_user):
         raise HTTPException(status_code=403, detail="not authorized for this document")
     _log_access(db, d, current_user.get("email") or "system", "viewed")
     db.commit(); db.refresh(d)
@@ -361,7 +360,7 @@ def get_document_file(doc_id: str,
                        db: Session = Depends(get_db),
                        current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
     d = _load(db, doc_id)
-    if not _visible_to(d, current_user):
+    if not _visible_to(db, d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")
     try:
         fh = storage.open_for_read(d.storage_filename)
@@ -408,7 +407,7 @@ def patch_document(doc_id: str, payload: DocumentPatch,
                     db: Session = Depends(get_db),
                     current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.WORK))):
     d = _load(db, doc_id)
-    if not _visible_to(d, current_user):
+    if not _visible_to(db, d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")
     actor = current_user.get("email") or "system"
     data = payload.model_dump(exclude_unset=True)
@@ -505,7 +504,7 @@ def add_note(doc_id: str, payload: NoteIn,
               db: Session = Depends(get_db),
               current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.WORK))):
     d = _load(db, doc_id)
-    if not _visible_to(d, current_user):
+    if not _visible_to(db, d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")
     if not payload.body.strip():
         raise HTTPException(status_code=422, detail="note body required")

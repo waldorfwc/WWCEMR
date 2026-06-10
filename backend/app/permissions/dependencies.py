@@ -70,7 +70,14 @@ def requires_super_admin() -> Callable:
 
 def requires_tier(module: Module, min_tier: Tier) -> Callable:
     """Return a FastAPI dependency that 403s if the current user's
-    effective tier on `module` is less than `min_tier`."""
+    effective tier on `module` is less than `min_tier`.
+
+    The dependency returns the `current_user` dict unchanged. Handlers
+    that need to know the resolved tier later (e.g. to gate UI flags)
+    should call `effective_tier(db, email, module)` directly — that's
+    the same call this dependency just made, and a cached SQL roundtrip
+    in practice. (Fable design review note 7.)
+    """
 
     def _dep(
         current_user: dict = Depends(get_current_user),
@@ -88,15 +95,6 @@ def requires_tier(module: Module, min_tier: Tier) -> Callable:
                 detail=(f"forbidden — needs {tier_label} on {spec.label} "
                         f"(you have {actual_label})"),
             )
-        # NB — handlers that declare their own `Depends(get_current_user)`
-        # alongside the gate get a *different* dict instance and won't
-        # see this injected `module_tier`. The injection is preserved
-        # for routes that take the gate's return value directly via
-        # `current_user: dict = Depends(requires_tier(...))`; callers
-        # that need the resolved tier elsewhere should re-call
-        # effective_tier(). (Fable auth audit Info.)
-        out = dict(current_user)
-        out.setdefault("module_tier", {})[module.value] = int(actual)
-        return out
+        return current_user
 
     return _dep

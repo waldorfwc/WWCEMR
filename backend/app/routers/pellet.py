@@ -51,6 +51,7 @@ from fastapi import UploadFile, File, Form
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
+from app.permissions.resolver import effective_tier
 from app.services.pellet_workflow import (
     spawn_milestones, default_price_for, patient_buckets,
 )
@@ -144,12 +145,12 @@ def _specific_lot_with_stock(db: Session, lot_id, dose_type_id, qty: int,
 CONFIRMED_DOSE_STATUSES = {"inserted", "added", "reduced", "returned", "disposed"}
 
 
-def _is_admin(user: dict) -> bool:
-    """Caller has Pellets:Manage (or Super Admin). The requires_tier
-    dependency injects module_tier[pellets] on the user dict; we just
-    read it here. Falls back to False if the calling endpoint wasn't
-    gated through requires_tier(Module.PELLETS, …)."""
-    return (user.get("module_tier") or {}).get("pellets", 0) >= 30  # Tier.MANAGE
+def _is_admin(db: Session, user: dict) -> bool:
+    """Caller has Pellets:Manage (or Super Admin). Resolved by direct
+    query rather than depending on a dict injection from requires_tier.
+    (Fable design review note 7.)"""
+    email = (user.get("email") or "").lower().strip()
+    return effective_tier(db, email, Module.PELLETS) >= Tier.MANAGE
 
 
 def _require_visit_location(v: PelletVisit) -> str:
@@ -4764,7 +4765,7 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
 
     by = current_user.get("email") or "system"
     is_confirmed_visit = v.status in ("inserted", "billed")
-    if is_confirmed_visit and not _is_admin(current_user):
+    if is_confirmed_visit and not _is_admin(db, current_user):
         raise HTTPException(
             status_code=403,
             detail="This visit is confirmed — only a manager can edit doses.",
@@ -4840,7 +4841,7 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
     v = db.query(PelletVisit).filter(PelletVisit.id == visit_id).first()
     if not v:
         raise HTTPException(status_code=404, detail="visit not found")
-    if d.status in CONFIRMED_DOSE_STATUSES and not _is_admin(current_user):
+    if d.status in CONFIRMED_DOSE_STATUSES and not _is_admin(db, current_user):
         raise HTTPException(
             status_code=403,
             detail="This dose is already confirmed — only a manager can edit it.")
@@ -5021,7 +5022,7 @@ def delete_visit_dose(visit_id: str, dose_id: str,
         raise HTTPException(status_code=404, detail="dose entry not found")
     by = current_user.get("email") or "system"
 
-    if d.status in CONFIRMED_DOSE_STATUSES and not _is_admin(current_user):
+    if d.status in CONFIRMED_DOSE_STATUSES and not _is_admin(db, current_user):
         raise HTTPException(
             status_code=403,
             detail=(f"This dose is confirmed ({d.status}) — only a manager "
@@ -5723,7 +5724,7 @@ def revert_visit_status(visit_id: str, payload: RevertIn,
                       for m in (v.milestones or []))
 
     if v.status == "billed":
-        if not _is_admin(current_user):
+        if not _is_admin(db, current_user):
             raise HTTPException(status_code=403, detail="un-bill requires pellet:manage")
         before, after, action = "billed", "inserted", "unbill"
         v.status = "inserted"
@@ -5732,7 +5733,7 @@ def revert_visit_status(visit_id: str, payload: RevertIn,
         _reopen_milestone(v, "billed")
 
     elif v.status == "inserted":
-        if not _is_admin(current_user):
+        if not _is_admin(db, current_user):
             raise HTTPException(status_code=403, detail="un-insert requires pellet:manage")
         before, after, action = "inserted", "in_progress", "uninsert"
         for d in v.doses:

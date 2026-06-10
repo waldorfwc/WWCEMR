@@ -79,11 +79,13 @@ def ensure_unlocked_or_override(db: Session, *,
     if not state["locked"]:
         return
 
-    # Pellets:Manage (tier 30) can override the inventory lock. The
-    # requires_tier dependency injects module_tier['pellets'] on the
-    # current_user dict; if the calling endpoint didn't go through
-    # requires_tier we fall back to "not admin".
-    is_admin = (current_user.get("module_tier") or {}).get("pellets", 0) >= 30
+    # Pellets:Manage (tier 30) can override the inventory lock. Resolved
+    # by direct query so we don't depend on a dict injection that only
+    # fires on specific Depends() shapes. (Fable design review note 7.)
+    from app.permissions.catalog import Module, Tier
+    from app.permissions.resolver import effective_tier
+    email = (current_user.get("email") or "").lower().strip()
+    is_admin = effective_tier(db, email, Module.PELLETS) >= Tier.MANAGE
     override_reason = (override_reason or "").strip()
 
     if is_admin and override_reason:

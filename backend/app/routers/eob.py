@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-import os
 
 from app.database import get_db
 from app.models.claim import Claim
@@ -103,16 +102,16 @@ def get_eob_pdf(claim_id: str, db: Session = Depends(get_db),
         for a in claim.adjustments
     ]
 
-    os.makedirs(settings.export_dir, exist_ok=True)
-    output_path = os.path.join(settings.export_dir, f"eob_{claim_id}.pdf")
-
+    # Stream the PDF straight back — no local export path. On Cloud Run
+    # the ephemeral filesystem is gone the next request anyway, and the
+    # caller always gets the bytes back as the response body.
+    # (Fable design review note 7.)
     pdf_bytes = generate_eob_pdf(
         claim_data=claim_data,
         service_lines=service_lines,
         adjustments=adjustments,
         patient_info=patient_info,
         practice_info=practice_info,
-        output_path=output_path,
     )
 
     log_action(db, "GENERATE_EOB", "claim", actor=current_user,
