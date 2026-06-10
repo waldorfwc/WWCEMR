@@ -92,6 +92,7 @@ def _send_one_and_log(
         log.error = not_found_error
         db.commit()
         log_action(db, "FAX_FAILED", "fax", resource_id=str(log.id),
+                   user_name=sent_by,
                    description=f"Fax failed: {not_found_error}")
         return {"fax_log_id": str(log.id), "doc_ids": doc_ids,
                 "status": "failed", "error": not_found_error,
@@ -106,6 +107,7 @@ def _send_one_and_log(
         log.error = result["error"]
         db.commit()
         log_action(db, "FAX_FAILED", "fax", resource_id=str(log.id),
+                   user_name=sent_by,
                    description=f"Fax to {dest_fax} failed: {result['error']}")
         return {"fax_log_id": str(log.id), "doc_ids": doc_ids,
                 "status": "failed", "error": result["error"],
@@ -116,6 +118,7 @@ def _send_one_and_log(
     log.sent_at = datetime.utcnow()
     db.commit()
     log_action(db, "FAX_SENT", "fax", resource_id=str(log.id),
+               user_name=sent_by,
                description=f"Faxed {len(doc_ids)} doc(s) to {dest_fax} — msg {result.get('message_id')}")
     return {"fax_log_id": str(log.id), "doc_ids": doc_ids,
             "status": "sent", "error": None,

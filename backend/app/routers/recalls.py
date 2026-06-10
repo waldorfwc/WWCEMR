@@ -360,13 +360,16 @@ def log_call_attempted(recall_id: str, db: Session = Depends(get_db),
     e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="recall not found")
+    # Normalize email so "top callers" doesn't split one user into two
+    # rows because session casing varied. (Fable recalls audit L5.)
+    me = (current_user.get("email") or "").lower().strip()
     db.add(RecallCallLog(
         recall_entry_id=e.id, chart_number=e.chart_number,
-        event_type="call_attempted", user_email=current_user.get("email"),
+        event_type="call_attempted", user_email=me,
     ))
     e.attempts = (e.attempts or 0) + 1
     e.last_attempt_at = datetime.utcnow()
-    e.last_worked_by = current_user.get("email")
+    e.last_worked_by = me
     db.commit()
     return {"ok": True, "attempts": e.attempts}
 
@@ -574,6 +577,18 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
         e.status = "completed"
     elif payload.outcome in COOLDOWN_OUTCOMES:
         e.cooldown_until = datetime.utcnow() + COOLDOWN_OUTCOMES[payload.outcome]
+    elif payload.outcome == "Wrong number":
+        # Hide for 30 days and stamp the latest_comment with a phone-fix
+        # prompt so the dashboard / drawer surfaces "needs phone update"
+        # instead of letting staff keep dialing the same wrong person.
+        # (Fable recalls audit L1.)
+        from datetime import timedelta as _td
+        e.cooldown_until = datetime.utcnow() + _td(days=30)
+        flag = "[NEEDS PHONE UPDATE]"
+        if flag not in (e.latest_comment or ""):
+            e.latest_comment = (f"{flag} {payload.notes or ''}".strip()
+                                  if not e.latest_comment
+                                  else f"{flag} {e.latest_comment}")
 
     # Outcome logged → release the claim so this row goes back to the queue
     # (or is now off the queue entirely if status flipped).
