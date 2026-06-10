@@ -4,6 +4,8 @@
 from dotenv import load_dotenv as _load_dotenv
 _load_dotenv()
 
+import os
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -37,15 +39,31 @@ async def lifespan(app: FastAPI):
     init_db()
     from app.services.fax_poller import start_scheduler
     sched = start_scheduler()
-    # One-time route permission audit — surfaces any endpoint missing a
-    # require_permission guard. Logged at WARNING so it's visible without
-    # being fatal during development.
+    # Route-permission audit. Returns {total, unguarded}. We promote this
+    # from a WARNING to a hard startup failure on Cloud Run (K_SERVICE is
+    # injected by the platform) so an ungated router can't ship. Local
+    # development still gets only the WARNING — devs iterating on a new
+    # router shouldn't be blocked from running the app while they wire up
+    # the gate. (Fable design review note 2.)
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
     try:
         from app.services.route_perm_catalog import audit_routes
-        audit_routes(app)
+        report = audit_routes(app)
+        if report["unguarded"] and os.environ.get("K_SERVICE"):
+            preview = ", ".join(f"{m} {p}" for m, p in report["unguarded"][:10])
+            more = f" (+{len(report['unguarded']) - 10} more)" if len(report["unguarded"]) > 10 else ""
+            raise RuntimeError(
+                f"Refusing to start: {len(report['unguarded'])} ungated "
+                f"endpoint(s) detected by route_perm_catalog: {preview}{more}. "
+                "Add a require_permission/requires_tier dependency or "
+                "allowlist the path in route_perm_catalog._PUBLIC_ALLOWLIST."
+            )
+    except RuntimeError:
+        # Startup gate — propagate so Cloud Run keeps the previous revision.
+        raise
     except Exception:
-        import logging
-        logging.getLogger(__name__).exception("route_perm_catalog failed")
+        _log.exception("route_perm_catalog failed")
     try:
         yield
     finally:
