@@ -53,8 +53,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="GW Migration System",
-    description="Greenway PrimeSuite migration — patient charts, documents, ERA 835 payment posting, denial management.",
+    title="WWC App",
+    description=(
+        "Internal practice system for Waldorf Women's Care — patient "
+        "charts, claims & AR, surgery scheduling, device tracking, "
+        "pellets, bank reconciliation, and the office's day-to-day "
+        "workflow."
+    ),
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -202,4 +207,4 @@ app.include_router(reputation_admin.router,
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "GW Migration System"}
+    return {"status": "ok", "service": "WWC App"}
