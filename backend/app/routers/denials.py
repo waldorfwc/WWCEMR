@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import desc, func
 from typing import Optional
-from datetime import date
+from datetime import date, timedelta
 
 from app.database import get_db
 from app.models.denial import Denial, DenialStatus
@@ -34,7 +34,7 @@ def list_denials(
     if urgent_only:
         q = q.filter(
             Denial.status == DenialStatus.OPEN,
-            Denial.appeal_deadline <= date.today().__class__.today().__add__(__import__("datetime").timedelta(days=30)),
+            Denial.appeal_deadline <= date.today() + timedelta(days=30),
             Denial.appeal_deadline >= date.today(),
         )
     if write_off_only:
@@ -66,6 +66,44 @@ def get_denial(denial_id: str, db: Session = Depends(get_db)):
     return _to_dict(denial, detailed=True)
 
 
+_DENIAL_DATE_FIELDS = {"appeal_submitted_date", "appeal_decision_date"}
+_DENIAL_BOOL_FIELDS = {"write_off_recommended"}
+
+
+def _coerce_denial_value(k: str, v):
+    """Coerce raw JSON to the column's expected type. Without this,
+    update_denial used to assign strings to enum / date / bool
+    columns and depended on the driver's silent coercion — junk
+    values either stored as wrong types or 500'd at flush.
+    (Fable billing audit M7.)
+    """
+    if v is None:
+        return None
+    if k == "status":
+        try:
+            return DenialStatus(v)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"invalid denial status: {v!r}")
+    if k in _DENIAL_DATE_FIELDS:
+        if isinstance(v, str):
+            try:
+                return date.fromisoformat(v[:10])
+            except ValueError:
+                raise HTTPException(status_code=422,
+                                     detail=f"invalid date for {k}: {v!r}")
+        return v
+    if k in _DENIAL_BOOL_FIELDS:
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.strip().lower() in ("true", "yes", "1", "y")
+        if isinstance(v, (int, float)):
+            return bool(v)
+        raise HTTPException(status_code=422,
+                             detail=f"{k} must be a boolean, got {v!r}")
+    return v
+
+
 @router.patch("/{denial_id}")
 def update_denial(denial_id: str, data: dict,
                    db: Session = Depends(get_db),
@@ -84,17 +122,19 @@ def update_denial(denial_id: str, data: dict,
     allowed = ["status", "notes", "recommended_action", "write_off_recommended",
                "appeal_submitted_date", "appeal_decision_date", "appeal_decision"]
     before = {k: getattr(denial, k, None) for k in allowed if k in data}
+    new_typed = {}
     for k, v in data.items():
         if k in allowed:
-            setattr(denial, k, v)
+            coerced = _coerce_denial_value(k, v)
+            setattr(denial, k, coerced)
+            new_typed[k] = coerced
     db.commit()
     log_action(db, action="UPDATE", resource_type="denial",
                resource_id=denial_id,
                user_id=(current_user.get("email") or "").lower() or None,
                user_name=current_user.get("name") or current_user.get("email"),
                old_values={k: str(v) if v is not None else None for k, v in before.items()},
-               new_values={k: str(v) if v is not None else None
-                            for k, v in data.items() if k in allowed})
+               new_values={k: str(v) if v is not None else None for k, v in new_typed.items()})
     return _to_dict(denial)
 
 

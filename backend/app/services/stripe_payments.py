@@ -73,7 +73,14 @@ def _client():
 
 def get_or_create_customer(db: Session, surgery: Surgery) -> str:
     """Return the Stripe customer ID for this surgery's chart_number,
-    creating one if we haven't seen this chart_number before."""
+    creating one if we haven't seen this chart_number before.
+
+    Concurrency: two first-payments for the same chart used to mint
+    two Stripe customer rows. uq_stripe_customer_chart UniqueConstraint
+    catches the duplicate at commit, so the second caller raises
+    IntegrityError — handled here by reloading and using the row the
+    other request just committed. (Fable billing audit L2.)
+    """
     existing = (db.query(StripeCustomer)
                   .filter(StripeCustomer.chart_number == surgery.chart_number)
                   .first())
@@ -81,10 +88,14 @@ def get_or_create_customer(db: Session, surgery: Surgery) -> str:
         return existing.stripe_customer_id
 
     s = _client()
+    # Send only what Stripe needs for receipts (email + display name).
+    # chart_number used to go in metadata for our own reconciliation
+    # but we already store it on StripeCustomer locally, so there's
+    # no reason to copy a chart identifier to a non-BAA processor.
+    # (Fable billing audit M4.)
     cust = s.Customer.create(
         email=surgery.email or None,
         name=surgery.patient_name,
-        metadata={"chart_number": surgery.chart_number},
     )
     db.add(StripeCustomer(
         chart_number=surgery.chart_number,
@@ -92,8 +103,24 @@ def get_or_create_customer(db: Session, surgery: Surgery) -> str:
         email=surgery.email,
         name=surgery.patient_name,
     ))
-    db.commit()
-    return cust.id
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.commit()
+        return cust.id
+    except IntegrityError:
+        # Another request committed the same chart_number first.
+        # Reload the winning row and discard our just-created Stripe
+        # Customer — log it loudly so an operator can clean up the
+        # orphan in the Stripe dashboard (Stripe billing won't break
+        # but it clutters reporting).
+        db.rollback()
+        log.warning("StripeCustomer race for chart %s — orphan Stripe "
+                    "customer %s created; using winning row",
+                    surgery.chart_number, cust.id)
+        existing = (db.query(StripeCustomer)
+                      .filter(StripeCustomer.chart_number == surgery.chart_number)
+                      .first())
+        return existing.stripe_customer_id if existing else cust.id
 
 
 # ─── Checkout sessions ──────────────────────────────────────────────
@@ -116,6 +143,14 @@ def create_checkout_session(
 
     s = _client()
     amount_cents = int((amount * 100).quantize(Decimal("1")))
+    # Line item description used to embed patient_name + chart_number,
+    # which Stripe stores in cleartext on the line item AND emails to
+    # the customer in the receipt. Stripe doesn't sign a BAA for
+    # standard accounts. Switched to an opaque per-payment reference;
+    # patient identity stays in Stripe's customer object (name + email)
+    # which lives behind the BAA-eligible regulated-payment fields and
+    # in our metadata.surgery_id (UUID). (Fable billing audit M4.)
+    safe_description = description or "Surgery payment"
     session = s.checkout.Session.create(
         mode="payment",
         customer=customer_id,
@@ -124,22 +159,19 @@ def create_checkout_session(
                 "currency": "usd",
                 "unit_amount": amount_cents,
                 "product_data": {
-                    "name": description or "Surgery payment",
-                    "description": f"Chart #{surgery.chart_number} — "
-                                    f"{surgery.patient_name}",
+                    "name": safe_description,
+                    "description": f"Ref: surgery {str(surgery.id)[:8]}",
                 },
             },
             "quantity": 1,
         }],
         payment_intent_data={
             "metadata": {
-                "surgery_id":   str(surgery.id),
-                "chart_number": surgery.chart_number,
+                "surgery_id": str(surgery.id),
             },
         },
         metadata={
-            "surgery_id":   str(surgery.id),
-            "chart_number": surgery.chart_number,
+            "surgery_id": str(surgery.id),
         },
         success_url=_success_url(),
         cancel_url=_cancel_url(),
@@ -186,7 +218,27 @@ def create_checkout_session(
         checkout_url=session.url,
     )
     db.add(pay)
-    db.commit(); db.refresh(pay)
+    try:
+        db.commit(); db.refresh(pay)
+    except Exception as exc:
+        # Orphan Stripe session: the API call succeeded but the local
+        # row couldn't commit (DB blip, validation error, etc.). The
+        # webhook receiver will see a checkout.session.completed event
+        # with no SurgeryPayment to attach the payment to — money lands
+        # in Stripe with nowhere local to record it. Try to expire the
+        # session immediately; log loudly either way so an operator can
+        # reconcile manually. (Fable billing audit L5.)
+        log.error("ORPHAN STRIPE SESSION — local commit failed for surgery %s "
+                  "after creating session %s: %s",
+                  surgery.id, session.id, exc)
+        try:
+            stripe_client.checkout.Session.expire(session.id)
+            log.warning("orphan session %s expired in Stripe", session.id)
+        except Exception as expire_exc:
+            log.error("could not expire orphan session %s: %s",
+                      session.id, expire_exc)
+        db.rollback()
+        raise
     return pay
 
 

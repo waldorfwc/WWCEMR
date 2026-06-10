@@ -24,10 +24,16 @@ def _coerce_adj_value(k: str, v):
         return None
     if k in ADJ_NUMERIC_FIELDS:
         try:
-            return Decimal(str(v))
+            d = Decimal(str(v))
         except (InvalidOperation, TypeError, ValueError):
             raise HTTPException(status_code=422,
                                 detail=f"invalid number for {k}: {v!r}")
+        # NaN/Inf would poison aggregations the same way it does on
+        # claims (Fable billing audit H4).
+        if not d.is_finite():
+            raise HTTPException(status_code=422,
+                                detail=f"{k} must be a finite number, got {v!r}")
+        return d
     return v
 
 

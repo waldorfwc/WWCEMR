@@ -39,9 +39,13 @@ def _coerce_sl_value(k: str, v):
         return None
     if k in SL_NUMERIC_FIELDS:
         try:
-            return Decimal(str(v))
+            d = Decimal(str(v))
         except (InvalidOperation, TypeError, ValueError):
             raise HTTPException(status_code=422, detail=f"invalid number for {k}: {v!r}")
+        if not d.is_finite():
+            raise HTTPException(status_code=422,
+                                detail=f"{k} must be a finite number, got {v!r}")
+        return d
     if k in SL_DATE_FIELDS:
         if isinstance(v, str):
             try:

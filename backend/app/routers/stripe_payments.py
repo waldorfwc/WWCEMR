@@ -474,11 +474,45 @@ def _handle_refund(db, event_type, obj):
 
 
 def _handle_payment_failed(db, event_type, obj):
+    """Handle payment_intent.payment_failed.
+
+    The previous handler queried SurgeryPayment.stripe_payment_intent_id
+    — but that column is only populated on `checkout.session.completed`
+    (i.e. AFTER success). Card failures fire payment_intent.payment_failed
+    BEFORE success, so the lookup matched nothing and every card
+    decline was silently dropped: failed_at / failure_reason stayed
+    NULL forever and staff had no view into recurring decline patterns.
+    (Fable billing audit H3.)
+
+    Fix: use the PI's metadata.surgery_id (which we set at session
+    creation) to find the most recent open SurgeryPayment for that
+    surgery and mark it failed.
+    """
     pi = obj.get("id")
-    pay = (db.query(SurgeryPayment)
-             .filter(SurgeryPayment.stripe_payment_intent_id == pi)
-             .first())
+    md = obj.get("metadata") or {}
+    surgery_id = md.get("surgery_id")
+    # Prefer the PI-id match for any session that already completed
+    # (won't happen for actual failed-before-completion, but kept for
+    # forward compat with stripe redelivery semantics).
+    pay = None
+    if pi:
+        pay = (db.query(SurgeryPayment)
+                 .filter(SurgeryPayment.stripe_payment_intent_id == pi)
+                 .first())
+    if pay is None and surgery_id:
+        # Look up the most recent open ('requested') row for this surgery
+        # — that's the one whose checkout the PI belongs to.
+        pay = (db.query(SurgeryPayment)
+                 .filter(SurgeryPayment.surgery_id == surgery_id,
+                         SurgeryPayment.status == "requested")
+                 .order_by(SurgeryPayment.requested_at.desc())
+                 .first())
+        if pay and pi:
+            # Stamp the PI id so a later success / refund can match too.
+            pay.stripe_payment_intent_id = pi
     if not pay:
+        log.warning("stripe webhook %s — could not match payment "
+                    "(pi=%s, surgery_id=%s)", event_type, pi, surgery_id)
         return
     before = pay.status
     pay.status = "failed"

@@ -78,9 +78,14 @@ async def upload_eras(
     os.makedirs(subdir, exist_ok=True)
 
     previews: List[EraFilePreview] = []
+    import hashlib
     for idx, f in enumerate(file):
         content_bytes = await f.read()
-        save_path = os.path.join(subdir, f"{idx}-{f.filename or 'era.835'}")
+        # Strip path components from the filename — the {idx}- prefix
+        # mostly defangs the existing path but anything in the path
+        # that resolves outside subdir would still hit. (Fable L1.)
+        safe_name = os.path.basename(f.filename or "era.835") or "era.835"
+        save_path = os.path.join(subdir, f"{idx}-{safe_name}")
         with open(save_path, "wb") as fh:
             fh.write(content_bytes)
         try:
@@ -97,6 +102,10 @@ async def upload_eras(
         prev = build_preview(db, era, source_filename=f.filename or f"era{idx}.835")
         prev.era.filename = f.filename or prev.era.filename
         prev.__dict__["_file_path"] = save_path
+        # Pin the previewed file's content hash so commit_eras can
+        # detect tampering or accidental file-replacement between
+        # preview and commit. (Fable billing audit M2.)
+        prev.__dict__["_file_sha256"] = hashlib.sha256(content_bytes).hexdigest()
         previews.append(prev)
 
     now = datetime.now(timezone.utc)
@@ -192,15 +201,49 @@ def commit_eras(
     }
     errors: list = []
 
+    import hashlib
+    from decimal import Decimal as _Dec
     for p in previews:
         file_path = p.__dict__.get("_file_path", "")
         try:
-            with open(file_path, "r") as f:
-                content = f.read()
+            with open(file_path, "rb") as f:
+                content_bytes = f.read()
+            content = content_bytes.decode("utf-8", errors="ignore")
         except OSError as exc:
             errors.append({"filename": p.source_filename,
                            "message": f"could not re-read file: {exc}"})
             continue
+
+        # File-content hash check (Fable billing audit M2). If the file
+        # on disk no longer matches what the preview was computed
+        # against, refuse to post — staff approved a different file.
+        expected_hash = p.__dict__.get("_file_sha256")
+        actual_hash = hashlib.sha256(content_bytes).hexdigest()
+        if expected_hash and expected_hash != actual_hash:
+            errors.append({
+                "filename": p.source_filename,
+                "message": "file content changed between preview and commit — "
+                           "refusing to post. Re-upload to re-preview."})
+            continue
+
+        # BPR02 balance check (Fable billing audit M3). Sum of claim
+        # paid_amount should equal era.check_amount (within $0.01 for
+        # rounding). A truncated or mis-parsed 835 would otherwise post
+        # partial money with no alarm. Allow when check_amount is zero
+        # (reversal-only or zero-paid checks).
+        check_amount = _Dec(p.era.check_amount or 0)
+        claims_total = sum((_Dec(c.paid_amount or 0) for c in p.era.claims),
+                            _Dec(0))
+        drift = abs(check_amount - claims_total)
+        if check_amount > 0 and drift > _Dec("0.01"):
+            errors.append({
+                "filename": p.source_filename,
+                "message": (f"BPR02 reconciliation: claim payments "
+                            f"${claims_total:.2f} != check amount "
+                            f"${check_amount:.2f} (diff ${drift:.2f}) — "
+                            f"refusing to post.")})
+            continue
+
         result = process_era_file(db, content, p.source_filename, user_email)
         totals["claims_posted"] += result.claims_posted
         totals["claims_already_posted"] += result.claims_already_posted

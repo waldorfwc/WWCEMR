@@ -220,9 +220,21 @@ def _coerce_claim_value(k: str, v):
             raise HTTPException(status_code=422, detail=f"invalid insurance_order: {v}")
     if k in MONEY_FIELDS:
         try:
-            return Decimal(str(v))
+            d = Decimal(str(v))
         except (InvalidOperation, TypeError, ValueError):
             raise HTTPException(status_code=422, detail=f"invalid number for {k}: {v!r}")
+        # Decimal(str("NaN")) and Decimal(str("Infinity")) parse
+        # without error and then poison recompute_balance — every
+        # Claim.balance > 0 filter and the AR summary break.
+        # Negative paid_amount would understate AR. (Fable billing
+        # audit H4.)
+        if not d.is_finite():
+            raise HTTPException(status_code=422,
+                                detail=f"{k} must be a finite number, got {v!r}")
+        if d < 0:
+            raise HTTPException(status_code=422,
+                                detail=f"{k} must be >= 0, got {v!r}")
+        return d
     if k in DATE_FIELDS:
         if isinstance(v, str):
             try:
