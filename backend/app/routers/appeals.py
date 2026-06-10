@@ -12,6 +12,7 @@ from app.models.claim import Claim
 from app.models.patient import Patient
 from app.services.appeal_generator import generate_appeal_letter_sync
 from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
 from app.config import settings
 
 router = APIRouter(prefix="/appeals", tags=["appeals"])
@@ -27,7 +28,8 @@ class GenerateAppealRequest(BaseModel):
 
 
 @router.post("/generate")
-def generate_appeal(req: GenerateAppealRequest, db: Session = Depends(get_db)):
+def generate_appeal(req: GenerateAppealRequest, db: Session = Depends(get_db),
+                     current_user: dict = Depends(get_current_user)):
     """Generate an AI appeal letter for a denial."""
     denial = db.query(Denial).options(joinedload(Denial.claim)).filter(Denial.id == req.denial_id).first()
     if not denial:
@@ -78,7 +80,8 @@ def generate_appeal(req: GenerateAppealRequest, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(appeal)
 
-    log_action(db, "GENERATE_APPEAL", "appeal", resource_id=str(appeal.id),
+    log_action(db, "GENERATE_APPEAL", "appeal", actor=current_user,
+               resource_id=str(appeal.id),
                description=f"AI appeal letter generated for denial {req.denial_id}")
 
     return {
@@ -97,16 +100,18 @@ def list_appeals(db: Session = Depends(get_db)):
 
 
 @router.get("/{appeal_id}")
-def get_appeal(appeal_id: str, db: Session = Depends(get_db)):
+def get_appeal(appeal_id: str, db: Session = Depends(get_db),
+                current_user: dict = Depends(get_current_user)):
     appeal = db.query(Appeal).filter(Appeal.id == appeal_id).first()
     if not appeal:
         raise HTTPException(status_code=404, detail="Appeal not found")
-    log_action(db, "VIEW", "appeal", resource_id=appeal_id)
+    log_action(db, "VIEW", "appeal", actor=current_user, resource_id=appeal_id)
     return _to_dict(appeal, detailed=True)
 
 
 @router.patch("/{appeal_id}")
-def update_appeal(appeal_id: str, data: dict, db: Session = Depends(get_db)):
+def update_appeal(appeal_id: str, data: dict, db: Session = Depends(get_db),
+                   current_user: dict = Depends(get_current_user)):
     appeal = db.query(Appeal).filter(Appeal.id == appeal_id).first()
     if not appeal:
         raise HTTPException(status_code=404, detail="Appeal not found")
@@ -120,18 +125,19 @@ def update_appeal(appeal_id: str, data: dict, db: Session = Depends(get_db)):
         if appeal.denial:
             appeal.denial.appeal_submitted_date = date.today()
     db.commit()
-    log_action(db, "UPDATE", "appeal", resource_id=appeal_id, new_values=data)
+    log_action(db, "UPDATE", "appeal", actor=current_user, resource_id=appeal_id, new_values=data)
     return _to_dict(appeal)
 
 
 @router.get("/{appeal_id}/download")
-def download_appeal_letter(appeal_id: str, db: Session = Depends(get_db)):
+def download_appeal_letter(appeal_id: str, db: Session = Depends(get_db),
+                            current_user: dict = Depends(get_current_user)):
     """Download the appeal letter as a plain text file."""
     from fastapi.responses import Response
     appeal = db.query(Appeal).filter(Appeal.id == appeal_id).first()
     if not appeal:
         raise HTTPException(status_code=404, detail="Appeal not found")
-    log_action(db, "EXPORT", "appeal", resource_id=appeal_id)
+    log_action(db, "EXPORT", "appeal", actor=current_user, resource_id=appeal_id)
     return Response(
         content=appeal.letter_body or "",
         media_type="text/plain",

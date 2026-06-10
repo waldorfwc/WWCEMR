@@ -243,10 +243,11 @@ def _bg_index_and_match(intake_dir: str):
 
 @router.post("/match")
 def run_matching(db: Session = Depends(get_db),
-                  _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
+                  current_user: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     """Re-run matching against the current patient directory."""
     result = match_intake_to_charts(db)
-    log_action(db, "INTAKE_MATCH", "intake", description=f"Matching run: {result}")
+    log_action(db, "INTAKE_MATCH", "intake", actor=current_user,
+               description=f"Matching run: {result}")
     return result
 
 
@@ -383,7 +384,7 @@ def list_intake_patients(
 
 @router.patch("/documents/{doc_id}/override-match")
 def override_match(doc_id: str, chart_number: str, db: Session = Depends(get_db),
-                    _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
+                    current_user: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     """Manually assign a chart number to an intake document (or all docs for that patient)."""
     doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
     if not doc:
@@ -407,6 +408,7 @@ def override_match(doc_id: str, chart_number: str, db: Session = Depends(get_db)
 
     log_action(
         db, "INTAKE_MANUAL_MATCH", "intake_document",
+        actor=current_user,
         resource_id=doc_id,
         description=f"Manual match: {doc.patient_name_raw} ({doc.dob}) -> chart {chart_number}, {affected} docs updated"
     )

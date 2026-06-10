@@ -12,6 +12,7 @@ from datetime import date
 from app.database import get_db
 from app.services.waystar_service import get_waystar_client, WaystarConnectionError
 from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
 from app.config import settings
 from app.services.storage import save_blob_with_key, serve_blob
 
@@ -30,14 +31,16 @@ def waystar_status():
 
 
 @router.post("/test-connection")
-def test_connection(db: Session = Depends(get_db)):
+def test_connection(db: Session = Depends(get_db),
+                     current_user: dict = Depends(get_current_user)):
     """Test all Waystar connection modes and return which works."""
     if not settings.waystar_api_key:
         raise HTTPException(status_code=400, detail="Waystar credentials not configured")
     try:
         client = get_waystar_client()
         result = client.test_connection()
-        log_action(db, "WAYSTAR_TEST", "waystar", description=f"Connection test result: {result.get('status')}")
+        log_action(db, "WAYSTAR_TEST", "waystar", actor=current_user,
+                   description=f"Connection test result: {result.get('status')}")
         return result
     except Exception as e:
         return {"status": "error", "detail": str(e)}
@@ -49,6 +52,7 @@ def list_remittances(
     date_to: Optional[str] = Query(None, description="YYYY-MM-DD"),
     payer_id: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """Retrieve ERA/remittance records from Waystar."""
     if not settings.waystar_api_key:
@@ -69,23 +73,28 @@ def list_remittances(
 
     client = get_waystar_client()
     items = client.get_remittances(date_from=df, date_to=dt, payer_id=payer_id)
-    log_action(db, "VIEW", "waystar_remittances", description=f"Retrieved {len(items)} remittances")
+    log_action(db, "VIEW", "waystar_remittances", actor=current_user,
+               description=f"Retrieved {len(items)} remittances")
     return {"items": items, "count": len(items)}
 
 
 @router.get("/claim-status/{claim_number}")
-def claim_status(claim_number: str, payer_id: Optional[str] = None, db: Session = Depends(get_db)):
+def claim_status(claim_number: str, payer_id: Optional[str] = None,
+                  db: Session = Depends(get_db),
+                  current_user: dict = Depends(get_current_user)):
     """Query real-time claim status from Waystar (276/277)."""
     if not settings.waystar_api_key:
         return {"error": "Waystar not configured"}
     client = get_waystar_client()
     result = client.get_claim_status(claim_number, payer_id)
-    log_action(db, "WAYSTAR_CLAIM_STATUS", "claim", description=f"Claim status lookup: {claim_number}")
+    log_action(db, "WAYSTAR_CLAIM_STATUS", "claim", actor=current_user,
+               description=f"Claim status lookup: {claim_number}")
     return result
 
 
 @router.post("/eligibility")
-def check_eligibility(payload: dict, db: Session = Depends(get_db)):
+def check_eligibility(payload: dict, db: Session = Depends(get_db),
+                       current_user: dict = Depends(get_current_user)):
     """
     Real-time eligibility verification (270/271).
     Body: { payer_id, member_id, first_name, last_name, dob, dos? }
@@ -106,7 +115,8 @@ def check_eligibility(payload: dict, db: Session = Depends(get_db)):
         dob=payload["dob"],
         dos=payload.get("dos"),
     )
-    log_action(db, "ELIGIBILITY_CHECK", "patient", description=f"Eligibility check payer: {payload['payer_id']}")
+    log_action(db, "ELIGIBILITY_CHECK", "patient", actor=current_user,
+               description=f"Eligibility check payer: {payload['payer_id']}")
     return result
 
 
@@ -133,6 +143,7 @@ def ar_summary(
 def sync_eras_sftp(
     remote_dir: str = "/outbox/era",
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Download ERA files via SFTP and import them into the system.
@@ -175,7 +186,7 @@ def sync_eras_sftp(
                     "error": str(e),
                 })
 
-        log_action(db, "WAYSTAR_SFTP_SYNC", "waystar",
+        log_action(db, "WAYSTAR_SFTP_SYNC", "waystar", actor=current_user,
                    description=f"SFTP sync: {len(downloaded)} files downloaded")
         return {"downloaded": len(downloaded), "results": results}
     except Exception as e:
@@ -183,10 +194,11 @@ def sync_eras_sftp(
 
 
 @router.get("/eob-report/{filename}")
-def download_eob_report(filename: str, db: Session = Depends(get_db)):
+def download_eob_report(filename: str, db: Session = Depends(get_db),
+                        current_user: dict = Depends(get_current_user)):
     """Download a Waystar EOB/remittance report file from gs://wwc-app-docs/waystar-reports/."""
     safe_name = os.path.basename(filename)
-    log_action(db, "DOWNLOAD", "eob_report",
+    log_action(db, "DOWNLOAD", "eob_report", actor=current_user,
                description=f"Downloaded EOB report: {safe_name}")
     return serve_blob(
         local_path=None,

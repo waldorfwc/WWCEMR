@@ -55,14 +55,15 @@ def denial_summary(db: Session = Depends(get_db)):
 
 
 @router.get("/{denial_id}")
-def get_denial(denial_id: str, db: Session = Depends(get_db)):
+def get_denial(denial_id: str, db: Session = Depends(get_db),
+                current_user: dict = Depends(get_current_user)):
     denial = db.query(Denial).options(
         joinedload(Denial.claim),
         joinedload(Denial.appeals),
     ).filter(Denial.id == denial_id).first()
     if not denial:
         raise HTTPException(status_code=404, detail="Denial not found")
-    log_action(db, "VIEW", "denial", resource_id=denial_id)
+    log_action(db, "VIEW", "denial", actor=current_user, resource_id=denial_id)
     return _to_dict(denial, detailed=True)
 
 

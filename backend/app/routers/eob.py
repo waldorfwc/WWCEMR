@@ -8,13 +8,15 @@ from app.models.claim import Claim
 from app.models.patient import Patient
 from app.services.eob_generator import generate_eob_pdf
 from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
 from app.config import settings
 
 router = APIRouter(prefix="/eob", tags=["eob"])
 
 
 @router.get("/{claim_id}/pdf")
-def get_eob_pdf(claim_id: str, db: Session = Depends(get_db)):
+def get_eob_pdf(claim_id: str, db: Session = Depends(get_db),
+                 current_user: dict = Depends(get_current_user)):
     """Generate and return an EOB PDF for a claim."""
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
@@ -113,7 +115,8 @@ def get_eob_pdf(claim_id: str, db: Session = Depends(get_db)):
         output_path=output_path,
     )
 
-    log_action(db, "GENERATE_EOB", "claim", resource_id=claim_id,
+    log_action(db, "GENERATE_EOB", "claim", actor=current_user,
+               resource_id=claim_id,
                patient_id=str(claim.patient_id) if claim.patient_id else None,
                description="EOB PDF generated")
 

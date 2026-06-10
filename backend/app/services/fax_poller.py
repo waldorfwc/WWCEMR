@@ -7,7 +7,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.database import SessionLocal
 from app.models.fax_log import FaxLog, FaxLogStatus
 from app.services.fax_service import check_fax_status
-from app.services.audit_service import log_action
+from app.services.audit_service import ACTOR_SYSTEM, log_action
 
 POLL_INTERVAL_MINUTES = int(os.environ.get("FAX_POLL_INTERVAL_MINUTES", "2"))
 # Keep re-polling for 24 hours — RingCentral occasionally takes hours to
@@ -54,14 +54,16 @@ def poll_outstanding_faxes(db: Session) -> int:
                 row.status = FaxLogStatus.DELIVERED
                 row.delivered_at = now
                 changed += 1
-                log_action(db, "FAX_DELIVERED", "fax", resource_id=str(row.id),
+                log_action(db, "FAX_DELIVERED", "fax", actor=ACTOR_SYSTEM,
+                           resource_id=str(row.id),
                            description=f"Fax {row.ringcentral_message_id} delivered")
         elif rc_status in _FAILED_STATES:
             if row.status != FaxLogStatus.FAILED:
                 row.status = FaxLogStatus.FAILED
                 row.error = rc.get("error") or rc_status
                 changed += 1
-                log_action(db, "FAX_FAILED", "fax", resource_id=str(row.id),
+                log_action(db, "FAX_FAILED", "fax", actor=ACTOR_SYSTEM,
+                           resource_id=str(row.id),
                            description=f"Fax {row.ringcentral_message_id} failed: {row.error}")
         # In-flight / unknown → leave status alone
 

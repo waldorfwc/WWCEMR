@@ -166,11 +166,12 @@ def claim_summary(db: Session = Depends(get_db)):
 
 
 @router.get("/{claim_id}")
-def get_claim(claim_id: str, db: Session = Depends(get_db)):
+def get_claim(claim_id: str, db: Session = Depends(get_db),
+              current_user: dict = Depends(get_current_user)):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
-    log_action(db, "VIEW", "claim", resource_id=claim_id,
+    log_action(db, "VIEW", "claim", actor=current_user, resource_id=claim_id,
                patient_id=str(claim.patient_id) if claim.patient_id else None)
     return _claim_to_dict(claim, detailed=True)
 

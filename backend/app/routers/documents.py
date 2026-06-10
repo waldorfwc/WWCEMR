@@ -250,7 +250,7 @@ def patient_documents(
     chart_number: str,
     doc_type: Optional[str] = None,
     db: Session = Depends(get_db),
-    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """All documents for a specific patient chart number."""
     q = db.query(PatientDocument).filter(PatientDocument.chart_number == chart_number)
@@ -266,7 +266,8 @@ def patient_documents(
     for d in docs:
         by_type.setdefault(d.doc_type, []).append(_doc_to_dict(d))
 
-    log_action(db, "VIEW", "patient_documents", description=f"Viewed documents for chart {chart_number}")
+    log_action(db, "VIEW", "patient_documents", actor=current_user,
+               description=f"Viewed documents for chart {chart_number}")
 
     return {
         "chart_number": chart_number,
@@ -407,7 +408,7 @@ def _resolve_file(doc: PatientDocument, db: Session) -> str:
 def download_document(
     doc_id: str,
     db: Session = Depends(get_db),
-    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """Download a specific document by its database ID."""
     doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
@@ -418,6 +419,7 @@ def download_document(
     if using_gcs():
         log_action(
             db, "DOWNLOAD", "patient_document",
+            actor=current_user,
             resource_id=doc_id,
             description=f"Downloaded {doc.doc_type} for chart {doc.chart_number}",
         )
@@ -438,6 +440,7 @@ def download_document(
 
     log_action(
         db, "DOWNLOAD", "patient_document",
+        actor=current_user,
         resource_id=doc_id,
         description=f"Downloaded {doc.doc_type} for chart {doc.chart_number}",
     )
@@ -453,7 +456,7 @@ def download_document(
 def view_document(
     doc_id: str,
     db: Session = Depends(get_db),
-    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """Inline-view a PDF in the browser."""
     doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
@@ -463,6 +466,7 @@ def view_document(
     if using_gcs():
         log_action(
             db, "VIEW", "patient_document",
+            actor=current_user,
             resource_id=doc_id,
             description=f"Viewed {doc.doc_type} for chart {doc.chart_number}",
         )
@@ -483,6 +487,7 @@ def view_document(
 
     log_action(
         db, "VIEW", "patient_document",
+        actor=current_user,
         resource_id=doc_id,
         description=f"Viewed {doc.doc_type} for chart {doc.chart_number}",
     )

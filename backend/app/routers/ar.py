@@ -16,6 +16,7 @@ from app.database import get_db
 from app.models.claim import Claim, ClaimStatus
 from app.models.denial import Denial, DenialStatus
 from app.services.audit_service import log_action
+from app.routers.auth import get_current_user
 from app.parsers.primesuite_mapper import (
     detect_primesuite_format,
     normalize_primesuite_rows,
@@ -138,6 +139,7 @@ def ar_summary(db: Session = Depends(get_db)):
 async def upload_primesuite_aging(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Upload a PrimeSuite AR Aging report (CSV or Excel).
@@ -177,7 +179,8 @@ async def upload_primesuite_aging(
 
         if detected_fmt == "ar_aging":
             summary = aggregate_ar_aging(normalized)
-            log_action(db, "PRIMESUITE_AGING_UPLOAD", "ar", description=f"PrimeSuite aging upload: {filename}, {len(normalized)} rows")
+            log_action(db, "PRIMESUITE_AGING_UPLOAD", "ar", actor=current_user,
+                       description=f"PrimeSuite aging upload: {filename}, {len(normalized)} rows")
             return {
                 "status": "ok",
                 "filename": filename,
@@ -188,7 +191,8 @@ async def upload_primesuite_aging(
             }
         else:
             # Still return what we have, just not aging-summarized
-            log_action(db, "PRIMESUITE_UPLOAD", "ar", description=f"PrimeSuite upload: {filename}, {len(normalized)} rows, format: {detected_fmt}")
+            log_action(db, "PRIMESUITE_UPLOAD", "ar", actor=current_user,
+                       description=f"PrimeSuite upload: {filename}, {len(normalized)} rows, format: {detected_fmt}")
             return {
                 "status": "ok",
                 "filename": filename,

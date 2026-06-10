@@ -56,7 +56,7 @@ def list_patients(
 
 @router.post("")
 def create_patient(data: PatientCreate, db: Session = Depends(get_db),
-                    _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
+                    current_user: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     existing = db.query(Patient).filter(Patient.patient_id == data.patient_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="Patient ID already exists")
@@ -64,7 +64,8 @@ def create_patient(data: PatientCreate, db: Session = Depends(get_db),
     db.add(p)
     db.commit()
     db.refresh(p)
-    log_action(db, "CREATE", "patient", resource_id=str(p.id), patient_id=str(p.id))
+    log_action(db, "CREATE", "patient", actor=current_user,
+               resource_id=str(p.id), patient_id=str(p.id))
     return _to_dict(p)
 
 
@@ -82,7 +83,7 @@ def get_patient(patient_id: str, db: Session = Depends(get_db),
 
 @router.patch("/{patient_id}")
 def update_patient(patient_id: str, data: dict, db: Session = Depends(get_db),
-                    _: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
+                    current_user: dict = Depends(requires_tier(Module.CHART, Tier.WORK))):
     p = db.query(Patient).filter(Patient.id == patient_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="Patient not found")
@@ -94,7 +95,8 @@ def update_patient(patient_id: str, data: dict, db: Session = Depends(get_db),
         if k in allowed:
             setattr(p, k, v)
     db.commit()
-    log_action(db, "UPDATE", "patient", resource_id=patient_id, patient_id=patient_id, new_values=data)
+    log_action(db, "UPDATE", "patient", actor=current_user,
+               resource_id=patient_id, patient_id=patient_id, new_values=data)
     return _to_dict(p)
 
 
