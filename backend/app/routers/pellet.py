@@ -163,6 +163,56 @@ def _get_or_create_stock(db: Session, lot_id, location: str) -> PelletStock:
     return s
 
 
+def _adjust_stock(db: Session, stock: PelletStock, delta: int) -> None:
+    """Atomically apply `delta` to PelletStock.doses_on_hand.
+
+    delta > 0 → unconditional increment (receive / return / verify).
+    delta < 0 → conditional decrement that succeeds only if the current
+                balance is >= |delta|. Two concurrent decrements that
+                each pass an in-process `>= qty` check are serialized
+                by PostgreSQL row-level locking; the second one's UPDATE
+                affects 0 rows and we surface a clean 409 instead of
+                silently driving Schedule III stock negative.
+
+    Uses a SQL UPDATE expressed against `PelletStock.doses_on_hand`
+    rather than mutating `stock.doses_on_hand` in Python — that's what
+    closes the TOCTOU window. Caller's session sees the updated value
+    after `db.refresh(stock)` (called here on success). The DB-side
+    CHECK (doses_on_hand >= 0) constraint added by the lightweight
+    migration is the last line of defense if anyone bypasses this
+    helper.
+    """
+    if delta == 0:
+        return
+    if delta > 0:
+        n = (db.query(PelletStock)
+               .filter(PelletStock.id == stock.id)
+               .update(
+                   {"doses_on_hand": PelletStock.doses_on_hand + delta},
+                   synchronize_session=False))
+        if n != 1:
+            raise HTTPException(status_code=500,
+                detail="stock row vanished during adjust")
+    else:
+        qty = -delta
+        n = (db.query(PelletStock)
+               .filter(PelletStock.id == stock.id,
+                       PelletStock.doses_on_hand >= qty)
+               .update(
+                   {"doses_on_hand": PelletStock.doses_on_hand - qty},
+                   synchronize_session=False))
+        if n != 1:
+            # Either the row was deleted (won't happen — stocks are
+            # never deleted) or the balance dropped below qty between
+            # our read and our update. Surface a clean 409 so the
+            # caller can retry against fresh state.
+            raise HTTPException(status_code=409,
+                detail=(f"Insufficient stock at this location "
+                        f"(need {qty}). Another user may have just pulled "
+                        "doses — refresh and try again."))
+    db.refresh(stock)
+
+
 def _dose_type_dict(t: PelletDoseType, on_hand_packs: Optional[int] = None,
                      on_hand_doses: Optional[int] = None) -> dict:
     return {
@@ -1417,7 +1467,7 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
 
     for l in lots:
         s = _get_or_create_stock(db, l.id, r.location)
-        s.doses_on_hand += l.doses_originally_received
+        _adjust_stock(db, s, l.doses_originally_received)
 
         # Copy acquisition cost from the matching order line (if any)
         ol = order_lines_by_dose.get(str(l.dose_type_id))
@@ -1646,7 +1696,7 @@ def create_transfer(payload: TransferIn,
         raise HTTPException(status_code=409,
                             detail=f"Insufficient stock at {payload.from_location}: "
                                    f"have {src.doses_on_hand}, need {payload.doses}")
-    src.doses_on_hand -= payload.doses
+    _adjust_stock(db, src, -(payload.doses))
 
     # If a courier was provided at pack time, validate them and skip
     # straight to in_transit. For Sch III the courier must differ from the
@@ -1764,7 +1814,7 @@ def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
                                 detail="witness_user required for controlled (Schedule III)")
 
     dest = _get_or_create_stock(db, t.lot_id, t.to_location)
-    dest.doses_on_hand += t.doses
+    _adjust_stock(db, dest, t.doses)
     t.status = "received"
     t.received_at = datetime.utcnow()
     t.received_by = by
@@ -1858,7 +1908,7 @@ def create_disposal(payload: DisposalIn,
         raise HTTPException(status_code=409,
                             detail=f"Insufficient stock at {payload.location}: "
                                    f"have {s.doses_on_hand}, need {payload.doses}")
-    s.doses_on_hand -= payload.doses
+    _adjust_stock(db, s, -(payload.doses))
 
     d = PelletDisposal(
         lot_id=l.id, location=payload.location, doses=payload.doses,
@@ -4160,7 +4210,7 @@ def cancel_visit(visit_id: str, payload: VisitCancelIn,
         for d in pulled_doses:
             if d.lot_id:
                 stock = _get_or_create_stock(db, d.lot_id, location)
-                stock.doses_on_hand += d.quantity
+                _adjust_stock(db, stock, d.quantity)
                 _audit(db, actor=by, action="dose_returned",
                         lot_id=d.lot_id, location=location,
                         delta_doses=d.quantity,
@@ -4256,7 +4306,7 @@ def set_dose_card(visit_id: str, payload: DoseCardIn,
     for d in list(v.doses):
         if d.status in ("planned", "pulled") and d.lot_id:
             stock = _get_or_create_stock(db, d.lot_id, location)
-            stock.doses_on_hand += d.quantity
+            _adjust_stock(db, stock, d.quantity)
             _audit(db, actor=by, action="dose_proposed_return",
                     lot_id=d.lot_id, location=location,
                     delta_doses=d.quantity,
@@ -4295,7 +4345,7 @@ def set_dose_card(visit_id: str, payload: DoseCardIn,
                     f"Choose an alternative or wait for restock."))
 
     for i, dt, qty, (lot, stock) in pending:
-        stock.doses_on_hand -= qty
+        _adjust_stock(db, stock, -(qty))
         db.add(PelletVisitDose(
             visit_id=v.id, dose_type_id=dt.id, quantity=qty,
             lot_id=lot.id, position=i, status="planned",
@@ -4392,7 +4442,7 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
                 detail=(f"Insufficient stock at {location} for "
                         f"{payload.quantity}× {dt.label}."))
         lot, stock = pair
-        stock.doses_on_hand -= payload.quantity
+        _adjust_stock(db, stock, -(payload.quantity))
         d = PelletVisitDose(
             visit_id=v.id, dose_type_id=dt.id, quantity=payload.quantity,
             lot_id=lot.id, position=pos, status="planned",
@@ -4459,7 +4509,7 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
     # Return the old lot's reserve
     if old_lot_id is not None:
         old_stock = _get_or_create_stock(db, old_lot_id, location)
-        old_stock.doses_on_hand += d.quantity
+        _adjust_stock(db, old_stock, d.quantity)
         _audit(db, actor=by, action="dose_proposed_return",
                lot_id=old_lot_id, location=location, delta_doses=d.quantity,
                summary=(f"Returned {d.quantity} {d.dose_type.label if d.dose_type else ''} "
@@ -4467,7 +4517,7 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
                detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
 
     # Pull from the new lot
-    new_stock.doses_on_hand -= d.quantity
+    _adjust_stock(db, new_stock, -(d.quantity))
     d.lot_id = new_lot.id
     d.pulled_at = datetime.utcnow()
     d.pulled_by = by
@@ -4556,7 +4606,7 @@ def identify_dose_lot(visit_id: str, dose_id: str, payload: DoseLotIdentifyIn,
     # debit the newly-identified lot.
     if old_lot_id is not None:
         old_stock = _get_or_create_stock(db, old_lot_id, location)
-        old_stock.doses_on_hand += d.quantity
+        _adjust_stock(db, old_stock, d.quantity)
         _audit(db, actor=by, action="dose_lot_retro_return",
                lot_id=old_lot_id, location=location, delta_doses=d.quantity,
                summary=(f"Retro lot fix: returned {d.quantity}× "
@@ -4567,7 +4617,7 @@ def identify_dose_lot(visit_id: str, dose_id: str, payload: DoseLotIdentifyIn,
                        "reason": payload.reason.strip()})
 
     new_stock = _get_or_create_stock(db, new_lot.id, location)
-    new_stock.doses_on_hand -= d.quantity
+    _adjust_stock(db, new_stock, -(d.quantity))
     _audit(db, actor=by, action="dose_lot_retro_debit",
            lot_id=new_lot.id, location=location, delta_doses=-d.quantity,
            summary=(f"Retro lot fix: debited {d.quantity}× "
@@ -4629,7 +4679,7 @@ def delete_visit_dose(visit_id: str, dose_id: str,
     location = _require_visit_location(v)
     if d.status in ("planned", "pulled") and d.lot_id:
         stock = _get_or_create_stock(db, d.lot_id, location)
-        stock.doses_on_hand += d.quantity
+        _adjust_stock(db, stock, d.quantity)
         _audit(db, actor=by, action="dose_proposed_return",
                 lot_id=d.lot_id, location=location,
                 delta_doses=d.quantity,
@@ -4698,7 +4748,7 @@ def fill_bag(visit_id: str, payload: BagFillIn,
                                 detail=f"Insufficient stock for {d.dose_type.label} "
                                        f"lot {lot.qualgen_lot_number} at {payload.location}: "
                                        f"have {stock.doses_on_hand}, need {d.quantity}")
-        stock.doses_on_hand -= d.quantity
+        _adjust_stock(db, stock, -(d.quantity))
         d.lot_id = lot.id
         d.status = "pulled"
         d.pulled_at = datetime.utcnow()
@@ -4770,7 +4820,7 @@ def record_insertion(visit_id: str, payload: InsertionOutcomeIn,
             if d.status in ("pulled", "added"):
                 if d.lot_id:
                     stock = _get_or_create_stock(db, d.lot_id, location)
-                    stock.doses_on_hand += d.quantity
+                    _adjust_stock(db, stock, d.quantity)
                     _audit(db, actor=by, action="dose_returned",
                             lot_id=d.lot_id, location=location,
                             delta_doses=d.quantity,
@@ -4839,7 +4889,7 @@ def confirm_doses_as_planned(visit_id: str,
         if d.status == "planned":
             lot, stock = _earliest_lot_with_stock(db, d.dose_type_id, d.quantity, location)
             d.lot_id = lot.id
-            stock.doses_on_hand -= d.quantity
+            _adjust_stock(db, stock, -(d.quantity))
             d.pulled_at = now
             d.pulled_by = by
             _audit(db, actor=by, action="dose_proposed_pull",
@@ -5009,7 +5059,7 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
         elif line.action == "return":
             if d.lot_id:
                 old_stock = _get_or_create_stock(db, d.lot_id, location)
-                old_stock.doses_on_hand += d.quantity
+                _adjust_stock(db, old_stock, d.quantity)
             d.status      = "returned"
             d.resolved_at = now
             d.resolved_by = by
@@ -5026,7 +5076,7 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
             # Return the original
             if d.lot_id:
                 old_stock = _get_or_create_stock(db, d.lot_id, location)
-                old_stock.doses_on_hand += d.quantity
+                _adjust_stock(db, old_stock, d.quantity)
             d.status      = "returned"
             d.resolved_at = now
             d.resolved_by = by
@@ -5045,7 +5095,7 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
                     db, line.new_lot_id, new_dt.id, new_qty, location)
             else:
                 lot, stock = _earliest_lot_with_stock(db, new_dt.id, new_qty, location)
-            stock.doses_on_hand -= new_qty
+            _adjust_stock(db, stock, -(new_qty))
             next_pos += 1
             new_d = PelletVisitDose(
                 visit_id=v.id, dose_type_id=new_dt.id, quantity=new_qty,
@@ -5071,7 +5121,7 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
                 db, add.lot_id, new_dt.id, add.quantity, location)
         else:
             lot, stock = _earliest_lot_with_stock(db, new_dt.id, add.quantity, location)
-        stock.doses_on_hand -= add.quantity
+        _adjust_stock(db, stock, -(add.quantity))
         next_pos += 1
         new_d = PelletVisitDose(
             visit_id=v.id, dose_type_id=new_dt.id, quantity=add.quantity,
@@ -5147,7 +5197,7 @@ def add_dose_mid_procedure(visit_id: str, payload: MidAddIn,
     if stock.doses_on_hand < payload.quantity:
         raise HTTPException(status_code=409,
                             detail=f"Insufficient stock at {payload.location}")
-    stock.doses_on_hand -= payload.quantity
+    _adjust_stock(db, stock, -(payload.quantity))
 
     pos = max([d.position for d in v.doses], default=0) + 1
     d = PelletVisitDose(
@@ -5328,7 +5378,7 @@ def revert_visit_status(visit_id: str, payload: RevertIn,
             if d.status in ("planned", "pulled"):
                 if (not v.is_historical) and d.lot_id and location:
                     stock = _get_or_create_stock(db, d.lot_id, location)
-                    stock.doses_on_hand += d.quantity
+                    _adjust_stock(db, stock, d.quantity)
                     _audit(db, actor=by, action="dose_returned",
                             lot_id=d.lot_id, location=location, delta_doses=d.quantity,
                             summary=f"Un-bag returned {d.quantity}× {d.dose_type.label} to stock",

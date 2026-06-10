@@ -547,6 +547,40 @@ def _apply_lightweight_migrations():
                     "likely existing data violates uniqueness. Error: %s",
                     idx_name, table, exc)
 
+        # CHECK constraints (Postgres only). The pellet stock floor is
+        # the DEA-critical invariant: doses_on_hand can never go
+        # negative for a Schedule III controlled substance. The
+        # application-level _adjust_stock helper does atomic UPDATEs
+        # with a WHERE doses_on_hand >= qty guard, but the DB CHECK is
+        # the last line of defense if any future code path bypasses the
+        # helper or a direct SQL statement is run.
+        check_constraints = [
+            ("pellet_stocks", "pellet_stocks_nonneg",
+             "doses_on_hand >= 0"),
+        ]
+        for table, name, expr in check_constraints:
+            if table not in existing_tables:
+                continue
+            try:
+                with engine.begin() as conn:
+                    # Postgres has no IF NOT EXISTS for ADD CONSTRAINT
+                    # in supported syntax across versions, so probe
+                    # information_schema first.
+                    present = conn.execute(text(
+                        "SELECT 1 FROM information_schema.table_constraints "
+                        "WHERE table_name = :t AND constraint_name = :n"
+                    ), {"t": table, "n": name}).scalar()
+                    if not present:
+                        conn.execute(text(
+                            f"ALTER TABLE {table} "
+                            f"ADD CONSTRAINT {name} CHECK ({expr})"))
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).error(
+                    "Failed to add CHECK constraint %s on %s — likely "
+                    "existing data violates the invariant. Error: %s",
+                    name, table, exc)
+
     # SUR-numbering sequence. Smartsheet used to own the numbering; now
     # the DB does. Create the sequence and prime it (once) to the highest
     # existing SUR number + 1, so we keep going where Smartsheet left
