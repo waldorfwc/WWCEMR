@@ -2066,7 +2066,9 @@ def block_day_availability(
         surgery = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     duration = _default_duration_for(db, surgery, bd) if surgery else 60
 
-    # Generate 15-minute increments from start_time up to end_time - duration.
+    # Generate 30-minute increments from start_time up to end_time - duration.
+    # The coordinator picks any of these slots (the patient sees only the
+    # next available time per date — patient flow is a different endpoint).
     def _t_to_dt(t):
         return datetime.combine(bd.block_date, t)
     earliest = _t_to_dt(bd.start_time)
@@ -2075,7 +2077,7 @@ def block_day_availability(
     cur = earliest
     while cur <= latest:
         candidates.append(cur.time())
-        cur += timedelta(minutes=15)
+        cur += timedelta(minutes=30)
 
     # Filter out any that would overlap an existing slot.
     available = [t.strftime("%H:%M") for t in candidates

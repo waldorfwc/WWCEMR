@@ -2311,6 +2311,7 @@ function SurgeryDateCell({ s }) {
 function SchedulerDatePicker({ surgery, onClose }) {
   const qc = useQueryClient()
   const [selected, setSelected] = useState(null)
+  const [selectedTime, setSelectedTime] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
@@ -2320,12 +2321,34 @@ function SchedulerDatePicker({ surgery, onClose }) {
     staleTime: 30_000,
   })
 
+  // Once the coordinator picks a date, pull the full list of 30-min
+  // start times for that block day. The patient flow shows only the
+  // first available time per date; the coordinator picks any open time.
+  const { data: avail, isLoading: avLoading } = useQuery({
+    queryKey: ['block-day-availability', selected?.block_day_id, surgery.id],
+    queryFn: () => api.get(
+      `/surgery/admin/block-days/${selected.block_day_id}/availability`,
+      { params: { surgery_id: surgery.id } }
+    ).then(r => r.data),
+    enabled: !!selected,
+    staleTime: 30_000,
+  })
+
+  function pickDay(d) {
+    setSelected(d)
+    setSelectedTime(d.proposed_start_time)
+    setError(null)
+  }
+
   async function pick() {
-    if (!selected) return
+    if (!selected || !selectedTime) return
     setSubmitting(true); setError(null)
     try {
-      await api.post(`/surgery/${surgery.id}/pick-date`,
-                     { block_day_id: selected.block_day_id })
+      await api.post(`/surgery/${surgery.id}/schedule`, {
+        block_day_id: selected.block_day_id,
+        start_time:   selectedTime,
+        duration_minutes: avail?.duration_minutes || selected.duration_minutes,
+      })
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
       qc.invalidateQueries({ queryKey: ['surgery-list'] })
       qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
@@ -2384,7 +2407,7 @@ function SchedulerDatePicker({ surgery, onClose }) {
                   return (
                     <button key={d.block_day_id}
                             type="button"
-                            onClick={() => !isCurrent && setSelected(d)}
+                            onClick={() => !isCurrent && pickDay(d)}
                             disabled={isCurrent}
                             className={`text-left px-2 py-1.5 rounded border text-[12px]
                               ${isSelected ? 'border-plum-600 bg-plum-50' :
@@ -2405,6 +2428,43 @@ function SchedulerDatePicker({ surgery, onClose }) {
             </div>
           ))}
 
+          {/* Time picker — shown after the coordinator picks a date.
+              30-minute increments across the whole block window, not just
+              the next gap (that's the patient view). */}
+          {selected && (
+            <div className="mt-4 border-t border-border-subtle pt-3">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2">
+                Start time on {selected.weekday}, {fmt.date(selected.block_date)}
+              </div>
+              {avLoading && (
+                <div className="text-gray-500 text-xs">Loading times…</div>
+              )}
+              {!avLoading && (avail?.available_starts || []).length === 0 && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 p-2 rounded text-xs">
+                  No 30-min time slots are free on this date for the
+                  procedure's duration ({avail?.duration_minutes || selected.duration_minutes} min).
+                </div>
+              )}
+              {!avLoading && (avail?.available_starts || []).length > 0 && (
+                <div className="grid grid-cols-4 gap-1.5">
+                  {avail.available_starts.map(t => {
+                    const isOn = selectedTime === t
+                    return (
+                      <button key={t}
+                              type="button"
+                              onClick={() => setSelectedTime(t)}
+                              className={`px-2 py-1.5 rounded border text-[12px]
+                                ${isOn ? 'border-plum-600 bg-plum-50' :
+                                  'border-border-subtle hover:border-plum-300'}`}>
+                        {t}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-800 text-sm p-2 rounded mt-3">
               {error}
@@ -2420,12 +2480,14 @@ function SchedulerDatePicker({ surgery, onClose }) {
           </button>
           <button type="button"
                   onClick={pick}
-                  disabled={!selected || submitting}
+                  disabled={!selected || !selectedTime || submitting}
                   className="btn-primary text-sm">
             {submitting ? 'Booking…' :
-              selected
-                ? `${surgery.scheduled_date ? 'Reschedule' : 'Book'} to ${fmt.date(selected.block_date)}`
-                : 'Pick a date above'}
+              (selected && selectedTime)
+                ? `${surgery.scheduled_date ? 'Reschedule' : 'Book'} ${fmt.date(selected.block_date)} at ${selectedTime}`
+                : selected
+                  ? 'Pick a time'
+                  : 'Pick a date above'}
           </button>
         </div>
       </div>
