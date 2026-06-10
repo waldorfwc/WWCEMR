@@ -42,6 +42,10 @@ def find_blocked_conflicts(db: Session) -> list[dict]:
         for b in by_date[s.scheduled_date]:
             if not _scope_matches(s, b):
                 continue
+            # Partial-day blackouts only conflict when the surgery's time
+            # window actually overlaps the blackout window.
+            if not _time_overlaps_blackout(s, b):
+                continue
             out.append({
                 "surgery_id":       str(s.id),
                 "patient_name":     s.patient_name,
@@ -53,6 +57,28 @@ def find_blocked_conflicts(db: Session) -> list[dict]:
             })
             break  # one conflict per surgery is enough
     return out
+
+
+def _time_overlaps_blackout(surgery, blackout) -> bool:
+    """For partial-day blackouts (start_time/end_time set), only count
+    a conflict if the surgery's scheduled window crosses the blackout
+    window. Whole-day blackouts (both times None) always conflict.
+    """
+    if blackout.start_time is None and blackout.end_time is None:
+        return True  # whole-day
+    if not surgery.start_time:
+        return True  # unknown surgery time → conservative: assume conflict
+    from datetime import datetime, timedelta
+    surg_start = datetime.combine(surgery.scheduled_date, surgery.start_time)
+    duration = surgery.duration_minutes or 60
+    surg_end = surg_start + timedelta(minutes=duration)
+    bk_start = datetime.combine(surgery.scheduled_date,
+                                 blackout.start_time)
+    bk_end = datetime.combine(surgery.scheduled_date,
+                               blackout.end_time)
+    # Half-open overlap: starts before the other ends AND ends after the
+    # other starts.
+    return surg_start < bk_end and surg_end > bk_start
 
 
 def _scope_matches(s, b):
@@ -76,6 +102,8 @@ def is_date_blacked_out(
     blackout_date,
     facility,
     surgeon_email=None,
+    start_time=None,
+    end_time=None,
 ):
     """Return the SurgeryBlackoutDay that blocks `blackout_date` for the
     given `facility`, or None if the date is clear.
@@ -85,18 +113,38 @@ def is_date_blacked_out(
       facility  — applies only if facility matches blackout.facility
       provider  — applies; if the blackout names a surgeon and surgeon_email
                   is provided, only blocks that surgeon's surgeries
+
+    If `start_time` + `end_time` are passed, a partial-day blackout only
+    blocks when its window overlaps the supplied window. Whole-day
+    blackouts (start_time/end_time both NULL) always block regardless of
+    the input window. With no input window, *any* blackout (whole-day or
+    partial) blocks the date — that's the legacy semantics for callers
+    that don't know the time yet.
     """
     rows = (db.query(SurgeryBlackoutDay)
               .filter(SurgeryBlackoutDay.blackout_date == blackout_date).all())
     for b in rows:
-        if b.scope == "office":
-            return b
-        if b.scope == "facility" and facility == b.facility:
-            return b
-        if b.scope == "provider":
-            if b.owner_email and surgeon_email:
-                if surgeon_email.lower() == b.owner_email.lower():
-                    return b
-                continue
-            return b
+        scope_match = (
+            b.scope == "office"
+            or (b.scope == "facility" and facility == b.facility)
+            or (b.scope == "provider" and (
+                not (b.owner_email and surgeon_email)
+                or surgeon_email.lower() == b.owner_email.lower()))
+        )
+        if not scope_match:
+            continue
+        if not _windows_overlap(b, start_time, end_time):
+            continue
+        return b
     return None
+
+
+def _windows_overlap(blackout, start_time, end_time) -> bool:
+    """True if the blackout's window overlaps the supplied window.
+    Whole-day blackouts always overlap. If no input window is given,
+    any blackout matches (legacy any-time check)."""
+    if blackout.start_time is None and blackout.end_time is None:
+        return True
+    if start_time is None or end_time is None:
+        return True
+    return start_time < blackout.end_time and end_time > blackout.start_time

@@ -117,10 +117,18 @@ def materialize_block_days(db: Session, *, days_ahead: int = 180) -> dict:
                     .filter(BlockSchedule.effective_from <= end)
                     .all())
 
-    existing = {(bd.facility, bd.block_date): bd
+    # Only consider BlockDays the materializer created itself (is_addon
+    # is False). Ad-hoc add-on blocks created via /admin/block-days are
+    # owned by the coordinator and must not be touched here, even when
+    # they share (facility, block_date) with a schedule-derived one.
+    # Multiple windows per day are now allowed, so this dict is keyed
+    # on (facility, date, start_time) to avoid collisions between
+    # different schedules that happen to land on the same date.
+    existing = {(bd.facility, bd.block_date, bd.start_time): bd
                 for bd in db.query(BlockDay)
                               .filter(BlockDay.block_date >= today,
-                                      BlockDay.block_date <= end)
+                                      BlockDay.block_date <= end,
+                                      BlockDay.is_addon.is_(False))
                               .all()}
 
     created = updated = blocked = 0
@@ -136,11 +144,10 @@ def materialize_block_days(db: Session, *, days_ahead: int = 180) -> dict:
                 blocked += 1
                 continue
 
-            key = (sched.facility, d)
+            key = (sched.facility, d, sched.start_time)
             if key in existing:
                 bd = existing[key]
                 bd.block_kind = sched.block_kind
-                bd.start_time = sched.start_time
                 bd.end_time = sched.end_time
                 bd.notes = sched.notes
                 updated += 1

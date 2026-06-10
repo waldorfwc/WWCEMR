@@ -3047,12 +3047,34 @@ def create_block_day(payload: BlockDayCreateIn,
     if st >= et:
         raise HTTPException(status_code=422, detail="start_time must be before end_time")
 
-    existing = (db.query(BlockDay)
+    # Multiple block windows per day are allowed (morning + afternoon
+    # blocks for the same facility, for example). Still reject the
+    # exact same window twice — that'd be a coordinator mis-click,
+    # not a feature.
+    duplicate = (db.query(BlockDay)
+                   .filter(BlockDay.facility == payload.facility,
+                           BlockDay.block_date == bd_date,
+                           BlockDay.start_time == st,
+                           BlockDay.end_time == et).first())
+    if duplicate:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A {payload.facility} block at {st}–{et} already "
+                   f"exists on {bd_date}")
+    # Reject windows that overlap an existing block window on the same
+    # date+facility — having two windows is fine, but they should be
+    # disjoint so booked slots can't overlap.
+    same_day = (db.query(BlockDay)
                   .filter(BlockDay.facility == payload.facility,
-                          BlockDay.block_date == bd_date).first())
-    if existing:
-        raise HTTPException(status_code=409,
-            detail=f"A BlockDay already exists for {payload.facility} on {bd_date}")
+                          BlockDay.block_date == bd_date).all())
+    for other in same_day:
+        if st < other.end_time and et > other.start_time:
+            raise HTTPException(
+                status_code=409,
+                detail=(f"This window overlaps an existing {payload.facility} "
+                        f"block {other.start_time}–{other.end_time} on "
+                        f"{bd_date}. Adjust the times or delete the other "
+                        "block first."))
 
     bd = BlockDay(
         facility=payload.facility,
@@ -3127,6 +3149,29 @@ class BlackoutIn(BaseModel):
     owner_email: Optional[str] = None
     facility: Optional[str] = None
     notes: Optional[str] = None
+    # Partial-day window. Both null = whole-day blackout (legacy
+    # default). Both set = partial. Times in HH:MM, must land on a
+    # 30-minute boundary, and start < end.
+    start_time: Optional[str] = None    # HH:MM
+    end_time: Optional[str] = None      # HH:MM
+
+
+def _parse_30min_time(label: str, value: Optional[str]):
+    """Parse 'HH:MM' on a 30-minute boundary. Returns a `time` or None."""
+    if value is None or value == "":
+        return None
+    try:
+        hh, mm = value.split(":", 1)
+        h = int(hh)
+        m = int(mm)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=422, detail=f"{label} must be HH:MM")
+    if not (0 <= h <= 23 and m in (0, 30)):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{label} must land on a 30-minute boundary (HH:00 or HH:30)")
+    from datetime import time as _time
+    return _time(hour=h, minute=m)
 
 
 @router.get("/admin/blackouts")
@@ -3152,6 +3197,9 @@ def list_blackouts(
             "facility": b.facility,
             "is_recurring": bool(b.is_recurring),
             "notes": b.notes,
+            "start_time": b.start_time.strftime("%H:%M") if b.start_time else None,
+            "end_time":   b.end_time.strftime("%H:%M")   if b.end_time   else None,
+            "is_whole_day": b.is_whole_day,
         }
         for b in rows
     ]}
@@ -3172,6 +3220,18 @@ def create_blackout(payload: BlackoutIn, db: Session = Depends(get_db),
     except ValueError:
         raise HTTPException(status_code=422, detail="blackout_date must be YYYY-MM-DD")
 
+    # Partial-day window: both must be set together; both null = whole-day.
+    st = _parse_30min_time("start_time", payload.start_time)
+    et = _parse_30min_time("end_time", payload.end_time)
+    if (st is None) != (et is None):
+        raise HTTPException(
+            status_code=422,
+            detail="start_time and end_time must both be provided for a "
+                   "partial-day blackout, or both omitted for a whole-day blackout")
+    if st is not None and st >= et:
+        raise HTTPException(status_code=422,
+                            detail="start_time must be before end_time")
+
     row = SurgeryBlackoutDay(
         blackout_date=bd,
         scope=payload.scope,
@@ -3180,6 +3240,8 @@ def create_blackout(payload: BlackoutIn, db: Session = Depends(get_db),
         owner_email=payload.owner_email,
         facility=payload.facility,
         notes=payload.notes,
+        start_time=st,
+        end_time=et,
         created_by=current_user.get("email"),
     )
     db.add(row); db.commit(); db.refresh(row)

@@ -193,6 +193,9 @@ def _apply_lightweight_migrations():
         ("fax_logs", "client_request_id", "VARCHAR(80)"),
         # Persist cover text so retries can resend it (Fable recalls H6).
         ("fax_logs", "cover_text", "TEXT"),
+        # Partial-day blackouts — null means whole-day (existing rows).
+        ("surgery_blackout_days", "start_time", "TIME"),
+        ("surgery_blackout_days", "end_time", "TIME"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),
@@ -691,6 +694,21 @@ def _apply_lightweight_migrations():
                     "ON surgery_patient_auth_attempts (ip_address, attempted_at)"))
         except Exception:
             pass
+
+        # Drop the (facility, block_date) uniqueness on surgery_block_days
+        # so coordinators can have multiple block windows per day
+        # (morning + afternoon blocks). Idempotent: skipped if the
+        # constraint is already gone.
+        if "surgery_block_days" in existing_tables:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE surgery_block_days "
+                        "DROP CONSTRAINT IF EXISTS uq_block_facility_date"))
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).debug(
+                    "drop uq_block_facility_date skipped: %s", exc)
 
     # SUR-numbering sequence. Smartsheet used to own the numbering; now
     # the DB does. Create the sequence and prime it (once) to the highest

@@ -527,11 +527,18 @@ class BlockSchedule(Base):
 
 class BlockDay(Base):
     """A specific date that has surgery slots available. Derived from
-    BlockSchedule (recurring) or created ad-hoc as add-on days."""
+    BlockSchedule (recurring) or created ad-hoc as add-on days.
+
+    Multiple BlockDays may share the same (facility, block_date) — the
+    coordinator can split a day into separate windows (e.g. 8a–12p
+    morning block AND 3p–6p afternoon block). Each window has its own
+    booked slots and capacity. The materializer + patient slot picker
+    treat them as independent windows.
+    """
     __tablename__ = "surgery_block_days"
     __table_args__ = (
-        UniqueConstraint("facility", "block_date", name="uq_block_facility_date"),
         Index("ix_block_day_date", "block_date"),
+        Index("ix_block_facility_date", "facility", "block_date"),
     )
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
@@ -600,6 +607,13 @@ class SurgeryBlackoutDay(Base):
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
     blackout_date = Column(Date, nullable=False)
+    # Time window for the blackout. BOTH null = whole-day blackout
+    # (backwards-compat for every existing row; holidays etc. stay
+    # whole-day). Both set = partial-day blackout, applies only to
+    # surgeries that would otherwise occupy that window. Times must
+    # snap to 30-minute boundaries.
+    start_time = Column(Time, nullable=True)
+    end_time = Column(Time, nullable=True)
     scope = Column(String(20), nullable=False)
     # values: office | provider | facility
     reason = Column(String(40), nullable=False)
@@ -612,6 +626,10 @@ class SurgeryBlackoutDay(Base):
     notes = Column(Text, nullable=True)
     created_by = Column(String(200), nullable=True)
     created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+
+    @property
+    def is_whole_day(self) -> bool:
+        return self.start_time is None and self.end_time is None
 
 
 class SurgeryWaitlist(Base):

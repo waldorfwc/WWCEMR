@@ -581,6 +581,9 @@ function BlackoutRow({ b, qc }) {
       <div>
         <span className="font-mono">{b.blackout_date}</span>
         <span className="text-gray-500 ml-2">({new Date(b.blackout_date).toLocaleDateString('en-US', { weekday: 'short' })})</span>
+        {b.start_time && b.end_time && (
+          <span className="font-mono text-amber-700 ml-2">{b.start_time}–{b.end_time}</span>
+        )}
         <strong className="ml-2">{b.label || b.reason}</strong>
         <span className="text-gray-500 ml-2">· {b.scope}</span>
         {b.facility && <span className="text-gray-500 ml-1">· {labelOf(b.facility)}</span>}
@@ -608,6 +611,11 @@ function BlackoutForm({ onClose, qc }) {
   const [dateDraft, setDateDraft] = useState('')
   const [rangeFrom, setRangeFrom] = useState('')
   const [rangeTo, setRangeTo] = useState('')
+  // Partial-day window. wholeDay=true (the default) sends start/end as
+  // null → whole-day blackout. wholeDay=false → server gets the times.
+  const [wholeDay, setWholeDay] = useState(true)
+  const [startTime, setStartTime] = useState('08:00')
+  const [endTime, setEndTime] = useState('17:00')
   const [progress, setProgress] = useState({ done: 0, total: 0, errors: [] })
 
   function addDate(iso) {
@@ -658,6 +666,8 @@ function BlackoutForm({ onClose, qc }) {
           notes: form.notes,
           owner_email: form.scope === 'provider' ? form.owner_email : null,
           facility: form.scope === 'facility' ? form.facility : null,
+          start_time: wholeDay ? null : startTime,
+          end_time:   wholeDay ? null : endTime,
         })
         setProgress({ done: i + 1, total: effective.length, errors })
       } catch (err) {
@@ -766,6 +776,40 @@ function BlackoutForm({ onClose, qc }) {
           <input className="input text-sm" value={form.label}
                  onChange={e => setForm({ ...form, label: e.target.value })} />
         </Field>
+        {/* Whole-day vs partial-day window. Times snap to 30-min on the
+            server; the inputs only let users pick HH:00 or HH:30. */}
+        <div className="col-span-2">
+          <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">Time window</div>
+          <div className="flex items-center gap-3">
+            <label className="text-xs flex items-center gap-1.5">
+              <input type="radio" checked={wholeDay} onChange={() => setWholeDay(true)} />
+              Whole day
+            </label>
+            <label className="text-xs flex items-center gap-1.5">
+              <input type="radio" checked={!wholeDay} onChange={() => setWholeDay(false)} />
+              Partial day
+            </label>
+            {!wholeDay && (
+              <>
+                <span className="text-[11px] text-gray-500">from</span>
+                <select className="input text-xs" value={startTime}
+                        onChange={e => setStartTime(e.target.value)}>
+                  {_thirtyMinOptions().map(t => <option key={`s${t}`} value={t}>{t}</option>)}
+                </select>
+                <span className="text-[11px] text-gray-500">to</span>
+                <select className="input text-xs" value={endTime}
+                        onChange={e => setEndTime(e.target.value)}>
+                  {_thirtyMinOptions().map(t => <option key={`e${t}`} value={t}>{t}</option>)}
+                </select>
+              </>
+            )}
+          </div>
+          {!wholeDay && startTime >= endTime && (
+            <div className="text-[11px] text-red-700 mt-1">
+              Start time must be before end time.
+            </div>
+          )}
+        </div>
         {form.scope === 'provider' && (
           <Field label="Owner email">
             <input className="input text-sm font-mono" type="email"
@@ -807,7 +851,8 @@ function BlackoutForm({ onClose, qc }) {
                 onClick={submit}
                 disabled={submitting || (dates.length === 0 && !dateDraft)
                           || (form.scope === 'provider' && !form.owner_email)
-                          || (form.scope === 'facility' && !form.facility)}>
+                          || (form.scope === 'facility' && !form.facility)
+                          || (!wholeDay && startTime >= endTime)}>
           {submitting ? 'Saving…' :
             (dates.length === 0 && dateDraft) ? 'Add 1 blackout' :
             dates.length === 1 ? 'Add 1 blackout' :
@@ -827,4 +872,17 @@ function Field({ label, children }) {
       {children}
     </div>
   )
+}
+
+
+/** HH:MM strings on a 30-minute grid, 06:00 → 22:00. Server enforces
+ *  the same grid; this is just a friendlier picker than a raw input. */
+function _thirtyMinOptions() {
+  const out = []
+  for (let h = 6; h <= 22; h++) {
+    const hh = String(h).padStart(2, '0')
+    out.push(`${hh}:00`)
+    out.push(`${hh}:30`)
+  }
+  return out
 }
