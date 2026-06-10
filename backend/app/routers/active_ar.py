@@ -6,6 +6,7 @@ tables. Linkage to the existing `patients` table is by `patient_external_id`
 """
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from datetime import datetime, date, timedelta
@@ -104,8 +105,7 @@ def _claim_to_dict(c: ActiveClaim, patient: Optional[Patient] = None,
     service_lines = []
     if c.service_lines_json:
         try:
-            import json as _json
-            service_lines = _json.loads(c.service_lines_json)
+            service_lines = json.loads(c.service_lines_json)
         except Exception:
             service_lines = []
     # Denial summary — aggregates adjustment codes across lines and tags
@@ -1284,7 +1284,6 @@ def settle_service_line(
     """Settle a single service line on a claim. Auto-computes contractual,
     insurance_paid, patient_balance from the inputs. Updates the claim-level
     rollups so the EOB Details card shows accurate totals."""
-    import json as _json
     # SELECT ... FOR UPDATE on the claim so two concurrent
     # /service-lines/{n} settles don't both read+modify+write the
     # service_lines_json blob and silently erase one of them.
@@ -1314,7 +1313,7 @@ def settle_service_line(
         raise HTTPException(status_code=422, detail="claim has no service lines (not enriched)")
 
     try:
-        lines = _json.loads(c.service_lines_json) or []
+        lines = json.loads(c.service_lines_json) or []
     except Exception:
         raise HTTPException(status_code=500, detail="service_lines_json corrupt")
 
@@ -1416,7 +1415,7 @@ def settle_service_line(
     target["settled_at"] = now_utc_naive().isoformat() + "Z" if target.get("settled") else None
 
     # Persist + recompute claim rollup
-    c.service_lines_json = _json.dumps(lines)
+    c.service_lines_json = json.dumps(lines)
     _recompute_claim_rollup(c, lines)
 
     # Auto-route to Denials queue if any line carries appealable codes

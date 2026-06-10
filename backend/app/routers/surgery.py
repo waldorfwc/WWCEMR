@@ -17,7 +17,7 @@ from app.models.surgery import SurgeryFile
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
-from sqlalchemy import or_, func, desc
+from sqlalchemy import or_, func, desc, text
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -867,12 +867,11 @@ async def upload_order(
     # A Postgres advisory lock keyed on the chart number serializes
     # uploads per chart without needing a new DB constraint that would
     # fail to migrate over existing duplicates.
-    from sqlalchemy import text as _sql_text
     import hashlib
     _lock_key = int(hashlib.sha1(
         kwargs["chart_number"].encode("utf-8")).hexdigest()[:8], 16)
     # 32-bit advisory key — held until the end of the transaction
-    db.execute(_sql_text("SELECT pg_advisory_xact_lock(:k)"),
+    db.execute(text("SELECT pg_advisory_xact_lock(:k)"),
                  {"k": _lock_key & 0x7FFFFFFF})
 
     # If a demographics-only row exists for this chart (from the bulk

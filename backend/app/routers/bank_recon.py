@@ -6,19 +6,18 @@ Two-step flow:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import uuid
 from datetime import date as _date, datetime
 from decimal import Decimal
-
-log = logging.getLogger(__name__)
 from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import desc
+from sqlalchemy import desc, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -34,6 +33,8 @@ from app.services.storage import (
     save_blob, save_blob_with_key, serve_blob, read_blob, is_legacy_local_path,
 )
 
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/bank-recon", tags=["bank-recon"])
 
@@ -111,7 +112,6 @@ async def preview_csv(
     # via a stale tab) re-send different skip_* flags to /generate and
     # the system would generate a different transaction set than the
     # user reviewed. (Fable cross-cutting audit #12.)
-    import json as _json
     snapshot = {
         "preview_id": preview_id,
         "ext": ext,
@@ -134,7 +134,7 @@ async def preview_csv(
     }
     save_blob_with_key(
         key=f"bank-recon-csv/{preview_id}.snapshot.json",
-        body=_json.dumps(snapshot).encode("utf-8"),
+        body=json.dumps(snapshot).encode("utf-8"),
         content_type="application/json",
     )
 
@@ -240,11 +240,10 @@ def generate_bai2(payload: GenerateRequest,
     # hash so two concurrent /generate calls on the same preview
     # serialize. Then short-circuit if this preview was already
     # consumed — return the existing import row.
-    from sqlalchemy import text as _sql_text
     import hashlib
     _lock_key = int(hashlib.sha1(
         payload.preview_id.encode("utf-8")).hexdigest()[:8], 16) & 0x7FFFFFFF
-    db.execute(_sql_text("SELECT pg_advisory_xact_lock(:k)"),
+    db.execute(text("SELECT pg_advisory_xact_lock(:k)"),
                  {"k": _lock_key})
     prior = (db.query(Bai2Import)
                 .filter(Bai2Import.csv_path == csv_key)
@@ -263,11 +262,10 @@ def generate_bai2(payload: GenerateRequest,
     # the same transaction set the user reviewed at /preview. The client
     # still sends skip_* flags but they're a fall-back; the snapshot
     # wins when available. (Fable cross-cutting audit #12.)
-    import json as _json
     snapshot = None
     try:
         snap_bytes = read_blob(f"bank-recon-csv/{payload.preview_id}.snapshot.json")
-        snapshot = _json.loads(snap_bytes.decode("utf-8"))
+        snapshot = json.loads(snap_bytes.decode("utf-8"))
     except FileNotFoundError:
         log.warning("BAI2 generate: no snapshot for preview %s — falling "
                     "back to client-supplied filters", payload.preview_id)

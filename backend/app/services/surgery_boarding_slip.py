@@ -9,6 +9,7 @@ returned for the caller to download or fax.
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 from datetime import date, datetime
@@ -313,8 +314,7 @@ def generate_for_surgery(db: Session, s: Surgery, *, by_email: str,
 
     note_parts = [f"Generated for {s.selected_facility}"]
     if overrides:
-        import json as _json
-        note_parts.append("overrides=" + _json.dumps(overrides))
+        note_parts.append("overrides=" + json.dumps(overrides))
 
     f = SurgeryFile(
         surgery_id=s.id,
