@@ -6,7 +6,7 @@ import os
 from typing import Optional
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -35,6 +35,25 @@ class SendBatchPayload(BaseModel):
     # batch instead of re-faxing. Frontend should generate a UUID once
     # per Send-click. (Fable recalls audit C3.)
     client_request_id: Optional[str] = None
+
+    @field_validator("dest_fax")
+    @classmethod
+    def _validate_fax(cls, v: str) -> str:
+        """Reject anything that doesn't normalize to +1NXXNXXXXXX before
+        any FaxLog row is created. Otherwise a typo (9- or 12-digit
+        garbage) reached send_fax which only logged an error after the
+        log row was persisted. (Fable recalls audit H2.)"""
+        import re as _re
+        clean = (v or "").strip().replace("-", "").replace("(", "").replace(")", "").replace(" ", "").replace(".", "")
+        if not clean.startswith("+"):
+            if len(clean) == 10:
+                clean = "+1" + clean
+            elif len(clean) == 11 and clean.startswith("1"):
+                clean = "+" + clean
+        if not _re.fullmatch(r"\+1\d{10}", clean):
+            raise ValueError(
+                f"dest_fax must be a US fax number (10 or 11 digits); got {v!r}")
+        return v
 
 
 def _patient_name(db: Session, chart_number: str) -> str:

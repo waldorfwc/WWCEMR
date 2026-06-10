@@ -72,13 +72,20 @@ def send_fax(
     if not os.path.isfile(file_path):
         return {"error": f"File not found: {file_path}"}
 
-    # Normalize phone number
-    clean_num = to_number.strip().replace("-", "").replace("(", "").replace(")", "").replace(" ", "")
+    # Normalize phone number and reject anything that doesn't end up as a
+    # full +1NXXNXXXXXX. The old code would silently pass 9-digit or
+    # 12-digit garbage to RingCentral as-is — a transposed digit would
+    # fax PHI to the wrong recipient with no warning. (Fable recalls
+    # audit H2.)
+    import re as _re
+    clean_num = to_number.strip().replace("-", "").replace("(", "").replace(")", "").replace(" ", "").replace(".", "")
     if not clean_num.startswith("+"):
         if len(clean_num) == 10:
             clean_num = "+1" + clean_num
         elif len(clean_num) == 11 and clean_num.startswith("1"):
             clean_num = "+" + clean_num
+    if not _re.fullmatch(r"\+1\d{10}", clean_num):
+        return {"error": f"Invalid fax number: {to_number}"}
 
     # Determine MIME type
     ext = os.path.splitext(file_path)[1].lower()

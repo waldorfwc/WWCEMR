@@ -42,6 +42,11 @@ class CallAttemptedPayload(BaseModel):
 class OutcomePayload(BaseModel):
     outcome: str
     notes: Optional[str] = None
+    # Required to be True when `outcome` lands the patient in PERMANENT
+    # suppression. Forces the frontend to surface the consequence
+    # ("removes the patient from recalls forever") before submitting.
+    # (Fable recalls audit M4.)
+    confirm_permanent: bool = False
 
 
 # Outcomes that move the patient to permanent suppression
@@ -311,8 +316,17 @@ def get_recall(recall_id: str, db: Session = Depends(get_db),
 def claim_recall(recall_id: str, db: Session = Depends(get_db),
                   current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
     """Take or refresh a soft claim on this recall. Returns 409 if another
-    user already owns an unexpired claim."""
-    e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
+    user already owns an unexpired claim.
+
+    Row-level lock on the read so two staff opening the recall drawer at
+    the same instant can't both pass the availability check. Without
+    this both users get a "claim" and both could go on to dial the same
+    patient. (Fable recalls audit H3.)
+    """
+    e = (db.query(RecallEntry)
+            .filter(RecallEntry.id == recall_id)
+            .with_for_update()
+            .first())
     if not e:
         raise HTTPException(status_code=404, detail="recall not found")
     me = (current_user.get("email") or "").lower().strip()
@@ -372,7 +386,13 @@ def dial(recall_id: str, db: Session = Depends(get_db),
       - The user has a ringcentral_user_id mapped (via Admin → Users)
       - The recall entry has a phone (cell preferred, else primary)
     """
-    e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
+    # Row-level lock on the read so two concurrent /dial calls can't
+    # both pass _ensure_claim_available and both RingOut the same
+    # patient. (Fable recalls audit H3.)
+    e = (db.query(RecallEntry)
+            .filter(RecallEntry.id == recall_id)
+            .with_for_update()
+            .first())
     if not e:
         raise HTTPException(status_code=404, detail="recall not found")
 
@@ -380,6 +400,22 @@ def dial(recall_id: str, db: Session = Depends(get_db),
     # claim. Refresh / take the claim so the dialing user is the owner.
     user_email = (current_user.get("email") or "").lower().strip()
     _ensure_claim_available(e, user_email)
+    # Same-user double-click guard: a `call_attempted` log for this
+    # recall+user inside the last 30s = the user already triggered a
+    # RingOut. Reject with 409. (Fable recalls audit M8.)
+    from datetime import timedelta as _td
+    recent_self_dial = (db.query(RecallCallLog)
+                          .filter(RecallCallLog.recall_entry_id == e.id,
+                                  RecallCallLog.user_email == user_email,
+                                  RecallCallLog.event_type == "call_attempted",
+                                  RecallCallLog.occurred_at
+                                      >= datetime.utcnow() - _td(seconds=30))
+                          .first())
+    if recent_self_dial:
+        raise HTTPException(
+            status_code=409,
+            detail="You already dialed this recall in the last 30 seconds. "
+                   "Wait for that call to come through.")
     _take_claim(e, user_email)
 
     # Resolve calling user's RC extension + callback phone
@@ -438,7 +474,14 @@ def dial(recall_id: str, db: Session = Depends(get_db),
             notes=f"RingOut error: {exc}",
         ))
         db.commit()
-        raise HTTPException(status_code=502, detail=f"RingCentral error: {exc}")
+        # RC exception text can echo the request body (patient phone) —
+        # don't ship it back to the browser or the access log.
+        # (Fable recalls audit M6.)
+        import logging
+        logging.getLogger(__name__).exception("RingOut failed: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="RingCentral call failed — see server logs")
 
     # RC's response shape: {"id": "...", "status": {"callStatus": "...", ...}, "uri": "...", ...}
     rc_session_id = result.get("id")
@@ -479,6 +522,24 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
     if payload.outcome not in ALL_OUTCOMES:
         raise HTTPException(status_code=422,
                             detail=f"outcome must be one of {ALL_OUTCOMES}")
+    # Guard misclicks on permanent outcomes — explicit confirm required.
+    # (Fable recalls audit M4.)
+    if payload.outcome in PERMANENT_OUTCOMES and not payload.confirm_permanent:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Outcome '{payload.outcome}' permanently removes the "
+                    "patient from all recalls. Resubmit with "
+                    "confirm_permanent=true to apply."))
+    # Claim-ownership check: only the owner (or an unclaimed entry) can
+    # log an outcome. Prevents user B closing out a call user A is
+    # actively working. (Fable recalls audit M4.)
+    me = (current_user.get("email") or "").lower().strip()
+    claimed_by = (e.claimed_by or "").lower().strip()
+    if claimed_by and claimed_by != me:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Recall is currently claimed by {e.claimed_by}; "
+                   "they must log the outcome or release the claim first.")
 
     user = current_user.get("email")
     e.last_outcome = payload.outcome
@@ -521,6 +582,41 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
     db.commit()
     db.refresh(e)
     return _entry_to_dict(e)
+
+
+# ─── Suppression management ──────────────────────────────────────────
+
+@router.delete("/suppressions/{chart_number}")
+def remove_suppression(
+    chart_number: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.RECALL, Tier.MANAGE)),
+):
+    """Undo a permanent recall suppression. MANAGE-tier only — surfaces
+    the chart in recalls again. Logs an audit row. (Fable recalls M4.)"""
+    s = (db.query(RecallSuppression)
+            .filter(RecallSuppression.chart_number == chart_number)
+            .first())
+    if s is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no active suppression for chart {chart_number}")
+    db.delete(s)
+    # Re-activate suppressed entries for this chart so they re-enter
+    # the queue. Leaves completed/cooldown entries untouched.
+    for ee in (db.query(RecallEntry)
+                  .filter(RecallEntry.chart_number == chart_number,
+                          RecallEntry.status == "suppressed")
+                  .all()):
+        ee.status = "active"
+    db.add(RecallCallLog(
+        recall_entry_id=None, chart_number=chart_number,
+        event_type="suppression_removed",
+        user_email=current_user.get("email"),
+        notes=f"Suppression cleared by {current_user.get('email')}",
+    ))
+    db.commit()
+    return {"ok": True}
 
 
 # ─── Dashboard ───────────────────────────────────────────────────────
@@ -639,7 +735,12 @@ async def import_modmed_wwe(
     try:
         result = import_modmed_xlsx(db, io.BytesIO(contents))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Import failed: {exc}")
+        # Import exceptions can include file paths and stack details —
+        # log and return a generic message. (Fable recalls audit M6.)
+        import logging
+        logging.getLogger(__name__).exception("recall xlsx import failed: %s", exc)
+        raise HTTPException(
+            status_code=500, detail="Import failed — see server logs")
 
     return {
         "filename": file.filename,

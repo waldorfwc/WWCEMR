@@ -304,6 +304,41 @@ def send_patient_sms(
             failure_reason="recipient phone number is blank",
             sent_by=sent_by, context=context, segments=None, twilio_sid=None)
 
+    # Rate-limit guards. Cheap defense against a frontend loop or
+    # mistakenly batched script: at most N sends to one phone per hour,
+    # and at most M sends total per hour. Both query the audit table we
+    # were going to write to anyway. (Fable recalls audit M2.)
+    from datetime import timedelta as _td
+    _PER_NUMBER_HOURLY = int(os.environ.get("PATIENT_SMS_PER_NUMBER_HOURLY", "5"))
+    _GLOBAL_HOURLY = int(os.environ.get("PATIENT_SMS_GLOBAL_HOURLY", "200"))
+    one_hour_ago = datetime.utcnow() - _td(hours=1)
+    per_num = (db.query(PatientSms)
+                  .filter(PatientSms.to_phone == phone,
+                          PatientSms.status == "sent",
+                          PatientSms.created_at >= one_hour_ago)
+                  .count())
+    if per_num >= _PER_NUMBER_HOURLY:
+        return _record(db,
+            surgery_id=(surgery.id if surgery else None),
+            chart_number=chart_number or (surgery.chart_number if surgery else None),
+            to_phone=phone, kind=kind, body=body,
+            status="skipped",
+            failure_reason=(f"per-number rate limit ({_PER_NUMBER_HOURLY}/hr) "
+                            "reached"),
+            sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+    glob = (db.query(PatientSms)
+              .filter(PatientSms.status == "sent",
+                      PatientSms.created_at >= one_hour_ago)
+              .count())
+    if glob >= _GLOBAL_HOURLY:
+        return _record(db,
+            surgery_id=(surgery.id if surgery else None),
+            chart_number=chart_number or (surgery.chart_number if surgery else None),
+            to_phone=phone, kind=kind, body=body,
+            status="skipped",
+            failure_reason=(f"global rate limit ({_GLOBAL_HOURLY}/hr) reached"),
+            sent_by=sent_by, context=context, segments=None, twilio_sid=None)
+
     segments = _segments(body)
     try:
         sid = send_sms(phone, body)
@@ -311,7 +346,18 @@ def send_patient_sms(
         log.warning("patient sms Twilio raised: %s", e)
         sid = None
     status = "sent" if sid is not None else "failed"
-    failure_reason = None if sid is not None else "Twilio send returned None (check TWILIO_* config)"
+    # Audit a successful send. If consent_override was used to bypass
+    # the no-Surgery-row consent check, stamp that in failure_reason so
+    # compliance can later demonstrate why a no-consent-record patient
+    # was texted. (Fable recalls audit H5.)
+    if sid is not None:
+        if consent_override and surgery is None:
+            failure_reason = ("sent with consent_override — no Surgery "
+                              "consent record at the time of send")
+        else:
+            failure_reason = None
+    else:
+        failure_reason = "Twilio send returned None (check TWILIO_* config)"
 
     return _record(db,
         surgery_id=(surgery.id if surgery else None),
