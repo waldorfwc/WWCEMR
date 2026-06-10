@@ -11,7 +11,10 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import func as _sa_func
 from sqlalchemy.orm import Session
+
+func_lower = _sa_func.lower
 
 from app.database import get_db
 from app.models.groups import Group
@@ -168,15 +171,28 @@ def replace_user_groups(email: str, payload: UserGroupsReplace,
         raise HTTPException(status_code=422,
                             detail=f"unknown group id(s): {', '.join(sorted(missing))}")
 
-    # Last-Admin guard: if the user is currently in Admin and the new set
-    # doesn't include Admin, ensure at least one other Admin remains.
-    admin_grp = db.query(Group).filter(Group.name == "Admin").first()
-    if admin_grp and admin_grp in user.groups and admin_grp.id not in wanted:
-        other_admin_count = sum(
-            1 for u in admin_grp.members if normalize_email(u.email) != email)
-        if other_admin_count == 0:
-            raise HTTPException(status_code=409,
-                                detail="cannot remove the last user from the Admin group")
+    # Last-Super-Admin guard: per M4 the canonical privilege is
+    # is_super_admin OR membership in the "Super Admin" group. If the
+    # user is currently in "Super Admin" and the new set drops it,
+    # ensure the system still has at least one other effective
+    # Super Admin (column-flagged user OR another "Super Admin" group
+    # member). (Fable auth audit M2.)
+    super_grp = (db.query(Group)
+                   .filter(func_lower(Group.name) == "super admin").first())
+    if super_grp and super_grp in user.groups and super_grp.id not in wanted:
+        # Count other Super Admins via column OR via group membership.
+        col_others = (db.query(User)
+                        .filter(User.is_super_admin.is_(True),
+                                User.email != email)
+                        .count())
+        grp_others = sum(
+            1 for u in super_grp.members
+            if normalize_email(u.email) != email)
+        if col_others + grp_others == 0:
+            raise HTTPException(
+                status_code=409,
+                detail=("cannot remove the last Super Admin — promote "
+                        "another user first"))
 
     old_names = sorted(g.name for g in user.groups)
     user.groups = found
@@ -240,6 +256,20 @@ def remove_group_member(group_id: str, email: str,
     if g not in user.groups:
         return   # already not a member; nothing to do
 
+    if (g.name or "").strip().lower() == "super admin":
+        # Last-Super-Admin guard via the canonical authority
+        # (Fable auth audit M2). Count via column OR group membership.
+        col_others = (db.query(User)
+                        .filter(User.is_super_admin.is_(True),
+                                User.email != email)
+                        .count())
+        grp_others = [u for u in g.members
+                       if normalize_email(u.email) != email]
+        if col_others == 0 and not grp_others:
+            raise HTTPException(
+                status_code=409,
+                detail=("cannot remove the last Super Admin — promote "
+                        "another user first"))
     if g.name == "Admin":
         other_admins = [u for u in g.members
                          if normalize_email(u.email) != email]

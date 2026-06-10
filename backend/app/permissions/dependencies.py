@@ -23,6 +23,29 @@ from app.permissions.resolver import effective_tier
 from app.routers.auth import get_current_user
 
 
+def is_effective_super_admin(user_row) -> bool:
+    """Single source of truth for "is this user a Super Admin?"
+
+    Honors EITHER the User.is_super_admin column OR membership in the
+    "Super Admin" group. The frontend's /me endpoint and the backend
+    requires_super_admin dependency used to disagree: /me treated group
+    membership as super-admin while the dependency only checked the
+    column, so a user added to the group via the admin UI saw the admin
+    UI but got 403 on every backend call. Worst-case, future backend
+    code may copy the /me convention and create a real escalation path
+    (group membership is editable via admin_groups). One helper, used
+    by every callsite, ends that split-brain. (Fable auth audit M4.)
+    """
+    if user_row is None:
+        return False
+    if getattr(user_row, "is_super_admin", False):
+        return True
+    return any(
+        (g.name or "").strip().lower() == "super admin"
+        for g in (user_row.groups or [])
+    )
+
+
 def requires_super_admin() -> Callable:
     """Return a FastAPI dependency that 403s unless the current user is
     a Super Admin. Use for cross-module sysop endpoints (user lifecycle,
@@ -35,7 +58,7 @@ def requires_super_admin() -> Callable:
         from app.models.user import User
         email = (current_user.get("email") or "").lower().strip()
         u = db.query(User).filter(User.email == email).first()
-        if u is None or not u.is_super_admin:
+        if not is_effective_super_admin(u):
             raise HTTPException(
                 status_code=403,
                 detail="Super Admin required",
@@ -65,8 +88,13 @@ def requires_tier(module: Module, min_tier: Tier) -> Callable:
                 detail=(f"forbidden — needs {tier_label} on {spec.label} "
                         f"(you have {actual_label})"),
             )
-        # Inject the resolved tier so handlers can branch on it without
-        # re-querying.
+        # NB — handlers that declare their own `Depends(get_current_user)`
+        # alongside the gate get a *different* dict instance and won't
+        # see this injected `module_tier`. The injection is preserved
+        # for routes that take the gate's return value directly via
+        # `current_user: dict = Depends(requires_tier(...))`; callers
+        # that need the resolved tier elsewhere should re-call
+        # effective_tier(). (Fable auth audit Info.)
         out = dict(current_user)
         out.setdefault("module_tier", {})[module.value] = int(actual)
         return out

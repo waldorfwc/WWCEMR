@@ -3,7 +3,7 @@ Google OAuth2 authentication.
 Only allows @waldorfwomenscare.com and @caribcall.com emails.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse
@@ -33,12 +33,18 @@ def normalize_email(email: Optional[str]) -> str:
     return (email or "").strip().lower()
 
 
-def create_access_token(data: dict, expires_hours: int = 8) -> str:
+def create_access_token(data: dict, expires_hours: int = 8,
+                          token_version: int = 0) -> str:
     to_encode = data.copy()
     if "email" in to_encode:
         to_encode["email"] = normalize_email(to_encode["email"])
-    to_encode["exp"] = datetime.utcnow() + timedelta(hours=expires_hours)
-    to_encode["iat"] = datetime.utcnow()
+    # Timezone-aware UTC — datetime.utcnow() is deprecated in 3.12+.
+    # python-jose serializes either to an integer UNIX timestamp.
+    # (Fable auth audit L3.)
+    now = datetime.now(timezone.utc)
+    to_encode["exp"] = now + timedelta(hours=expires_hours)
+    to_encode["iat"] = now
+    to_encode["tv"] = int(token_version)
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
@@ -91,6 +97,21 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(
             status_code=401,
             detail="Account no longer exists. Sign in again to recreate it.")
+
+    # Token-version check — bumped on logout / suspension so a
+    # captured Bearer token can't outlive any of those events.
+    # Legacy tokens (issued before this fix) carry no `tv` claim;
+    # accept them only while the row's version is still 0.
+    # (Fable auth audit L4.)
+    token_tv = payload.get("tv")
+    current_tv = int(getattr(user_row, "token_version", 0) or 0)
+    if token_tv is None:
+        if current_tv != 0:
+            raise HTTPException(
+                status_code=401, detail="Session ended. Sign in again.")
+    elif int(token_tv) != current_tv:
+        raise HTTPException(
+            status_code=401, detail="Session ended. Sign in again.")
 
     # Active-user gate (Phase 7) — refuse access for suspended accounts
     if not user_row.is_active:
@@ -241,6 +262,10 @@ async def google_login(payload: dict):
             )
             ensure_default_staff_group(_db)
             auto_join_default_staff(_db, email_norm)
+        # Pull the user's current token_version so the issued JWT
+        # embeds it (Fable auth audit L4).
+        row_after = _db.query(User).filter(User.email == email_norm).first()
+        token_version = int(getattr(row_after, "token_version", 0) or 0)
     finally:
         _db.close()
 
@@ -249,7 +274,7 @@ async def google_login(payload: dict):
         "email": email,
         "name": userinfo.get("name", ""),
         "picture": userinfo.get("picture", ""),
-    })
+    }, token_version=token_version)
 
     response = JSONResponse({
         "email": email,
@@ -289,17 +314,13 @@ def get_me(user: dict = Depends(get_current_user),
     from app.permissions.catalog import Module, Tier
     from app.permissions.resolver import effective_tier
 
-    email = (user.get("email") or "").lower().strip()
+    email = normalize_email(user.get("email"))
     user_row = db.query(User).filter(User.email == email).first()
-    # The User.is_super_admin column is the canonical flag, but membership
-    # in the "Super Admin" group is treated as equivalent — the group is
-    # how Office Managers grant super-admin in the admin UI, and we don't
-    # want the column flip step to leave them locked out of admin-gated
-    # frontend routes (e.g. /admin/reputation/*).
-    in_super_admin_group = bool(user_row and any(
-        (g.name or "").lower() == "super admin" for g in (user_row.groups or [])
-    ))
-    is_super_admin = bool(user_row and (user_row.is_super_admin or in_super_admin_group))
+    # Honor BOTH the column and Super Admin group membership via the
+    # shared helper — same authority as requires_super_admin in
+    # permissions/dependencies.py. (Fable auth audit M4.)
+    from app.permissions.dependencies import is_effective_super_admin
+    is_super_admin = is_effective_super_admin(user_row)
     active_ar_tier = effective_tier(db, email, Module.ACTIVE_AR)
     chart_tier     = effective_tier(db, email, Module.CHART)
 
@@ -328,7 +349,38 @@ def get_me(user: dict = Depends(get_current_user),
 
 
 @router.post("/logout")
-def logout():
+def logout(request: Request, db: Session = Depends(get_db)):
+    """Invalidate the current session globally — bumps the user's
+    token_version so any captured Bearer token (e.g. one already stolen
+    via a leaked cookie or mobile-paste) stops working immediately.
+    Previously logout only cleared the cookie, so a copy of the JWT
+    pasted into Postman kept working until the 8h `exp`.
+    (Fable auth audit L4.)
+    """
+    # Read the email from the token without throwing — logout should
+    # always succeed in clearing the cookie even if the token is
+    # malformed or expired.
+    token = request.cookies.get("session_token")
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+    if token:
+        try:
+            payload = jwt.decode(token, settings.secret_key,
+                                  algorithms=[settings.algorithm])
+        except JWTError:
+            payload = None
+        email = normalize_email((payload or {}).get("email") or "")
+        if email:
+            row = db.query(User).filter(User.email == email).first()
+            if row is not None:
+                row.token_version = (
+                    int(getattr(row, "token_version", 0) or 0) + 1)
+                db.commit()
+                log_action(db, "USER_LOGOUT", "user",
+                           resource_id=email, user_name=email,
+                           description="User logged out — token revoked")
     response = JSONResponse({"ok": True})
     response.delete_cookie("session_token")
     return response

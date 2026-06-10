@@ -392,6 +392,9 @@ def _apply_lightweight_migrations():
         # Per-surgery portal-token version for revocation
         # (Fable portal audit H5-auth).
         ("surgeries", "portal_token_version", "INTEGER DEFAULT 0 NOT NULL"),
+        # Per-user JWT version for revocation on logout / suspension
+        # (Fable auth audit L4).
+        ("users", "token_version", "INTEGER DEFAULT 0 NOT NULL"),
         # Pellet visits: historical-import flag
         ("pellet_visits", "is_historical", "BOOLEAN DEFAULT 0"),
         # Pellet patient-level ModMed deep link (Qlik redirect from export)

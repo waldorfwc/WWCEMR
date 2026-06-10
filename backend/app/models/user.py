@@ -5,7 +5,7 @@ are still here for backwards compatibility while the RBAC migration is in
 progress. The new source of truth is `User.groups` (M2M to the Group table)
 plus `permissions_extra` / `permissions_revoked`.
 """
-from sqlalchemy import Column, String, DateTime, Boolean, JSON, Enum as SAEnum
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import enum
@@ -75,6 +75,14 @@ class User(Base):
     # role. Holders can grant Admin tier on any module + last-Super-Admin
     # safety is enforced in permission_grants.set_super_admin.
     is_super_admin = Column(Boolean, nullable=False, default=False)
+
+    # Per-user token version for revocation. Issued JWTs embed this as
+    # the `tv` claim; verify_token rejects tokens whose tv doesn't
+    # match the current row. Bumped on logout, suspension, and
+    # deletion (where the row is also gone), so a captured Bearer
+    # token can't outlive any of those events. (Fable auth audit L4.)
+    token_version = Column(Integer, nullable=False, default=0,
+                            server_default="0")
 
     # Clinician identity for enrollment forms. Any user with a non-blank
     # NPI shows up in the LARC inserting-provider / APP pickers. The role

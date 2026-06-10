@@ -116,18 +116,32 @@ def update_user(
     if row is None:
         raise HTTPException(status_code=404, detail="user not found")
 
-    old = {"group": row.group.value if hasattr(row.group, "value") else row.group,
-           "display_name": row.display_name,
-           "practice_role": row.practice_role,
-           "ringcentral_user_id": row.ringcentral_user_id,
-           "ringcentral_extension": row.ringcentral_extension,
-           "ringcentral_callback_number": row.ringcentral_callback_number}
+    # Capture every audit-relevant field BEFORE mutation, not just the
+    # subset that update_user used to log. is_active flips and clinical
+    # identity fields (npi, clinician_role, credential) are
+    # security/compliance-relevant; ringcentral_manual_override decides
+    # whether the auto-sync overwrites a user's phone identity.
+    # (Fable auth audit M3.)
+    _audited = ("group", "display_name", "practice_role",
+                "ringcentral_user_id", "ringcentral_extension",
+                "ringcentral_callback_number", "ringcentral_manual_override",
+                "is_active", "npi", "clinician_role", "credential")
+    def _snapshot(r) -> dict:
+        out = {}
+        for k in _audited:
+            v = getattr(r, k, None)
+            if hasattr(v, "value"):  # enum
+                v = v.value
+            out[k] = v
+        return out
+    old = _snapshot(row)
 
-    # Last-admin guard
-    if payload.group is not None and payload.group != UserGroup.ADMIN and row.group == UserGroup.ADMIN:
-        admin_count = db.query(User).filter(User.group == UserGroup.ADMIN).count()
-        if admin_count <= 1:
-            raise HTTPException(status_code=409, detail="cannot remove the last admin")
+    # NB — the legacy `group` column (UserGroup enum) no longer drives
+    # any privilege; the actual authority is User.is_super_admin (set
+    # via /admin/users/{email}/super_admin) and per-module tier grants.
+    # The remaining last-admin guards live on those endpoints
+    # (set_super_admin, delete_user) so demoting via update_user.group
+    # is safe — it doesn't change anyone's effective access.
 
     if payload.group is not None:
         row.group = payload.group
@@ -144,10 +158,26 @@ def update_user(
     if payload.ringcentral_user_id is not None:
         row.ringcentral_user_id = payload.ringcentral_user_id.strip() or None
     if payload.ringcentral_extension is not None:
-        row.ringcentral_extension = payload.ringcentral_extension.strip() or None
+        ext = (payload.ringcentral_extension or "").strip()
+        # Digits-only with a sane length envelope. The sync overwrites
+        # this anyway unless ringcentral_manual_override is set, so the
+        # only path that reaches this assignment is a manual edit —
+        # validating means a typo'd "12345abc" doesn't quietly land in
+        # the directory and break click-to-dial. (Fable auth audit L5.)
+        if ext and (not ext.isdigit() or not (1 <= len(ext) <= 8)):
+            raise HTTPException(
+                status_code=422,
+                detail=("ringcentral_extension must be 1–8 digits "
+                        "(empty string clears it)"))
+        row.ringcentral_extension = ext or None
     if payload.ringcentral_manual_override is not None:
         row.ringcentral_manual_override = bool(payload.ringcentral_manual_override)
     if payload.is_active is not None:
+        # Suspending a user also revokes any outstanding JWTs they hold
+        # — bump token_version so the captured token can't outlive the
+        # suspension. (Fable auth audit L4.)
+        if row.is_active and not payload.is_active:
+            row.token_version = int(getattr(row, "token_version", 0) or 0) + 1
         row.is_active = payload.is_active
     if payload.npi is not None:
         row.npi = (payload.npi or "").strip() or None
@@ -185,17 +215,25 @@ def update_user(
     db.commit()
     db.refresh(row)
 
-    new = {"group": row.group.value if hasattr(row.group, "value") else row.group,
-           "display_name": row.display_name,
-           "practice_role": row.practice_role,
-           "ringcentral_user_id": row.ringcentral_user_id,
-           "ringcentral_extension": row.ringcentral_extension,
-           "ringcentral_callback_number": row.ringcentral_callback_number}
-    log_action(db, "USER_UPDATED", "user",
+    new = _snapshot(row)
+    # Only audit fields that actually changed — keeps the diff readable
+    # and the action label informative.
+    diff_old = {k: v for k, v in old.items() if old[k] != new.get(k)}
+    diff_new = {k: v for k, v in new.items() if old.get(k) != v}
+    changed = sorted(diff_new.keys()) if diff_new else []
+    # Distinguish suspension from a regular edit so the audit log
+    # filterable by action surfaces the security-relevant flip first.
+    action_label = "USER_UPDATED"
+    if "is_active" in diff_new:
+        action_label = ("USER_SUSPENDED"
+                        if not diff_new["is_active"] else "USER_REACTIVATED")
+    log_action(db, action_label, "user",
                resource_id=email,
                user_name=current_user.get("email"),
-               old_values=old, new_values=new,
-               description=f"admin {current_user.get('email')} updated {email}")
+               old_values=diff_old, new_values=diff_new,
+               description=(f"admin {current_user.get('email')} updated "
+                            f"{email}" + (f" ({', '.join(changed)})"
+                                            if changed else "")))
 
     return _serialize(row)
 
@@ -324,17 +362,33 @@ def sync_ringcentral(
     # Build access token for phone-number lookups
     cid = os.environ.get("RC_CLIENT_ID", "").strip()
     csec = os.environ.get("RC_CLIENT_SECRET", "").strip()
-    jwt = os.environ.get("RC_JWT_TOKEN", "").strip()
+    # Local `rc_jwt` instead of shadowing the module-level `jwt` import
+    # — the previous variable name `jwt` masked it for the rest of the
+    # function and made auth_router debugging trickier. (Fable L1.)
+    rc_jwt = os.environ.get("RC_JWT_TOKEN", "").strip()
     base = os.environ.get("RC_SERVER_URL", "https://platform.ringcentral.com").strip()
     basic = base64.b64encode(f"{cid}:{csec}".encode()).decode()
-    tok_resp = httpx.post(
-        f"{base}/restapi/oauth/token",
-        data={"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-              "assertion": jwt},
-        headers={"Authorization": f"Basic {basic}",
-                 "Content-Type": "application/x-www-form-urlencoded"},
-        timeout=15,
-    ).json()
+    try:
+        tok_http = httpx.post(
+            f"{base}/restapi/oauth/token",
+            data={"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                  "assertion": rc_jwt},
+            headers={"Authorization": f"Basic {basic}",
+                     "Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+        tok_resp = tok_http.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"RingCentral OAuth failed: {exc}")
+    if "access_token" not in tok_resp:
+        # KeyError used to bubble up as a 500 (Fable L1). Surface a
+        # cleaner error with what we know.
+        raise HTTPException(
+            status_code=502,
+            detail=(f"RingCentral OAuth returned no access_token; "
+                    f"response: {str(tok_resp)[:200]}"))
     H = {"Authorization": f"Bearer {tok_resp['access_token']}"}
 
     USAGE_PRIORITY = ["ForwardedNumber", "DirectNumber",
@@ -379,7 +433,13 @@ def sync_ringcentral(
                 if chosen and not u.ringcentral_callback_number:
                     new_cb = chosen["phoneNumber"]
         except Exception as exc:
-            pass  # leave as-is
+            # Log so a recurring per-user failure is visible; previous
+            # `except Exception: pass` silently masked auth/network
+            # issues that affected only some rows. (Fable L1.)
+            import logging
+            logging.getLogger(__name__).warning(
+                "ringcentral phone-number fetch failed for %s: %s",
+                u.email, exc)
 
         changed = (
             u.ringcentral_user_id != new_uid
