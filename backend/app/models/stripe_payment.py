@@ -115,3 +115,16 @@ class SurgeryPaymentHistory(Base):
     before_status = Column(String(20), nullable=True)
     after_status  = Column(String(20), nullable=True)
     detail        = Column(JSON, nullable=True)
+
+
+class ProcessedStripeEvent(Base):
+    """Event-level dedup so Stripe retries / overlapping deliveries
+    can't both pass the per-row idempotency check and double-credit
+    Surgery.amount_paid. The webhook receiver inserts here in the
+    same transaction as the row mutation; the PK collision rolls
+    everything back. (Fable billing audit H2.)
+    """
+    __tablename__ = "processed_stripe_events"
+    event_id  = Column(String(80), primary_key=True)
+    received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    event_type = Column(String(60), nullable=True)

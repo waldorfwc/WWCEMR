@@ -160,14 +160,33 @@ def refund(
     p = db.query(SurgeryPayment).filter(SurgeryPayment.id == payment_id).first()
     if not p:
         raise HTTPException(status_code=404, detail="payment not found")
-    if p.status not in ("paid",):
+    # Allow follow-up partial refunds on an already-partially-refunded
+    # payment. Previously the gate was "paid" only, so after one $10 of
+    # $500 partial flipped the status to refunded (broken pre-C2), the
+    # next refund call was rejected. (Fable billing audit C2.)
+    if p.status not in ("paid", "partially_refunded"):
         raise HTTPException(status_code=409,
-                            detail=f"can only refund a paid payment (current: {p.status})")
+                            detail=f"can only refund a paid or partially_refunded "
+                                   f"payment (current: {p.status})")
+    # Local over-refund check: refuse to ask Stripe for more than the
+    # remaining refundable amount. Stripe will reject too, but the
+    # local check gives a useful error before the API call.
+    if payload.amount is not None:
+        remaining = Decimal(p.amount_paid or 0) - Decimal(p.amount_refunded or 0)
+        if Decimal(payload.amount) > remaining:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"refund amount ${payload.amount} exceeds remaining "
+                        f"refundable ${remaining:.2f} on this payment"))
     actor = current_user.get("email") or "system"
     try:
         ref = svc.refund_payment(db, p, amount=payload.amount)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Stripe refund error: {e}")
+        # Don't leak raw Stripe exception detail to clients (may include
+        # internal request ids / metadata). Log + return a generic 502.
+        # (Fable billing audit L3.)
+        log.exception("Stripe refund failed for payment %s", p.id)
+        raise HTTPException(status_code=502, detail="Stripe refund failed")
     db.add(SurgeryPaymentHistory(
         payment_id=p.id, actor=actor,
         event_type="admin.refund_initiated",
@@ -248,8 +267,29 @@ async def stripe_webhook(
         log.warning("stripe webhook signature rejected: %s", e)
         raise HTTPException(status_code=400, detail="bad signature")
 
+    event_id = event.get("id")
     event_type = event.get("type", "")
     obj = (event.get("data") or {}).get("object") or {}
+
+    # Event-level dedup. Stripe redelivers on any non-2xx response and
+    # routinely overlaps retries with the original delivery on slow
+    # commits; without this, two concurrent _handle_session_completed
+    # calls for the same event both pass the per-row "is paid?" guard
+    # and both increment Surgery.amount_paid. INSERT into
+    # processed_stripe_events first — PK collision rolls everything
+    # back and we ack with 200 so Stripe stops retrying.
+    # (Fable billing audit H2.)
+    if event_id:
+        from app.models.stripe_payment import ProcessedStripeEvent
+        from sqlalchemy.exc import IntegrityError
+        db.add(ProcessedStripeEvent(event_id=event_id, event_type=event_type))
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            log.info("stripe webhook event %s already processed, ack-only",
+                     event_id)
+            return {"received": True, "deduped": True}
 
     if event_type == "checkout.session.completed":
         _handle_session_completed(db, event_type, obj)
@@ -261,6 +301,7 @@ async def stripe_webhook(
         _handle_session_expired(db, event_type, obj)
     else:
         log.info("stripe webhook ignored event %s", event_type)
+        db.commit()  # Commit the ProcessedStripeEvent row for unknown events too
 
     return {"received": True}
 
@@ -269,28 +310,58 @@ async def stripe_webhook(
 
 def _handle_session_completed(db, event_type, obj):
     session_id = obj.get("id")
+    # Delayed payment methods (ACH, klarna, afterpay) fire
+    # checkout.session.completed with payment_status='unpaid' before
+    # funds settle. Don't credit the surgery until payment_status is
+    # 'paid' or 'no_payment_required'. The async_payment_succeeded /
+    # async_payment_failed events handle the eventual settlement.
+    # (Fable billing audit M1.)
+    payment_status = (obj.get("payment_status") or "").lower()
+    if payment_status not in ("paid", "no_payment_required"):
+        log.info("stripe webhook %s — session %s payment_status=%s, "
+                 "skipping until settled", event_type, session_id, payment_status)
+        return
     pay = (db.query(SurgeryPayment)
              .filter(SurgeryPayment.stripe_checkout_session_id == session_id)
+             .with_for_update()
              .first())
     if not pay:
         log.warning("stripe webhook %s — no SurgeryPayment for session %s",
                     event_type, session_id)
         return
-    # Idempotency: Stripe retries on 5xx / timeout. Without this guard a
-    # retried checkout.session.completed would re-add amount_paid to the
-    # surgery row (the +=) and write a duplicate history row.
+    # Idempotency: Stripe retries on 5xx / timeout. Combined with the
+    # event-level dedup above and the row lock here, two concurrent
+    # deliveries can't both increment Surgery.amount_paid.
     if pay.status == "paid":
         log.info("stripe webhook %s — payment %s already paid, ignoring",
                  event_type, pay.id)
         return
     before = pay.status
-    amount_paid = Decimal(obj.get("amount_total", 0)) / Decimal(100)
+    raw_amount = obj.get("amount_total")
+    if raw_amount is None:
+        # Defensive: Stripe should always include amount_total on a
+        # paid session, but a null here used to raise TypeError → 500
+        # → infinite retry loop. (Fable billing audit M6.)
+        log.warning("stripe webhook %s — session %s missing amount_total",
+                    event_type, session_id)
+        return
+    amount_paid = Decimal(raw_amount) / Decimal(100)
+    # Sanity: warn loudly if Stripe charged a different amount than we
+    # requested. Don't block (Stripe is the source of truth), but make
+    # the divergence visible. (Fable billing audit M6.)
+    if (pay.amount_requested is not None
+            and Decimal(pay.amount_requested) != amount_paid):
+        log.warning("stripe paid %s != requested %s on payment %s",
+                    amount_paid, pay.amount_requested, pay.id)
     pay.amount_paid = amount_paid
     pay.status = "paid"
     pay.paid_at = datetime.utcnow()
     pay.stripe_payment_intent_id = obj.get("payment_intent")
     pay.last_event_payload = obj
-    s = db.query(Surgery).filter(Surgery.id == pay.surgery_id).first()
+    s = (db.query(Surgery)
+            .filter(Surgery.id == pay.surgery_id)
+            .with_for_update()
+            .first())
     if s and pay.kind == "fmla_fee":
         s.fmla_fee_paid = True
         s.fmla_fee_paid_at = datetime.utcnow()
@@ -328,34 +399,76 @@ def _handle_session_completed(db, event_type, obj):
 
 
 def _handle_refund(db, event_type, obj):
+    """Apply a charge.refunded webhook.
+
+    Stripe's charge.refunded fires for partial refunds too, and
+    `obj.amount_refunded` is the CUMULATIVE refunded amount on the
+    charge — not the delta. The previous handler set
+    pay.status='refunded' on a $10/$500 partial, then the
+    "already refunded" idempotency guard dropped every subsequent
+    refund event so the second/third partial refund never reached
+    surgery.amount_paid. Patient balance silently stayed
+    understated. (Fable billing audit C2.)
+
+    Now: compute the delta between incoming and locally-recorded
+    amount_refunded, decrement surgery.amount_paid by that delta,
+    record cumulative on pay.amount_refunded. status flips to
+    'partially_refunded' until cumulative refund equals amount_paid,
+    then 'refunded'. Idempotent on equal cumulative.
+    """
     pi = obj.get("payment_intent")
     pay = (db.query(SurgeryPayment)
              .filter(SurgeryPayment.stripe_payment_intent_id == pi)
+             .with_for_update()
              .first())
     if not pay:
         log.warning("stripe webhook %s — no SurgeryPayment for PI %s",
                     event_type, pi)
         return
-    # Idempotency: re-firing charge.refunded would double-decrement
-    # surgery.amount_paid (capped at zero, but still wrong) and write
-    # a duplicate history row.
-    if pay.status == "refunded":
-        log.info("stripe webhook %s — payment %s already refunded, ignoring",
-                 event_type, pay.id)
+
+    cumulative_refunded = Decimal(obj.get("amount_refunded", 0)) / Decimal(100)
+    already_recorded = Decimal(pay.amount_refunded or 0)
+
+    # Idempotency: same cumulative refunded amount = duplicate delivery.
+    if cumulative_refunded <= already_recorded:
+        log.info("stripe webhook %s — payment %s cumulative refund %s "
+                 "already recorded (have %s), skipping",
+                 event_type, pay.id, cumulative_refunded, already_recorded)
         return
+
+    delta = cumulative_refunded - already_recorded
     before = pay.status
-    refunded = Decimal(obj.get("amount_refunded", 0)) / Decimal(100)
-    pay.amount_refunded = refunded
-    pay.status = "refunded"
-    pay.refunded_at = datetime.utcnow()
+
+    pay.amount_refunded = cumulative_refunded
     pay.last_event_payload = obj
-    s = db.query(Surgery).filter(Surgery.id == pay.surgery_id).first()
+    pay.refunded_at = datetime.utcnow()
+
+    # Final-state status: fully refunded only when cumulative refund
+    # equals the original amount_paid. Otherwise it's a partial.
+    if cumulative_refunded >= Decimal(pay.amount_paid or 0):
+        pay.status = "refunded"
+    else:
+        pay.status = "partially_refunded"
+
+    s = (db.query(Surgery)
+            .filter(Surgery.id == pay.surgery_id)
+            .with_for_update()
+            .first())
     if s:
-        s.amount_paid = max(Decimal(0), (s.amount_paid or 0) - refunded)
+        new_balance = (Decimal(s.amount_paid or 0) - delta)
+        if new_balance < 0:
+            log.warning(
+                "stripe refund delta %s would drive surgery %s amount_paid "
+                "below zero (was %s) — clamping; investigate accounting drift",
+                delta, s.id, s.amount_paid)
+            new_balance = Decimal(0)
+        s.amount_paid = new_balance
+
     db.add(SurgeryPaymentHistory(
         payment_id=pay.id, actor="stripe:webhook",
-        event_type=event_type, before_status=before, after_status="refunded",
-        detail={"amount_refunded": str(refunded)},
+        event_type=event_type, before_status=before, after_status=pay.status,
+        detail={"amount_refunded_cumulative": str(cumulative_refunded),
+                "delta": str(delta)},
     ))
     db.commit()
 

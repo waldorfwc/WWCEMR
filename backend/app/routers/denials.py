@@ -7,6 +7,9 @@ from datetime import date
 from app.database import get_db
 from app.models.denial import Denial, DenialStatus
 from app.models.claim import Claim
+from app.permissions.catalog import Module, Tier
+from app.permissions.dependencies import requires_tier
+from app.routers.auth import get_current_user
 from app.services.audit_service import log_action
 from app.services.denial_analyzer import get_denial_summary
 
@@ -64,17 +67,34 @@ def get_denial(denial_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/{denial_id}")
-def update_denial(denial_id: str, data: dict, db: Session = Depends(get_db)):
+def update_denial(denial_id: str, data: dict,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(
+                       requires_tier(Module.ACTIVE_AR, Tier.WORK))):
+    """Edit a denial (status, recommended action, appeal outcomes, etc.).
+
+    The whole AR router is gated at Tier.VIEW; this elevates write
+    actions to Tier.WORK so a read-only user can't flip
+    write_off_recommended or push a denial to 'closed' — those decide
+    real money. (Fable billing audit C1.)
+    """
     denial = db.query(Denial).filter(Denial.id == denial_id).first()
     if not denial:
         raise HTTPException(status_code=404, detail="Denial not found")
     allowed = ["status", "notes", "recommended_action", "write_off_recommended",
                "appeal_submitted_date", "appeal_decision_date", "appeal_decision"]
+    before = {k: getattr(denial, k, None) for k in allowed if k in data}
     for k, v in data.items():
         if k in allowed:
             setattr(denial, k, v)
     db.commit()
-    log_action(db, "UPDATE", "denial", resource_id=denial_id, new_values=data)
+    log_action(db, action="UPDATE", resource_type="denial",
+               resource_id=denial_id,
+               user_id=(current_user.get("email") or "").lower() or None,
+               user_name=current_user.get("name") or current_user.get("email"),
+               old_values={k: str(v) if v is not None else None for k, v in before.items()},
+               new_values={k: str(v) if v is not None else None
+                            for k, v in data.items() if k in allowed})
     return _to_dict(denial)
 
 

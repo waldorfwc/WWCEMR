@@ -10,9 +10,15 @@ worker, swap this for Redis with the same interface. TODO.
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+# Module-level lock for atomic claim-and-purge so two concurrent
+# commits can't both pass get() before purge() and double-post.
+# (Fable billing audit H5.)
+_lock = threading.Lock()
 
 
 @dataclass
@@ -51,6 +57,22 @@ def get(session_id: str) -> Optional[SessionEntry]:
 
 def purge(session_id: str) -> None:
     _sessions.pop(session_id, None)
+
+
+def claim(session_id: str) -> Optional[SessionEntry]:
+    """Atomic get-and-remove. Two concurrent commits used to both pass
+    get() before either reached purge(), so each ran the full post
+    loop against the same parsed payload. claim() removes the entry
+    under a lock and returns it (or None if it was already claimed,
+    expired, or never existed). (Fable billing audit H5.)
+    """
+    with _lock:
+        entry = _sessions.pop(session_id, None)
+        if entry is None:
+            return None
+        if datetime.now(timezone.utc) >= entry.expires_at:
+            return None
+        return entry
 
 
 def set_aux(session_id: str, key: str, value: Any) -> None:

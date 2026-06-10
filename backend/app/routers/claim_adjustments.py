@@ -65,7 +65,8 @@ def create_claim_adjustment(
     claim_id: str,
     data: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
@@ -96,7 +97,8 @@ def update_claim_adjustment(
     adj_id: str,
     data: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     adj = db.query(ClaimAdjustment).filter(ClaimAdjustment.id == adj_id).first()
     if not adj:
@@ -129,7 +131,8 @@ def update_claim_adjustment(
 def delete_claim_adjustment(
     adj_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     adj = db.query(ClaimAdjustment).filter(ClaimAdjustment.id == adj_id).first()
     if not adj:

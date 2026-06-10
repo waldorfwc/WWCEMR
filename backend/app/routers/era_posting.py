@@ -172,9 +172,15 @@ def commit_eras(
     if idem.cached is not None:
         return idem.cached
 
-    entry = import_sessions.get(session_id)
+    # Atomic claim — the prior get()+purge() pair let two concurrent
+    # commits both pass get() before either reached purge(), so each
+    # ran the full post loop against the same parsed payload. claim()
+    # removes the entry under a process-level lock and returns it.
+    # (Fable billing audit H5.)
+    entry = import_sessions.claim(session_id)
     if entry is None:
-        raise HTTPException(status_code=404, detail="session not found or expired")
+        raise HTTPException(status_code=404,
+                             detail="session not found, already committed, or expired")
 
     previews: List[EraFilePreview] = entry.payload["previews"]
     user_email = current_user.get("email")
@@ -206,7 +212,7 @@ def commit_eras(
         totals["denials_created"] += result.denials_created
         errors.extend(result.errors)
 
-    import_sessions.purge(session_id)
+    # claim() above already removed the entry.
 
     response = {
         "files_processed": len(previews),

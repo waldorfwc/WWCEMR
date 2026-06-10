@@ -99,7 +99,8 @@ def create_service_line(
     claim_id: str,
     data: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
@@ -131,7 +132,8 @@ def update_service_line(
     line_id: str,
     data: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     sl = db.query(ServiceLine).filter(ServiceLine.id == line_id).first()
     if not sl:
@@ -167,7 +169,8 @@ def update_service_line(
 def delete_service_line(
     line_id: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
     sl = db.query(ServiceLine).filter(ServiceLine.id == line_id).first()
     if not sl:

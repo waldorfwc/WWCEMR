@@ -540,6 +540,16 @@ def _apply_lightweight_migrations():
              "device_id",
              "approval_status IN ('pending', 'approved') "
              "AND outcome IS NULL AND device_id IS NOT NULL"),
+            # ERA posting: at most one EraFile per (payer_id, check_number).
+            # Prevents posting the same payer remittance twice — Fable
+            # billing audit H5. The in-process atomic claim closes the
+            # within-worker race; this is the DB-side backstop for
+            # multi-worker / retry-after-crash scenarios. Excludes
+            # historical NULLs.
+            ("ix_era_files_payer_check_unique",
+             "era_files",
+             "payer_id, check_number",
+             "payer_id IS NOT NULL AND check_number IS NOT NULL"),
             # LARC: at most one live enrollment envelope per
             # (assignment, template). A double-click on Send used to
             # create two live BoldSign envelopes — patient signs both

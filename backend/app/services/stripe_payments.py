@@ -145,13 +145,33 @@ def create_checkout_session(
         cancel_url=_cancel_url(),
     )
 
-    # Supersede any prior open requests for this surgery (a Stripe Checkout
-    # Session expires after 24h anyway, and stacked 'requested' rows clutter
-    # the payment history view).
-    (db.query(SurgeryPayment)
-       .filter(SurgeryPayment.surgery_id == surgery.id,
-               SurgeryPayment.status == "requested")
-       .update({"status": "expired"}, synchronize_session=False))
+    # Supersede any prior open requests for this surgery. Previously we
+    # only flipped the local row to 'expired' — the actual Stripe
+    # Checkout session remained payable for up to 24h. Patient could
+    # pay the prior emailed link AND the new link, producing a real
+    # double charge that the webhook handler used to honor (the local
+    # 'expired' guard didn't reject the prior session's
+    # checkout.session.completed event). Now we call Session.expire()
+    # in Stripe before flipping local state — best-effort, since a
+    # session that's already completed or expired returns an error
+    # which we swallow + log. (Fable billing audit H1.)
+    stale = (db.query(SurgeryPayment)
+                .filter(SurgeryPayment.surgery_id == surgery.id,
+                        SurgeryPayment.status == "requested")
+                .all())
+    stripe_client = _client()
+    for old in stale:
+        if not old.stripe_checkout_session_id:
+            continue
+        try:
+            stripe_client.checkout.Session.expire(old.stripe_checkout_session_id)
+        except Exception as exc:
+            # Already completed/expired/disabled in Stripe — fine; the
+            # local 'expired' marker below still applies and the webhook
+            # will sort out any settled session via the event dedup.
+            log.info("Stripe Session.expire(%s) failed: %s",
+                     old.stripe_checkout_session_id, exc)
+        old.status = "expired"
 
     pay = SurgeryPayment(
         surgery_id=surgery.id,

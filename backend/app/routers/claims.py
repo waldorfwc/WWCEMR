@@ -238,8 +238,14 @@ def update_claim(
     claim_id: str,
     data: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(
+        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
 ):
+    """Edit a claim's money fields (paid_amount, contractual_adjustment,
+    etc.) or status. Whole router is gated at Tier.VIEW; this requires
+    Tier.WORK so a read-only user can't mutate AR money fields.
+    (Fable billing audit C1.)
+    """
     claim = db.query(Claim).filter(Claim.id == claim_id).first()
     if not claim:
         raise HTTPException(status_code=404, detail="Claim not found")
