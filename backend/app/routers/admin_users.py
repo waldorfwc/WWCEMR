@@ -74,7 +74,7 @@ def _serialize(u: User) -> dict:
 
 @router.get("")
 def list_users(db: Session = Depends(get_db),
-               current_user: dict = Depends(get_current_user)):
+               current_user: dict = Depends(requires_super_admin())):
     rows = db.query(User).all()
     rows.sort(key=_sort_key)
     return [_serialize(u) for u in rows]
@@ -109,7 +109,7 @@ def update_user(
     email: str,
     payload: UpdateUserPayload,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(requires_super_admin()),
 ):
     email = normalize_email(email)
     row = db.query(User).filter(User.email == email).first()
@@ -303,7 +303,7 @@ def delete_user(
 def create_user(
     payload: CreateUserPayload,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(requires_super_admin()),
 ):
     email = normalize_email(payload.email)
     existing = db.query(User).filter(User.email == email).first()
@@ -336,7 +336,7 @@ def create_user(
 @router.post("/sync-ringcentral")
 def sync_ringcentral(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(requires_super_admin()),
 ):
     """Pull every WWC user's RingCentral identity from the RC API and
     populate ringcentral_user_id, _extension, and _callback_number.

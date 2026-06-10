@@ -22,6 +22,7 @@ from app.database import get_db
 from app.models.module_tier import GroupModuleTier
 from app.models.user import User
 from app.permissions.catalog import MODULE_REGISTRY, Module, Tier
+from app.permissions.dependencies import requires_super_admin
 from app.permissions.resolver import effective_tier, effective_tier_with_source
 from app.routers.auth import get_current_user, normalize_email
 from app.services.permission_grants import (
@@ -104,7 +105,7 @@ def _require_admin_on_module(current_user: dict, db: Session,
 
 @router.get("/users/{email}/tiers")
 def get_user_tiers(email: str, db: Session = Depends(get_db),
-                    current_user: dict = Depends(get_current_user)):
+                    current_user: dict = Depends(requires_super_admin())):
     _require_super_admin(current_user, db)
     email = normalize_email(email)
     tiers = []
@@ -130,7 +131,7 @@ class OverrideIn(BaseModel):
 @router.put("/users/{email}/overrides/{module_slug}")
 def put_user_override(email: str, module_slug: str, payload: OverrideIn,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(get_current_user)):
+                      current_user: dict = Depends(requires_super_admin())):
     module = _module_or_404(module_slug)
     actor = _require_admin_on_module(current_user, db, module)
     # Normalize the path-param email to match how the resolver looks
@@ -175,7 +176,7 @@ class SuperAdminIn(BaseModel):
 @router.put("/users/{email}/super_admin")
 def put_super_admin(email: str, payload: SuperAdminIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(get_current_user)):
+                    current_user: dict = Depends(requires_super_admin())):
     actor = _require_super_admin(current_user, db)
     email = normalize_email(email)
     try:
@@ -191,7 +192,7 @@ def put_super_admin(email: str, payload: SuperAdminIn,
 
 @router.get("/groups/{group_id}/tiers")
 def get_group_tiers(group_id: str, db: Session = Depends(get_db),
-                     current_user: dict = Depends(get_current_user)):
+                     current_user: dict = Depends(requires_super_admin())):
     _require_super_admin(current_user, db)
     rows = (db.query(GroupModuleTier)
               .filter(GroupModuleTier.group_id == group_id)
@@ -217,7 +218,7 @@ class GroupTierIn(BaseModel):
 @router.put("/groups/{group_id}/tiers/{module_slug}")
 def put_group_tier(group_id: str, module_slug: str, payload: GroupTierIn,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(get_current_user)):
+                    current_user: dict = Depends(requires_super_admin())):
     module = _module_or_404(module_slug)
     actor = _require_admin_on_module(current_user, db, module)
     if payload.tier is None:

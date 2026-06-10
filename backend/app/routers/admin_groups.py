@@ -19,6 +19,7 @@ func_lower = _sa_func.lower
 from app.database import get_db
 from app.models.groups import Group
 from app.models.user import User
+from app.permissions.dependencies import requires_super_admin
 from app.routers.auth import get_current_user, normalize_email
 from app.services.audit_service import log_action
 
@@ -58,13 +59,15 @@ def _group_to_dict(g: Group, with_members: bool = False) -> dict:
 # ─── groups ──────────────────────────────────────────────────────────
 
 @router.get("/groups")
-def list_groups(db: Session = Depends(get_db)):
+def list_groups(db: Session = Depends(get_db),
+                _: dict = Depends(requires_super_admin())):
     rows = db.query(Group).order_by(Group.name).all()
     return [_group_to_dict(g) for g in rows]
 
 
 @router.get("/groups/{group_id}")
-def get_group(group_id: str, db: Session = Depends(get_db)):
+def get_group(group_id: str, db: Session = Depends(get_db),
+              _: dict = Depends(requires_super_admin())):
     g = db.query(Group).filter(Group.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="group not found")
@@ -73,7 +76,7 @@ def get_group(group_id: str, db: Session = Depends(get_db)):
 
 @router.post("/groups", status_code=201)
 def create_group(payload: GroupCreate, db: Session = Depends(get_db),
-                 current_user: dict = Depends(get_current_user)):
+                 current_user: dict = Depends(requires_super_admin())):
     name = (payload.name or "").strip()
     if not name:
         raise HTTPException(status_code=422, detail="name is required")
@@ -93,7 +96,7 @@ def create_group(payload: GroupCreate, db: Session = Depends(get_db),
 @router.patch("/groups/{group_id}")
 def update_group(group_id: str, payload: GroupUpdate,
                  db: Session = Depends(get_db),
-                 current_user: dict = Depends(get_current_user)):
+                 current_user: dict = Depends(requires_super_admin())):
     g = db.query(Group).filter(Group.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="group not found")
@@ -118,7 +121,7 @@ def update_group(group_id: str, payload: GroupUpdate,
 
 @router.delete("/groups/{group_id}", status_code=204)
 def delete_group(group_id: str, db: Session = Depends(get_db),
-                 current_user: dict = Depends(get_current_user)):
+                 current_user: dict = Depends(requires_super_admin())):
     g = db.query(Group).filter(Group.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="group not found")
@@ -141,7 +144,8 @@ def delete_group(group_id: str, db: Session = Depends(get_db),
 # ─── user ↔ group memberships ────────────────────────────────────────
 
 @router.get("/users/{email}/groups")
-def get_user_groups(email: str, db: Session = Depends(get_db)):
+def get_user_groups(email: str, db: Session = Depends(get_db),
+                    _: dict = Depends(requires_super_admin())):
     """Return the user's group memberships. Used by the per-user group
     editor in Admin.jsx."""
     email = normalize_email(email)
@@ -157,7 +161,7 @@ def get_user_groups(email: str, db: Session = Depends(get_db)):
 @router.put("/users/{email}/groups")
 def replace_user_groups(email: str, payload: UserGroupsReplace,
                         db: Session = Depends(get_db),
-                        current_user: dict = Depends(get_current_user)):
+                        current_user: dict = Depends(requires_super_admin())):
     """Replace the user's full set of group memberships."""
     email = normalize_email(email)
     user = db.query(User).filter(User.email == email).first()
@@ -214,7 +218,7 @@ class AddMemberPayload(BaseModel):
 @router.post("/groups/{group_id}/members", status_code=201)
 def add_group_member(group_id: str, payload: AddMemberPayload,
                        db: Session = Depends(get_db),
-                       current_user: dict = Depends(get_current_user)):
+                       current_user: dict = Depends(requires_super_admin())):
     """Add a user to a group. Idempotent — returns the group whether the
     user was already a member or just joined."""
     g = db.query(Group).filter(Group.id == group_id).first()
@@ -242,7 +246,7 @@ def add_group_member(group_id: str, payload: AddMemberPayload,
 @router.delete("/groups/{group_id}/members/{email}", status_code=204)
 def remove_group_member(group_id: str, email: str,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(get_current_user)):
+                          current_user: dict = Depends(requires_super_admin())):
     """Remove a user from a group. Last-Admin guard mirrors the one in
     replace_user_groups: refuses to remove the final user from the Admin
     group."""

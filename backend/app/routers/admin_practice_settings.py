@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.permissions.dependencies import requires_super_admin
 from app.routers.auth import get_current_user
 from app.services.practice_settings import (
     PRACTICE_SETTING_REGISTRY, REGISTRY_KEYS,
@@ -20,20 +21,18 @@ from app.services.practice_settings import (
 router = APIRouter(prefix="/admin/practice-settings", tags=["admin-practice-settings"])
 
 
-def _require_super_admin(current_user: dict, db: Session) -> User:
-    email = (current_user.get("email") or "").lower().strip()
-    u = db.query(User).filter(User.email == email).first()
-    if u is None or not u.is_super_admin:
-        raise HTTPException(status_code=403, detail="Super Admin required")
-    return u
+# Use the shared requires_super_admin() dependency instead of an inline
+# `is_super_admin` column check — the inline version missed group-based
+# super-admins, so a user added to the "Super Admin" group via
+# admin_groups was rejected here but accepted everywhere else. Same
+# split-brain Fable auth audit M4 already closed in dependencies.py.
 
 
 @router.get("")
 def list_settings(db: Session = Depends(get_db),
-                  current_user: dict = Depends(get_current_user)):
+                  current_user: dict = Depends(requires_super_admin())):
     """Return the full registry alongside current values. UI uses both —
     registry drives field order/labels/help, values drive the inputs."""
-    _require_super_admin(current_user, db)
     values = get_all(db)
     return {
         "settings": [
@@ -56,9 +55,9 @@ class UpdateIn(BaseModel):
 @router.put("/{key}")
 def update_setting(key: str, payload: UpdateIn,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(get_current_user)):
-    actor = _require_super_admin(current_user, db)
+                   current_user: dict = Depends(requires_super_admin())):
     if key not in REGISTRY_KEYS:
         raise HTTPException(status_code=404, detail=f"unknown setting key: {key}")
-    new_val = set_value(db, key, payload.value, actor_email=actor.email)
+    actor_email = (current_user.get("email") or "").lower().strip()
+    new_val = set_value(db, key, payload.value, actor_email=actor_email)
     return {"ok": True, "key": key, "value": new_val or None}
