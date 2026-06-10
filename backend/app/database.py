@@ -47,11 +47,11 @@ def init_db():
     _backfill_larc_assignment_device_type()
     from app.services.larc_seed import seed_larc_device_types
     seed_larc_device_types()
-    from app.services.pellet_seed import seed_pellet_dose_types
+    from app.services.pellet.seed import seed_pellet_dose_types
     seed_pellet_dose_types()
     # Phase B — seed default surgery facilities + procedure templates (idempotent).
     try:
-        from app.services.surgery_config_seed import (
+        from app.services.surgery.config_seed import (
             seed_default_facilities, seed_default_templates,
             seed_default_email_templates, seed_default_sms_templates,
         )

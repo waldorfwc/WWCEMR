@@ -376,7 +376,7 @@ def dashboard(db: Session = Depends(get_db),
 
 @router.get("/picklists")
 def get_picklists(current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
-    from app.services.surgery_picklists import INSURANCE_COMPANIES
+    from app.services.surgery.picklists import INSURANCE_COMPANIES
     return {
         "locations": [{"v": k, "l": v} for k, v in LOCATION_LABELS.items()],
         "buckets": ALL_BUCKETS,

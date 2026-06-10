@@ -23,7 +23,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.surgery import BlockDay, Surgery, SurgeryBlackoutDay, SurgerySlot
-from app.services.surgery_block_schedule import (
+from app.services.surgery.block_schedule import (
     DURATIONS, book_slot, can_fit, CapacityViolation,
 )
 
@@ -93,7 +93,7 @@ def _proposed_start_minutes(bd: BlockDay) -> Optional[int]:
 
     # Office: pick from the fixed slot list, return the first not already booked.
     if bd.facility == "office":
-        from app.services.surgery_block_schedule import OFFICE_SLOT_TIMES_MIN
+        from app.services.surgery.block_schedule import OFFICE_SLOT_TIMES_MIN
         taken = {sl.start_time.hour * 60 + sl.start_time.minute for sl in existing}
         for t in OFFICE_SLOT_TIMES_MIN:
             if t not in taken:

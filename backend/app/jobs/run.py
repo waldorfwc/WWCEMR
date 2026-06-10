@@ -102,7 +102,7 @@ def surgery_auto_unresponsive():
     """Mark surgeries as Unresponsive when the patient hasn't engaged
     for 30+ days past their pre-op visit. Scheduled by
     surgery-auto-unresponsive-trigger at 1:15 AM ET Mon-Fri."""
-    from app.services.surgery_auto_unresponsive import run_auto_unresponsive_sweep
+    from app.services.surgery.auto_unresponsive import run_auto_unresponsive_sweep
     run_auto_unresponsive_sweep()
 
 

@@ -206,7 +206,7 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
             event_kind = ("consent_signed" if row.status == "signed"
                           else "consent_declined")
             try:
-                from app.services.surgery_scheduler_notify import notify_scheduler
+                from app.services.surgery.scheduler_notify import notify_scheduler
                 extra = {"envelope_id": str(row.id),
                          "boldsign_envelope_id": row.boldsign_envelope_id}
                 if row.status == "signed":

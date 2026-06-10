@@ -32,8 +32,8 @@ from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier, requires_super_admin
 from app.services.audit_service import log_action
-from app.services.surgery_slot_conflict import overlapping_slot
-from app.services.surgery_blackout_conflict import is_date_blacked_out
+from app.services.surgery.slot_conflict import overlapping_slot
+from app.services.surgery.blackout_conflict import is_date_blacked_out
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
@@ -362,7 +362,7 @@ def dashboard(db: Session = Depends(get_db),
     #                            usually adds a CRMC/office case instead)
     #   crmc    : minor        (lowest bar — 6 slots per day)
     #   office  : office       (60-min default)
-    from app.services.surgery_block_schedule import can_fit, DURATIONS
+    from app.services.surgery.block_schedule import can_fit, DURATIONS
     FACILITY_PROBE = {"medstar": "robotic_180", "crmc": "minor", "office": "office"}
     next_slots: dict = {"medstar": None, "crmc": None, "office": None}
     upcoming = (db.query(BlockDay)
@@ -411,7 +411,7 @@ def dashboard(db: Session = Depends(get_db),
     # Release-alert flags — surface unbooked hospital days + under-booked
     # office days inline on the dashboard so the scheduler sees them
     # without waiting for the daily email.
-    from app.services.surgery_release_alerts import (
+    from app.services.surgery.release_alerts import (
         find_hospital_release_candidates, find_office_release_candidates,
     )
     hospital_unbooked = [
@@ -446,7 +446,7 @@ def dashboard(db: Session = Depends(get_db),
         "hospital_unbooked": hospital_unbooked,
         "office_underbooked": office_underbooked,
     }
-    from app.services.surgery_blackout_conflict import find_blocked_conflicts
+    from app.services.surgery.blackout_conflict import find_blocked_conflicts
     response["blocked_conflicts"] = find_blocked_conflicts(db)
     return response
 
@@ -836,7 +836,7 @@ async def upload_order(
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=422, detail="Expected a PDF file")
 
-    from app.services.surgery_order_parser import (
+    from app.services.surgery.order_parser import (
         parse_order_text, build_surgery_kwargs, extract_pdf_text_from_bytes,
     )
 
@@ -909,7 +909,7 @@ async def upload_order(
                 size_bytes=len(contents),
                 uploaded_by=current_user.get("email"),
             ))
-            from app.services.surgery_local_helpers import (
+            from app.services.surgery.local_helpers import (
                 upsert_patient_directory, maybe_assign_surgery_number,
             )
             maybe_assign_surgery_number(db, existing)
@@ -936,7 +936,7 @@ async def upload_order(
                         "Open it to add this order, or confirm to create a new one."),
         }
 
-    from app.services.surgery_local_helpers import (
+    from app.services.surgery.local_helpers import (
         upsert_patient_directory, maybe_assign_surgery_number,
     )
     s = Surgery(
@@ -1104,7 +1104,7 @@ def create_manual(payload: ManualSurgeryIn,
         created_by=current_user.get("email"),
     )
     db.add(s); db.flush()
-    from app.services.surgery_local_helpers import (
+    from app.services.surgery.local_helpers import (
         upsert_patient_directory, maybe_assign_surgery_number,
     )
     maybe_assign_surgery_number(db, s)
@@ -1118,7 +1118,7 @@ def create_manual(payload: ManualSurgeryIn,
 @router.get("/picklists")
 def get_picklists(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Return the curated dropdown options for SurgeryDetail editing."""
-    from app.services.surgery_picklists import all_picklists
+    from app.services.surgery.picklists import all_picklists
     return all_picklists()
 
 
@@ -1943,7 +1943,7 @@ def create_block_schedule(payload: BlockScheduleIn, db: Session = Depends(get_db
     )
     db.add(bs); db.commit(); db.refresh(bs)
     # Auto-rematerialize for the next 90 days
-    from app.services.surgery_block_schedule import materialize_block_days
+    from app.services.surgery.block_schedule import materialize_block_days
     materialize_block_days(db)
     return {"id": str(bs.id), "facility": bs.facility}
 
@@ -1961,7 +1961,7 @@ def delete_block_schedule(schedule_id: str, db: Session = Depends(get_db),
 @router.post("/admin/block-schedules/materialize")
 def trigger_materialize(db: Session = Depends(get_db),
                           current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
-    from app.services.surgery_block_schedule import materialize_block_days
+    from app.services.surgery.block_schedule import materialize_block_days
     return materialize_block_days(db)
 
 
@@ -1969,7 +1969,7 @@ def trigger_materialize(db: Session = Depends(get_db),
 def trigger_escalations(db: Session = Depends(get_db),
                           current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     """Manually fire the behind-schedule sweep."""
-    from app.services.surgery_escalations import run_escalation_sweep
+    from app.services.surgery.escalations import run_escalation_sweep
     return run_escalation_sweep(db)
 
 
@@ -1977,7 +1977,7 @@ def trigger_escalations(db: Session = Depends(get_db),
 def trigger_release_sweep(db: Session = Depends(get_db),
                            current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     """Manually fire the daily release-alert sweep."""
-    from app.services.surgery_release_alerts import run_release_sweep
+    from app.services.surgery.release_alerts import run_release_sweep
     return run_release_sweep(db)
 
 
@@ -1989,7 +1989,7 @@ def scheduler_alerts(db: Session = Depends(get_db),
       - Office procedure days within 14 days that have <6 cases booked
         (Dr. Cooke's day isn't full — release the rest for clinic).
     """
-    from app.services.surgery_release_alerts import OFFICE_FULL_THRESHOLD
+    from app.services.surgery.release_alerts import OFFICE_FULL_THRESHOLD
     today = _date.today()
     horizon = today + timedelta(days=14)
     rows = (db.query(BlockDay)
@@ -2107,7 +2107,7 @@ def generate_clearance_form(surgery_id: str,
         raise HTTPException(status_code=409,
                             detail="Clearance is not marked required for this surgery.")
 
-    from app.services.surgery_clearance_form import generate_for_surgery
+    from app.services.surgery.clearance_form import generate_for_surgery
     try:
         f = generate_for_surgery(db, s, by_email=current_user.get("email") or "system")
     except Exception as exc:
@@ -2262,7 +2262,7 @@ def generate_boarding_slip(surgery_id: str,
         # Strip falsy values so cleared fields don't ghost the next render.
         clean = {k: v for k, v in user_overrides.items() if v not in (None, "")}
         s.boarding_slip_overrides = clean or None
-    from app.services.surgery_boarding_slip import generate_for_surgery
+    from app.services.surgery.boarding_slip import generate_for_surgery
     try:
         f = generate_for_surgery(db, s,
                                   by_email=current_user.get("email") or "system",
@@ -2561,7 +2561,7 @@ async def bulk_import_candidates(
         raise HTTPException(status_code=413,
                             detail="file >25 MB; split it into smaller batches")
 
-    from app.services.surgery_candidate_import import parse_excel, import_rows
+    from app.services.surgery.candidate_import import parse_excel, import_rows
     try:
         rows = parse_excel(contents)
     except ValueError as exc:
@@ -2592,7 +2592,7 @@ def klara_draft(surgery_id: str, kind: str,
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
-    from app.services.surgery_klara_drafter import draft
+    from app.services.surgery.klara_drafter import draft
     try:
         return draft(kind, s)
     except ValueError as exc:
@@ -3271,7 +3271,7 @@ class BookSlotIn(BaseModel):
 def book_slot_endpoint(surgery_id: str, payload: BookSlotIn,
                         db: Session = Depends(get_db),
                         current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
-    from app.services.surgery_block_schedule import book_slot, CapacityViolation
+    from app.services.surgery.block_schedule import book_slot, CapacityViolation
     try:
         slot = book_slot(
             db,
@@ -3303,7 +3303,7 @@ def available_slots(surgery_id: str, days_ahead: int = 180,
     """Return upcoming block days that can fit this surgery's procedure
     classification. Same logic as the patient-facing slot list; intended
     for the scheduler-side "Pick date" modal."""
-    from app.services.surgery_date_picker import (
+    from app.services.surgery.date_picker import (
         available_slots_for_surgery, DatePickerError,
     )
 
@@ -3350,7 +3350,7 @@ def scheduler_pick_date(surgery_id: str, payload: SchedulerPickIn,
       - No 14-day reschedule lockout (staff can always reschedule)
       - Stamps last_rescheduled_by with the staff email
     """
-    from app.services.surgery_date_picker import pick_or_reschedule, DatePickerError
+    from app.services.surgery.date_picker import pick_or_reschedule, DatePickerError
 
     s = (db.query(Surgery)
            .options(joinedload(Surgery.milestones))
@@ -3471,7 +3471,7 @@ def coordinator_schedule(
     # guard, prior-slot release, and a single writer of
     # scheduled_date/scheduled_start_time/selected_facility/status.
     # (Fable surgery audit C1.)
-    from app.services.surgery_block_schedule import book_slot, CapacityViolation
+    from app.services.surgery.block_schedule import book_slot, CapacityViolation
     try:
         slot = book_slot(
             db, block_day_id=str(bd.id), surgery_id=str(s.id),
@@ -3842,7 +3842,7 @@ def suggest_billing_codes(surgery_id: str,
     CPT / modifier / POS codes, and auto-save them on the Surgery row.
     If any CPT uses modifier 22, a justification letter PDF is generated
     and saved as a SurgeryFile."""
-    from app.services.surgery_billing_ai import (
+    from app.services.surgery.billing_ai import (
         suggest_and_save_billing, BillingAIError,
     )
 
@@ -4054,7 +4054,7 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
 
         # Generate the patient-facing PDF estimate and attach it
         try:
-            from app.services.surgery_benefits_pdf import generate_and_attach
+            from app.services.surgery.benefits_pdf import generate_and_attach
             pdf_file = generate_and_attach(
                 db, s, breakdown, by_email=current_user.get("email") or "system")
             pdf_file_id = str(pdf_file.id)
@@ -4687,7 +4687,7 @@ def waitlist_matches(block_day_id: str,
                       db: Session = Depends(get_db),
                       current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Find waitlisters who could realistically fill the given block day."""
-    from app.services.surgery_waitlist import find_matches, klara_blast_text
+    from app.services.surgery.waitlist import find_matches, klara_blast_text
     matches = find_matches(db, block_day_id=block_day_id)
 
     bd = db.query(BlockDay).filter(BlockDay.id == block_day_id).first()
@@ -4718,7 +4718,7 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """A waitlisted patient confirmed they want the freed slot — book it
     and remove them from the waitlist."""
-    from app.services.surgery_block_schedule import book_slot, CapacityViolation, DURATIONS
+    from app.services.surgery.block_schedule import book_slot, CapacityViolation, DURATIONS
 
     w = (db.query(SurgeryWaitlist)
            .filter(SurgeryWaitlist.id == waitlist_id,
@@ -4995,7 +4995,7 @@ def run_reminders_now(
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE)),
 ):
-    from app.services.surgery_reminders import run_reminder_sweep
+    from app.services.surgery.reminders import run_reminder_sweep
     return run_reminder_sweep(db)
 
 

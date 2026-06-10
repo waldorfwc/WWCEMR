@@ -16,8 +16,8 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.surgery import Surgery, SurgeryNote, SurgerySlot, BlockDay
-from app.services.surgery_blackout_conflict import is_date_blacked_out
-from app.services.surgery_slot_conflict import overlapping_slot
+from app.services.surgery.blackout_conflict import is_date_blacked_out
+from app.services.surgery.slot_conflict import overlapping_slot
 from app.services.google_calendar_sync import upsert_event_for_surgery
 # Import the existing confirmation helper from patient_surgery — we don't
 # move it because it's still used by other endpoints there.

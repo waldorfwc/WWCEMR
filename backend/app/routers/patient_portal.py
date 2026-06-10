@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.surgery import PatientAuthAttempt, Surgery
 from app.services import patient_portal_auth as auth
-from app.services.surgery_klara_drafter import FACILITY_SHORT, arrival_time_str
+from app.services.surgery.klara_drafter import FACILITY_SHORT, arrival_time_str
 
 router = APIRouter(prefix="/patient/portal", tags=["patient-portal"])
 
@@ -565,7 +565,7 @@ def portal_payments_checkout(
 
 # ─── /{surgery_id}/slots + /{sid}/slots/{bd}/claim ─────────────
 
-from app.services.surgery_self_schedule import (
+from app.services.surgery.self_schedule import (
     claim_slot_for_patient, SelfScheduleError, schedule_gate_for_surgery,
 )
 
@@ -945,7 +945,7 @@ def portal_documents_instructions(
             detail="Instructions for this procedure aren't online yet — "
                    "please call our office at 240-252-2140.",
         )
-    from app.services.surgery_documents import fetch_instructions_pdf
+    from app.services.surgery.documents import fetch_instructions_pdf
     pdf_bytes = fetch_instructions_pdf(s.procedure_classification, kind)
     if pdf_bytes is None:
         raise HTTPException(
@@ -1150,7 +1150,7 @@ def portal_clearance_template(
             status_code=409,
             detail="Clearance isn't required for this surgery.",
         )
-    from app.services.surgery_uploads import stream_static_pdf
+    from app.services.surgery.uploads import stream_static_pdf
     pdf_bytes = stream_static_pdf("clearance/template.pdf")
     if pdf_bytes is None:
         raise HTTPException(
@@ -1186,7 +1186,7 @@ async def portal_clearance_upload(
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
     contents = await file.read()
-    from app.services.surgery_uploads import store_upload, UploadError
+    from app.services.surgery.uploads import store_upload, UploadError
     try:
         doc = store_upload(
             db, s, kind=kind,
@@ -1225,7 +1225,7 @@ async def portal_fmla_upload(
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
     contents = await file.read()
-    from app.services.surgery_uploads import store_upload, UploadError
+    from app.services.surgery.uploads import store_upload, UploadError
     try:
         doc = store_upload(
             db, s, kind="fmla_blank",
@@ -1259,7 +1259,7 @@ def portal_uploads(surgery_id: str, db: Session = Depends(get_db),
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
-    from app.services.surgery_uploads import signed_download_url
+    from app.services.surgery.uploads import signed_download_url
     docs = []
     for d in (s.documents or []):
         try:
@@ -1290,7 +1290,7 @@ def portal_fmla(surgery_id: str, db: Session = Depends(get_db),
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
     import os
-    from app.services.surgery_uploads import signed_download_url
+    from app.services.surgery.uploads import signed_download_url
     fee_cents = int(os.environ.get("FMLA_FEE_CENTS", "2500") or "2500")
     fee = Decimal(fee_cents) / Decimal(100)
 

@@ -156,7 +156,7 @@ def _pellet_stale_sweep():
     still-proposed dose lines. Returns stock for any pulled-but-not-inserted
     doses. Required so daily counts aren't permanently blocked."""
     try:
-        from app.services.pellet_stale_sweep import run_sweep_job
+        from app.services.pellet.stale_sweep import run_sweep_job
         run_sweep_job()
     except Exception as exc:
         import logging
@@ -180,7 +180,7 @@ def _surgery_release_sweep():
     and under-booked office procedure days 6 days out. Skipped on weekends."""
     if _is_weekend_today():
         return
-    from app.services.surgery_release_alerts import run_release_sweep
+    from app.services.surgery.release_alerts import run_release_sweep
     db = SessionLocal()
     try:
         run_release_sweep(db)
@@ -196,7 +196,7 @@ def _surgery_escalation_sweep():
     Skipped on Sat/Sun — accumulates over the weekend, fires Mon."""
     if _is_weekend_today():
         return
-    from app.services.surgery_escalations import run_escalation_sweep
+    from app.services.surgery.escalations import run_escalation_sweep
     db = SessionLocal()
     try:
         run_escalation_sweep(db)
@@ -303,7 +303,7 @@ def _reminder_job():
     """Phase I — daily patient surgery reminders at 8 AM."""
     db = SessionLocal()
     try:
-        from app.services.surgery_reminders import run_reminder_sweep
+        from app.services.surgery.reminders import run_reminder_sweep
         run_reminder_sweep(db)
     finally:
         db.close()

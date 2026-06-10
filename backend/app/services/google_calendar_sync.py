@@ -76,7 +76,7 @@ def _event_body(surgery: Surgery, slot: Optional[SurgerySlot] = None,
     facility_summary = facility_label
     if not facility_summary and surgery.selected_facility:
         try:
-            from app.services.surgery_klara_drafter import FACILITY_SHORT
+            from app.services.surgery.klara_drafter import FACILITY_SHORT
             facility_summary = FACILITY_SHORT.get(surgery.selected_facility,
                                                      surgery.selected_facility)
         except Exception:

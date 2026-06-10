@@ -321,7 +321,7 @@ def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
     # Time-overlap check, evaluated *after* the row lock so T2 sees any
     # slot T1 just committed. can_fit only counts cases by kind — it
     # doesn't catch two bookings at the same start_time.
-    from app.services.surgery_slot_conflict import overlapping_slot
+    from app.services.surgery.slot_conflict import overlapping_slot
     conflict = overlapping_slot(db, block_day.id, start_time, duration_minutes)
     if conflict:
         raise CapacityViolation(

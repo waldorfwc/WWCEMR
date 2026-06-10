@@ -20,7 +20,7 @@ from app.models.patient_sms import (
 )
 from app.models.surgery import Surgery
 from app.services.checklist_notifications import send_sms
-from app.services.surgery_klara_drafter import FACILITY_SHORT, arrival_time_str
+from app.services.surgery.klara_drafter import FACILITY_SHORT, arrival_time_str
 
 log = logging.getLogger(__name__)
 

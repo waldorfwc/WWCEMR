@@ -25,7 +25,7 @@ from reportlab.platypus import (
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.pellet import PelletCount, PelletCountLine, PelletLot
-from app.services.pellet_pdf_common import (
+from app.services.pellet.pdf_common import (
     PLUM, PLUM_LIGHT, INK, MUTED, RULE, GREEN, AMBER, RED, WHITE,
     LOC_LABEL as _LOC_LABEL,
     build_styles, fmt_ts as _ts, header_block, meta_table, footer_line,

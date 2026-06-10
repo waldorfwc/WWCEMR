@@ -52,11 +52,10 @@ from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.permissions.resolver import effective_tier
-from app.services.pellet_workflow import (
+from app.services.pellet.workflow import (
     spawn_milestones, default_price_for, patient_buckets,
 )
-from app.services import pellet_appt_import as appt_import
-from app.services import pellet_dose_suggest as dose_suggest
+from app.services.pellet import appt_import, dose_suggest
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 
@@ -377,7 +376,7 @@ def patch_dose_type(type_id: str, payload: DoseTypePatch,
                      override_reason: Optional[str] = None,
                      db: Session = Depends(get_db),
                      current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
-    from app.services.pellet_lock import ensure_unlocked_or_override
+    from app.services.pellet.lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
                                   action_label="dose-type edit")
@@ -744,7 +743,7 @@ def export_lots_xlsx(
     """Pellet inventory as an Excel workbook (one row per lot, grouped by
     dose type, with per-location balances + grand total)."""
     from fastapi.responses import Response
-    from app.services.pellet_inventory_export import build_xlsx
+    from app.services.pellet.inventory_export import build_xlsx
     rows = _collect_lots_for_export(db, hormone=hormone, location=location,
                                       search=search, in_stock_only=in_stock_only)
     meta = {"hormone": hormone, "location": location, "search": search,
@@ -774,7 +773,7 @@ def export_lots_pdf(
 ):
     """Pellet inventory as a print-friendly PDF (landscape letter)."""
     from fastapi.responses import Response
-    from app.services.pellet_inventory_export import build_pdf
+    from app.services.pellet.inventory_export import build_pdf
     rows = _collect_lots_for_export(db, hormone=hormone, location=location,
                                       search=search, in_stock_only=in_stock_only)
     meta = {"hormone": hormone, "location": location, "search": search,
@@ -823,7 +822,7 @@ def patch_lot(lot_id: str, payload: LotPatchIn,
     correct placeholder ('made-up') lot numbers after the fact. A reason is
     required for the audit trail. Blocked while the lot is part of an
     in-progress daily count."""
-    from app.services.pellet_lock import ensure_unlocked_or_override
+    from app.services.pellet.lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
                                   action_label="lot edit")
@@ -2236,7 +2235,7 @@ def run_stale_visit_sweep(
     """Manual trigger for the nightly stale-visit auto-cancel sweep. Useful
     when an admin wants to clear out the blocker list before starting a
     count without waiting for the next nightly run."""
-    from app.services.pellet_stale_sweep import sweep_stale_visits
+    from app.services.pellet.stale_sweep import sweep_stale_visits
     by = current_user.get("email") or "system"
     return sweep_stale_visits(db, actor=by)
 
@@ -2565,7 +2564,7 @@ def finish_count(count_id: str, payload: CountFinishIn,
     # the count). Stored as a PelletCountAttachment.
     pdf_id = None
     try:
-        from app.services.pellet_count_pdf import generate_count_pdf
+        from app.services.pellet.count_pdf import generate_count_pdf
         body, fname = generate_count_pdf(db, c)
         key = save_blob(prefix="pellet-attachments", body=body, filename=fname)
         att = PelletCountAttachment(
@@ -2622,7 +2621,7 @@ def regenerate_count_pdf(count_id: str,
     if c.status != "finished":
         raise HTTPException(status_code=409,
                             detail="PDF is only available for finished counts")
-    from app.services.pellet_count_pdf import generate_count_pdf
+    from app.services.pellet.count_pdf import generate_count_pdf
     by = current_user.get("email") or "system"
     body, fname = generate_count_pdf(db, c)
     key = save_blob(prefix="pellet-attachments", body=body, filename=fname)
@@ -3292,7 +3291,7 @@ def get_inventory_lock(db: Session = Depends(get_db),
                         current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
     """Returns the current pellet-inventory lock state. Visible to anyone
     with pellet:read so the UI can show a banner when locked."""
-    from app.services.pellet_lock import get_lock_state
+    from app.services.pellet.lock import get_lock_state
     return get_lock_state(db)
 
 
@@ -3309,7 +3308,7 @@ def set_inventory_lock(payload: InventoryLockIn,
     edits (lot metadata, dose-type catalog, historical visit fix-ups)
     return 423 unless the caller is a pellet:manage admin who passes an
     override_reason on the guarded call."""
-    from app.services.pellet_lock import set_lock_state
+    from app.services.pellet.lock import set_lock_state
     by = current_user.get("email") or "system"
     return set_lock_state(db, locked=payload.locked, by_email=by,
                             reason=payload.reason)
@@ -4300,7 +4299,7 @@ def create_historical_visit(patient_id: str, payload: HistoricalVisitIn,
     used. Does NOT affect inventory in any way — no dose lines are created,
     no milestones spawned, no audit-stock rows written. Use this for
     historical chart data import or manual backfill."""
-    from app.services.pellet_lock import ensure_unlocked_or_override
+    from app.services.pellet.lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
                                   action_label="historical visit create")
@@ -4355,7 +4354,7 @@ def patch_historical_visit(visit_id: str, payload: HistoricalVisitPatch,
                              override_reason: Optional[str] = None,
                              db: Session = Depends(get_db),
                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
-    from app.services.pellet_lock import ensure_unlocked_or_override
+    from app.services.pellet.lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
                                   action_label="historical visit edit")
@@ -4398,7 +4397,7 @@ def delete_historical_visit(visit_id: str,
                               override_reason: Optional[str] = None,
                               db: Session = Depends(get_db),
                               current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
-    from app.services.pellet_lock import ensure_unlocked_or_override
+    from app.services.pellet.lock import ensure_unlocked_or_override
     ensure_unlocked_or_override(db, current_user=current_user,
                                   override_reason=override_reason,
                                   action_label="historical visit delete")

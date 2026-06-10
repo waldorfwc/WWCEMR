@@ -33,11 +33,11 @@ from app.models.surgery import (
     BlockDay, PatientAuthAttempt, Surgery, SurgeryFile, SurgeryMilestone, SurgerySlot,
     SurgeryNote,
 )
-from app.services.surgery_block_schedule import (
+from app.services.surgery.block_schedule import (
     DURATIONS, can_fit, book_slot, CapacityViolation,
 )
-from app.services.surgery_slot_conflict import overlapping_slot
-from app.services.surgery_blackout_conflict import is_date_blacked_out
+from app.services.surgery.slot_conflict import overlapping_slot
+from app.services.surgery.blackout_conflict import is_date_blacked_out
 
 log = logging.getLogger(__name__)
 
@@ -297,7 +297,7 @@ def patient_slots(surgery_id: str, days_ahead: int = 180,
     end = today + timedelta(days=days_ahead)
 
     # Patients can't self-book within 5 business days. Scheduler bypasses this.
-    from app.services.surgery_date_picker import patient_min_pickable_date
+    from app.services.surgery.date_picker import patient_min_pickable_date
     min_date = patient_min_pickable_date(db, today=today)
 
     # Pull all upcoming block days for eligible facilities (with slots eager-loaded)
@@ -315,7 +315,7 @@ def patient_slots(surgery_id: str, days_ahead: int = 180,
             continue
         # Determine the next available start time within this block.
         # Use the shared helper so office lunch-break logic stays consistent.
-        from app.services.surgery_date_picker import _proposed_start_minutes
+        from app.services.surgery.date_picker import _proposed_start_minutes
         existing = sorted((sl for sl in (bd.slots or [])), key=lambda x: x.start_time)
         cursor = _proposed_start_minutes(bd)
         block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
@@ -398,8 +398,8 @@ def patient_pick(surgery_id: str, payload: PickPayload,
                   db: Session = Depends(get_db),
                   _token: str = Depends(require_patient_token)):
     """Initial date pick (refuses if a date is already set — use /reschedule)."""
-    from app.services.surgery_date_picker import pick_or_reschedule, DatePickerError
-    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    from app.services.surgery.date_picker import pick_or_reschedule, DatePickerError
+    from app.services.surgery.self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
            .options(joinedload(Surgery.milestones))
@@ -453,7 +453,7 @@ def patient_pick(surgery_id: str, payload: PickPayload,
         import logging
         logging.getLogger(__name__).warning("confirmation email failed: %s", e)
     try:
-        from app.services.surgery_scheduler_notify import notify_scheduler
+        from app.services.surgery.scheduler_notify import notify_scheduler
         notify_scheduler(db, event_kind="date_picked", surgery=s,
                           event_id=f"{s.id}:{now_utc_naive().isoformat()}")
     except Exception as e:
@@ -475,8 +475,8 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
     claims the new block_day_id. No reschedule-count limit — the system
     just tracks how many times each patient has rescheduled so staff can
     intervene if it gets out of hand."""
-    from app.services.surgery_date_picker import pick_or_reschedule, DatePickerError
-    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    from app.services.surgery.date_picker import pick_or_reschedule, DatePickerError
+    from app.services.surgery.self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
            .options(joinedload(Surgery.milestones))
@@ -529,7 +529,7 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
     try:
-        from app.services.surgery_scheduler_notify import notify_scheduler
+        from app.services.surgery.scheduler_notify import notify_scheduler
         notify_scheduler(db, event_kind="rescheduled", surgery=s,
                           event_id=f"{s.id}:{now_utc_naive().isoformat()}",
                           extra={"prev_date": prev_date_str})
@@ -600,7 +600,7 @@ def patient_select_slot(
     surgery could self-schedule via the magic link (the UI gated, the
     API did not). (Fable portal audit C2.)
     """
-    from app.services.surgery_self_schedule import (
+    from app.services.surgery.self_schedule import (
         claim_slot_for_patient, SelfScheduleError, schedule_gate_for_surgery,
     )
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -695,7 +695,7 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
         import logging
         logging.getLogger(__name__).warning("calendar sync failed: %s", e)
     try:
-        from app.services.surgery_scheduler_notify import notify_scheduler
+        from app.services.surgery.scheduler_notify import notify_scheduler
         notify_scheduler(db, event_kind="cancelled", surgery=s,
                           event_id=f"{s.id}:{now_utc_naive().isoformat()}",
                           extra={"fee_required": fee_required,
@@ -817,7 +817,7 @@ async def patient_upload_fmla(
         raise HTTPException(status_code=404)
 
     contents = await file.read()
-    from app.services.surgery_uploads import store_upload, UploadError
+    from app.services.surgery.uploads import store_upload, UploadError
     try:
         doc = store_upload(
             db, s, kind="fmla_completed",

@@ -37,7 +37,7 @@ from sqlalchemy.orm import Session
 from app.models.pellet import (
     PelletAuditEvent, PelletPatient, PelletVisit, PelletVisitMilestone,
 )
-from app.services.pellet_workflow import spawn_milestones, default_price_for
+from app.services.pellet.workflow import spawn_milestones, default_price_for
 
 
 LOCATION_MAP = {
