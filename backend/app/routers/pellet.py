@@ -12,10 +12,21 @@ from __future__ import annotations
 
 from datetime import date as _date, datetime, timedelta
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+# Quantity bounds at the API boundary (Fable audit #4).
+# Pydantic rejects out-of-range ints with 422 before the value can
+# corrupt stock arithmetic. No individual dose-level operation in
+# Schedule III workflow should ever cross these caps; if it does,
+# operators should split it into multiple receipts/transfers/etc.
+DoseQty   = Annotated[int, Field(gt=0,  le=999)]      # 1..999 doses
+CountQty  = Annotated[int, Field(ge=0,  le=9999)]    # 0..9999 doses (count snapshot can be large but bounded)
+PackSize  = Annotated[int, Field(gt=0,  le=99)]       # 1..99 pellets per pack
+PackCount = Annotated[int, Field(gt=0,  le=999)]      # 1..999 packs per receipt
 from sqlalchemy import desc, func, or_
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -900,9 +911,9 @@ def _order_dict(o: PelletOrder, *, include_lines: bool = True,
 
 class OrderLineIn(BaseModel):
     dose_type_id: str
-    pack_size:    int
-    pack_count:   int
-    unit_cost:    float
+    pack_size:    PackSize
+    pack_count:   PackCount
+    unit_cost:    Annotated[float, Field(ge=0, le=10_000)]
     notes:        Optional[str] = None
 
 
@@ -912,8 +923,8 @@ class OrderIn(BaseModel):
     expected_delivery_date: Optional[str] = None    # default order_date + 4 business days
     payment_method:         Optional[str] = None
     payment_confirmation:   Optional[str] = None
-    shipping_cost:          float = 0
-    tax:                    float = 0
+    shipping_cost:          Annotated[float, Field(ge=0, le=10_000)] = 0
+    tax:                    Annotated[float, Field(ge=0, le=10_000)] = 0
     is_replacement:         bool = False
     replaces_disposal_id:   Optional[str] = None
     notes:                  Optional[str] = None
@@ -1077,8 +1088,8 @@ class OrderPatchIn(BaseModel):
     expected_delivery_date: Optional[str] = None
     payment_method:         Optional[str] = None
     payment_confirmation:   Optional[str] = None
-    shipping_cost:          Optional[float] = None
-    tax:                    Optional[float] = None
+    shipping_cost:          Optional[Annotated[float, Field(ge=0, le=10_000)]] = None
+    tax:                    Optional[Annotated[float, Field(ge=0, le=10_000)]] = None
     notes:                  Optional[str] = None
     lines:                  Optional[list[OrderLineIn]] = None
 
@@ -1281,9 +1292,11 @@ class LotIn(BaseModel):
     dose_type_id:       str
     qualgen_lot_number: str
     expiration_date:    str   # YYYY-MM-DD
-    pack_size:          Optional[int] = None
-    packs_received:     Optional[int] = None
-    doses_received:     int
+    pack_size:          Optional[PackSize]  = None
+    packs_received:     Optional[PackCount] = None
+    # 1..9999 — a real receipt must include at least one dose; the
+    # upper bound is generous (a giant order is still bounded).
+    doses_received:     Annotated[int, Field(gt=0, le=9999)]
     notes:              Optional[str] = None
 
 
@@ -1388,6 +1401,17 @@ def create_receipt(payload: ReceiptIn,
         if not dt:
             raise HTTPException(status_code=404,
                                 detail=f"dose_type {lot.dose_type_id} not found")
+        # Cross-check: when pack_size and packs_received are both set,
+        # they must multiply to doses_received. Catches a mistyped
+        # dose count before it lands in inventory (Fable audit #4).
+        if (lot.pack_size and lot.packs_received and
+                lot.pack_size * lot.packs_received != lot.doses_received):
+            raise HTTPException(status_code=422,
+                detail=(f"lot {lot.qualgen_lot_number}: "
+                        f"pack_size × packs_received "
+                        f"({lot.pack_size} × {lot.packs_received} "
+                        f"= {lot.pack_size * lot.packs_received}) "
+                        f"must equal doses_received ({lot.doses_received})"))
         l = PelletLot(
             dose_type_id=dt.id,
             qualgen_lot_number=lot.qualgen_lot_number.strip(),
@@ -1655,7 +1679,7 @@ class TransferIn(BaseModel):
     lot_id:        str
     from_location: str
     to_location:   str
-    doses:         int
+    doses:         DoseQty
     witness_user:  Optional[str] = None
     notes:         Optional[str] = None
     # Optional: if the courier is taking custody at create time, fill these
@@ -1867,7 +1891,7 @@ def list_transfers(
 class DisposalIn(BaseModel):
     lot_id:       str
     location:     str
-    doses:        int
+    doses:        DoseQty
     reason:       str
     witness_user: Optional[str] = None
     notes:        Optional[str] = None
@@ -2140,7 +2164,7 @@ def start_count(payload: CountStartIn,
 
 class CountScanIn(BaseModel):
     lot_id:        str
-    counted_doses: int
+    counted_doses: CountQty
     # Required when the count's location is "all" AND the scanned lot
     # has stock at more than one location. Ignored when c.location is
     # a specific site (we just use c.location).
@@ -3888,7 +3912,7 @@ def _complete_visit_milestone_for_patient(db: Session, p: PelletPatient,
 
 class DoseLineIn(BaseModel):
     dose_type_id: str
-    quantity:     int = 1
+    quantity:     DoseQty = 1
     # Optional explicit lot override. When set, the named lot is used
     # instead of FIFO auto-pick. Lot must (a) belong to the dose_type and
     # (b) have enough stock at the visit's location.
@@ -4423,7 +4447,7 @@ def set_dose_card(visit_id: str, payload: DoseCardIn,
 
 class DoseAppendIn(BaseModel):
     dose_type_id: str
-    quantity:     int = 1
+    quantity:     DoseQty = 1
     notes:        Optional[str] = None
     # Optional explicit lot override. When set, the named lot is used
     # instead of FIFO auto-pick.
@@ -4989,13 +5013,13 @@ class ConfirmInsertLine(BaseModel):
     action:            str
     new_dose_type_id:  Optional[str] = None
     new_lot_id:        Optional[str] = None
-    new_quantity:      Optional[int] = None
+    new_quantity:      Optional[DoseQty] = None
 
 
 class ConfirmInsertAddition(BaseModel):
     """A brand-new dose the provider added in-room."""
     dose_type_id: str
-    quantity:     int = 1
+    quantity:     DoseQty = 1
     lot_id:       Optional[str] = None
     notes:        Optional[str] = None
 
@@ -5215,7 +5239,7 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
 class MidAddIn(BaseModel):
     dose_type_id: str
     lot_id:       str
-    quantity:     int = 1
+    quantity:     DoseQty = 1
     location:     str = "white_plains"
     notes:        Optional[str] = None
 
