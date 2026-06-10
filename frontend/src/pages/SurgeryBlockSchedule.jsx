@@ -451,6 +451,7 @@ function ScheduleForm({ onClose, qc }) {
 
 function BlackoutsTab({ blackouts, qc }) {
   const [adding, setAdding] = useState(false)
+  const [addingDay, setAddingDay] = useState(false)
   const today = new Date().toISOString().slice(0, 10)
   const upcoming = blackouts.filter(b => b.blackout_date >= today)
 
@@ -466,13 +467,102 @@ function BlackoutsTab({ blackouts, qc }) {
           <div className="text-xs text-gray-400 italic">No upcoming blackouts.</div>
         )}
       </div>
-      {!adding && (
-        <button className="btn-primary text-sm flex items-center gap-1"
-                onClick={() => setAdding(true)}>
-          <Plus size={13} /> Add PTO / blackout
-        </button>
+      {!adding && !addingDay && (
+        <div className="flex items-center gap-2">
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  onClick={() => setAdding(true)}>
+            <Plus size={13} /> Add PTO / blackout
+          </button>
+          <button className="btn-secondary text-sm flex items-center gap-1"
+                  onClick={() => setAddingDay(true)}>
+            <Plus size={13} /> Add surgery day
+          </button>
+        </div>
       )}
       {adding && <BlackoutForm onClose={() => setAdding(false)} qc={qc} />}
+      {addingDay && <AdHocBlockDayForm onClose={() => setAddingDay(false)} qc={qc} />}
+    </div>
+  )
+}
+
+
+function AdHocBlockDayForm({ onClose, qc }) {
+  const [date, setDate] = useState('')
+  const [facility, setFacility] = useState('office')
+  const [startTime, setStartTime] = useState('08:00')
+  const [endTime, setEndTime] = useState('16:00')
+  const [notes, setNotes] = useState('')
+  const [error, setError] = useState(null)
+
+  const create = useMutation({
+    mutationFn: () => api.post('/surgery/admin/block-days', {
+      block_date: date,
+      facility,
+      block_kind: 'addon',
+      start_time: startTime,
+      end_time:   endTime,
+      notes:      notes || null,
+    }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-block-days'] })
+      qc.invalidateQueries({ queryKey: ['surgery-block-dates'] })
+      qc.invalidateQueries({ queryKey: ['surgery-calendar'] })
+      onClose()
+    },
+    onError: (e) => setError(e?.response?.data?.detail || e.message),
+  })
+
+  const canSave = date && facility && startTime && endTime && startTime < endTime
+
+  return (
+    <div className="card">
+      <h3 className="text-sm font-semibold mb-2">Add Surgery Day</h3>
+      <p className="text-[11px] text-muted mb-2">
+        Mark a date as a one-off (ad-hoc) surgery day so coordinators can book
+        cases there. Use for vacation make-ups, extra hospital days, etc.
+      </p>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <Field label="Date *">
+          <input type="date" className="input text-sm" value={date}
+                 onChange={e => setDate(e.target.value)} />
+        </Field>
+        <Field label="Facility *">
+          <select className="input text-sm" value={facility}
+                  onChange={e => setFacility(e.target.value)}>
+            <option value="office">Office</option>
+            <option value="medstar">MedStar</option>
+            <option value="crmc">CRMC</option>
+          </select>
+        </Field>
+        <Field label="Start time *">
+          <input type="time" className="input text-sm" value={startTime}
+                 onChange={e => setStartTime(e.target.value)} />
+        </Field>
+        <Field label="End time *">
+          <input type="time" className="input text-sm" value={endTime}
+                 onChange={e => setEndTime(e.target.value)} />
+        </Field>
+        <div className="col-span-2">
+          <Field label="Notes">
+            <input className="input text-sm" value={notes}
+                   onChange={e => setNotes(e.target.value)}
+                   placeholder="e.g. make-up day after July 4 closure" />
+          </Field>
+        </div>
+      </div>
+      {error && (
+        <div className="text-[11px] text-red-700 mt-2">{error}</div>
+      )}
+      <div className="flex justify-end gap-2 mt-3">
+        <button className="btn-secondary text-sm" onClick={onClose}
+                disabled={create.isPending}>
+          Cancel
+        </button>
+        <button className="btn-primary text-sm" onClick={() => create.mutate()}
+                disabled={!canSave || create.isPending}>
+          {create.isPending ? 'Saving…' : 'Add surgery day'}
+        </button>
+      </div>
     </div>
   )
 }

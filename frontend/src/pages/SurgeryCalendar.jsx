@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, ChevronLeft, ChevronRight, Calendar as CalIcon } from 'lucide-react'
+import {
+  ArrowLeft, ChevronLeft, ChevronRight, Calendar as CalIcon,
+  X, Plus, User as UserIcon,
+} from 'lucide-react'
 import api, { fmt } from '../utils/api'
 
 
@@ -182,6 +185,7 @@ export function WeeklyCalendar({ compact = false }) {
 export function MonthlyCalendar() {
   const navigate = useNavigate()
   const [anchor, setAnchor] = useState(() => isoDate(new Date()))
+  const [openDay, setOpenDay] = useState(null)    // YYYY-MM-DD selected
   const gridStart = useMemo(() => startOfMonthGrid(anchor), [anchor])
   const gridEnd = useMemo(() => addDays(gridStart, 41), [gridStart])  // 6 rows × 7 cols - 1
 
@@ -192,6 +196,20 @@ export function MonthlyCalendar() {
     }).then(r => r.data),
     keepPreviousData: true,
   })
+
+  // Days that are allocated as surgery days (have at least one BlockDay).
+  // Non-surgery days get visually dimmed.
+  const { data: blockDatesData } = useQuery({
+    queryKey: ['surgery-block-dates', gridStart, gridEnd],
+    queryFn: () => api.get('/surgery/admin/block-dates', {
+      params: { start: gridStart, end: gridEnd },
+    }).then(r => r.data),
+    keepPreviousData: true,
+  })
+  const blockDateSet = useMemo(
+    () => new Set(blockDatesData?.dates || []),
+    [blockDatesData]
+  )
 
   // Build day → surgeries map.
   const byDay = useMemo(() => {
@@ -235,33 +253,279 @@ export function MonthlyCalendar() {
         {days.map(iso => {
           const surgs = byDay[iso] || []
           const isToday = iso === isoDate(new Date())
-          const dim = !inSameMonth(iso, anchor)
+          const dimMonth = !inSameMonth(iso, anchor)
+          const isSurgeryDay = blockDateSet.has(iso)
+          // Days without a BlockDay get visually dimmed so coordinators
+          // can see at a glance which dates are even bookable.
+          const dim = dimMonth || !isSurgeryDay
           return (
-            <div key={iso}
-                 className={`min-h-[110px] border-r border-b border-border-subtle p-1 ${
-                   dim ? 'bg-gray-50 text-gray-400' : 'bg-white'
-                 } ${isToday ? 'ring-2 ring-plum-400 ring-inset' : ''}`}>
-              <div className="text-[11px] font-semibold mb-1">{iso.slice(-2)}</div>
+            <button key={iso}
+                    type="button"
+                    onClick={() => setOpenDay(iso)}
+                    title={isSurgeryDay
+                      ? `Open ${iso} schedule`
+                      : `${iso} — not a surgery day. Click to add one.`}
+                    className={`min-h-[110px] border-r border-b border-border-subtle p-1 text-left ${
+                      dim ? 'bg-gray-100 text-gray-400' : 'bg-white'
+                    } ${isToday ? 'ring-2 ring-plum-400 ring-inset' : ''}
+                       ${isSurgeryDay
+                         ? 'hover:bg-plum-50/40 cursor-pointer'
+                         : 'hover:bg-plum-50/30 cursor-pointer'} transition-colors`}>
+              <div className="text-[11px] font-semibold mb-1">
+                {iso.slice(-2)}
+                {!isSurgeryDay && !dimMonth && (
+                  <span className="ml-1 text-[9px] text-gray-400 normal-case font-normal">
+                    no block
+                  </span>
+                )}
+              </div>
               {surgs.slice(0, 6).map(s => {
                 const fac = FACILITY_BADGE[s.facility] || { label: s.facility, tone: 'bg-gray-100 text-gray-700 border-gray-200' }
                 return (
-                  <button key={s.id} onClick={() => navigate(`/surgery/${s.id}`)}
+                  <span key={s.id}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/surgery/${s.id}`) }}
                           title={s.patient_name}
-                          className={`block w-full text-left text-[10px] truncate border rounded mb-0.5 px-1 py-0.5 ${fac.tone} hover:opacity-80`}>
+                          className={`block w-full text-[10px] truncate border rounded mb-0.5 px-1 py-0.5 ${fac.tone} hover:opacity-80 cursor-pointer`}>
                     <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${INDICATOR_TONE[s.indicator] || 'bg-gray-400'}`} />
                     {s.patient_name}
-                  </button>
+                  </span>
                 )
               })}
               {surgs.length > 6 && (
-                <button onClick={() => navigate(`/surgery/calendar?view=week&anchor=${iso}`)}
-                        className="text-[10px] text-plum-700 hover:underline">
+                <span onClick={(e) => { e.stopPropagation(); navigate(`/surgery/calendar?view=week&anchor=${iso}`) }}
+                        className="text-[10px] text-plum-700 hover:underline cursor-pointer">
                   +{surgs.length - 6} more
-                </button>
+                </span>
               )}
-            </div>
+            </button>
           )
         })}
+      </div>
+
+      {openDay && (
+        <DayDetailDrawer date={openDay} onClose={() => setOpenDay(null)} />
+      )}
+    </div>
+  )
+}
+
+
+// Side-drawer showing one day's full schedule. Per-facility columns
+// each with a 30-min grid. Booked slots link out to the surgery; open
+// slots offer a picker of unscheduled surgeries to book.
+function DayDetailDrawer({ date, onClose }) {
+  const navigate = useNavigate()
+  const qc = useQueryClient()
+  const { data, isLoading } = useQuery({
+    queryKey: ['surgery-calendar-day', date],
+    queryFn: () => api.get(`/surgery/admin/calendar-day/${date}`).then(r => r.data),
+  })
+  const [pickerSlot, setPickerSlot] = useState(null)
+    // { blockDayId, facility, time, durationMinutes? }
+
+  const bds = data?.block_days || []
+  const blackouts = data?.blackouts || []
+  const unscheduled = data?.unscheduled_surgeries || []
+  const dayObj = new Date(date + 'T00:00:00')
+  const weekday = dayObj.toLocaleDateString('en-US', { weekday: 'long' })
+  const pretty = dayObj.toLocaleDateString('en-US',
+    { month: 'short', day: 'numeric', year: 'numeric' })
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-5xl bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between z-10">
+          <div>
+            <h2 className="text-[15px] font-semibold text-gray-900">{weekday}, {pretty}</h2>
+            <div className="text-[11px] text-muted">{date}</div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {blackouts.length > 0 && (
+            <div className="text-[12px] bg-amber-50 border border-amber-200 rounded p-2 space-y-0.5">
+              <div className="font-semibold text-amber-900">Blackouts on this date</div>
+              {blackouts.map(b => (
+                <div key={b.id} className="text-amber-800">
+                  • {b.label || b.reason}
+                  {b.facility && ` — ${b.facility}`}
+                  {b.owner_email && ` — ${b.owner_email}`}
+                  {b.notes && <span className="text-amber-700"> · {b.notes}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          {isLoading ? (
+            <div className="text-sm text-muted italic">Loading…</div>
+          ) : bds.length === 0 ? (
+            <div className="text-sm bg-gray-50 border border-gray-200 rounded p-4 text-center">
+              <div className="text-gray-600 mb-2">
+                Not allocated as a surgery day.
+              </div>
+              <div className="text-[11px] text-gray-500">
+                Use Block Schedule → Blackouts → <em>Add surgery day</em> to make this date bookable.
+              </div>
+            </div>
+          ) : (
+            <div className={`grid gap-3 ${
+              bds.length === 1 ? 'grid-cols-1' :
+              bds.length === 2 ? 'grid-cols-2' : 'grid-cols-3'
+            }`}>
+              {bds.map(bd => (
+                <FacilityColumn key={bd.id} bd={bd}
+                  onPickOpen={(time) => setPickerSlot({
+                    blockDayId: bd.id, facility: bd.facility, time,
+                  })}
+                  onPickBooked={(surgeryId) => navigate(`/surgery/${surgeryId}`)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {pickerSlot && (
+          <BookSurgeryPicker slot={pickerSlot}
+            unscheduled={unscheduled.filter(s =>
+              !pickerSlot.facility ||
+              (s.eligible_facilities || []).includes(pickerSlot.facility)
+            )}
+            date={date}
+            onBooked={() => {
+              setPickerSlot(null)
+              qc.invalidateQueries({ queryKey: ['surgery-calendar-day', date] })
+              qc.invalidateQueries({ queryKey: ['surgery-calendar'] })
+              qc.invalidateQueries({ queryKey: ['surgery-block-dates'] })
+            }}
+            onClose={() => setPickerSlot(null)}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+
+function FacilityColumn({ bd, onPickOpen, onPickBooked }) {
+  const fac = FACILITY_BADGE[bd.facility] ||
+    { label: bd.facility, tone: 'bg-gray-100 text-gray-700 border-gray-200' }
+  return (
+    <div className="border border-gray-200 rounded">
+      <div className={`px-2 py-1.5 border-b border-gray-200 flex items-baseline justify-between ${fac.tone}`}>
+        <strong className="text-[12px]">{fac.label}</strong>
+        <span className="text-[10px] opacity-80">
+          {bd.start_time?.slice(0, 5)}–{bd.end_time?.slice(0, 5)}
+          {bd.is_addon && ' · add-on'}
+        </span>
+      </div>
+      <ul className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto">
+        {(bd.grid || []).map(row => (
+          <li key={row.time}
+              className={`flex items-baseline gap-2 px-2 py-1 text-[12px] ${
+                row.booking ? 'bg-plum-50/30' : 'hover:bg-green-50/60 cursor-pointer'
+              }`}
+              onClick={() => row.booking
+                ? row.booking.surgery_id && onPickBooked(row.booking.surgery_id)
+                : onPickOpen(row.time)}>
+            <span className="font-mono text-[11px] text-gray-500 w-12 shrink-0">
+              {row.time}
+            </span>
+            {row.booking ? (
+              <span className="flex-1 truncate">
+                <UserIcon size={10} className="inline mr-1 text-plum-600" />
+                <span className="font-medium">{row.booking.patient_name || '?'}</span>
+                <span className="ml-1 text-[10px] text-gray-500">
+                  {row.booking.chart_number ? `· ${row.booking.chart_number}` : ''}
+                  {row.booking.duration_minutes ? ` · ${row.booking.duration_minutes}m` : ''}
+                </span>
+              </span>
+            ) : (
+              <span className="flex-1 text-[11px] text-green-700 italic flex items-center gap-1">
+                <Plus size={9} /> available
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+
+function BookSurgeryPicker({ slot, unscheduled, date, onBooked, onClose }) {
+  const [error, setError] = useState(null)
+  const book = useMutation({
+    mutationFn: ({ surgeryId, duration, kind }) =>
+      api.post(`/surgery/${surgeryId}/book-slot`, {
+        block_day_id:     slot.blockDayId,
+        start_time:       slot.time,
+        duration_minutes: duration,
+        procedure_kind:   kind,
+      }).then(r => r.data),
+    onSuccess: () => onBooked(),
+    onError: (e) => setError(e?.response?.data?.detail || e.message),
+  })
+
+  function bookSurgery(s) {
+    const duration = s.estimated_minutes || 60   // sane default
+    // procedure_kind keys match the backend can_fit() rules
+    const cls = s.procedure_classification || 'minor'
+    const kind = slot.facility === 'office' ? 'office' : cls
+    book.mutate({ surgeryId: s.id, duration, kind })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+          <div>
+            <div className="text-[13px] font-semibold">Book a surgery at {slot.time}</div>
+            <div className="text-[10px] text-muted">
+              {date} · {slot.facility} — {unscheduled.length} eligible surgery(ies)
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-4 space-y-2">
+          {unscheduled.length === 0 ? (
+            <div className="text-[12px] text-muted italic">
+              No unscheduled surgeries match {slot.facility}.
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {unscheduled.map(s => (
+                <li key={s.id} className="py-2 flex items-baseline justify-between gap-2">
+                  <div className="text-[12px]">
+                    <div className="font-medium">{s.patient_name}</div>
+                    <div className="text-[10px] text-gray-500">
+                      chart {s.chart_number || '—'}
+                      {s.estimated_minutes ? ` · ~${s.estimated_minutes}m` : ''}
+                      {s.procedure_classification ? ` · ${s.procedure_classification}` : ''}
+                      {s.preop_date ? ` · preop ${s.preop_date}` : ''}
+                    </div>
+                  </div>
+                  <button className="btn-primary text-[11px] disabled:opacity-50"
+                          disabled={book.isPending}
+                          onClick={() => bookSurgery(s)}>
+                    Book
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {error && (
+            <div className="text-[12px] text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              {error}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

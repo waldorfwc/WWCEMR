@@ -2656,6 +2656,198 @@ def list_block_days(
     return {"days": out}
 
 
+# ─── Calendar day-detail + ad-hoc surgery day creation ─────────────
+
+@router.get("/admin/block-dates")
+def list_block_dates(
+    start: str = Query(..., description="YYYY-MM-DD"),
+    end:   str = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
+):
+    """Light-weight: just the set of dates in [start, end] that have at
+    least one BlockDay. Powers the calendar's grey-out behavior for
+    days that aren't allocated as surgery days."""
+    try:
+        s = datetime.strptime(start[:10], "%Y-%m-%d").date()
+        e = datetime.strptime(end[:10],   "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="start/end must be YYYY-MM-DD")
+    rows = (db.query(BlockDay.block_date)
+              .filter(BlockDay.block_date >= s, BlockDay.block_date <= e)
+              .distinct().all())
+    return {"dates": sorted({str(r[0]) for r in rows})}
+
+
+@router.get("/admin/calendar-day/{date_str}")
+def calendar_day_detail(
+    date_str: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
+):
+    """One day's full schedule. Returns per-facility BlockDays with
+    operational hours and the 30-minute grid filled in (booked slots
+    show the patient; open slots are empty). Also returns any
+    blackouts for that date and a list of unscheduled surgeries the
+    user can drop into open slots."""
+    try:
+        d = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="date must be YYYY-MM-DD")
+
+    bds = (db.query(BlockDay)
+             .options(joinedload(BlockDay.slots))
+             .filter(BlockDay.block_date == d)
+             .order_by(BlockDay.facility).all())
+
+    blackouts = (db.query(SurgeryBlackoutDay)
+                   .filter(SurgeryBlackoutDay.blackout_date == d)
+                   .all())
+
+    days_out = []
+    booked_surgery_ids: list = []
+    for bd in bds:
+        for sl in bd.slots:
+            if sl.surgery_id:
+                booked_surgery_ids.append(sl.surgery_id)
+    if booked_surgery_ids:
+        booked = {str(s.id): s
+                  for s in db.query(Surgery)
+                              .filter(Surgery.id.in_(booked_surgery_ids)).all()}
+    else:
+        booked = {}
+
+    for bd in bds:
+        # Build the 30-min grid. Each row: {start_time, surgery_id?, patient_name?, ...}
+        slots_by_minute: dict[int, dict] = {}
+        for sl in bd.slots:
+            mins = sl.start_time.hour * 60 + sl.start_time.minute
+            sid = str(sl.surgery_id) if sl.surgery_id else None
+            s = booked.get(sid) if sid else None
+            slots_by_minute[mins] = {
+                "slot_id":          str(sl.id),
+                "surgery_id":       sid,
+                "patient_name":     s.patient_name if s else None,
+                "patient_chart":    s.chart_number if s else None,
+                "duration_minutes": sl.duration_minutes,
+                "procedure_kind":   sl.procedure_kind,
+                "surgeon_email":    s.surgeon_email if s else None,
+                "status":           s.status if s else None,
+            }
+        # 30-min increments covering bd.start_time -> bd.end_time
+        grid = []
+        cur = bd.start_time.hour * 60 + bd.start_time.minute
+        end_min = bd.end_time.hour * 60 + bd.end_time.minute
+        while cur < end_min:
+            h, m = divmod(cur, 60)
+            booking = slots_by_minute.get(cur)
+            grid.append({
+                "time":    f"{h:02d}:{m:02d}",
+                "booking": booking,   # None = open slot
+            })
+            cur += 30
+        days_out.append({
+            "id":         str(bd.id),
+            "facility":   bd.facility,
+            "block_kind": bd.block_kind,
+            "start_time": str(bd.start_time),
+            "end_time":   str(bd.end_time),
+            "is_addon":   bd.is_addon,
+            "notes":      bd.notes,
+            "grid":       grid,
+        })
+
+    # Unscheduled surgeries that could fit in this day's facilities
+    facilities_with_blocks = {bd.facility for bd in bds}
+    unscheduled = []
+    if facilities_with_blocks:
+        candidates = (db.query(Surgery)
+                        .filter(Surgery.status.in_(("new", "in_progress", "confirmed")),
+                                Surgery.scheduled_date.is_(None))
+                        .order_by(Surgery.preop_date.asc().nullslast(),
+                                  Surgery.created_at.asc()).all())
+        for s in candidates:
+            eligible = set(s.eligible_facilities or [])
+            if eligible & facilities_with_blocks:
+                unscheduled.append({
+                    "id":            str(s.id),
+                    "patient_name":  s.patient_name,
+                    "chart_number":  s.chart_number,
+                    "preop_date":    str(s.preop_date) if s.preop_date else None,
+                    "eligible_facilities": list(eligible),
+                    "selected_facility":   s.selected_facility,
+                    "estimated_minutes":   s.estimated_minutes,
+                    "procedure_classification": s.procedure_classification,
+                    "status":              s.status,
+                })
+
+    return {
+        "date":         str(d),
+        "block_days":   days_out,
+        "blackouts":    [
+            {"id": str(b.id), "scope": b.scope, "reason": b.reason,
+             "label": b.label, "owner_email": b.owner_email,
+             "facility": b.facility, "notes": b.notes}
+            for b in blackouts
+        ],
+        "unscheduled_surgeries": unscheduled,
+    }
+
+
+class BlockDayCreateIn(BaseModel):
+    block_date:  str          # YYYY-MM-DD
+    facility:    str          # medstar | crmc | office (etc.)
+    block_kind:  str = "addon"   # 'addon' for ad-hoc; 'regular' for materialize
+    start_time:  str          # HH:MM
+    end_time:    str          # HH:MM
+    notes:       Optional[str] = None
+
+
+@router.post("/admin/block-days", status_code=201)
+def create_block_day(payload: BlockDayCreateIn,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    """Create a one-off (ad-hoc) BlockDay so coordinators can mark a
+    date as a surgery day without editing the recurring BlockSchedule.
+    Use for: vacation make-ups, extra hospital days, weekend cases."""
+    if payload.facility not in ("medstar", "crmc", "office",
+                                  "wwc_office_white_plains"):
+        raise HTTPException(status_code=422, detail="invalid facility")
+    try:
+        bd_date = datetime.strptime(payload.block_date[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="block_date must be YYYY-MM-DD")
+    try:
+        st = datetime.strptime(payload.start_time[:5], "%H:%M").time()
+        et = datetime.strptime(payload.end_time[:5],   "%H:%M").time()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="start_time/end_time must be HH:MM")
+    if st >= et:
+        raise HTTPException(status_code=422, detail="start_time must be before end_time")
+
+    existing = (db.query(BlockDay)
+                  .filter(BlockDay.facility == payload.facility,
+                          BlockDay.block_date == bd_date).first())
+    if existing:
+        raise HTTPException(status_code=409,
+            detail=f"A BlockDay already exists for {payload.facility} on {bd_date}")
+
+    bd = BlockDay(
+        facility=payload.facility,
+        block_date=bd_date,
+        block_kind=payload.block_kind or "addon",
+        start_time=st,
+        end_time=et,
+        is_addon=(payload.block_kind != "regular"),
+        notes=payload.notes,
+        created_by=current_user.get("email"),
+    )
+    db.add(bd); db.commit(); db.refresh(bd)
+    return {"id": str(bd.id), "block_date": str(bd.block_date),
+            "facility": bd.facility,
+            "start_time": str(bd.start_time), "end_time": str(bd.end_time)}
+
+
 # ─── Blackout days (US holidays + PTO) ──────────────────────────────
 
 class BlackoutIn(BaseModel):
