@@ -28,7 +28,7 @@ from app.models.surgery import (
 )
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
-from app.permissions.dependencies import requires_tier
+from app.permissions.dependencies import requires_tier, requires_super_admin
 from app.services.audit_service import log_action
 from app.services.surgery_slot_conflict import overlapping_slot
 from app.services.surgery_blackout_conflict import is_date_blacked_out
@@ -3920,6 +3920,85 @@ def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
         "payment_id":   str(pay.id),
         "amount_paid":  float(s.amount_paid or 0),
         "outstanding":  round(outstanding, 2),
+    }
+
+
+class ManualPaymentVoidPayload(BaseModel):
+    reason: str
+
+
+@router.post("/{surgery_id}/payments/{payment_id}/void")
+def void_manual_payment(surgery_id: str, payment_id: str,
+                          payload: ManualPaymentVoidPayload,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(requires_super_admin())):
+    """Void a previously-recorded manual offset (ModMed Pay / check / cash /
+    other). Super-admin only. Soft-marks the SurgeryPayment row as voided,
+    rolls amount_paid back, and writes both a SurgeryNote and a
+    SurgeryPaymentHistory entry. This is the legitimate refund path for
+    manual entries — Stripe-backed payments must be refunded through Stripe.
+    """
+    from app.models.stripe_payment import SurgeryPayment, SurgeryPaymentHistory
+    from app.models.surgery import SurgeryNote
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required")
+
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    pay = (db.query(SurgeryPayment)
+             .filter(SurgeryPayment.id == payment_id,
+                     SurgeryPayment.surgery_id == s.id).first())
+    if pay is None:
+        raise HTTPException(status_code=404, detail="payment not found")
+    if pay.kind != "manual_offset":
+        raise HTTPException(status_code=409,
+                            detail="only manual_offset payments can be voided here — "
+                                   "Stripe payments must be refunded through Stripe")
+    if pay.status == "voided":
+        raise HTTPException(status_code=409, detail="payment is already voided")
+
+    before_status = pay.status
+    amt = Decimal(str(pay.amount_paid or 0))
+    pay.status = "voided"
+    pay.amount_refunded = (pay.amount_refunded or Decimal(0)) + amt
+    pay.refunded_at = datetime.utcnow()
+    s.amount_paid = Decimal(str(s.amount_paid or 0)) - amt
+
+    db.add(SurgeryPaymentHistory(
+        payment_id=pay.id,
+        actor=current_user.get("email") or "system",
+        event_type="admin.manual_offset_voided",
+        before_status=before_status,
+        after_status="voided",
+        detail={"reason": reason, "amount_voided": str(amt)},
+    ))
+    db.add(SurgeryNote(
+        surgery_id=s.id,
+        created_by=current_user.get("email") or "system",
+        content=(f"Manual payment voided: ${float(amt):.2f} (payment {pay.id}). "
+                 f"Reason: {reason}. "
+                 f"New amount paid: ${float(s.amount_paid):.2f}."),
+    ))
+    db.commit(); db.refresh(s); db.refresh(pay)
+
+    log_action(
+        db,
+        action="PAYMENT_VOIDED",
+        resource_type="surgery_payment",
+        resource_id=str(pay.id),
+        patient_id=s.chart_number or None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=f"Voided manual payment ${float(amt):.2f} on surgery {s.id}: {reason}",
+    )
+
+    return {
+        "payment_id":   str(pay.id),
+        "status":       pay.status,
+        "amount_voided": float(amt),
+        "amount_paid":  float(s.amount_paid or 0),
     }
 
 
