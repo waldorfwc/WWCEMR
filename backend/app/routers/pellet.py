@@ -27,6 +27,9 @@ DoseQty   = Annotated[int, Field(gt=0,  le=999)]      # 1..999 doses
 CountQty  = Annotated[int, Field(ge=0,  le=9999)]    # 0..9999 doses (count snapshot can be large but bounded)
 PackSize  = Annotated[int, Field(gt=0,  le=99)]       # 1..99 pellets per pack
 PackCount = Annotated[int, Field(gt=0,  le=999)]      # 1..999 packs per receipt
+# Money: rejects NaN/inf (Pydantic float defaults allow them; Fable
+# audit #15 noted Decimal(str(NaN)) poisons grand_total arithmetic).
+MoneyAmt  = Annotated[float, Field(ge=0, le=10_000, allow_inf_nan=False)]
 from sqlalchemy import desc, func, or_, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -913,7 +916,7 @@ class OrderLineIn(BaseModel):
     dose_type_id: str
     pack_size:    PackSize
     pack_count:   PackCount
-    unit_cost:    Annotated[float, Field(ge=0, le=10_000)]
+    unit_cost:    MoneyAmt
     notes:        Optional[str] = None
 
 
@@ -923,8 +926,8 @@ class OrderIn(BaseModel):
     expected_delivery_date: Optional[str] = None    # default order_date + 4 business days
     payment_method:         Optional[str] = None
     payment_confirmation:   Optional[str] = None
-    shipping_cost:          Annotated[float, Field(ge=0, le=10_000)] = 0
-    tax:                    Annotated[float, Field(ge=0, le=10_000)] = 0
+    shipping_cost:          MoneyAmt = 0
+    tax:                    MoneyAmt = 0
     is_replacement:         bool = False
     replaces_disposal_id:   Optional[str] = None
     notes:                  Optional[str] = None
@@ -1088,8 +1091,8 @@ class OrderPatchIn(BaseModel):
     expected_delivery_date: Optional[str] = None
     payment_method:         Optional[str] = None
     payment_confirmation:   Optional[str] = None
-    shipping_cost:          Optional[Annotated[float, Field(ge=0, le=10_000)]] = None
-    tax:                    Optional[Annotated[float, Field(ge=0, le=10_000)]] = None
+    shipping_cost:          Optional[MoneyAmt] = None
+    tax:                    Optional[MoneyAmt] = None
     notes:                  Optional[str] = None
     lines:                  Optional[list[OrderLineIn]] = None
 
@@ -1268,7 +1271,7 @@ def download_order_attachment(order_id: str, att_id: str,
 @router.delete("/orders/{order_id}/attachments/{att_id}")
 def delete_order_attachment(order_id: str, att_id: str,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+                              current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     att = (db.query(PelletOrderAttachment)
              .filter(PelletOrderAttachment.id == att_id,
                      PelletOrderAttachment.order_id == order_id).first())
@@ -1620,12 +1623,20 @@ def download_receipt_attachment(receipt_id: str, att_id: str,
 @router.delete("/receipts/{receipt_id}/attachments/{att_id}")
 def delete_receipt_attachment(receipt_id: str, att_id: str,
                                 db: Session = Depends(get_db),
-                                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+                                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     att = (db.query(PelletReceiptAttachment)
              .filter(PelletReceiptAttachment.id == att_id,
                      PelletReceiptAttachment.receipt_id == receipt_id).first())
     if not att:
         raise HTTPException(status_code=404, detail="attachment not found")
+    # Block deletion of chain-of-custody documents after a receipt is
+    # manifest-verified — once verification is on the books, the
+    # manifest/invoice is the DEA paper trail. (Fable audit #9.)
+    receipt = (db.query(PelletReceipt)
+                  .filter(PelletReceipt.id == receipt_id).first())
+    if receipt and receipt.manifest_verified:
+        raise HTTPException(status_code=409,
+                            detail="cannot delete attachment after the receipt is manifest-verified")
     # NB: we do not delete the underlying blob — orphans are cheap and
     # the audit trail is preserved.
     by = current_user.get("email") or "system"
@@ -4809,7 +4820,10 @@ class BagFillLineIn(BaseModel):
 
 class BagFillIn(BaseModel):
     lines:    list[BagFillLineIn]
-    location: str = "white_plains"
+    # location is sourced from the visit row (see _require_visit_location).
+    # Field is kept as Optional only to absorb older clients that still send
+    # it; the visit's stored location wins regardless. (Fable audit #8.)
+    location: Optional[str] = None
 
 
 @router.post("/visits/{visit_id}/fill-bag")
@@ -4825,8 +4839,7 @@ def fill_bag(visit_id: str, payload: BagFillIn,
            .filter(PelletVisit.id == visit_id).first())
     if not v:
         raise HTTPException(status_code=404, detail="visit not found")
-    if payload.location not in PELLET_LOCATIONS:
-        raise HTTPException(status_code=422, detail="invalid location")
+    visit_location = _require_visit_location(v)
 
     by = current_user.get("email") or "system"
     by_dose = {str(d.id): d for d in v.doses}
@@ -4846,11 +4859,11 @@ def fill_bag(visit_id: str, payload: BagFillIn,
             raise HTTPException(status_code=422,
                                 detail=f"lot {lot.qualgen_lot_number} doesn't match dose {d.dose_type.label}")
 
-        stock = _get_or_create_stock(db, lot.id, payload.location)
+        stock = _get_or_create_stock(db, lot.id, visit_location)
         if stock.doses_on_hand < d.quantity:
             raise HTTPException(status_code=409,
                                 detail=f"Insufficient stock for {d.dose_type.label} "
-                                       f"lot {lot.qualgen_lot_number} at {payload.location}: "
+                                       f"lot {lot.qualgen_lot_number} at {visit_location}: "
                                        f"have {stock.doses_on_hand}, need {d.quantity}")
         _adjust_stock(db, stock, -(d.quantity))
         d.lot_id = lot.id
@@ -4859,7 +4872,7 @@ def fill_bag(visit_id: str, payload: BagFillIn,
         d.pulled_by = by
 
         _audit(db, actor=by, action="dose_pulled",
-                lot_id=lot.id, location=payload.location,
+                lot_id=lot.id, location=visit_location,
                 delta_doses=-d.quantity,
                 summary=f"Pulled {d.quantity} {d.dose_type.label} lot {lot.qualgen_lot_number} for visit {v.id}",
                 detail={"visit_id": str(v.id), "patient": v.patient.patient_name if v.patient else None,
@@ -4991,7 +5004,16 @@ def confirm_doses_as_planned(visit_id: str,
     pulled_count = 0
     for d in proposed:
         if d.status == "planned":
-            lot, stock = _earliest_lot_with_stock(db, d.dose_type_id, d.quantity, location)
+            # Stock can be consumed between the validate pass and here by a
+            # concurrent visit. Surface a clean 409 instead of a TypeError
+            # 500 on the None return. (Fable audit #11.)
+            pair = _earliest_lot_with_stock(db, d.dose_type_id, d.quantity, location)
+            if not pair:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(f"Stock for {d.dose_type.label if d.dose_type else ''} at "
+                            f"{location} drained before the pull could complete — try again."))
+            lot, stock = pair
             d.lot_id = lot.id
             _adjust_stock(db, stock, -(d.quantity))
             d.pulled_at = now
@@ -5198,7 +5220,13 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
                 lot, stock = _specific_lot_with_stock(
                     db, line.new_lot_id, new_dt.id, new_qty, location)
             else:
-                lot, stock = _earliest_lot_with_stock(db, new_dt.id, new_qty, location)
+                pair = _earliest_lot_with_stock(db, new_dt.id, new_qty, location)
+                if not pair:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=(f"Stock for {new_dt.label} at {location} drained "
+                                f"before the swap could complete — try again."))
+                lot, stock = pair
             _adjust_stock(db, stock, -(new_qty))
             next_pos += 1
             new_d = PelletVisitDose(
@@ -5224,7 +5252,13 @@ def confirm_insertion(visit_id: str, payload: ConfirmInsertionIn,
             lot, stock = _specific_lot_with_stock(
                 db, add.lot_id, new_dt.id, add.quantity, location)
         else:
-            lot, stock = _earliest_lot_with_stock(db, new_dt.id, add.quantity, location)
+            pair = _earliest_lot_with_stock(db, new_dt.id, add.quantity, location)
+            if not pair:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(f"Stock for {new_dt.label} at {location} drained "
+                            f"before the additional dose could be pulled — try again."))
+            lot, stock = pair
         _adjust_stock(db, stock, -(add.quantity))
         next_pos += 1
         new_d = PelletVisitDose(
@@ -5273,7 +5307,9 @@ class MidAddIn(BaseModel):
     dose_type_id: str
     lot_id:       str
     quantity:     DoseQty = 1
-    location:     str = "white_plains"
+    # location is sourced from the visit row (Fable audit #8). Kept
+    # Optional only to absorb older clients still sending it.
+    location:     Optional[str] = None
     notes:        Optional[str] = None
 
 
@@ -5287,8 +5323,7 @@ def add_dose_mid_procedure(visit_id: str, payload: MidAddIn,
            .filter(PelletVisit.id == visit_id).first())
     if not v:
         raise HTTPException(status_code=404, detail="visit not found")
-    if payload.location not in PELLET_LOCATIONS:
-        raise HTTPException(status_code=422, detail="invalid location")
+    visit_location = _require_visit_location(v)
     dt = db.query(PelletDoseType).filter(PelletDoseType.id == payload.dose_type_id).first()
     if not dt:
         raise HTTPException(status_code=404, detail="dose type not found")
@@ -5297,10 +5332,10 @@ def add_dose_mid_procedure(visit_id: str, payload: MidAddIn,
         raise HTTPException(status_code=422, detail="lot doesn't match dose type")
 
     by = current_user.get("email") or "system"
-    stock = _get_or_create_stock(db, lot.id, payload.location)
+    stock = _get_or_create_stock(db, lot.id, visit_location)
     if stock.doses_on_hand < payload.quantity:
         raise HTTPException(status_code=409,
-                            detail=f"Insufficient stock at {payload.location}")
+                            detail=f"Insufficient stock at {visit_location}")
     _adjust_stock(db, stock, -(payload.quantity))
 
     pos = max([d.position for d in v.doses], default=0) + 1
@@ -5312,7 +5347,7 @@ def add_dose_mid_procedure(visit_id: str, payload: MidAddIn,
     )
     db.add(d); db.flush()
     _audit(db, actor=by, action="dose_added_mid",
-            lot_id=lot.id, location=payload.location,
+            lot_id=lot.id, location=visit_location,
             delta_doses=-payload.quantity,
             summary=f"Mid-procedure add: {payload.quantity} {dt.label} for visit {v.id}",
             detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
@@ -5325,7 +5360,9 @@ class VisitDoseDisposalIn(BaseModel):
     visit_dose_id: str
     reason:        str   # dropped | broken | other
     witness_user:  Optional[str] = None
-    location:      str = "white_plains"
+    # location is sourced from the visit row (Fable audit #8). Kept
+    # Optional only to absorb older clients still sending it.
+    location:      Optional[str] = None
     notes:         Optional[str] = None
 
 
@@ -5346,6 +5383,7 @@ def dispose_visit_dose(visit_id: str, payload: VisitDoseDisposalIn,
            .filter(PelletVisit.id == visit_id).first())
     if not v:
         raise HTTPException(status_code=404, detail="visit not found")
+    visit_location = _require_visit_location(v)
     d = next((x for x in v.doses if str(x.id) == payload.visit_dose_id), None)
     if not d:
         raise HTTPException(status_code=404, detail="visit dose not found")
@@ -5362,7 +5400,7 @@ def dispose_visit_dose(visit_id: str, payload: VisitDoseDisposalIn,
             raise HTTPException(status_code=422, detail="witness must differ")
 
     disposal = PelletDisposal(
-        lot_id=d.lot_id, location=payload.location, doses=d.quantity,
+        lot_id=d.lot_id, location=visit_location, doses=d.quantity,
         reason=payload.reason, performed_by=by,
         witness_user=payload.witness_user, notes=payload.notes,
     )
@@ -5373,7 +5411,7 @@ def dispose_visit_dose(visit_id: str, payload: VisitDoseDisposalIn,
 
     _audit(db, actor=by, action="dose_disposed_mid",
             lot_id=d.lot_id, disposal_id=disposal.id,
-            location=payload.location,
+            location=visit_location,
             summary=f"Mid-procedure disposal: {d.quantity} {d.dose_type.label} ({payload.reason})",
             detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
                     "reason": payload.reason, "witness": payload.witness_user,
