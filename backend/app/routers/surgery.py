@@ -2848,6 +2848,53 @@ def create_block_day(payload: BlockDayCreateIn,
             "start_time": str(bd.start_time), "end_time": str(bd.end_time)}
 
 
+@router.delete("/admin/block-days/{block_day_id}", status_code=204)
+def delete_block_day(block_day_id: str,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    """Remove an ad-hoc BlockDay (or any unbooked BlockDay). Refuses
+    if any SurgerySlot still references it — those surgeries would be
+    left with a scheduled_date pointing at a deleted BlockDay. Use the
+    surgery's reschedule / cancel flow to free the slots first, then
+    re-delete the day.
+
+    For *recurring* BlockDays materialized from a BlockSchedule, the
+    next materialize sweep will re-create them; delete the underlying
+    BlockSchedule first if you want the deletion to stick."""
+    bd = (db.query(BlockDay)
+            .options(joinedload(BlockDay.slots))
+            .filter(BlockDay.id == block_day_id).first())
+    if not bd:
+        raise HTTPException(status_code=404, detail="BlockDay not found")
+    if bd.slots:
+        n = len(bd.slots)
+        raise HTTPException(status_code=409,
+            detail=(f"This BlockDay has {n} booked slot(s). Cancel or "
+                    "reschedule those surgeries first, then delete the day."))
+
+    from app.services.audit_service import log_action
+    log_action(
+        db,
+        action="SURGERY_BLOCK_DAY_DELETED",
+        resource_type="surgery_block_day",
+        resource_id=str(bd.id),
+        user_name=current_user.get("email") or "system",
+        description=(f"Deleted {bd.facility} BlockDay {bd.block_date} "
+                     f"({bd.start_time}-{bd.end_time}, kind={bd.block_kind})"),
+        new_values={
+            "facility":   bd.facility,
+            "block_date": str(bd.block_date),
+            "block_kind": bd.block_kind,
+            "start_time": str(bd.start_time),
+            "end_time":   str(bd.end_time),
+            "is_addon":   bool(bd.is_addon),
+            "notes":      bd.notes,
+        },
+    )
+    db.delete(bd); db.commit()
+    return None
+
+
 # ─── Blackout days (US holidays + PTO) ──────────────────────────────
 
 class BlackoutIn(BaseModel):

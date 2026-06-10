@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Calendar as CalIcon,
-  X, Plus, User as UserIcon,
+  X, Plus, User as UserIcon, Trash2,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 
@@ -381,6 +381,9 @@ function DayDetailDrawer({ date, onClose }) {
                     blockDayId: bd.id, facility: bd.facility, time,
                   })}
                   onPickBooked={(surgeryId) => navigate(`/surgery/${surgeryId}`)}
+                  onDeleted={() => qc.invalidateQueries({
+                    queryKey: ['surgery-calendar-day', date],
+                  })}
                 />
               ))}
             </div>
@@ -409,16 +412,44 @@ function DayDetailDrawer({ date, onClose }) {
 }
 
 
-function FacilityColumn({ bd, onPickOpen, onPickBooked }) {
+function FacilityColumn({ bd, onPickOpen, onPickBooked, onDeleted }) {
+  const qc = useQueryClient()
   const fac = FACILITY_BADGE[bd.facility] ||
     { label: bd.facility, tone: 'bg-gray-100 text-gray-700 border-gray-200' }
+  // Booked rows = grid entries that have a booking. Only allow delete
+  // when there are zero booked slots (the backend will also enforce
+  // this with 409, but disabling the button is friendlier UX).
+  const bookedCount = (bd.grid || []).filter(r => r.booking).length
+  const deleteBd = useMutation({
+    mutationFn: () => api.delete(`/surgery/admin/block-days/${bd.id}`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-block-dates'] })
+      qc.invalidateQueries({ queryKey: ['surgery-block-days'] })
+      qc.invalidateQueries({ queryKey: ['surgery-calendar'] })
+      onDeleted?.(bd.id)
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
+  })
   return (
     <div className="border border-gray-200 rounded">
       <div className={`px-2 py-1.5 border-b border-gray-200 flex items-baseline justify-between ${fac.tone}`}>
         <strong className="text-[12px]">{fac.label}</strong>
-        <span className="text-[10px] opacity-80">
+        <span className="text-[10px] opacity-80 flex items-center gap-1.5">
           {bd.start_time?.slice(0, 5)}–{bd.end_time?.slice(0, 5)}
           {bd.is_addon && ' · add-on'}
+          <button type="button"
+                  title={bookedCount > 0
+                    ? `Cancel or reschedule the ${bookedCount} booked surgery(ies) before deleting this day`
+                    : 'Delete this surgery day'}
+                  disabled={bookedCount > 0 || deleteBd.isPending}
+                  onClick={() => {
+                    if (confirm(`Delete ${fac.label} ${bd.start_time?.slice(0, 5)}–${bd.end_time?.slice(0, 5)}?`)) {
+                      deleteBd.mutate()
+                    }
+                  }}
+                  className="ml-1 p-0.5 rounded hover:bg-red-100 hover:text-red-700 disabled:opacity-30 disabled:cursor-not-allowed">
+            <Trash2 size={11} />
+          </button>
         </span>
       </div>
       <ul className="divide-y divide-gray-100 max-h-[60vh] overflow-y-auto">
