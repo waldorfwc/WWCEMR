@@ -165,6 +165,43 @@ def _require_visit_location(v: PelletVisit) -> str:
     return loc
 
 
+def _validate_witness(db: Session, witness_user: Optional[str],
+                       actor_email: str, *, controlled: bool) -> str:
+    """Validate a controlled-substance witness against the User table.
+
+    Fable audit #6: witness_user used to be free-text — any string that
+    differed from the actor would pass "two-person verification". This
+    helper makes the witness a real, active user account different from
+    the actor; Schedule III control becomes meaningful.
+
+    Returns the canonical (User.email) lower-case identifier on success.
+    Raises 422 with a precise reason on failure.
+
+    For non-controlled flows (controlled=False), an empty/None witness is
+    silently allowed and returned unchanged — non-controlled disposals
+    don't legally require a witness.
+    """
+    from app.models.user import User as _User
+    raw = (witness_user or "").strip()
+    if not controlled and not raw:
+        return raw
+    if not raw:
+        raise HTTPException(status_code=422,
+                            detail="witness_user required for controlled (Schedule III)")
+    if raw.lower() == (actor_email or "").lower():
+        raise HTTPException(status_code=422,
+                            detail="witness must be a different user than the actor")
+    u = (db.query(_User)
+           .filter(func.lower(_User.email) == raw.lower()).first())
+    if not u:
+        raise HTTPException(status_code=422,
+                            detail=f"witness '{raw}' is not a known user account")
+    if not u.is_active:
+        raise HTTPException(status_code=422,
+                            detail=f"witness '{u.email}' is no longer active — pick another witness")
+    return u.email
+
+
 def _get_or_create_stock(db: Session, lot_id, location: str) -> PelletStock:
     s = (db.query(PelletStock)
            .filter(PelletStock.lot_id == lot_id,
@@ -1466,14 +1503,8 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
     has_controlled = any(l.dose_type and l.dose_type.is_controlled for l in lots)
     by = current_user.get("email") or "system"
 
-    if has_controlled:
-        if not (payload.witness_user or "").strip():
-            raise HTTPException(status_code=422,
-                                detail="witness_user required: this receipt contains "
-                                       "controlled (Schedule III) testosterone")
-        if payload.witness_user.strip().lower() == by.lower():
-            raise HTTPException(status_code=422,
-                                detail="witness must be a different user than the verifier")
+    witness = _validate_witness(db, payload.witness_user, by,
+                                  controlled=has_controlled)
 
     # Atomic claim: only one thread flips the flag. A second concurrent
     # caller's UPDATE matches 0 rows because manifest_verified is now true,
@@ -1543,9 +1574,9 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
 
     _audit(db, actor=by, action="manifest_verified",
            receipt_id=r.id, location=r.location,
-           detail={"witness": payload.witness_user, "lots": len(lots)},
+           detail={"witness": witness, "lots": len(lots)},
            summary=f"Manifest verified for receipt {r.qualgen_order_number or r.id} "
-                   f"by {by}" + (f" witness {payload.witness_user}" if payload.witness_user else ""))
+                   f"by {by}" + (f" witness {witness}" if witness else ""))
     db.commit()
     return {"ok": True, "verified_at": r.manifest_verified_at.isoformat()}
 
@@ -1730,14 +1761,9 @@ def create_transfer(payload: TransferIn,
         raise HTTPException(status_code=404, detail="lot not found")
 
     by = current_user.get("email") or "system"
-
-    if l.dose_type and l.dose_type.is_controlled:
-        if not (payload.witness_user or "").strip():
-            raise HTTPException(status_code=422,
-                                detail="witness_user required for controlled (Schedule III) transfers")
-        if payload.witness_user.strip().lower() == by.lower():
-            raise HTTPException(status_code=422,
-                                detail="witness must be a different user")
+    is_controlled = bool(l.dose_type and l.dose_type.is_controlled)
+    witness = _validate_witness(db, payload.witness_user, by,
+                                  controlled=is_controlled)
 
     src = _get_or_create_stock(db, l.id, payload.from_location)
     if src.doses_on_hand < payload.doses:
@@ -1750,7 +1776,6 @@ def create_transfer(payload: TransferIn,
     # straight to in_transit. For Sch III the courier must differ from the
     # packer (separate signatures on the chain of custody).
     courier = (payload.courier_user or "").strip() or None
-    is_controlled = bool(l.dose_type and l.dose_type.is_controlled)
     if courier and is_controlled and courier.lower() == by.lower():
         raise HTTPException(status_code=422,
                             detail="courier must be a different user than the packer (Schedule III)")
@@ -1772,7 +1797,7 @@ def create_transfer(payload: TransferIn,
     _audit(db, actor=by, action="transfer_sent",
            lot_id=l.id, transfer_id=t.id, location=payload.from_location,
            delta_doses=-payload.doses,
-           detail={"witness": payload.witness_user,
+           detail={"witness": witness,
                    "to": payload.to_location, "doses": payload.doses,
                    "courier_at_pack": courier},
            summary=(f"Transfer packed: {payload.doses} {l.dose_type.label if l.dose_type else ''} "
@@ -1856,13 +1881,8 @@ def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
                                    "has signed for custody (use 'Take custody' first)")
 
     by = current_user.get("email") or "system"
-    if is_controlled:
-        if not (payload.witness_user or "").strip():
-            raise HTTPException(status_code=422,
-                                detail="witness_user required for controlled (Schedule III)")
-        if payload.witness_user.strip().lower() == by.lower():
-            raise HTTPException(status_code=422,
-                                detail="witness must be a different user than the receiver")
+    witness = _validate_witness(db, payload.witness_user, by,
+                                  controlled=is_controlled)
 
     # Atomic claim — same pattern as verify_manifest. Two concurrent
     # /transfers/{id}/receive calls (double-click on the receive button)
@@ -1890,7 +1910,7 @@ def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
     _audit(db, actor=by, action="transfer_received",
            lot_id=t.lot_id, transfer_id=t.id, location=t.to_location,
            delta_doses=t.doses,
-           detail={"witness": payload.witness_user},
+           detail={"witness": witness},
            summary=f"Transfer received {t.doses} → {t.to_location}")
     db.commit()
     return {"ok": True, "received_at": t.received_at.isoformat()}
@@ -1963,13 +1983,8 @@ def create_disposal(payload: DisposalIn,
 
     by = current_user.get("email") or "system"
     is_controlled = bool(l.dose_type and l.dose_type.is_controlled)
-    if is_controlled:
-        if not (payload.witness_user or "").strip():
-            raise HTTPException(status_code=422,
-                                detail="witness_user required for controlled (Schedule III) disposal")
-        if payload.witness_user.strip().lower() == by.lower():
-            raise HTTPException(status_code=422,
-                                detail="witness must be a different user")
+    witness = _validate_witness(db, payload.witness_user, by,
+                                  controlled=is_controlled)
 
     s = _get_or_create_stock(db, l.id, payload.location)
     if s.doses_on_hand < payload.doses:
@@ -1981,14 +1996,14 @@ def create_disposal(payload: DisposalIn,
     d = PelletDisposal(
         lot_id=l.id, location=payload.location, doses=payload.doses,
         reason=payload.reason, performed_by=by,
-        witness_user=payload.witness_user, notes=payload.notes,
+        witness_user=witness or None, notes=payload.notes,
     )
     db.add(d); db.flush()
 
     _audit(db, actor=by, action="disposal",
            lot_id=l.id, disposal_id=d.id, location=payload.location,
            delta_doses=-payload.doses,
-           detail={"reason": payload.reason, "witness": payload.witness_user,
+           detail={"reason": payload.reason, "witness": witness,
                    "controlled": is_controlled},
            summary=f"Disposal: {payload.doses} {l.dose_type.label if l.dose_type else ''} "
                    f"({payload.reason}) at {payload.location}")
@@ -2175,14 +2190,8 @@ def start_count(payload: CountStartIn,
     will_see_controlled = any(
         s.lot.dose_type.is_controlled for s in snapshot if s.lot and s.lot.dose_type
     )
-    witness_start = (payload.witness_user or "").strip() or None
-    if will_see_controlled:
-        if not witness_start:
-            raise HTTPException(status_code=422,
-                                detail="witness_user required: count will include Schedule III testosterone")
-        if witness_start.lower() == by.lower():
-            raise HTTPException(status_code=422,
-                                detail="witness must be a different user than the starter")
+    witness_start = _validate_witness(db, payload.witness_user, by,
+                                        controlled=will_see_controlled) or None
 
     c = PelletCount(location=location, started_by=by, notes=payload.notes,
                     scope=payload.scope, witness_user_start=witness_start)
@@ -2306,13 +2315,8 @@ def finish_count(count_id: str, payload: CountFinishIn,
         l.lot and l.lot.dose_type and l.lot.dose_type.is_controlled
         for l in (c.lines or [])
     )
-    if has_controlled:
-        if not (payload.witness_user or "").strip():
-            raise HTTPException(status_code=422,
-                                detail="witness_user required: count includes Schedule III testosterone")
-        if payload.witness_user.strip().lower() == by.lower():
-            raise HTTPException(status_code=422,
-                                detail="witness must be a different user")
+    witness = _validate_witness(db, payload.witness_user, by,
+                                  controlled=has_controlled) or None
 
     # Reconcile: any variance with notes is acceptable. If variance != 0
     # AND no notes, block finish so the user has to justify.
@@ -2368,13 +2372,13 @@ def finish_count(count_id: str, payload: CountFinishIn,
     c.status = "finished"
     c.finished_at = datetime.utcnow()
     c.finished_by = by
-    c.witness_user = payload.witness_user
+    c.witness_user = witness
     if payload.notes:
         c.notes = ((c.notes or "") + "\n" + payload.notes).strip()
 
     _audit(db, actor=by, action="count_finished",
            count_id=c.id, location=c.location,
-           detail={"witness": payload.witness_user,
+           detail={"witness": witness,
                    "lines": len(c.lines or [])},
            summary=f"Count finished at {c.location}")
     db.commit()
@@ -5392,17 +5396,13 @@ def dispose_visit_dose(visit_id: str, payload: VisitDoseDisposalIn,
                             detail=f"dose status is {d.status}, can't dispose")
     by = current_user.get("email") or "system"
     is_controlled = bool(d.dose_type and d.dose_type.is_controlled)
-    if is_controlled:
-        if not (payload.witness_user or "").strip():
-            raise HTTPException(status_code=422,
-                                detail="witness_user required (Schedule III)")
-        if payload.witness_user.strip().lower() == by.lower():
-            raise HTTPException(status_code=422, detail="witness must differ")
+    witness = _validate_witness(db, payload.witness_user, by,
+                                  controlled=is_controlled)
 
     disposal = PelletDisposal(
         lot_id=d.lot_id, location=visit_location, doses=d.quantity,
         reason=payload.reason, performed_by=by,
-        witness_user=payload.witness_user, notes=payload.notes,
+        witness_user=witness or None, notes=payload.notes,
     )
     db.add(disposal); db.flush()
     d.status = "disposed"
@@ -5414,7 +5414,7 @@ def dispose_visit_dose(visit_id: str, payload: VisitDoseDisposalIn,
             location=visit_location,
             summary=f"Mid-procedure disposal: {d.quantity} {d.dose_type.label} ({payload.reason})",
             detail={"visit_id": str(v.id), "visit_dose_id": str(d.id),
-                    "reason": payload.reason, "witness": payload.witness_user,
+                    "reason": payload.reason, "witness": witness,
                     "controlled": is_controlled})
     db.commit(); db.refresh(v)
     return _visit_dict(v)
