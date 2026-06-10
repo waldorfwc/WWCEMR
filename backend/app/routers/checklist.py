@@ -61,7 +61,14 @@ class UserRolePayload(BaseModel):
 def my_today(date_str: Optional[str] = Query(None, alias="date"),
              db: Session = Depends(get_db),
              current_user: dict = Depends(get_current_user)):
-    target = _date.fromisoformat(date_str) if date_str else _date.today()
+    # Guard against bad date strings — fromisoformat raises ValueError
+    # on malformed input which would otherwise propagate as a 500
+    # instead of the more useful 422. (Fable cross-cutting audit #24.)
+    try:
+        target = _date.fromisoformat(date_str) if date_str else _date.today()
+    except ValueError:
+        raise HTTPException(status_code=422,
+                             detail="date must be YYYY-MM-DD")
     email = current_user.get("email")
     if not email:
         raise HTTPException(status_code=401, detail="not authenticated")
@@ -84,12 +91,35 @@ def my_today(date_str: Optional[str] = Query(None, alias="date"),
     }
 
 
+def _assert_task_owner_or_manage(db: Session, instance_id: str,
+                                    current_user: dict) -> TaskInstance:
+    """Owner-or-Manage check shared by answer/skip/reopen — anyone with
+    My Checklist:Manage can act on any task, owners can act on their own.
+    Without this, any logged-in user used to answer or skip a
+    colleague's accountability task. (Fable cross-cutting audit #22.)
+    """
+    from app.permissions.catalog import Module, Tier
+    from app.permissions.resolver import effective_tier
+    inst = db.query(TaskInstance).filter(TaskInstance.id == instance_id).first()
+    if inst is None:
+        raise HTTPException(status_code=404, detail="task instance not found")
+    me_email = (current_user.get("email") or "").lower().strip()
+    if (inst.assigned_to_email or "").lower().strip() != me_email:
+        if effective_tier(db, me_email, Module.MY_CHECKLIST) < Tier.MANAGE:
+            raise HTTPException(
+                status_code=403,
+                detail="Only the task owner or a My Checklist:Manage user "
+                       "can act on this task.")
+    return inst
+
+
 @router.post("/instances/{instance_id}/answer")
 def answer(instance_id: str, payload: AnswerPayload,
            db: Session = Depends(get_db),
            current_user: dict = Depends(get_current_user)):
     """Answer a checklist task Yes or No. When No is given, the task's
     follow-up question (count or reason) must be provided too."""
+    _assert_task_owner_or_manage(db, instance_id, current_user)
     try:
         inst = checklist_service.record_answer(
             db, instance_id,
@@ -114,6 +144,7 @@ def answer(instance_id: str, payload: AnswerPayload,
 def skip(instance_id: str, payload: SkipPayload,
          db: Session = Depends(get_db),
          current_user: dict = Depends(get_current_user)):
+    _assert_task_owner_or_manage(db, instance_id, current_user)
     inst = checklist_service.mark_skipped(db, instance_id,
                                           by_email=current_user.get("email"),
                                           reason=payload.reason)
@@ -763,7 +794,11 @@ def submit_pain_point(payload: PainPointPayload,
     body = (payload.body or "").strip()
     if not body:
         raise HTTPException(status_code=422, detail="body required")
-    occurred = _date.fromisoformat(payload.occurred_on) if payload.occurred_on else _date.today()
+    try:
+        occurred = _date.fromisoformat(payload.occurred_on) if payload.occurred_on else _date.today()
+    except ValueError:
+        raise HTTPException(status_code=422,
+                             detail="occurred_on must be YYYY-MM-DD")
     submitter_email = (current_user.get("email") or "").lower().strip()
     p = PainPoint(
         user_email=submitter_email,
@@ -788,6 +823,7 @@ def submit_pain_point(payload: PainPointPayload,
 def _notify_owner_new_pain_point(db: Session, *, submitter: str,
                                     submitter_name: Optional[str],
                                     body: str, occurred_on) -> None:
+    from html import escape as _esc
     from app.services.checklist_notifications import send_email
     owner_email = _pain_point_owner_email(db)
     owner = db.query(User).filter(User.email == owner_email).first()
@@ -795,11 +831,18 @@ def _notify_owner_new_pain_point(db: Session, *, submitter: str,
         return
     who = submitter_name or submitter.split("@")[0]
     subject = f"WWC · Pain point from {who}"
+    # HTML-escape every user-controlled value so a body containing
+    # `<script>` (or PHI styled as raw HTML) can't execute / be
+    # rendered as markup in the email client. (Fable cross-cutting
+    # audit #7.) Pain point bodies routinely contain PHI ("Mrs. Jones
+    # was upset that..."); escaping is the minimum-necessary
+    # protection. (We still email the body — switching to a link-only
+    # email is a separate UX call.)
     body_html = (
-        f"<p><strong>{who}</strong> logged a pain point on "
-        f"{occurred_on.isoformat()}:</p>"
+        f"<p><strong>{_esc(who)}</strong> logged a pain point on "
+        f"{_esc(occurred_on.isoformat())}:</p>"
         f"<blockquote style='border-left:3px solid #7B2D5E; padding-left:8px; "
-        f"color:#444; margin:8px 0;'>{body}</blockquote>"
+        f"color:#444; margin:8px 0;'>{_esc(body)}</blockquote>"
         f"<p><a href='https://gw.waldorfwomenscare.com/my-checklist' "
         f"style='color:#7B2D5E'>Open My Checklist →</a></p>"
     )
@@ -813,19 +856,22 @@ def _notify_owner_new_pain_point(db: Session, *, submitter: str,
 
 def _notify_submitter_of_response(db: Session, *, pp: PainPoint) -> None:
     """Email the submitter that the owner has responded."""
+    from html import escape as _esc
     from app.services.checklist_notifications import send_email
     u = db.query(User).filter(User.email == pp.user_email).first()
     if not u or not u.is_active or not u.notify_email:
         return
     who = u.display_name or (u.email or '').split('@')[0]
     subject = "WWC · Response to your pain point"
+    # See _notify_owner_new_pain_point — all user-controlled fields
+    # HTML-escaped before interpolation. (Fable cross-cutting #7.)
     body_html = (
-        f"<p>Hi {who},</p>"
-        f"<p>Your pain point from <strong>{pp.occurred_on}</strong> has a response:</p>"
+        f"<p>Hi {_esc(who)},</p>"
+        f"<p>Your pain point from <strong>{_esc(str(pp.occurred_on))}</strong> has a response:</p>"
         f"<blockquote style='border-left:3px solid #999; padding-left:8px; color:#444;'>"
-        f"<em>Your pain point:</em><br/>{pp.body}</blockquote>"
+        f"<em>Your pain point:</em><br/>{_esc(pp.body or '')}</blockquote>"
         f"<blockquote style='border-left:3px solid #7B2D5E; padding-left:8px; color:#444;'>"
-        f"<em>Response from {pp.reviewed_by or 'owner'}:</em><br/>{pp.response or ''}"
+        f"<em>Response from {_esc(pp.reviewed_by or 'owner')}:</em><br/>{_esc(pp.response or '')}"
         f"</blockquote>"
         f"<p><a href='https://gw.waldorfwomenscare.com/my-checklist' "
         f"style='color:#7B2D5E'>Open My Checklist →</a> to acknowledge.</p>"

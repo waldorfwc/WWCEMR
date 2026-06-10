@@ -67,21 +67,29 @@ class AllocationItem(BaseModel):
 PaymentCreate.model_rebuild()
 
 
+# Bounded money for AR write payloads — rejects NaN/Inf/negatives at
+# the API boundary so a typed `"NaN"` or `-100` can't land in
+# Numeric(10,2) and poison Claim.balance > 0 filters or AR summary.
+# (Fable cross-cutting audit #8.)
+ArMoney = Decimal
+
+
 class StatusUpdate(BaseModel):
     workflow_state: Optional[str] = None
     assigned_to: Optional[str] = None
-    written_off_amount: Optional[Decimal] = None
+    written_off_amount: Optional[ArMoney] = Field(
+        default=None, ge=0, le=99_999_999.99)
     written_off_reason: Optional[str] = None
 
 
 class EobDetailsUpdate(BaseModel):
     """Manually entered EOB fields. Any field omitted/null is preserved."""
-    allowed_amount: Optional[Decimal] = None
-    contractual_adjustment: Optional[Decimal] = None
-    copay: Optional[Decimal] = None
-    deductible: Optional[Decimal] = None
-    coinsurance: Optional[Decimal] = None
-    patient_balance: Optional[Decimal] = None
+    allowed_amount: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    contractual_adjustment: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    copay: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    deductible: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    coinsurance: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    patient_balance: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
     eob_notes: Optional[str] = None
 
 
@@ -261,7 +269,7 @@ def list_active_claims(
     sort: str = "balance_desc",                 # age_desc | balance_desc | dos_desc | tf_asc
     include_aged: bool = False,                 # include claims with DOS > 2 years
     page: int = 1,
-    per_page: int = 50,
+    per_page: int = Query(50, ge=1, le=200),    # cap at 200 — was unbounded
     current_user: dict = Depends(get_current_user),
 ):
     q = db.query(ActiveClaim)
@@ -502,6 +510,17 @@ def get_active_claim(claim_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="claim not found")
 
     pat = db.query(Patient).filter(Patient.patient_id == c.patient_external_id).first()
+
+    # PHI access logging (Fable cross-cutting audit #9). Returns DOB,
+    # policy numbers, diagnoses, link to insurance card images, etc.
+    actor = current_user.get("email")
+    log_action(
+        db, action="ACTIVE_CLAIM_VIEW",
+        resource_type="active_claim", resource_id=str(c.id),
+        patient_id=c.patient_external_id or None,
+        user_id=(actor or "").lower() or None, user_name=actor,
+        description=f"Viewed active claim {c.claim_number or c.id}",
+    )
 
     return {
         **_claim_to_dict(c, pat),
@@ -869,6 +888,18 @@ def list_id_insurance_cards(claim_id: str,
     if not chart:
         return {"chart_number": None, "documents": []}
 
+    # PHI access logging — ID + insurance card images are the most
+    # access-sensitive PHI we serve. Audit who looks at whose cards.
+    # (Fable cross-cutting audit #9.)
+    actor = current_user.get("email")
+    log_action(
+        db, action="ID_INSURANCE_CARDS_LISTED",
+        resource_type="active_claim", resource_id=str(c.id),
+        patient_id=chart,
+        user_id=(actor or "").lower() or None, user_name=actor,
+        description=f"Listed ID/insurance cards for claim {c.claim_number or c.id}",
+    )
+
     cat_lower = func.lower(IntakeDocument.doc_category)
     type_lower = func.lower(IntakeDocument.file_type)
     docs = (
@@ -919,6 +950,17 @@ def download_document(claim_id: str, doc_id: str,
     if is_legacy_local_path(doc.file_path):
         raise HTTPException(status_code=410,
                             detail="This file is from before the cloud migration and is no longer available.")
+    # PHI document download audit (Fable cross-cutting #9).
+    c = db.query(ActiveClaim).filter(ActiveClaim.id == claim_id).first()
+    actor = current_user.get("email")
+    log_action(
+        db, action="ACTIVE_CLAIM_DOC_DOWNLOAD",
+        resource_type="active_claim_document", resource_id=str(doc.id),
+        patient_id=(c.patient_external_id if c else None),
+        user_id=(actor or "").lower() or None, user_name=actor,
+        description=(f"Downloaded {doc.filename} on active claim "
+                     f"{(c.claim_number if c else claim_id)}"),
+    )
     return serve_blob(
         local_path=None,
         gcs_object=doc.file_path,
@@ -1121,19 +1163,25 @@ class AdjustmentCodeItem(BaseModel):
     """One CARC/RARC adjustment code attached to a service line."""
     group_code: str = "CO"           # CO, PR, OA, PI, CR
     reason_code: str                  # numeric/alphanumeric code
-    amount: Decimal = Decimal("0")
+    amount: ArMoney = Field(default=Decimal("0"), ge=0, le=99_999_999.99)
     description: Optional[str] = None
 
 
 class LineSettlePayload(BaseModel):
     """Per-line EOB entry. allowed + copay/deductible/coinsurance are user
-    inputs; contractual + insurance_paid + patient_balance auto-compute."""
-    allowed: Optional[Decimal] = None
-    copay: Optional[Decimal] = None
-    deductible: Optional[Decimal] = None
-    coinsurance: Optional[Decimal] = None
-    insurance_paid_override: Optional[Decimal] = None     # rarely needed
-    patient_paid: Optional[Decimal] = None
+    inputs; contractual + insurance_paid + patient_balance auto-compute.
+
+    All money fields rejected for negatives and NaN/Inf at the API
+    boundary. insurance_paid_override accepts 0 for true zero-pay
+    EOBs (need adjustment codes to explain) but no negatives.
+    (Fable cross-cutting audit #8.)
+    """
+    allowed: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    copay: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    deductible: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    coinsurance: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    insurance_paid_override: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
+    patient_paid: Optional[ArMoney] = Field(default=None, ge=0, le=99_999_999.99)
     settled: Optional[bool] = None
     notes: Optional[str] = None
     adjustment_codes: Optional[List[AdjustmentCodeItem]] = None
@@ -1314,13 +1362,52 @@ def settle_service_line(
     if has_appealable and c.workflow_state not in ("paid", "rebilled_modmed", "written_off", "closed", "appealed"):
         c.workflow_state = "denied"
 
-    # Auto-mark whole claim as paid once the insurance side is done — i.e.,
-    # every line has an EOB entered (`allowed` set) and no appealable denials
-    # are present. Any remaining patient_balance (copay/deductible/coinsurance)
-    # is tracked separately and is the patient's responsibility — it doesn't
-    # block the claim from leaving the insurance AR queue.
+    # Auto-mark whole claim as paid once the insurance side is done —
+    # i.e., every line has an EOB entered (`allowed` set) and no
+    # appealable denials are present. Any remaining patient_balance
+    # (copay/deductible/coinsurance) is tracked separately and is the
+    # patient's responsibility — it doesn't block the claim from
+    # leaving the insurance AR queue.
+    #
+    # Revenue-leakage guard (Fable cross-cutting audit #11): refuse to
+    # flip the claim to 'paid' when every line was entered with
+    # allowed > 0 but insurance_paid totals $0 AND no adjustment codes
+    # were attached. That combination is almost always a fat-finger
+    # (someone typed allowed=$X but left insurance_paid blank); silently
+    # flipping the claim to paid drops it out of the work queue and we
+    # lose track of the real revenue gap.
     all_insurance_done = lines and all(ln.get("allowed") is not None for ln in lines)
     if all_insurance_done and not has_appealable:
+        total_allowed = sum(float(ln.get("allowed") or 0) for ln in lines)
+        total_ins_paid = sum(float(ln.get("insurance_paid") or 0) for ln in lines)
+        total_pt_resp = sum(
+            float(ln.get("copay") or 0) + float(ln.get("deductible") or 0)
+            + float(ln.get("coinsurance") or 0)
+            for ln in lines
+        )
+        any_adj_codes = any(
+            ln.get("adjustment_codes") for ln in lines
+        )
+        # Zero-pay legitimacy check: insurance paid $0 only counts as
+        # truly settled when adjustment codes explain it OR when the
+        # full allowed amount is patient responsibility (deductible
+        # season, high-deductible plan).
+        zero_pay_legit = (
+            total_ins_paid > 0
+            or any_adj_codes
+            or total_pt_resp >= total_allowed - 0.01
+        )
+        if not zero_pay_legit:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Cannot auto-paid this claim: every line has an allowed "
+                    f"amount (total ${total_allowed:.2f}) but insurance paid "
+                    "$0.00, no adjustment codes explain the zero pay, and "
+                    f"patient responsibility (${total_pt_resp:.2f}) doesn't "
+                    "absorb the allowed amount. If insurance really paid $0, "
+                    "add CARC codes (e.g. CO-45 contractual) to the lines."))
+
         if c.workflow_state not in ("paid", "rebilled_modmed", "written_off", "closed"):
             c.workflow_state = "paid"
             c.paid_in_full_at = datetime.utcnow()
@@ -1563,6 +1650,19 @@ def download_appeal_pdf(appeal_id: str,
     if is_legacy_local_path(a.pdf_path):
         raise HTTPException(status_code=410,
                             detail="This file is from before the cloud migration and is no longer available.")
+    # PHI document download audit (Fable cross-cutting #9). Appeal
+    # letters typically contain patient identifiers + clinical context.
+    c = (db.query(ActiveClaim)
+            .filter(ActiveClaim.id == a.active_claim_id).first())
+    actor = current_user.get("email")
+    log_action(
+        db, action="APPEAL_PDF_DOWNLOAD",
+        resource_type="appeal_letter", resource_id=str(a.id),
+        patient_id=(c.patient_external_id if c else None),
+        user_id=(actor or "").lower() or None, user_name=actor,
+        description=(f"Downloaded Level-{a.level} appeal PDF for claim "
+                     f"{(c.claim_number if c else a.active_claim_id)}"),
+    )
     return serve_blob(
         local_path=None,
         gcs_object=a.pdf_path,

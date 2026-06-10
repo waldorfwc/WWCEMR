@@ -163,6 +163,10 @@ async def preview_csv(
 # ──────────────────────────────────────────────────────────────────────
 # Step 2: GENERATE — build BAI2 from the reviewed/approved transactions
 
+_PREVIEW_ID_RE = __import__("re").compile(r"^[a-fA-F0-9]{32}$")
+_ALLOWED_EXTS = {".csv", ".txt"}
+
+
 class GenerateRequest(BaseModel):
     preview_id: str
     csv_filename: str
@@ -174,6 +178,20 @@ class GenerateRequest(BaseModel):
     skip_modmed: bool = True
     skip_stripe: bool = True
     skip_zero: bool = True
+
+    # Validate at parse time — preview_id is generated as
+    # uuid.uuid4().hex on the server (32 hex chars); ext must be one
+    # of our allowed values. Without these checks `ext` could be
+    # `/../something` and the csv_key would escape the bank-recon-csv/
+    # prefix. (Fable cross-cutting audit #25.)
+    @classmethod
+    def model_validate(cls, *args, **kwargs):
+        m = super().model_validate(*args, **kwargs)
+        if not _PREVIEW_ID_RE.match(m.preview_id or ""):
+            raise ValueError("preview_id must be a 32-character hex string")
+        if m.ext not in _ALLOWED_EXTS:
+            raise ValueError(f"ext must be one of {sorted(_ALLOWED_EXTS)}")
+        return m
 
 
 @router.post("/generate")
