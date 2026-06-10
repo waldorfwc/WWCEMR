@@ -10,11 +10,19 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from app.database import Base
 from app.models.guid import GUID, new_uuid
+from app.models.mixins import SoftDeleteMixin
 
 
-class Bai2Import(Base):
+class Bai2Import(Base, SoftDeleteMixin):
     """One CSV upload → one generated BAI2 file. The file lives on disk and
-    can be re-downloaded forever via /imports/{id}/download."""
+    can be re-downloaded forever via /imports/{id}/download.
+
+    Soft-delete: delete_import marks `deleted_at` instead of removing
+    the row, so the cascade-delete on Bai2Transaction doesn't drop the
+    dedup_keys we use to prevent re-imports. Queries that want only
+    live imports chain `.filter(Bai2Import.not_deleted())`.
+    (Fable design review note 13.)
+    """
     __tablename__ = "bai2_imports"
 
     id = Column(GUID(), primary_key=True, default=new_uuid)

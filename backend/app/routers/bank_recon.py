@@ -245,8 +245,14 @@ def generate_bai2(payload: GenerateRequest,
         payload.preview_id.encode("utf-8")).hexdigest()[:8], 16) & 0x7FFFFFFF
     db.execute(text("SELECT pg_advisory_xact_lock(:k)"),
                  {"k": _lock_key})
+    # Idempotency lookup: a soft-deleted import should NOT count as a
+    # cache hit — the user explicitly deleted it, so a re-generate is
+    # a fresh row. The downstream date-coverage check intentionally
+    # does NOT filter deleted because the dedup_key transactions remain
+    # and would still catch re-imports.
     prior = (db.query(Bai2Import)
-                .filter(Bai2Import.csv_path == csv_key)
+                .filter(Bai2Import.csv_path == csv_key,
+                        Bai2Import.not_deleted())
                 .first())
     if prior is not None:
         return {**_import_to_dict(prior),
@@ -414,6 +420,7 @@ def list_imports(
     # (Fable cross-cutting audit #16.)
     rows = (
         db.query(Bai2Import)
+        .filter(Bai2Import.not_deleted())
         .order_by(desc(Bai2Import.generated_at))
         .limit(limit).all()
     )
@@ -426,7 +433,10 @@ def get_import(
     current_user: dict = Depends(
         requires_tier(Module.BANK_RECON, Tier.VIEW)),
 ):
-    imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
+    imp = (db.query(Bai2Import)
+             .filter(Bai2Import.id == import_id,
+                     Bai2Import.not_deleted())
+             .first())
     if not imp:
         raise HTTPException(status_code=404, detail="import not found")
     txns = imp.transactions.order_by(Bai2Transaction.transaction_date.desc()).all()
@@ -453,7 +463,10 @@ def download_bai2(
     current_user: dict = Depends(
         requires_tier(Module.BANK_RECON, Tier.VIEW)),
 ):
-    imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
+    imp = (db.query(Bai2Import)
+             .filter(Bai2Import.id == import_id,
+                     Bai2Import.not_deleted())
+             .first())
     if not imp or not imp.bai2_path:
         raise HTTPException(status_code=404, detail="BAI2 file not available")
     if is_legacy_local_path(imp.bai2_path):
@@ -473,37 +486,57 @@ def delete_import(
     current_user: dict = Depends(
         requires_tier(Module.BANK_RECON, Tier.MANAGE)),
 ):
-    """Hard-delete a Bai2Import row.
-
-    Previously: zero permission gate, no audit. The cascade-delete on
-    Bai2Transaction takes the dedup_keys with it, which means the same
-    bank transactions can be re-imported and re-posted later — exactly
-    the double-import hole the unique constraint exists to prevent.
-    Tier.MANAGE + audit row + a "are you really sure?" check by
-    requiring the caller pass ?confirm=true. (Fable cross-cutting
-    audit #6.)
+    """Soft-delete a Bai2Import. The row is marked deleted but kept;
+    its Bai2Transaction children (and their dedup_keys) stay intact so
+    the same bank transactions can't be re-imported and re-posted.
+    Restore via POST /imports/{id}/restore. (Fable design review notes
+    4 and 13.)
     """
     from app.services.audit_service import log_action
-    imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
+    imp = (db.query(Bai2Import)
+             .filter(Bai2Import.id == import_id,
+                     Bai2Import.not_deleted())
+             .first())
     if not imp:
         raise HTTPException(status_code=404, detail="import not found")
-    # Defer the audit commit so the row lands atomically with the
-    # delete. The old shape was: log_action auto-committed "I deleted
-    # X" BEFORE db.delete(imp); if the delete failed, the audit log
-    # would be lying. (Fable design review note 4.)
     log_action(
         db, action="BAI2_IMPORT_DELETED", resource_type="bai2_import",
         actor=current_user,
         resource_id=str(imp.id),
-        description=(f"Hard-deleted BAI2 import {imp.csv_filename or imp.id} "
+        description=(f"Soft-deleted BAI2 import {imp.csv_filename or imp.id} "
                      f"({imp.transactions_included} txns, "
-                     f"${imp.total_amount or 0:.2f}). dedup_keys are gone — "
-                     "re-importing the same transactions is now possible."),
+                     f"${imp.total_amount or 0:.2f}). Transactions retained — "
+                     "restore via POST /imports/{id}/restore."),
         defer_commit=True,
     )
-    db.delete(imp)
+    imp.soft_delete(by_email=current_user.get("email"))
     db.commit()
-    return {"deleted": True}
+    return {"deleted": True, "id": str(imp.id)}
+
+
+@router.post("/imports/{import_id}/restore")
+def restore_import(
+    import_id: str, db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.MANAGE)),
+):
+    """Undo a soft-delete. The import becomes visible to listings again
+    and its transactions resume blocking re-imports."""
+    from app.services.audit_service import log_action
+    imp = db.query(Bai2Import).filter(Bai2Import.id == import_id).first()
+    if not imp:
+        raise HTTPException(status_code=404, detail="import not found")
+    if not imp.is_deleted:
+        return {"restored": False, "id": str(imp.id), "reason": "not deleted"}
+    log_action(
+        db, action="BAI2_IMPORT_RESTORED", resource_type="bai2_import",
+        actor=current_user, resource_id=str(imp.id),
+        description=f"Restored BAI2 import {imp.csv_filename or imp.id}",
+        defer_commit=True,
+    )
+    imp.restore()
+    db.commit()
+    return {"restored": True, "id": str(imp.id)}
 
 
 @router.post("/sweep-preview-csvs")

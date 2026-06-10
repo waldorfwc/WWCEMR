@@ -196,6 +196,9 @@ def _apply_lightweight_migrations():
         # Partial-day blackouts — null means whole-day (existing rows).
         ("surgery_blackout_days", "start_time", "TIME"),
         ("surgery_blackout_days", "end_time", "TIME"),
+        # Soft-delete on Bai2Import (Fable design review note 13).
+        ("bai2_imports", "deleted_at", "DATETIME"),
+        ("bai2_imports", "deleted_by", "VARCHAR(200)"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),
