@@ -1863,8 +1863,8 @@ def download_insurance_card(
     stored = (a.insurance_card_content_type or "").lower()
     safe_type = stored if stored in _INSURANCE_CARD_ALLOWED_MIME else "application/octet-stream"
     from app.services.storage import serve_blob
-    import os
-    local_root = os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs")
+    from app.config import settings
+    local_root = settings.documents_local_root
     # Defense-in-depth: the key is UUID-derived today so path-traversal
     # isn't reachable via current code paths, but normalize and confirm
     # the resolved path stays under local_root so any future code path

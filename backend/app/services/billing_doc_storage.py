@@ -26,11 +26,13 @@ GCS_PREFIX     = "billing-docs/"
 
 
 def _backend() -> str:
-    return (os.environ.get("STORAGE_BACKEND") or "local").lower()
+    from app.config import settings
+    return (settings.storage_backend or "local").lower()
 
 
 def _gcs_bucket_name() -> str:
-    return os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
+    from app.config import settings
+    return settings.documents_gcs_bucket
 
 
 def _gcs_client():

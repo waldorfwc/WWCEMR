@@ -27,7 +27,9 @@ from app.models.surgery import Surgery, SurgeryDocument
 
 log = logging.getLogger(__name__)
 
-BUCKET = os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
+from app.config import settings
+
+BUCKET = settings.documents_gcs_bucket
 ALLOWED_MIME = (
     "application/pdf",
     "image/jpeg",

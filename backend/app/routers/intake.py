@@ -11,10 +11,11 @@ import os
 from typing import Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse
+from app.config import settings
 from app.services.storage import serve_blob, using_gcs
 
 _INTAKE_LOCAL_ROOT = "/Volumes/OWC External/IntakeArchive/"
-_INTAKE_GCS_BUCKET = os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
+_INTAKE_GCS_BUCKET = settings.documents_gcs_bucket
 
 
 # Module-level cache for archive lookups. Only successful, non-empty

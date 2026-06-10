@@ -40,6 +40,15 @@ class Settings(BaseSettings):
     docusign_witness_email: str = ""
     docusign_webhook_secret: str = ""
 
+    # Storage backend selection — previously read directly via
+    # os.environ.get(...) in storage.py, billing_doc_storage.py,
+    # surgery_uploads.py, intake.py, larc.py. Folded in so we have one
+    # source of truth for which backend serves files + where they live.
+    # (Fable design review note 8.)
+    storage_backend: str = "local"             # "local" | "gcs"
+    documents_gcs_bucket: str = "wwc-app-docs"
+    documents_local_root: str = "/var/data/wwc-docs"
+
     class Config:
         env_file = ".env"
         extra = "ignore"

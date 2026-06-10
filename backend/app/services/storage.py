@@ -39,8 +39,10 @@ def _content_disposition(disposition: str, filename: str) -> str:
     return (f'{disposition}; filename="{ascii_fallback}"; '
               f"filename*=UTF-8''{encoded}")
 
-_STORAGE_BACKEND = os.environ.get("STORAGE_BACKEND", "local").lower()
-_GCS_BUCKET = os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
+from app.config import settings
+
+_STORAGE_BACKEND = settings.storage_backend.lower()
+_GCS_BUCKET = settings.documents_gcs_bucket
 _CHUNK_SIZE = 64 * 1024  # 64 KB streaming chunks
 
 
@@ -147,7 +149,7 @@ def save_blob(*, prefix: str, body: bytes,
         blob.upload_from_string(body, content_type=content_type)
         return key
 
-    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    root = Path(settings.documents_local_root)
     out = root / key
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(body)
@@ -166,7 +168,7 @@ def save_blob_with_key(*, key: str, body: bytes,
                                   content_type=content_type or "application/octet-stream")
         return key
 
-    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    root = Path(settings.documents_local_root)
     out = root / key
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(body)
@@ -183,7 +185,7 @@ def read_blob(key: str) -> bytes:
             raise FileNotFoundError(f"gs://{_GCS_BUCKET}/{key}")
         return blob.download_as_bytes()
 
-    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    root = Path(settings.documents_local_root)
     p = root / key
     if not p.is_file():
         raise FileNotFoundError(str(p))
@@ -215,7 +217,7 @@ def delete_blob(key: str) -> bool:
             return True
         except Exception:
             return False
-    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    root = Path(settings.documents_local_root)
     p = root / key
     if p.is_file():
         try:
@@ -233,7 +235,7 @@ def list_blob_keys(prefix: str) -> list[str]:
         return [
             b.name for b in client.bucket(_GCS_BUCKET).list_blobs(prefix=prefix)
         ]
-    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    root = Path(settings.documents_local_root)
     out: list[str] = []
     p = root / prefix
     if p.is_dir():
@@ -251,7 +253,7 @@ def blob_metadata(key: str) -> Optional[dict]:
         if not blob:
             return None
         return {"created": blob.time_created, "size": blob.size}
-    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    root = Path(settings.documents_local_root)
     p = root / key
     if not p.is_file():
         return None
