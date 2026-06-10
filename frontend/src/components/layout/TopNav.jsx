@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, History, LogOut, Shield, User as UserIcon } from 'lucide-react'
 import logoMark from '../../assets/wwc-logo.png'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
+import { MODULE, TIER } from '../../routes.jsx'
 import api from '../../utils/api'
 
 const baseNav = [
@@ -25,12 +26,12 @@ const CLINICAL_NAV = [
 ]
 
 export default function TopNav({ user, onLogout }) {
-  const { isAdmin, isBilling, isClinical, has } = useCurrentUser()
-  const canRecall = has?.('recall:work')
-  const canSurgery = has?.('surgery:read')
-  const canLarc = has?.('larc:read')
-  const canPellet = has?.('pellet:read')
-  const canManageChecklist = has?.('checklist:manage')
+  const { isAdmin, isBilling, isClinical, tier } = useCurrentUser()
+  const canRecall = tier(MODULE.RECALL, TIER.WORK)
+  const canSurgery = tier(MODULE.SURGERY, TIER.VIEW)
+  const canLarc = tier(MODULE.LARC, TIER.VIEW)
+  const canPellet = tier(MODULE.PELLETS, TIER.VIEW)
+  const canManageChecklist = tier(MODULE.MY_CHECKLIST, TIER.MANAGE)
   // Build nav based on permissions
   let visibleNav
   if (isClinical) {

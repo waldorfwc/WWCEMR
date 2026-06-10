@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import api from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 import { useConfirm } from '../components/ui/ConfirmDialog'
 
 
@@ -42,8 +43,13 @@ function cap(s) {
 
 export default function AdminTraining() {
   const qc = useQueryClient()
-  const { user, has } = useCurrentUser()
-  const canAuthorize = has?.('training:authorize')
+  // 'training:authorize' wasn't in the legacy table, so it effectively
+  // resolved to super-admin only. Training MANAGE per the backend
+  // catalog covers "mark complete on behalf of others", which is what
+  // "authorize" means here; super-admin still passes via tier()'s
+  // short-circuit.
+  const { user, tier } = useCurrentUser()
+  const canAuthorize = tier(MODULE.TRAINING, TIER.MANAGE)
 
   const [search, setSearch] = useState('')
   const [activeCell, setActiveCell] = useState(null)

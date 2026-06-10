@@ -6,6 +6,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 
 function renderMarkdown(md) {
@@ -16,8 +17,8 @@ function renderMarkdown(md) {
 
 export default function LarcManual() {
   const qc = useQueryClient()
-  const { has } = useCurrentUser()
-  const canEdit = has?.('larc:manage')
+  const { tier } = useCurrentUser()
+  const canEdit = tier(MODULE.LARC, TIER.MANAGE)
   const [editingId, setEditingId] = useState(null)
   const [adding, setAdding] = useState(false)
 

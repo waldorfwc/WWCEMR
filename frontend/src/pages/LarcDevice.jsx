@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Package, User, FileText, Printer, Trash2, X } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
 
 
@@ -11,8 +12,8 @@ export default function LarcDevice() {
   const { id } = useParams()
   const navigate = useNavigate()
   const qc = useQueryClient()
-  const { has } = useCurrentUser()
-  const canManage = has?.('larc:manage')
+  const { tier } = useCurrentUser()
+  const canManage = tier(MODULE.LARC, TIER.MANAGE)
   const { data: d, isLoading, error } = useQuery({
     queryKey: ['larc-device', id],
     queryFn: () => api.get(`/larc/devices/${id}`).then(r => r.data),

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 import { WeeklyCalendar } from './SurgeryCalendar'
 import { useFacilities } from '../hooks/useFacilities'
 
@@ -999,8 +1000,8 @@ function SurgeryRow({ s, onOpen }) {
 
 
 function UploadDemographicsButton() {
-  const { has } = useCurrentUser()
-  if (!has?.('surgery:work')) return null
+  const { tier } = useCurrentUser()
+  if (!tier(MODULE.SURGERY, TIER.WORK)) return null
   return (
     <Link to="/surgery/bulk-import"
           className="btn-secondary text-sm flex items-center gap-1">
@@ -1011,9 +1012,9 @@ function UploadDemographicsButton() {
 
 
 function UploadOrderButton() {
-  const { has } = useCurrentUser()
+  const { tier } = useCurrentUser()
   const [open, setOpen] = useState(false)
-  if (!has?.('surgery:work')) return null
+  if (!tier(MODULE.SURGERY, TIER.WORK)) return null
   return (
     <>
       <button onClick={() => setOpen(true)}
@@ -1189,9 +1190,9 @@ function MessagesLink() {
 
 
 function ManualCreateButton() {
-  const { has } = useCurrentUser()
+  const { tier } = useCurrentUser()
   const [open, setOpen] = useState(false)
-  if (!has?.('surgery:work')) return null
+  if (!tier(MODULE.SURGERY, TIER.WORK)) return null
   return (
     <>
       <button onClick={() => setOpen(true)}

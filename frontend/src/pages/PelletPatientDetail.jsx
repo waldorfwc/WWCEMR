@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 
 const LOC_LABEL = {
@@ -1357,8 +1358,8 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
   const [swapDose, setSwapDose] = useState(null)
   const [correctDose, setCorrectDose] = useState(null)   // retroactive identify-lot
   const [editProposedOpen, setEditProposedOpen] = useState(false)
-  const { has } = useCurrentUser()
-  const canCorrectLot = !!has?.('pellet:manage')
+  const { tier } = useCurrentUser()
+  const canCorrectLot = tier(MODULE.PELLETS, TIER.MANAGE)
 
   return (
     <div className="border border-gray-200 rounded p-3 bg-gray-50/50">
@@ -2287,8 +2288,10 @@ function VisitDoseRow({ visit, patient, isActive, qc, proposedOnly, confirmedOnl
 
 
 function DoseLineGroup({ label, color, doses, onDel, canDel, managerOnly }) {
-  const { has } = useCurrentUser()
-  const isMgr = has?.('pellet:manage') || has?.('user:manage')
+  // `'user:manage'` used to be a fallback for super-admin; tier() now
+  // short-circuits on super-admin so the OR is redundant.
+  const { tier } = useCurrentUser()
+  const isMgr = tier(MODULE.PELLETS, TIER.MANAGE)
   const canActuallyDel = canDel && (!managerOnly || isMgr)
   if (doses.length === 0) return null
   return (

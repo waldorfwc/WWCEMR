@@ -6,6 +6,7 @@ import {
   Upload, FileSpreadsheet, Lock, Star, Trash2,
 } from 'lucide-react'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 import api, { fmt } from '../utils/api'
 
 
@@ -269,8 +270,8 @@ export default function Recalls() {
 
 function ModMedImportButton() {
   const qc = useQueryClient()
-  const { has } = useCurrentUser()
-  const canImport = has?.('recall:manage')
+  const { tier } = useCurrentUser()
+  const canImport = tier(MODULE.RECALL, TIER.MANAGE)
   const [open, setOpen] = useState(false)
 
   if (!canImport) return null

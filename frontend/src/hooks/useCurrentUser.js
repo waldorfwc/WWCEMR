@@ -10,34 +10,15 @@ import api from '../utils/api'
  *   - isBilling  → Active AR tier >= View
  *   - isClinical → Chart View AND not billing/admin
  *
- * `has(legacyPerm)` is kept for backwards compatibility with call-sites
- * that haven't migrated to the tier model yet. It maps a handful of
- * legacy verb strings to the equivalent (module, minTier) check.
- *
  * `tier(module, minTier?)` reads the resolved tier on a specific module.
- * Pass minTier to get a boolean ("has at least this much"). Without
- * minTier, returns the numeric tier (0–50).
+ * Pass `minTier` to get a boolean ("has at least this much"). Without
+ * `minTier`, returns the numeric tier (0–50). Super-admins always pass
+ * the boolean form — matches backend `requires_tier` behaviour.
+ *
+ * Use MODULE.X and TIER.X from ../routes.jsx for the arguments. Example:
+ *   import { MODULE, TIER } from '../routes.jsx'
+ *   const canEdit = tier(MODULE.PELLETS, TIER.MANAGE)
  */
-
-const VIEW = 10, WORK = 20, MANAGE = 30, ADMIN = 40
-
-// Legacy verb → (module, minTier). Add entries here as more call-sites
-// surface during cleanup. Anything not in this table is treated as
-// "Super Admin only" so legacy gates fail closed rather than open.
-const LEGACY_PERM_TO_TIER = {
-  'recall:work':        ['recall', WORK],
-  'recall:manage':      ['recall', MANAGE],
-  'surgery:read':       ['surgery', VIEW],
-  'surgery:work':       ['surgery', WORK],
-  'larc:read':          ['device_larc', VIEW],
-  'larc:checkout':      ['device_larc', WORK],
-  'larc:manage':        ['device_larc', MANAGE],
-  'pellet:read':        ['pellets', VIEW],
-  'pellet:work':        ['pellets', WORK],
-  'pellet:manage':      ['pellets', MANAGE],
-  'checklist:manage':   ['my_checklist', MANAGE],
-}
-
 export function useCurrentUser() {
   const q = useQuery({
     queryKey: ['current-user'],
@@ -47,17 +28,14 @@ export function useCurrentUser() {
   })
   const data = q.data || {}
   const moduleTiers = data.module_tiers || {}
+  const isSuperAdmin = !!data.is_super_admin
 
   const tier = (mod, minTier) => {
-    const t = moduleTiers[mod] ?? 0
-    return minTier == null ? t : t >= minTier
-  }
-
-  const has = (legacyPerm) => {
-    if (data.is_super_admin) return true
-    const map = LEGACY_PERM_TO_TIER[legacyPerm]
-    if (!map) return false
-    return tier(map[0], map[1])
+    if (minTier == null) return moduleTiers[mod] ?? 0
+    // Super-admin satisfies every boolean tier check — same rule
+    // requires_tier uses on the backend.
+    if (isSuperAdmin) return true
+    return (moduleTiers[mod] ?? 0) >= minTier
   }
 
   return {
@@ -66,11 +44,10 @@ export function useCurrentUser() {
     picture: data.picture,
     moduleTiers,
     tier,
-    has,
     isAdmin:    !!data.is_admin,
     isBilling:  !!data.is_billing,
     isClinical: !!data.is_clinical,
-    isSuperAdmin: !!data.is_super_admin,
+    isSuperAdmin,
     canSeeBilling: !!data.is_admin || !!data.is_billing,
     isLoading: q.isLoading,
   }

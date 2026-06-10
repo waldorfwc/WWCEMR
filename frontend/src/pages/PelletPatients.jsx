@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 
 const VIEWS = [
@@ -306,8 +307,10 @@ const LOC_NAME = { white_plains: 'White Plains', brandywine: 'Brandywine', arlin
 
 
 function ActiveMonthsControl() {
-  const { has } = useCurrentUser()
-  const isAdmin = has?.('pellet:manage') || has?.('user:manage')
+  // tier() short-circuits on super-admin, so the old `|| 'user:manage'`
+  // fallback is redundant.
+  const { tier } = useCurrentUser()
+  const isAdmin = tier(MODULE.PELLETS, TIER.MANAGE)
   const qc = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')

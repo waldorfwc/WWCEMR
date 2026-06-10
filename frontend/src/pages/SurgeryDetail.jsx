@@ -14,6 +14,7 @@ import MessagesSection from '../components/MessagesSection'
 import PdfPreviewDrawer from '../components/PdfPreviewDrawer'
 import ErrorBoundary from '../components/ErrorBoundary'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 import { MatchesDrawer } from './SurgeryWaitlist'
 import { useFacilities } from '../hooks/useFacilities'
 
@@ -3446,8 +3447,8 @@ function milestoneInlineContent(m, surgery) {
 
 function PatientPicksDateBody({ surgery }) {
   const qc = useQueryClient()
-  const currentUser = useCurrentUser()
-  const canEditSchedule = currentUser.has('surgery:work')
+  const { tier } = useCurrentUser()
+  const canEditSchedule = tier(MODULE.SURGERY, TIER.WORK)
   const modmedDone = !!surgery.scheduled_in_modmed_at
   const medsDone = !!surgery.office_meds_pickup_confirmed_at
   const isOffice = surgery.selected_facility === 'office'

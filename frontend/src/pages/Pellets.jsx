@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 
 const LOC_LABEL = {
@@ -760,8 +761,8 @@ function LotsCard({ types = [], onQuickTransfer }) {
 
 
 function InventoryLockBanner() {
-  const { has } = useCurrentUser()
-  const canManage = !!has?.('pellet:manage')
+  const { tier } = useCurrentUser()
+  const canManage = tier(MODULE.PELLETS, TIER.MANAGE)
   const { data } = useQuery({
     queryKey: ['pellet-inventory-lock'],
     queryFn: () => api.get('/pellets/settings/inventory-lock').then(r => r.data),

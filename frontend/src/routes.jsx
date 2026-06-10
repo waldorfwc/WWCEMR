@@ -96,10 +96,10 @@ export const TIER = {
   ADMIN: 40,
 }
 
-// Module slugs — short references to the string values used as the
-// gate key. Importing these instead of hand-typing strings means
-// renaming a slug surfaces every callsite.
-const M = {
+// Module slug constants. Mirrors backend Module enum values
+// (app/permissions/catalog.py). Use these instead of hand-typing slugs
+// so renaming a module surfaces every callsite and IDEs can autocomplete.
+export const MODULE = {
   CHART:              'chart',
   ACTIVE_AR:          'active_ar',
   BANK_RECON:         'billing_bank_recon',
@@ -110,9 +110,11 @@ const M = {
   SURGERY:            'surgery',
   LARC:               'device_larc',
   PELLETS:            'pellets',
+  TRAINING:           'training',
   MY_CHECKLIST:       'my_checklist',
   AUDIT_LOG:          'audit_log',
 }
+const M = MODULE
 
 export const ROUTES = [
   // ── Personal — every authenticated staff user ───────────────────

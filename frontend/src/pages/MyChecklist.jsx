@@ -9,6 +9,7 @@ import {
 import { Link } from 'react-router-dom'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 
 const ROLE_LABELS = {
@@ -43,9 +44,9 @@ export default function MyChecklist() {
   const qc = useQueryClient()
   const [showSettings, setShowSettings] = useState(false)
   const [showResponsibilities, setShowResponsibilities] = useState(false)
-  const { has } = useCurrentUser()
-  const canCheckoutLarc = !!has?.('larc:checkout')
-  const canScheduleSurgery = !!has?.('surgery:work')
+  const { tier } = useCurrentUser()
+  const canCheckoutLarc = tier(MODULE.LARC, TIER.WORK)
+  const canScheduleSurgery = tier(MODULE.SURGERY, TIER.WORK)
 
   const { data, isLoading } = useQuery({
     queryKey: ['checklist-today'],
