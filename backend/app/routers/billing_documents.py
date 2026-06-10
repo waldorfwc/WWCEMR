@@ -15,7 +15,7 @@ import hashlib
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -116,8 +116,42 @@ def picklists(current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, 
 
 # ─── Upload ─────────────────────────────────────────────────────────
 
+_MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+# Extension → (canonical mime, magic-byte prefixes). Anything not in here
+# is rejected at the boundary, including the .html / .svg / .exe variants
+# the browser is happy to render inline. (Fable intake audit #3.)
+_ALLOWED_FILE_TYPES: dict[str, tuple[str, tuple[bytes, ...]]] = {
+    "pdf":  ("application/pdf",  (b"%PDF",)),
+    "png":  ("image/png",        (b"\x89PNG\r\n\x1a\n",)),
+    "jpg":  ("image/jpeg",       (b"\xff\xd8\xff",)),
+    "jpeg": ("image/jpeg",       (b"\xff\xd8\xff",)),
+    "tif":  ("image/tiff",       (b"II*\x00", b"MM\x00*")),
+    "tiff": ("image/tiff",       (b"II*\x00", b"MM\x00*")),
+}
+
+
+def _validated_mime(filename: str, body: bytes) -> str:
+    """Reject files whose extension isn't on the allowlist OR whose magic
+    bytes don't match the extension. Returns the canonical mime to store
+    on the row — never the client-supplied content-type. (Fable #3.)"""
+    ext = (filename or "").rsplit(".", 1)[-1].lower() if "." in (filename or "") else ""
+    entry = _ALLOWED_FILE_TYPES.get(ext)
+    if not entry:
+        raise HTTPException(
+            status_code=415,
+            detail=(f"unsupported file type {ext!r}. Allowed: "
+                    f"{', '.join(sorted(_ALLOWED_FILE_TYPES))}"))
+    canonical_mime, magic_prefixes = entry
+    if not any(body.startswith(p) for p in magic_prefixes):
+        raise HTTPException(
+            status_code=415,
+            detail=f"file contents don't match the .{ext} extension")
+    return canonical_mime
+
+
 @router.post("", status_code=201)
 async def upload_document(
+    request: Request,
     file: UploadFile = File(...),
     classification: str = Form("other"),
     auto_classify: bool = Form(True),
@@ -137,11 +171,30 @@ async def upload_document(
         raise HTTPException(status_code=422,
                             detail=f"unknown classification: {classification}")
 
+    # Reject the request before reading the body if Content-Length already
+    # exceeds the cap — a 5GB POST would otherwise be buffered into memory
+    # before the post-read size check fires, OOM-killing the container.
+    # (Fable intake audit #3.)
+    cl = request.headers.get("content-length")
+    if cl is not None:
+        try:
+            if int(cl) > _MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"file >{_MAX_UPLOAD_BYTES // (1024 * 1024)}MB; split it up")
+        except ValueError:
+            pass
+
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=422, detail="empty file")
-    if len(contents) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=413, detail="file >50MB; split it up")
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"file >{_MAX_UPLOAD_BYTES // (1024 * 1024)}MB; split it up")
+
+    # Allowlist extension + magic bytes; replaces client-supplied mime.
+    canonical_mime = _validated_mime(file.filename or "", contents)
 
     # Hash first so we can short-circuit dup uploads before writing to disk.
     content_hash = hashlib.sha256(contents).hexdigest()
@@ -173,13 +226,13 @@ async def upload_document(
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
 
-    pages = storage.page_count_pdf(contents) if file.content_type == "application/pdf" else None
+    pages = storage.page_count_pdf(contents) if canonical_mime == "application/pdf" else None
 
     # AI auto-classify — only override when uploader didn't pick a specific
     # category (i.e. left it at 'other'). Safe no-op if Claude isn't configured.
     ai_suggested = None
     if auto_classify and classification == "other":
-        ai_suggested = classifier.classify_pdf(contents, file.content_type or "application/pdf")
+        ai_suggested = classifier.classify_pdf(contents, canonical_mime)
         if ai_suggested:
             classification = ai_suggested
 
@@ -190,7 +243,7 @@ async def upload_document(
         storage_filename=storage_name,
         file_size_bytes=size,
         page_count=pages,
-        mime_type=file.content_type or "application/pdf",
+        mime_type=canonical_mime,
         content_hash=content_hash,
         classification=classification,
         # STATUSES = ('new','in_progress','worked'). Earlier versions of
@@ -299,12 +352,18 @@ def get_document_file(doc_id: str,
 
     _log_access(db, d, current_user.get("email") or "system", "downloaded")
     db.commit()
+    # original_filename can contain " or \n that breaks the header;
+    # strip those characters. nosniff blocks browsers from interpreting
+    # a stored doc as anything other than its declared mime type — the
+    # upload allowlist already guarantees the mime is safe. (Fable #3.)
+    safe_name = (d.original_filename or "document").replace('"', '').replace("\n", "").replace("\r", "")
     return Response(
         content=body,
         media_type=d.mime_type or "application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{d.original_filename}"',
+            "Content-Disposition": f'inline; filename="{safe_name}"',
             "Content-Length": str(len(body)),
+            "X-Content-Type-Options": "nosniff",
         },
     )
 

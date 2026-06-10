@@ -121,7 +121,10 @@ def _do_index(docs_dir: str):
 
 
 @router.get("/index/status")
-def index_status(db: Session = Depends(get_db)):
+def index_status(
+    db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     """Return how many documents have been indexed."""
     count = db.query(func.count(PatientDocument.id)).scalar() or 0
     patients = db.query(func.count(distinct(PatientDocument.chart_number))).scalar() or 0
@@ -145,6 +148,7 @@ def list_documents(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, le=200),
     db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """List documents with filters."""
     q = db.query(PatientDocument).filter(PatientDocument.file_path != "")
@@ -152,16 +156,22 @@ def list_documents(
         q = q.filter(PatientDocument.chart_number == chart_number)
     if doc_type:
         q = q.filter(PatientDocument.doc_type.ilike(f"%{doc_type}%"))
+    # 422 on unparseable dates instead of silently dropping the filter —
+    # before, a typo'd `date_from` returned every patient's documents
+    # when the user thought they were looking at one window.
+    # (Fable intake audit #8.)
     if date_from:
         try:
             q = q.filter(PatientDocument.doc_date >= date.fromisoformat(date_from))
         except ValueError:
-            pass
+            raise HTTPException(status_code=422,
+                                detail=f"date_from must be YYYY-MM-DD; got {date_from!r}")
     if date_to:
         try:
             q = q.filter(PatientDocument.doc_date <= date.fromisoformat(date_to))
         except ValueError:
-            pass
+            raise HTTPException(status_code=422,
+                                detail=f"date_to must be YYYY-MM-DD; got {date_to!r}")
     if search:
         q = q.filter(PatientDocument.doc_type.ilike(f"%{search}%"))
 
@@ -173,6 +183,13 @@ def list_documents(
         .all()
     )
 
+    # One audit row per request (with the filter context) — no per-row
+    # spam. (Fable intake audit #2.)
+    log_action(db, "DOCUMENT_LIST", "patient_documents",
+               user_name=current_user.get("email"),
+               description=(f"List filter chart={chart_number} type={doc_type} "
+                            f"search={search} dates={date_from}..{date_to} "
+                            f"results={total}"))
     return {
         "total": total,
         "page": page,
@@ -186,6 +203,7 @@ def patient_documents(
     chart_number: str,
     doc_type: Optional[str] = None,
     db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """All documents for a specific patient chart number."""
     q = db.query(PatientDocument).filter(PatientDocument.chart_number == chart_number)
@@ -212,7 +230,10 @@ def patient_documents(
 
 
 @router.get("/types")
-def list_doc_types(db: Session = Depends(get_db)):
+def list_doc_types(
+    db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     """All distinct document types with counts."""
     rows = (
         db.query(PatientDocument.doc_type, func.count(PatientDocument.id).label("count"))
@@ -229,6 +250,7 @@ def list_patients(
     page: int = Query(1, ge=1),
     per_page: int = Query(100, le=500),
     db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """All patient chart numbers with document counts and patient name."""
     from app.models.patient_directory import PatientDirectory
@@ -266,6 +288,11 @@ def list_patients(
         ).all()
         name_map = {d.chart_number: (d.patient_name, str(d.dob) if d.dob else None) for d in dir_rows}
 
+    # Per-request audit (chart_numbers + names + DOBs return). Fable #2.
+    log_action(db, "PATIENT_DIRECTORY_LIST", "patient_documents",
+               user_name=current_user.get("email"),
+               description=(f"Patient list search={search} "
+                            f"results={total}"))
     return {
         "total": total,
         "page": page,
@@ -323,7 +350,11 @@ def _resolve_file(doc: PatientDocument, db: Session) -> str:
 
 
 @router.get("/download/{doc_id}")
-def download_document(doc_id: str, db: Session = Depends(get_db)):
+def download_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     """Download a specific document by its database ID."""
     doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
     if not doc:
@@ -365,7 +396,11 @@ def download_document(doc_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/view/{doc_id}")
-def view_document(doc_id: str, db: Session = Depends(get_db)):
+def view_document(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     """Inline-view a PDF in the browser."""
     doc = db.query(PatientDocument).filter(PatientDocument.id == doc_id).first()
     if not doc:
@@ -406,7 +441,10 @@ def view_document(doc_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/summary")
-def documents_summary(db: Session = Depends(get_db)):
+def documents_summary(
+    db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     """High-level summary counts for the dashboard."""
     total = db.query(func.count(PatientDocument.id)).scalar() or 0
     patients = db.query(func.count(distinct(PatientDocument.chart_number))).scalar() or 0

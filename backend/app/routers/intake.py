@@ -142,7 +142,10 @@ def _bg_build_directory():
 
 
 @router.get("/directory/status")
-def directory_status(db: Session = Depends(get_db)):
+def directory_status(
+    db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     total = db.query(func.count(PatientDirectory.chart_number)).scalar() or 0
     with_dob = db.query(func.count(PatientDirectory.chart_number)).filter(
         PatientDirectory.dob.isnot(None)
@@ -156,6 +159,7 @@ def list_directory(
     page: int = Query(1, ge=1),
     per_page: int = Query(100, le=500),
     db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     q = db.query(PatientDirectory)
     if search:
@@ -167,6 +171,11 @@ def list_directory(
     total = q.count()
     rows = q.order_by(PatientDirectory.last_name, PatientDirectory.first_name)\
             .offset((page - 1) * per_page).limit(per_page).all()
+    # One audit row per request — directory returns name+DOB+gender for
+    # every match. (Fable intake audit #2.)
+    log_action(db, "PATIENT_DIRECTORY_LIST", "intake_directory",
+               user_name=current_user.get("email"),
+               description=f"Directory list search={search} results={total}")
     return {
         "total": total,
         "page": page,
@@ -224,7 +233,10 @@ def run_matching(db: Session = Depends(get_db),
 
 
 @router.get("/status")
-def intake_status(db: Session = Depends(get_db)):
+def intake_status(
+    db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     """Summary of intake document index and match state."""
     total = db.query(func.count(IntakeDocument.id)).scalar() or 0
     if total == 0:
@@ -271,6 +283,7 @@ def list_intake_documents(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, le=200),
     db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """List intake documents with filters."""
     q = db.query(IntakeDocument)
@@ -281,7 +294,11 @@ def list_intake_documents(
         try:
             q = q.filter(IntakeDocument.dob == _date.fromisoformat(dob))
         except ValueError:
-            pass
+            # 422 instead of silently dropping the filter — without this,
+            # a typo'd DOB returns every intake patient's documents when
+            # the user thinks they're filtering. (Fable intake audit #8.)
+            raise HTTPException(status_code=422,
+                                detail=f"dob must be YYYY-MM-DD; got {dob!r}")
     if category:
         q = q.filter(IntakeDocument.doc_category == category)
     if match_confidence:
@@ -305,6 +322,7 @@ def list_intake_documents(
 def list_intake_patients(
     match_confidence: Optional[str] = None,
     db: Session = Depends(get_db),
+    _: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
 ):
     """
     List unique patients in the intake archive with their match status
@@ -388,7 +406,11 @@ def _intake_media_type(doc) -> str:
 
 
 @router.get("/download/{doc_id}")
-def download_intake(doc_id: str, db: Session = Depends(get_db)):
+def download_intake(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
@@ -396,11 +418,17 @@ def download_intake(doc_id: str, db: Session = Depends(get_db)):
     log_action(
         db, "DOWNLOAD", "intake_document",
         resource_id=doc_id,
+        user_name=current_user.get("email"),
         description=f"Downloaded intake {doc.filename} for {doc.patient_name_raw}"
     )
+    # _intake_gcs_object returns "" on resolve failure; serve_blob would
+    # 500. Surface a clean 404 instead. (Fable intake audit #5.)
+    gcs_obj = _intake_gcs_object(doc.file_path) if using_gcs() else None
+    if using_gcs() and not gcs_obj:
+        raise HTTPException(status_code=404, detail="Document not in storage")
     return serve_blob(
         local_path=doc.file_path if not using_gcs() else None,
-        gcs_object=_intake_gcs_object(doc.file_path) if using_gcs() else None,
+        gcs_object=gcs_obj,
         media_type=_intake_media_type(doc),
         filename=doc.filename,
         disposition="attachment",
@@ -408,14 +436,29 @@ def download_intake(doc_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/view/{doc_id}")
-def view_intake(doc_id: str, db: Session = Depends(get_db)):
+def view_intake(
+    doc_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.CHART, Tier.VIEW)),
+):
     doc = db.query(IntakeDocument).filter(IntakeDocument.id == doc_id).first()
     if not doc:
         raise HTTPException(status_code=404, detail="Not found")
 
+    # Viewing a PHI document is the same PHI access as downloading it —
+    # audit accordingly. (Fable intake audit #2.)
+    log_action(
+        db, "VIEW", "intake_document",
+        resource_id=doc_id,
+        user_name=current_user.get("email"),
+        description=f"Viewed intake {doc.filename} for {doc.patient_name_raw}"
+    )
+    gcs_obj = _intake_gcs_object(doc.file_path) if using_gcs() else None
+    if using_gcs() and not gcs_obj:
+        raise HTTPException(status_code=404, detail="Document not in storage")
     return serve_blob(
         local_path=doc.file_path if not using_gcs() else None,
-        gcs_object=_intake_gcs_object(doc.file_path) if using_gcs() else None,
+        gcs_object=gcs_obj,
         media_type=_intake_media_type(doc),
         filename=doc.filename,
         disposition="inline",
