@@ -18,24 +18,43 @@ from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-ALLOWED_DOMAINS = [d.strip() for d in settings.allowed_domains.split(",")]
+ALLOWED_DOMAINS = [d.strip().lower() for d in settings.allowed_domains.split(",")]
+
+
+def normalize_email(email: Optional[str]) -> str:
+    """Single source of truth for email casing — every boundary (token
+    issue/verify, OAuth callback, admin path params, override storage,
+    domain check) must run through this helper. The previous code used
+    `.lower()` in some places and raw `email == path_param` in others;
+    an admin who created a 'denied' override for John.Doe@... could
+    silently have it never apply against the lowercased token email.
+    (Fable auth audit H2.)
+    """
+    return (email or "").strip().lower()
 
 
 def create_access_token(data: dict, expires_hours: int = 8) -> str:
     to_encode = data.copy()
+    if "email" in to_encode:
+        to_encode["email"] = normalize_email(to_encode["email"])
     to_encode["exp"] = datetime.utcnow() + timedelta(hours=expires_hours)
+    to_encode["iat"] = datetime.utcnow()
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
 
 def verify_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        email = payload.get("email")
+        email = normalize_email(payload.get("email"))
         if not email:
             return None
+        # Domain check on the lowercased email so a token issued for
+        # User@WaldorfWomensCare.com still maps to a configured
+        # allowed domain. (Fable auth audit H2.)
         domain = email.split("@")[-1]
         if domain not in ALLOWED_DOMAINS:
             return None
+        payload["email"] = email
         return payload
     except JWTError:
         return None
@@ -59,25 +78,19 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> dict:
 
     user_row = db.query(User).filter(User.email == email).first()
     if user_row is None:
-        user_row = User(
-            email=email,
-            group=UserGroup.CLINICAL,
-            display_name=payload.get("name"),
-        )
-        db.add(user_row)
-        db.commit()
-        db.refresh(user_row)
-        log_action(db, "USER_CREATED", "user",
-                   resource_id=email,
-                   user_name=email,
-                   description=f"Auto-created with default group clinical")
-        # Auto-join Default Staff so new hires get the baseline tiers
-        # (Chart View + My Checklist Work) without admin intervention.
-        from app.services.default_staff_group import (
-            auto_join_default_staff, ensure_default_staff_group,
-        )
-        ensure_default_staff_group(db)
-        auto_join_default_staff(db, email)
+        # Refuse access — do NOT auto-provision. A token whose subject
+        # has no User row means either (a) the user was deleted by an
+        # admin and is still presenting an unexpired JWT, or (b) the
+        # token was issued against a User row that has since been
+        # removed for some other reason. Either way, the right answer
+        # is 401 + force re-login: the Google login flow is the only
+        # place that creates accounts now, so a deleted user can't
+        # silently resurrect themselves and a never-provisioned
+        # token-holder can't bypass the login provisioning step.
+        # (Fable auth audit C2.)
+        raise HTTPException(
+            status_code=401,
+            detail="Account no longer exists. Sign in again to recreate it.")
 
     # Active-user gate (Phase 7) — refuse access for suspended accounts
     if not user_row.is_active:
@@ -104,8 +117,10 @@ async def google_login(payload: dict):
     if not code:
         raise HTTPException(status_code=400, detail="Authorization code required")
 
-    # Exchange code for tokens with Google
-    async with httpx.AsyncClient() as client:
+    # Exchange code for tokens with Google. Use an explicit timeout —
+    # the previous code had none, so a slow Google response would hang
+    # a worker indefinitely. (Fable auth audit M5.)
+    async with httpx.AsyncClient(timeout=10.0) as client:
         token_resp = await client.post(
             "https://oauth2.googleapis.com/token",
             data={
@@ -126,18 +141,38 @@ async def google_login(payload: dict):
     if not id_token:
         raise HTTPException(status_code=400, detail="No ID token received")
 
-    # Verify and decode the Google ID token
-    async with httpx.AsyncClient() as client:
-        userinfo_resp = await client.get(
-            "https://www.googleapis.com/oauth2/v3/userinfo",
-            headers={"Authorization": f"Bearer {token_data['access_token']}"},
-        )
+    # Verify the Google ID token signature, audience, and issuer using
+    # Google's public keys. Previously the code only checked that
+    # id_token was *present*, then trusted the userinfo endpoint
+    # response (which is anyone-can-call given a leaked access_token).
+    # An attacker with a leaked access_token for a *consumer* Google
+    # account whose self-claimed email is in our allowed domain could
+    # mint a session as that staff member. We now reject any token
+    # where email_verified isn't true or the audience doesn't match
+    # our client_id. (Fable auth audit H1.)
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
+        idinfo = google_id_token.verify_oauth2_token(
+            id_token, google_requests.Request(),
+            settings.google_client_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=401,
+            detail=f"ID token verification failed: {exc}")
+    iss = idinfo.get("iss") or ""
+    if iss not in ("accounts.google.com", "https://accounts.google.com"):
+        raise HTTPException(
+            status_code=401,
+            detail=f"Unexpected ID token issuer: {iss!r}")
+    if not idinfo.get("email_verified"):
+        raise HTTPException(
+            status_code=403,
+            detail="Google account email is not verified — cannot sign in.")
 
-    if userinfo_resp.status_code != 200:
-        raise HTTPException(status_code=400, detail="Failed to get user info")
-
-    userinfo = userinfo_resp.json()
-    email = userinfo.get("email", "")
+    email = normalize_email(idinfo.get("email") or "")
+    if not email:
+        raise HTTPException(status_code=400, detail="ID token has no email")
     domain = email.split("@")[-1] if email else ""
 
     if domain not in ALLOWED_DOMAINS:
@@ -145,19 +180,67 @@ async def google_login(payload: dict):
             status_code=403,
             detail=f"Access denied. Only {', '.join(ALLOWED_DOMAINS)} emails are allowed."
         )
+    # Userinfo only needed for the display name/picture now; the
+    # authoritative email + identity come from the verified ID token.
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            userinfo_resp = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {token_data['access_token']}"},
+            )
+        userinfo = userinfo_resp.json() if userinfo_resp.status_code == 200 else {}
+    except Exception:
+        userinfo = {}
+    # Prefer the verified ID-token name; fall back to userinfo + ""
+    userinfo = {
+        "email": email,
+        "name": idinfo.get("name") or userinfo.get("name", ""),
+        "picture": idinfo.get("picture") or userinfo.get("picture", ""),
+    }
 
-    # Active-user gate — block suspended accounts at login (Phase 7).
-    # We only block if the user already exists; first-time logins still
-    # auto-create via get_current_user with is_active=True default.
+    # First-time login: provision the User row here, NOT in
+    # get_current_user. The previous design auto-provisioned on any
+    # request whose token had no matching User row, which meant a
+    # deleted user with an unexpired JWT would silently re-create
+    # their account on the next request and regain default-staff
+    # access. (Fable auth audit C2.)
     from app.database import SessionLocal
     _db = SessionLocal()
     try:
-        existing = _db.query(User).filter(User.email == email).first()
+        email_norm = email.lower().strip()
+        existing = _db.query(User).filter(User.email == email_norm).first()
         if existing is not None and not existing.is_active:
             raise HTTPException(
                 status_code=403,
                 detail="Your account is suspended. Contact your administrator.",
             )
+        if existing is None:
+            # Provision the new account here, where intent-to-create is
+            # explicit (the user just completed an OAuth handshake).
+            new_user = User(
+                email=email_norm,
+                group=UserGroup.CLINICAL,
+                display_name=userinfo.get("name") or "",
+            )
+            _db.add(new_user)
+            try:
+                _db.commit()
+            except Exception:
+                # Concurrent first login (Fable M1). Roll back and
+                # re-query — the other request already provisioned us.
+                _db.rollback()
+            log_action(_db, "USER_CREATED", "user",
+                       resource_id=email_norm,
+                       user_name=email_norm,
+                       description="Auto-created via Google OAuth login")
+            # Auto-join Default Staff so new hires get the baseline
+            # tiers (Chart View + My Checklist Work) without admin
+            # intervention.
+            from app.services.default_staff_group import (
+                auto_join_default_staff, ensure_default_staff_group,
+            )
+            ensure_default_staff_group(_db)
+            auto_join_default_staff(_db, email_norm)
     finally:
         _db.close()
 
@@ -174,11 +257,18 @@ async def google_login(payload: dict):
         "picture": userinfo.get("picture", ""),
         "token": session_token,
     })
+    # `secure=True` so the session cookie isn't sent over plaintext
+    # HTTP. Production is HTTPS-only; local dev bypasses this via the
+    # WWC_DEV_INSECURE_COOKIES env flag. (Fable auth audit H3.)
+    import os
+    secure_cookie = os.environ.get(
+        "WWC_DEV_INSECURE_COOKIES", "").lower() not in ("true", "1", "yes")
     response.set_cookie(
         key="session_token",
         value=session_token,
         httponly=True,
         samesite="lax",
+        secure=secure_cookie,
         max_age=8 * 3600,
     )
     return response

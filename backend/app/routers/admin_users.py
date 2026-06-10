@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.user import User, UserGroup, PRACTICE_ROLES
 from app.services.audit_service import log_action
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, normalize_email
 from app.permissions.dependencies import requires_super_admin
 
 router = APIRouter(prefix="/admin/users", tags=["admin-users"])
@@ -111,6 +111,7 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    email = normalize_email(email)
     row = db.query(User).filter(User.email == email).first()
     if row is None:
         raise HTTPException(status_code=404, detail="user not found")
@@ -215,12 +216,13 @@ def delete_user(
     as a historical attribution — they aren't FK-linked so they don't
     block deletion.
     """
+    email = normalize_email(email)
     row = db.query(User).filter(User.email == email).first()
     if row is None:
         raise HTTPException(status_code=404, detail="user not found")
 
-    me_email = (current_user.get("email") or "").lower().strip()
-    target_email = (row.email or "").lower().strip()
+    me_email = normalize_email(current_user.get("email"))
+    target_email = normalize_email(row.email)
     if me_email and me_email == target_email:
         raise HTTPException(
             status_code=409,
@@ -265,7 +267,7 @@ def create_user(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    email = str(payload.email).lower().strip()
+    email = normalize_email(payload.email)
     existing = db.query(User).filter(User.email == email).first()
     if existing is not None:
         raise HTTPException(status_code=409, detail="user already exists")
@@ -276,7 +278,14 @@ def create_user(
         display_name=payload.display_name,
     )
     db.add(row)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        # Concurrent create_user (Fable auth audit M1). Roll back and
+        # surface a clean 409 — the other request already created the
+        # row, so this caller's "create" is implicitly an "exists."
+        db.rollback()
+        raise HTTPException(status_code=409, detail="user already exists")
     db.refresh(row)
     log_action(db, "USER_CREATED_BY_ADMIN", "user",
                resource_id=email,

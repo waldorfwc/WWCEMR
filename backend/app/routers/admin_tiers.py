@@ -23,7 +23,7 @@ from app.models.module_tier import GroupModuleTier
 from app.models.user import User
 from app.permissions.catalog import MODULE_REGISTRY, Module, Tier
 from app.permissions.resolver import effective_tier, effective_tier_with_source
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, normalize_email
 from app.services.permission_grants import (
     SuperAdminProtected,
     clear_group_tier,
@@ -46,15 +46,34 @@ def _module_or_404(slug: str) -> Module:
         raise HTTPException(status_code=404, detail=f"unknown module: {slug}")
 
 
+_GRANTABLE_TIERS = (
+    Tier.NONE, Tier.VIEW, Tier.WORK, Tier.MANAGE, Tier.ADMIN,
+)
+
+
 def _tier_or_422(name: Optional[str]) -> Tier:
+    """Coerce a tier name to a Tier enum, restricted to per-module
+    grantable values. SUPER_ADMIN is global-only (see User.is_super_admin)
+    and must NEVER be stored on a UserModuleOverride or GroupModuleTier
+    row — the previous version of this helper accepted SUPER_ADMIN
+    because it's a valid Tier enum member, which let a per-module Admin
+    send {"tier":"super_admin"} and store tier 50 on a user override
+    that resolved above the ADMIN gate everywhere. (Fable auth audit C1.)
+    """
     if name is None:
         # Should be handled by the caller — None means "clear", not a tier.
         raise HTTPException(status_code=422, detail="tier is required")
     upper = "NONE" if name.lower() == "denied" else name.upper()
     try:
-        return Tier[upper]
+        tier = Tier[upper]
     except KeyError:
         raise HTTPException(status_code=422, detail=f"unknown tier: {name}")
+    if tier not in _GRANTABLE_TIERS:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"tier {name!r} cannot be granted per-module; "
+                    f"allowed: {[t.name.lower() for t in _GRANTABLE_TIERS]}"))
+    return tier
 
 
 def _require_super_admin(current_user: dict, db: Session) -> User:
@@ -87,6 +106,7 @@ def _require_admin_on_module(current_user: dict, db: Session,
 def get_user_tiers(email: str, db: Session = Depends(get_db),
                     current_user: dict = Depends(get_current_user)):
     _require_super_admin(current_user, db)
+    email = normalize_email(email)
     tiers = []
     for module in Module:
         result = effective_tier_with_source(db, email, module)
@@ -113,13 +133,30 @@ def put_user_override(email: str, module_slug: str, payload: OverrideIn,
                       current_user: dict = Depends(get_current_user)):
     module = _module_or_404(module_slug)
     actor = _require_admin_on_module(current_user, db, module)
+    # Normalize the path-param email to match how the resolver looks
+    # up overrides. Without this, a 'denied' override created for
+    # John.Doe@... would never match a lowercased token email.
+    # (Fable auth audit H2.)
+    email = normalize_email(email)
+    # Validate target exists (Fable auth audit M6) — typo'd emails used
+    # to create dead overrides silently that would never apply but
+    # would still clutter the admin matrix.
+    if not db.query(User).filter(User.email == email).first():
+        raise HTTPException(
+            status_code=404,
+            detail=f"No user with email {email!r}")
     if payload.tier is None:
         clear_user_override(db, user_email=email, module=module,
                              actor_email=actor.email)
         return {"ok": True, "cleared": True}
     tier = _tier_or_422(payload.tier)
     # Granting Admin is Super-Admin-only (privilege escalation gate).
-    if tier == Tier.ADMIN and not actor.is_super_admin:
+    # Use >= so anything at or above ADMIN (including any future
+    # near-Super tier) requires Super Admin. The previous == form let a
+    # SUPER_ADMIN-typed grant slip past this gate; even with C1's
+    # whitelist that closes the immediate hole, >= is the correct
+    # semantics. (Fable auth audit C1.)
+    if tier >= Tier.ADMIN and not actor.is_super_admin:
         raise HTTPException(
             status_code=403,
             detail="Only Super Admin can grant the Admin tier",
@@ -140,6 +177,7 @@ def put_super_admin(email: str, payload: SuperAdminIn,
                     db: Session = Depends(get_db),
                     current_user: dict = Depends(get_current_user)):
     actor = _require_super_admin(current_user, db)
+    email = normalize_email(email)
     try:
         set_super_admin(db, target_email=email,
                          is_super_admin=payload.is_super_admin,
@@ -187,7 +225,12 @@ def put_group_tier(group_id: str, module_slug: str, payload: GroupTierIn,
                          actor_email=actor.email)
         return {"ok": True, "cleared": True}
     tier = _tier_or_422(payload.tier)
-    if tier == Tier.ADMIN and not actor.is_super_admin:
+    # Use >= so anything at or above ADMIN (including any future
+    # near-Super tier) requires Super Admin. The previous == form let a
+    # SUPER_ADMIN-typed grant slip past this gate; even with C1's
+    # whitelist that closes the immediate hole, >= is the correct
+    # semantics. (Fable auth audit C1.)
+    if tier >= Tier.ADMIN and not actor.is_super_admin:
         raise HTTPException(
             status_code=403,
             detail="Only Super Admin can grant the Admin tier to a group",

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.groups import Group
 from app.models.user import User
-from app.routers.auth import get_current_user
+from app.routers.auth import get_current_user, normalize_email
 from app.services.audit_service import log_action
 
 
@@ -141,6 +141,7 @@ def delete_group(group_id: str, db: Session = Depends(get_db),
 def get_user_groups(email: str, db: Session = Depends(get_db)):
     """Return the user's group memberships. Used by the per-user group
     editor in Admin.jsx."""
+    email = normalize_email(email)
     user = db.query(User).filter(User.email == email).first()
     if user is None:
         raise HTTPException(status_code=404, detail="user not found")
@@ -155,6 +156,7 @@ def replace_user_groups(email: str, payload: UserGroupsReplace,
                         db: Session = Depends(get_db),
                         current_user: dict = Depends(get_current_user)):
     """Replace the user's full set of group memberships."""
+    email = normalize_email(email)
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
@@ -170,7 +172,8 @@ def replace_user_groups(email: str, payload: UserGroupsReplace,
     # doesn't include Admin, ensure at least one other Admin remains.
     admin_grp = db.query(Group).filter(Group.name == "Admin").first()
     if admin_grp and admin_grp in user.groups and admin_grp.id not in wanted:
-        other_admin_count = sum(1 for u in admin_grp.members if u.email != email)
+        other_admin_count = sum(
+            1 for u in admin_grp.members if normalize_email(u.email) != email)
         if other_admin_count == 0:
             raise HTTPException(status_code=409,
                                 detail="cannot remove the last user from the Admin group")
@@ -201,7 +204,7 @@ def add_group_member(group_id: str, payload: AddMemberPayload,
     g = db.query(Group).filter(Group.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="group not found")
-    email = (payload.email or "").lower().strip()
+    email = normalize_email(payload.email)
     if not email:
         raise HTTPException(status_code=422, detail="email is required")
     user = db.query(User).filter(User.email == email).first()
@@ -230,6 +233,7 @@ def remove_group_member(group_id: str, email: str,
     g = db.query(Group).filter(Group.id == group_id).first()
     if not g:
         raise HTTPException(status_code=404, detail="group not found")
+    email = normalize_email(email)
     user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=404, detail="user not found")
@@ -237,7 +241,8 @@ def remove_group_member(group_id: str, email: str,
         return   # already not a member; nothing to do
 
     if g.name == "Admin":
-        other_admins = [u for u in g.members if u.email != email]
+        other_admins = [u for u in g.members
+                         if normalize_email(u.email) != email]
         if not other_admins:
             raise HTTPException(
                 status_code=409,
