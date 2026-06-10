@@ -384,6 +384,12 @@ class PelletCountLine(Base):
     id              = Column(GUID(), primary_key=True, default=new_uuid)
     count_id        = Column(GUID(), ForeignKey("pellet_counts.id"), nullable=False)
     lot_id          = Column(GUID(), ForeignKey("pellet_lots.id"), nullable=False)
+    # Explicit location for the lot×location row this line was snapshot
+    # against. Required for any new count line so finish_count can
+    # reconcile the right PelletStock without resorting to the old
+    # "first stock row matching expected_doses" heuristic. Nullable
+    # for backward compatibility with finished pre-migration counts.
+    location        = Column(String(40), nullable=True)
     expected_doses  = Column(Integer, nullable=False)
     counted_doses   = Column(Integer, nullable=True)
     counted_at      = Column(DateTime, nullable=True)

@@ -2123,6 +2123,7 @@ def start_count(payload: CountStartIn,
     for s in snapshot:
         db.add(PelletCountLine(
             count_id=c.id, lot_id=s.lot_id,
+            location=s.location,
             expected_doses=s.doses_on_hand,
         ))
 
@@ -2140,6 +2141,10 @@ def start_count(payload: CountStartIn,
 class CountScanIn(BaseModel):
     lot_id:        str
     counted_doses: int
+    # Required when the count's location is "all" AND the scanned lot
+    # has stock at more than one location. Ignored when c.location is
+    # a specific site (we just use c.location).
+    location:      Optional[str] = None
     notes:         Optional[str] = None
 
 
@@ -2152,12 +2157,50 @@ def record_count_scan(count_id: str, payload: CountScanIn,
         raise HTTPException(status_code=404, detail="count not found")
     if c.status != "in_progress":
         raise HTTPException(status_code=409, detail=f"count is {c.status}")
+
+    # Resolve which location this scan reconciles. For a site-specific
+    # count, the location is the count's location. For an "all" count,
+    # the client must say which location they're scanning at — multiple
+    # lines for the same lot can exist (one per location) and we have
+    # to know which one to update or reject.
+    if c.location != "all":
+        target_location = c.location
+        if payload.location and payload.location != c.location:
+            raise HTTPException(status_code=422,
+                detail=f"this count is scoped to {c.location}; "
+                       "do not send a different location")
+    else:
+        if not (payload.location or "").strip():
+            raise HTTPException(status_code=422,
+                detail="location is required for an 'all'-scope count")
+        if payload.location not in PELLET_LOCATIONS:
+            raise HTTPException(status_code=422, detail="invalid location")
+        target_location = payload.location
+
     line = (db.query(PelletCountLine)
               .filter(PelletCountLine.count_id == c.id,
-                      PelletCountLine.lot_id == payload.lot_id).first())
+                      PelletCountLine.lot_id == payload.lot_id,
+                      PelletCountLine.location == target_location).first())
     if not line:
-        # Unexpected scan — add it as a discrepancy line
+        # Backfill compatibility: legacy lines created before the
+        # location column existed are nullable. Match by lot only if
+        # no location-keyed line exists and the lot has at most one
+        # legacy row in this count.
+        legacy = (db.query(PelletCountLine)
+                    .filter(PelletCountLine.count_id == c.id,
+                            PelletCountLine.lot_id == payload.lot_id,
+                            PelletCountLine.location.is_(None)).all())
+        if len(legacy) == 1:
+            line = legacy[0]
+            line.location = target_location
+        elif len(legacy) > 1:
+            raise HTTPException(status_code=409,
+                detail="ambiguous legacy count line — start a fresh count")
+
+    if not line:
+        # Unexpected scan — add it as a discrepancy line, with location.
         line = PelletCountLine(count_id=c.id, lot_id=payload.lot_id,
+                                location=target_location,
                                 expected_doses=0)
         db.add(line); db.flush()
     by = current_user.get("email") or "system"
@@ -2222,29 +2265,33 @@ def finish_count(count_id: str, payload: CountFinishIn,
             ]},
         )
 
-    # Apply variances: adjust PelletStock to match counted_doses
+    # Apply variances: adjust PelletStock to match counted_doses.
+    # Each count line carries the explicit (lot_id, location) tuple it
+    # was snapshot against (Fable audit #3). Legacy lines created
+    # before the column existed have location=None — fall back to the
+    # count's location when it's site-scoped, and skip them when the
+    # count was "all" (we can't safely guess which site they meant).
     for l in (c.lines or []):
+        line_location = l.location or (c.location if c.location != "all" else None)
+        if not line_location:
+            # Legacy "all"-count line with no location stored — skip
+            # rather than risk overwriting the wrong stock row.
+            _audit(db, actor=by, action="count_line_skipped_legacy",
+                   lot_id=l.lot_id, count_id=c.id,
+                   summary=(f"Skipped legacy count line for lot {l.lot_id} "
+                            "— no location recorded; manual reconciliation needed"))
+            continue
+
         s = (db.query(PelletStock)
                .filter(PelletStock.lot_id == l.lot_id,
-                       PelletStock.location == c.location).first()
-              if c.location != "all"
-              else None)
-        # When count was 'all', we need to figure out the location from
-        # the stock row that was snapshot — we stored expected_doses but
-        # not location explicitly in CountLine. Cheap heuristic: find the
-        # stock row matching expected_doses; if multiple, take the first.
-        if s is None:
-            s_rows = (db.query(PelletStock)
-                        .filter(PelletStock.lot_id == l.lot_id).all())
-            s = next((r for r in s_rows if r.doses_on_hand == l.expected_doses),
-                      s_rows[0] if s_rows else None)
+                       PelletStock.location == line_location).first())
         if s is None:
             continue
         delta = (l.counted_doses or 0) - s.doses_on_hand
         if delta != 0:
-            s.doses_on_hand = (l.counted_doses or 0)
+            _adjust_stock(db, s, delta)
             _audit(db, actor=by, action="stock_adjusted",
-                   lot_id=l.lot_id, count_id=c.id, location=s.location,
+                   lot_id=l.lot_id, count_id=c.id, location=line_location,
                    delta_doses=delta,
                    detail={"reason": l.notes or "count reconciliation",
                            "expected": l.expected_doses, "counted": l.counted_doses},

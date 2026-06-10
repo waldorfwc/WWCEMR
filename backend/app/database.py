@@ -297,6 +297,11 @@ def _apply_lightweight_migrations():
         # Auto-unresponsive sweep tracking (audit #13)
         ("surgeries", "last_patient_activity_at", "DATETIME"),
         ("surgeries", "auto_unresponsive_at",     "DATETIME"),
+        # Pellet count-line location (Fable audit #3): finish_count
+        # used a "first stock row matching expected_doses" heuristic
+        # because count lines never stored which location they were
+        # snapshot against. Now they do.
+        ("pellet_count_lines", "location", "VARCHAR(40)"),
         # LARC enrollment-envelope auto-fax retry queue (audit #11)
         ("larc_enrollment_envelopes", "next_fax_retry_at",        "DATETIME"),
         ("larc_enrollment_envelopes", "fax_terminally_failed_at", "DATETIME"),
