@@ -6,6 +6,7 @@ arrive in subsequent phases.
 """
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date as _date, datetime, time as _time, timedelta
 from decimal import Decimal
@@ -859,6 +860,20 @@ async def upload_order(
                             detail="Parser couldn't extract patient identity. "
                                    "Try manually creating the surgery instead.")
 
+    # Per-chart serialization (Fable surgery audit Low). Two parallel
+    # upload_order calls with the same chart_number both used to pass
+    # the "existing surgery?" check and create duplicate Surgery rows.
+    # A Postgres advisory lock keyed on the chart number serializes
+    # uploads per chart without needing a new DB constraint that would
+    # fail to migrate over existing duplicates.
+    from sqlalchemy import text as _sql_text
+    import hashlib
+    _lock_key = int(hashlib.sha1(
+        kwargs["chart_number"].encode("utf-8")).hexdigest()[:8], 16)
+    # 32-bit advisory key — held until the end of the transaction
+    db.execute(_sql_text("SELECT pg_advisory_xact_lock(:k)"),
+                 {"k": _lock_key & 0x7FFFFFFF})
+
     # If a demographics-only row exists for this chart (from the bulk
     # roster import), merge the parsed surgery fields into it rather than
     # creating a duplicate.
@@ -1017,6 +1032,14 @@ def create_manual(payload: ManualSurgeryIn,
         dob = datetime.strptime(payload.dob[:10], "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=422, detail="dob must be YYYY-MM-DD")
+    # DOB sanity: future dates and absurd ages corrupt age-based
+    # routing (peds dose tables, patient-portal soft-auth keyed on DOB,
+    # consent age gates). 1900..today is the OB/GYN-realistic envelope.
+    # (Fable surgery audit Low.)
+    if dob > _date.today() or dob.year < 1900:
+        raise HTTPException(
+            status_code=422,
+            detail=f"dob {dob} is outside the acceptable range (1900-01-01..today)")
     try:
         preop_date = datetime.strptime(payload.preop_date[:10], "%Y-%m-%d").date()
     except ValueError:
@@ -1110,6 +1133,19 @@ def get_surgery(surgery_id: str, db: Session = Depends(get_db),
            .first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
+    # PHI access logging (Fable surgery audit H2). Every individual chart
+    # read writes a row to the central audit log so an incident query
+    # ("who looked at this patient?") can be answered.
+    log_action(
+        db,
+        action="CHART_VIEW",
+        resource_type="surgery",
+        resource_id=str(s.id),
+        patient_id=s.chart_number or None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=f"Viewed surgery chart {s.surgery_number or s.id} ({s.patient_name})",
+    )
     out = _surgery_dict(s, include_milestones=True)
     # Expose the booked slot so the frontend can offer duration inline edit (Phase D6)
     slot = (db.query(SurgerySlot)
@@ -1222,8 +1258,17 @@ def patch_slot(
     if new_dur > 480:
         raise HTTPException(status_code=422,
                             detail="duration may not exceed 480 minutes (8h)")
-    # Also reject anything that would exceed the block day's window.
-    bd = db.query(BlockDay).filter(BlockDay.id == slot.block_day_id).first()
+
+    # Lock the BlockDay row for the duration of this transaction so two
+    # concurrent duration edits can't both pass the overlap check.
+    # Without this, T1 reads the existing slots, T2 reads the same set,
+    # T1 commits an extended slot, then T2 commits an overlapping one —
+    # patch_slot inherited the same TOCTOU window as the booking paths
+    # before C1 was fixed. (Fable surgery audit M2.)
+    bd = (db.query(BlockDay)
+            .filter(BlockDay.id == slot.block_day_id)
+            .with_for_update()
+            .first())
     if bd:
         from datetime import datetime as _dt, timedelta as _td
         slot_start_dt = _dt.combine(bd.block_date, slot.start_time)
@@ -1235,7 +1280,9 @@ def patch_slot(
                 detail=f"duration would extend past block day end ({bd.end_time}); "
                        f"max from this slot is {max_dur} min")
 
-    # Conflict check: ensure the new (start, new_duration) doesn't overlap another slot.
+    # Conflict check: ensure the new (start, new_duration) doesn't
+    # overlap another slot. Evaluated *after* the row lock so we see any
+    # slot the racing transaction just committed.
     conflict = overlapping_slot(db, slot.block_day_id, slot.start_time, new_dur,
                                 exclude_slot_id=slot.id)
     if conflict:
@@ -1347,6 +1394,12 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
             data["dob"] = datetime.strptime(data["dob"][:10], "%Y-%m-%d").date()
         except ValueError:
             raise HTTPException(status_code=422, detail="dob must be YYYY-MM-DD")
+        # Same envelope as create_manual (Fable surgery audit Low).
+        if data["dob"] > _date.today() or data["dob"].year < 1900:
+            raise HTTPException(
+                status_code=422,
+                detail=(f"dob {data['dob']} is outside the acceptable "
+                        f"range (1900-01-01..today)"))
     elif "dob" in data:
         data["dob"] = None
 
@@ -1443,6 +1496,30 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         v = (data["cell_phone"] or "").strip()
         data["cell_phone"] = v or None
 
+    # Capture before-state snapshot of the PHI / clinical / financial
+    # fields the staff are about to change. Filtered to the keys actually
+    # in the payload so we don't bloat audit rows with untouched columns.
+    # (Fable surgery audit H2.)
+    _audit_field_set = {
+        "patient_name", "dob", "address", "city", "state", "zip_code",
+        "cell_phone", "home_phone", "email",
+        "primary_insurance", "insurance_member_id", "secondary_insurance",
+        "diagnosis_primary", "diagnosis_secondary", "procedure_primary",
+        "procedure_classification", "estimated_minutes", "duration_minutes",
+        "surgeon_primary", "surgeon_email", "selected_facility",
+        "auth_status", "auth_number", "clearance_status", "clearance_required",
+        "fmla_required", "fmla_fee_paid", "status",
+    }
+    audit_diff = {}
+    for k in (set(data.keys()) & _audit_field_set):
+        before_val = getattr(s, k, None)
+        new_val = data[k]
+        if before_val != new_val:
+            audit_diff[k] = {
+                "before": (str(before_val) if before_val is not None else None),
+                "after":  (str(new_val) if new_val is not None else None),
+            }
+
     # Apply
     for k, v in data.items():
         setattr(s, k, v)
@@ -1478,6 +1555,23 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                     m.completed_at = None
 
     _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
+
+    # PHI audit (Fable surgery audit H2). Emit only when something
+    # material actually changed, to keep the audit log signal-rich.
+    if audit_diff:
+        log_action(
+            db,
+            action="CHART_EDIT",
+            resource_type="surgery",
+            resource_id=str(s.id),
+            patient_id=s.chart_number or None,
+            user_id=(current_user.get("email") or "").lower() or None,
+            user_name=current_user.get("name") or current_user.get("email"),
+            description=(f"Edited surgery {s.surgery_number or s.id}: "
+                         f"{', '.join(sorted(audit_diff.keys()))}"),
+            old_values={k: v["before"] for k, v in audit_diff.items()},
+            new_values={k: v["after"]  for k, v in audit_diff.items()},
+        )
 
     # If the staff just changed anything that drives the calendar event
     # (date, start time, facility, surgeon), re-push so the event on the
@@ -1578,8 +1672,8 @@ def milestone_action(
         summary=f"{m.kind}: {prev_status} → {m.status}",
         detail={"surgery_id": str(s.id), "milestone_kind": m.kind, "action": action})
 
-    db.commit(); db.refresh(m)
-    db.refresh(s)
+    _commit_or_409(db, surgery_id=surgery_id)
+    db.refresh(m); db.refresh(s)
     return _surgery_dict(s, include_milestones=True)
 
 
@@ -1589,6 +1683,7 @@ class CancelPayload(BaseModel):
     reason: str          # patient | anesthesia | hospital | medical | unresponsive | hold
     notes: Optional[str] = None
     fee_required: Optional[bool] = None    # caller can override system default
+    fee_override_reason: Optional[str] = None    # required if fee_required is set
 
 
 @router.post("/{surgery_id}/cancel")
@@ -1623,7 +1718,22 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
         days_to_surgery = (s.scheduled_date - _date.today()).days
         if 0 <= days_to_surgery <= 14:
             fee_required = True
-    if payload.fee_required is not None:
+    # If the caller overrides the system-determined fee (waive or impose),
+    # require an explicit reason AND MANAGE tier so a WORK-tier user
+    # can't silently waive the $351. (Fable surgery audit M4.)
+    if payload.fee_required is not None and payload.fee_required != fee_required:
+        if not (payload.fee_override_reason or "").strip():
+            raise HTTPException(
+                status_code=422,
+                detail=("fee_override_reason is required when overriding the "
+                        "system-determined cancellation fee"))
+        from app.permissions.resolver import effective_tier
+        actor_email = (current_user.get("email") or "").lower().strip()
+        if effective_tier(db, actor_email, Module.SURGERY) < Tier.MANAGE:
+            raise HTTPException(
+                status_code=403,
+                detail=("overriding the cancellation fee requires Tier.MANAGE "
+                        "on the Surgery module"))
         fee_required = payload.fee_required
     if s.amount_paid and float(s.amount_paid) > 0:
         refund_required = True
@@ -1668,6 +1778,7 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
     # statuses (signed/completed/voided/declined/expired) — those are
     # already settled and BoldSign rejects voids on completed docs.
     if payload.reason != "hold":
+        from app.models.surgery import SurgeryNote
         from app.services.boldsign_envelopes import (
             void_envelope_row, BoldSignEnvelopeError,
         )
@@ -1681,9 +1792,35 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
                     reason=f"Surgery cancelled ({payload.reason})",
                 )
             except (BoldSignEnvelopeError, Exception) as ve:
-                import logging
+                # A live consent envelope outliving its cancelled surgery
+                # is a real PHI/clinical risk — the patient could still
+                # sign. Make the failure visible: chart note (so staff see
+                # it on the surgery timeline) + central audit row tagged
+                # FAILED so a daily monitor can find these.
+                # (Fable surgery audit M5.)
                 logging.getLogger(__name__).warning(
                     "BoldSign void failed for envelope %s: %s", env.id, ve)
+                db.add(SurgeryNote(
+                    surgery_id=s.id,
+                    created_by="system:boldsign-void-failed",
+                    content=(f"⚠ BoldSign envelope {env.id} void FAILED during "
+                             f"cancellation ({payload.reason}). Patient may "
+                             f"still be able to sign this envelope. Revoke "
+                             f"manually in the BoldSign dashboard. Error: {ve}"),
+                ))
+                log_action(
+                    db,
+                    action="BOLDSIGN_VOID_FAILED",
+                    resource_type="surgery_consent_envelope",
+                    resource_id=str(env.id),
+                    patient_id=s.chart_number or None,
+                    user_id=(current_user.get("email") or "").lower() or None,
+                    user_name=current_user.get("name") or current_user.get("email"),
+                    description=(f"Failed to void BoldSign envelope {env.id} "
+                                 f"on cancellation of surgery {s.id}"),
+                    status="failure",
+                    error_detail=str(ve)[:500],
+                )
 
     # HIPAA audit row alongside the SurgeryCancellation table so the
     # central audit_logs view (used by /audit + reporting) sees who
@@ -2200,12 +2337,41 @@ def send_boarding_slip(surgery_id: str,
     """Fax or email the latest boarding slip PDF to a hospital scheduler."""
     if payload.kind not in ("fax", "email"):
         raise HTTPException(status_code=422, detail="kind must be 'fax' or 'email'")
-    if not (payload.to or "").strip():
+    to = (payload.to or "").strip()
+    if not to:
         raise HTTPException(status_code=422, detail="destination ('to') is required")
+    # PHI destination shape check — misdirected fax is the classic HIPAA
+    # breach vector. (Fable surgery audit Low.)
+    import re
+    if payload.kind == "fax":
+        digits = re.sub(r"\D", "", to)
+        if len(digits) < 10:
+            raise HTTPException(
+                status_code=422,
+                detail="fax number must contain at least 10 digits")
+    else:  # email
+        if "@" not in to or "." not in to.rsplit("@", 1)[-1]:
+            raise HTTPException(
+                status_code=422,
+                detail="email destination must look like an email address")
 
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
+    # HIPAA outbound audit: who sent a PHI document where. send_history
+    # already records on the file, but the central audit log is what
+    # incident queries hit. (Fable surgery audit Low + H2.)
+    log_action(
+        db,
+        action="PHI_BOARDING_SLIP_SENT",
+        resource_type="surgery",
+        resource_id=str(s.id),
+        patient_id=s.chart_number or None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=(f"Sent boarding slip for surgery "
+                     f"{s.surgery_number or s.id} via {payload.kind} to {to}"),
+    )
 
     # Resolve which boarding slip to send
     q = db.query(SurgeryFile).filter(SurgeryFile.surgery_id == s.id,
@@ -2573,8 +2739,14 @@ async def upload_file(
             m.completed_at = datetime.utcnow()
             m.completed_by = current_user.get("email")
 
-    # When prior auth is uploaded, also mark auth_status if not already terminal
-    if kind == "prior_auth" and s.auth_status not in ("approved", "not_required", "completed"):
+    # Auto-advance auth_status only on the happy path — i.e. when we
+    # were waiting on the payer (sent_request / sent_records). Without
+    # this guard, uploading the DENIAL letter (naturally filed as kind
+    # 'prior_auth') would flip a 'denied' auth back to 'approved' —
+    # surgery proceeds against a denied auth = uncompensated case.
+    # 'required' / 'tbd' / 'peer_review' also stay as-is and need an
+    # explicit decision via PATCH auth_status. (Fable surgery audit H3.)
+    if kind == "prior_auth" and s.auth_status in ("sent_request", "sent_records"):
         s.auth_status = "approved"
 
     db.commit(); db.refresh(f_row)
@@ -2624,6 +2796,21 @@ def download_file(surgery_id: str, file_id: str,
     if is_legacy_local_path(f.path):
         raise HTTPException(status_code=410,
                               detail="This file is from before the cloud migration and is no longer available.")
+    # PHI document download audit (Fable surgery audit H2). Path
+    # reports, op notes, clearance letters, consent PDFs all count as
+    # PHI; record the actor + filename + kind so a misuse report
+    # query can find who pulled what.
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    log_action(
+        db,
+        action="CHART_DOCUMENT_DOWNLOAD",
+        resource_type="surgery_file",
+        resource_id=str(f.id),
+        patient_id=(s.chart_number if s else None),
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=f"Downloaded {f.kind} file {f.filename} for surgery {surgery_id}",
+    )
     return serve_blob(
         local_path=None,
         gcs_object=f.path,
@@ -3793,7 +3980,7 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
             m.status = "done"
             m.completed_at = datetime.utcnow()
             m.completed_by = current_user.get("email") or "system"
-        db.commit(); db.refresh(s)
+        _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
 
         # Generate the patient-facing PDF estimate and attach it
         try:
@@ -4029,7 +4216,7 @@ def consent_mark_sent(surgery_id: str, payload: ConsentTransitionPayload = Conse
         m.started_at = m.started_at or datetime.utcnow()
         if payload.notes:
             m.notes = payload.notes
-    db.commit(); db.refresh(s)
+    _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
     return _surgery_dict(s, include_milestones=True)
 
 
@@ -4200,12 +4387,31 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
                          db: Session = Depends(get_db),
                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Mark that the patient has signed the consent. Stamps consent_signed_at,
-    flips status='signed', closes the consent milestone."""
+    flips status='signed', closes the consent milestone.
+
+    Requires at least one uploaded SurgeryFile of kind='consent' as
+    evidence — the BoldSign pipeline is the preferred path; this manual
+    route is for paper consents scanned and uploaded. Without the
+    evidence requirement any WORK-tier user could flip consent to
+    'signed' on any chart with no audit trail. (Fable surgery audit M3.)
+    """
     s = (db.query(Surgery)
            .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
+
+    has_consent_file = (db.query(SurgeryFile)
+                          .filter(SurgeryFile.surgery_id == s.id,
+                                  SurgeryFile.kind == "consent")
+                          .first())
+    if not has_consent_file:
+        raise HTTPException(
+            status_code=409,
+            detail=("cannot mark consent signed without an uploaded consent "
+                    "document — upload the scanned signed consent to "
+                    f"/api/surgery/{s.id}/files (kind=consent) first, or use "
+                    "the BoldSign envelope flow"))
 
     s.consent_status = "signed"
     s.consent_signed_at = datetime.utcnow()
@@ -4216,7 +4422,21 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
         m.completed_by = current_user.get("email") or "system"
         if payload.notes:
             m.notes = payload.notes
-    db.commit(); db.refresh(s)
+    _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
+    # Central audit so a misuse query can find who flipped consent on
+    # which chart and tie it back to the SurgeryFile that justified it.
+    log_action(
+        db,
+        action="CONSENT_MARKED_SIGNED",
+        resource_type="surgery",
+        resource_id=str(s.id),
+        patient_id=s.chart_number or None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=(f"Marked consent signed on surgery "
+                     f"{s.surgery_number or s.id} (evidence file "
+                     f"{has_consent_file.id})"),
+    )
     return _surgery_dict(s, include_milestones=True)
 
 
@@ -4439,7 +4659,28 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
         raise HTTPException(status_code=404, detail="block day not found")
 
     proc_kind = payload.procedure_kind or s.procedure_classification or "minor"
-    duration = DURATIONS.get(proc_kind, s.estimated_minutes or 60)
+    # Validate procedure_kind against the known DURATIONS map (Fable
+    # surgery audit M6). Without this any string would fall through and
+    # silently get a 60-minute default — a robotic_240 mistyped as
+    # "robotic240" would book a 60-min slot for a 4-hour case.
+    if proc_kind not in DURATIONS:
+        raise HTTPException(
+            status_code=422,
+            detail=(f"procedure_kind {proc_kind!r} not recognized — "
+                    f"must be one of {sorted(DURATIONS.keys())}"))
+    duration = DURATIONS[proc_kind]
+
+    # Blackout check on the target block day. Even coordinator_schedule
+    # ran this; the waitlist path was relying on book_slot's capacity
+    # check alone, which wouldn't catch a surgeon-specific blackout on
+    # the day. (Fable surgery audit M6.)
+    blackout = is_date_blacked_out(
+        db, bd.block_date, s.selected_facility or bd.facility, s.surgeon_email)
+    if blackout:
+        raise HTTPException(
+            status_code=409,
+            detail=f"that date is blocked: {blackout.label or blackout.reason} "
+                   f"({blackout.scope})")
 
     # Determine start time as next gap
     existing = sorted(bd.slots or [], key=lambda x: x.start_time)
@@ -4538,6 +4779,25 @@ def send_ad_hoc_patient_email(
     if not to:
         raise HTTPException(status_code=422,
                             detail="recipient email required (and Surgery.email is empty)")
+    if "@" not in to or "." not in to.rsplit("@", 1)[-1]:
+        raise HTTPException(
+            status_code=422,
+            detail="recipient must look like an email address")
+    # PHI outbound audit (Fable surgery audit Low + H2). Misdirected
+    # ad-hoc emails are a HIPAA breach vector; the central audit log
+    # makes the destination queryable.
+    log_action(
+        db,
+        action="PHI_PATIENT_EMAIL_SENT",
+        resource_type="surgery",
+        resource_id=str(s.id),
+        patient_id=s.chart_number or None,
+        user_id=(actor or "").lower() or None,
+        user_name=current_user.get("name") or actor,
+        description=(f"Sent ad-hoc patient email for surgery "
+                     f"{s.surgery_number or s.id} to {to} "
+                     f"(subject: {payload.subject[:80]!r})"),
+    )
     if not payload.subject.strip() or not payload.body_html.strip():
         raise HTTPException(status_code=422,
                             detail="subject and body_html are required")
