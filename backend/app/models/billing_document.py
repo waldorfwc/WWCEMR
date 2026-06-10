@@ -18,6 +18,7 @@ from sqlalchemy.orm import relationship
 
 from app.database import Base
 from app.models.guid import GUID, new_uuid
+from app.models.mixins import SoftDeleteMixin
 
 
 # Allowed classification values. Editable here (UI dropdown is driven
@@ -38,7 +39,7 @@ STATUSES = [
 ]
 
 
-class BillingDocument(Base):
+class BillingDocument(Base, SoftDeleteMixin):
     __tablename__ = "billing_documents"
 
     id = Column(GUID(), primary_key=True, default=new_uuid)

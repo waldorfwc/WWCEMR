@@ -45,9 +45,9 @@ from app.models.larc import (
 )
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
-from app.permissions.dependencies import requires_tier
+from app.permissions.dependencies import requires_super_admin, requires_tier
 from app.services.audit_service import log_action
-from app.services.larc_workflow import (
+from app.services.larc.workflow import (
     ALL_BUCKETS, ASSIGNMENT_REALLOCATE_AFTER_DAYS, CHECKOUT_ACK_WINDOW_HOURS,
     DEVICE_EXPIRY_HOLD_DAYS, LOCATIONS, LOCATION_LABELS,
     PHARMACY_ORDER_SLA_DAYS, assignment_buckets, log_audit, spawn_milestones,
@@ -785,7 +785,7 @@ def device_labels_pdf(
     """Return a multi-page PDF with one label per device. Pass device IDs
     as a comma-separated list in `ids`."""
     from fastapi.responses import Response
-    from app.services.larc_label import render_device_label
+    from app.services.larc.label import render_device_label
     import io
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import inch
@@ -976,7 +976,7 @@ def change_device_ownership(device_id: str,
         active = next((x for x in (d.assignments or [])
                        if x.is_active and x.chart_number), None)
         if active and active.device:
-            from app.services.larc_sweeps import _push_to_owed
+            from app.services.larc.sweeps import _push_to_owed
             _push_to_owed(
                 db, active,
                 expires_at=d.expiration_date,
@@ -1605,7 +1605,7 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
         # pharmacy for an assignment that no longer applies. Best-effort;
         # failures are recorded on the envelope row for the sweep job.
         # (Fable LARC audit C2.)
-        from app.services.larc_enrollment_sender import (
+        from app.services.larc.enrollment_sender import (
             void_live_envelopes_for_assignment,
         )
         try:
@@ -1704,7 +1704,7 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
                             detail="Enrollment only applies to pharmacy_order flow")
     by = current_user.get("email") or "system"
 
-    from app.services.larc_enrollment_sender import (
+    from app.services.larc.enrollment_sender import (
         send_enrollment_envelope, LarcEnrollmentError,
     )
     from sqlalchemy.exc import IntegrityError
@@ -1756,7 +1756,7 @@ def refax_envelope(envelope_id: str,
         raise HTTPException(status_code=409,
                             detail="envelope is not yet fully signed — nothing to fax")
     by = current_user.get("email") or "system"
-    from app.services.larc_pharmacy_fax import fax_envelope
+    from app.services.larc.pharmacy_fax import fax_envelope
     result = fax_envelope(db, env, by_email=by, force=True)
     if not result.get("ok"):
         # Soft-fail with the persisted error rather than 500 — the row
@@ -2144,7 +2144,7 @@ def fax_pharmacy(assignment_id: str, payload: FaxPharmacyIn = FaxPharmacyIn(),
                         "update the directory or pass a different pharmacy_id"))
     a.request_faxed_at = now_utc_naive()
     # SLA: expect device within PHARMACY_ORDER_SLA_DAYS
-    from app.services.larc_workflow import PHARMACY_ORDER_SLA_DAYS
+    from app.services.larc.workflow import PHARMACY_ORDER_SLA_DAYS
     a.expected_received_by = (now_utc_naive().date() + timedelta(days=PHARMACY_ORDER_SLA_DAYS))
     _mark_milestone(a, "request_faxed", status="done", by=by, notes=payload.notes)
     log_audit(db, actor=by, action="request_faxed",
@@ -2636,7 +2636,7 @@ def device_label_pdf(device_id: str,
                       db: Session = Depends(get_db),
                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
     from fastapi.responses import Response
-    from app.services.larc_label import render_device_label
+    from app.services.larc.label import render_device_label
     d = (db.query(LarcDevice)
            .options(joinedload(LarcDevice.device_type))
            .filter(LarcDevice.id == device_id).first())
@@ -2712,7 +2712,7 @@ def create_office_procedure_assignment(
     db.add(a); db.flush()
     spawn_milestones(db, a)
     # Mark the device_assigned milestone done (since the assignment IS the picking)
-    from app.services.larc_workflow import LarcMilestone as _M  # avoid shadowing
+    from app.services.larc.workflow import LarcMilestone as _M  # avoid shadowing
     m = next((mm for mm in a.milestones if mm.kind == "device_assigned"), None)
     if m:
         m.status = "done"
@@ -2944,9 +2944,11 @@ def receive_replacement(device_id: str, payload: ReceiveReplacementIn,
 # ─── Sweeps + Owed list (Phase 5) ──────────────────────────────────
 
 @router.post("/admin/run-sweeps")
-def run_sweeps(current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
-    """Manually trigger the expiry + stale-assignment + pharmacy-SLA sweeps."""
-    from app.services.larc_sweeps import run_all
+def run_sweeps(current_user: dict = Depends(requires_super_admin())):
+    """Manual trigger for the expiry + stale-assignment + pharmacy-SLA
+    sweeps. Primary runner is the larc_sweeps Cloud Run Job (registered
+    in app/jobs/run.py). Super-admin only. (Fable note 6.)"""
+    from app.services.larc.sweeps import run_all
     return run_all()
 
 

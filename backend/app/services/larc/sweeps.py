@@ -30,7 +30,7 @@ from app.database import SessionLocal
 from app.models.larc import (
     LarcAssignment, LarcAuditEvent, LarcDevice, LarcOwedPatient,
 )
-from app.services.larc_workflow import (
+from app.services.larc.workflow import (
     ASSIGNMENT_REALLOCATE_AFTER_DAYS, DEVICE_EXPIRY_HOLD_DAYS,
     PHARMACY_ORDER_SLA_DAYS, log_audit,
 )
@@ -166,7 +166,7 @@ def sweep_fax_retry(db: Session) -> dict:
     """
     from sqlalchemy import or_
     from app.models.larc import LarcEnrollmentEnvelope
-    from app.services.larc_pharmacy_fax import fax_envelope
+    from app.services.larc.pharmacy_fax import fax_envelope
 
     now = now_utc_naive()
     candidates = (db.query(LarcEnrollmentEnvelope)

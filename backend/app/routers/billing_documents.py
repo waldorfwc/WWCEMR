@@ -32,8 +32,8 @@ from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.permissions.resolver import effective_tier
-from app.services import billing_doc_storage as storage
-from app.services import billing_doc_classify as classifier
+from app.services.billing_doc import storage as storage
+from app.services.billing_doc import classify as classifier
 from app.services.audit_service import log_action
 
 
@@ -304,7 +304,7 @@ def list_documents(
     page: int = Query(1, ge=1),
     per_page: int = Query(100, ge=1, le=500),
 ):
-    q = db.query(BillingDocument)
+    q = db.query(BillingDocument).filter(BillingDocument.not_deleted())
     if status:
         # Accept either a single status ('new') or comma-separated list
         # ('new,in_progress') so callers can filter to multiple states.
@@ -335,7 +335,8 @@ def _load(db: Session, doc_id: str) -> BillingDocument:
     d = (db.query(BillingDocument)
            .options(joinedload(BillingDocument.notes_rel),
                     joinedload(BillingDocument.access_log))
-           .filter(BillingDocument.id == doc_id).first())
+           .filter(BillingDocument.id == doc_id,
+                   BillingDocument.not_deleted()).first())
     if not d:
         raise HTTPException(status_code=404, detail="document not found")
     return d
@@ -464,32 +465,48 @@ def patch_document(doc_id: str, payload: DocumentPatch,
 def delete_document(doc_id: str,
                      db: Session = Depends(get_db),
                      current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.MANAGE))):
-    """Hard-delete the document row + the file on disk. Admin-only.
-    Audit-log entries (billing_document_access) are cascade-deleted too.
+    """Soft-delete the document row. The file on disk and the
+    billing_document_access trail stay intact so the question 'who
+    viewed this document before it was deleted' remains answerable.
+    Restore via POST /{id}/restore. (Fable design review note 13.)
     """
     d = _load(db, doc_id)
-    storage_name = d.storage_filename
-    original = d.original_filename
-    # Audit BEFORE delete so the row survives the cascade. The
-    # billing_document_access rows for this doc are wiped along with
-    # the FK; audit_logs is the only durable trail.
+    if d.is_deleted:
+        # Already deleted — return 204 idempotently.
+        return None
     log_action(
         db,
         action="DELETE",
         resource_type="billing_document",
         resource_id=str(d.id),
-        user_id=(current_user.get("email") or "").lower() or None,
-        user_name=current_user.get("name") or current_user.get("email"),
-        description=f"Hard-deleted billing document '{original}' ({storage_name})",
+        actor=current_user,
+        description=(f"Soft-deleted billing document '{d.original_filename}' "
+                     f"({d.storage_filename})"),
+        defer_commit=True,
     )
-    db.delete(d)
+    d.soft_delete(by_email=current_user.get("email"))
     db.commit()
-    # Best-effort file delete; don't crash the request if the drive is
-    # unmounted — the DB row is already gone.
-    try:
-        storage.delete(storage_name)
-    except Exception:
-        pass
+
+
+@router.post("/{doc_id}/restore")
+def restore_document(doc_id: str,
+                      db: Session = Depends(get_db),
+                      current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.MANAGE))):
+    """Reverse a soft-delete of a billing document."""
+    d = db.query(BillingDocument).filter(BillingDocument.id == doc_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="document not found")
+    if not d.is_deleted:
+        return {"restored": False, "id": str(d.id), "reason": "not deleted"}
+    log_action(
+        db, action="RESTORE", resource_type="billing_document",
+        resource_id=str(d.id), actor=current_user,
+        description=f"Restored billing document '{d.original_filename}'",
+        defer_commit=True,
+    )
+    d.restore()
+    db.commit()
+    return {"restored": True, "id": str(d.id)}
     return
 
 

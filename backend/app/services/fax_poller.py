@@ -168,7 +168,7 @@ def _larc_sweeps():
     if _is_weekend_today():
         return
     try:
-        from app.services.larc_sweeps import run_all
+        from app.services.larc.sweeps import run_all
         run_all()
     except Exception as exc:
         import logging

@@ -45,7 +45,7 @@ def init_db():
     _seed_consent_template_from_env()
     _migrate_billing_doc_status_open_to_new()
     _backfill_larc_assignment_device_type()
-    from app.services.larc_seed import seed_larc_device_types
+    from app.services.larc.seed import seed_larc_device_types
     seed_larc_device_types()
     from app.services.pellet.seed import seed_pellet_dose_types
     seed_pellet_dose_types()
@@ -199,6 +199,13 @@ def _apply_lightweight_migrations():
         # Soft-delete on Bai2Import (Fable design review note 13).
         ("bai2_imports", "deleted_at", "DATETIME"),
         ("bai2_imports", "deleted_by", "VARCHAR(200)"),
+        # Soft-delete extended to financially-significant tables.
+        ("billing_documents", "deleted_at", "DATETIME"),
+        ("billing_documents", "deleted_by", "VARCHAR(200)"),
+        ("claims", "deleted_at", "DATETIME"),
+        ("claims", "deleted_by", "VARCHAR(200)"),
+        ("larc_assignments", "deleted_at", "DATETIME"),
+        ("larc_assignments", "deleted_by", "VARCHAR(200)"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),

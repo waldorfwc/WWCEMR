@@ -15,7 +15,7 @@ from app.models.groups import Group
 from app.models.user import User, PRACTICE_ROLES
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
-from app.permissions.dependencies import requires_tier
+from app.permissions.dependencies import requires_super_admin, requires_tier
 from app.services import checklist_service
 from app.services import checklist_seed
 
@@ -751,9 +751,10 @@ def manager_dashboard(
 
 @router.post("/manager/run-escalations")
 def run_escalations(db: Session = Depends(get_db),
-                    current_user: dict = Depends(requires_tier(Module.MY_CHECKLIST, Tier.MANAGE))):
-    """Manually fire the escalation sweep. Normally runs hourly via the
-    scheduler, but useful for testing the email/slack flow."""
+                    current_user: dict = Depends(requires_super_admin())):
+    """Manual trigger for the escalation sweep. Primary runner is the
+    checklist_escalations Cloud Run Job (registered in app/jobs/run.py).
+    Super-admin only. (Fable note 6.)"""
     from app.services import checklist_notifications
     return checklist_notifications.run_escalation_sweep(db)
 

@@ -23,6 +23,7 @@ from sqlalchemy.orm import relationship
 
 from app.database import Base
 from app.models.guid import GUID, new_uuid
+from app.models.mixins import SoftDeleteMixin
 
 
 # ─── Device-type catalog (Liletta, Mirena, Skyla, etc.) ─────────────
@@ -174,7 +175,7 @@ class LarcDevice(Base):
 
 # ─── Patient assignment (the workflow row) ──────────────────────────
 
-class LarcAssignment(Base):
+class LarcAssignment(Base, SoftDeleteMixin):
     """Ties a physical LARC device to a specific patient and drives the
     workflow milestones. Exactly one active assignment per device at a
     time — enforced by the partial unique index

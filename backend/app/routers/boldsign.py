@@ -30,7 +30,7 @@ from app.database import get_db
 from app.models.larc import LarcEnrollmentEnvelope
 from app.models.surgery import Surgery, SurgeryConsentEnvelope
 from app.services import boldsign_envelopes as bs
-from app.services import larc_enrollment_sender as larc_es
+from app.services.larc import enrollment_sender as larc_es
 
 log = logging.getLogger(__name__)
 

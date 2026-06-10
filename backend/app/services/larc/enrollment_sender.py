@@ -935,7 +935,7 @@ def apply_webhook_event(db, env, data: dict) -> str:
         else:
             db.refresh(env)   # pull the new fax_status into the ORM copy
             try:
-                from app.services.larc_pharmacy_fax import fax_envelope
+                from app.services.larc.pharmacy_fax import fax_envelope
                 fax_envelope(db, env, by_email="system:webhook")
             except Exception as exc:
                 # Swallow — webhook handler logs + returns 200 regardless.

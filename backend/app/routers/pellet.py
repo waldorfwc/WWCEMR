@@ -50,7 +50,7 @@ from app.models.pellet import (
 from fastapi import UploadFile, File, Form
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
-from app.permissions.dependencies import requires_tier
+from app.permissions.dependencies import requires_super_admin, requires_tier
 from app.permissions.resolver import effective_tier
 from app.services.pellet.workflow import (
     spawn_milestones, default_price_for, patient_buckets,
@@ -2230,11 +2230,11 @@ def _unconfirmed_visits_blocking_count(db: Session, location: str) -> list[dict]
 @router.post("/visits/run-stale-sweep")
 def run_stale_visit_sweep(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE)),
+    current_user: dict = Depends(requires_super_admin()),
 ):
-    """Manual trigger for the nightly stale-visit auto-cancel sweep. Useful
-    when an admin wants to clear out the blocker list before starting a
-    count without waiting for the next nightly run."""
+    """Manual trigger for the nightly stale-visit auto-cancel sweep.
+    Primary runner is the pellet_stale_sweep Cloud Run Job (registered
+    in app/jobs/run.py). Super-admin only. (Fable note 6.)"""
     from app.services.pellet.stale_sweep import sweep_stale_visits
     by = current_user.get("email") or "system"
     return sweep_stale_visits(db, actor=by)

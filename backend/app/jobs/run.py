@@ -93,7 +93,7 @@ def larc_fax_retry():
     terminally failed and emails info@ after the final allowed
     attempt. Scheduled by larc-fax-retry-trigger every 5 minutes during
     business hours."""
-    from app.services.larc_sweeps import run_fax_retry_sweep
+    from app.services.larc.sweeps import run_fax_retry_sweep
     run_fax_retry_sweep()
 
 

@@ -1967,16 +1967,20 @@ def trigger_materialize(db: Session = Depends(get_db),
 
 @router.post("/admin/run-escalations")
 def trigger_escalations(db: Session = Depends(get_db),
-                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
-    """Manually fire the behind-schedule sweep."""
+                          current_user: dict = Depends(requires_super_admin())):
+    """Manual trigger for the behind-schedule sweep. Primary runner is the
+    surgery_escalations Cloud Run Job (registered in app/jobs/run.py).
+    Super-admin only — coordinators shouldn't click this. (Fable note 6.)"""
     from app.services.surgery.escalations import run_escalation_sweep
     return run_escalation_sweep(db)
 
 
 @router.post("/admin/run-release-sweep")
 def trigger_release_sweep(db: Session = Depends(get_db),
-                           current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
-    """Manually fire the daily release-alert sweep."""
+                           current_user: dict = Depends(requires_super_admin())):
+    """Manual trigger for the daily release-alert sweep. Primary runner
+    is the surgery_release_sweep Cloud Run Job (registered in
+    app/jobs/run.py). Super-admin only. (Fable note 6.)"""
     from app.services.surgery.release_alerts import run_release_sweep
     return run_release_sweep(db)
 

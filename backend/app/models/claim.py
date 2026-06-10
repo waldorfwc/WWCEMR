@@ -5,6 +5,7 @@ from app.utils.dt import now_utc_naive
 import enum
 from app.database import Base
 from app.models.guid import GUID, new_uuid
+from app.models.mixins import SoftDeleteMixin
 
 
 class ClaimStatus(str, enum.Enum):
@@ -25,7 +26,7 @@ class InsuranceOrder(str, enum.Enum):
     PATIENT = "patient"
 
 
-class Claim(Base):
+class Claim(Base, SoftDeleteMixin):
     __tablename__ = "claims"
 
     id = Column(GUID(), primary_key=True, default=new_uuid)
