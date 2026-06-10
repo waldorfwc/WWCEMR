@@ -27,7 +27,7 @@ DoseQty   = Annotated[int, Field(gt=0,  le=999)]      # 1..999 doses
 CountQty  = Annotated[int, Field(ge=0,  le=9999)]    # 0..9999 doses (count snapshot can be large but bounded)
 PackSize  = Annotated[int, Field(gt=0,  le=99)]       # 1..99 pellets per pack
 PackCount = Annotated[int, Field(gt=0,  le=999)]      # 1..999 packs per receipt
-from sqlalchemy import desc, func, or_
+from sqlalchemy import desc, func, or_, update
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.database import get_db
@@ -1472,9 +1472,22 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
             raise HTTPException(status_code=422,
                                 detail="witness must be a different user than the verifier")
 
-    r.manifest_verified = True
-    r.manifest_verified_by = by
-    r.manifest_verified_at = datetime.utcnow()
+    # Atomic claim: only one thread flips the flag. A second concurrent
+    # caller's UPDATE matches 0 rows because manifest_verified is now true,
+    # so the second caller raises 409 instead of double-crediting stock.
+    # (Fable audit #2.)
+    now = datetime.utcnow()
+    claimed = db.execute(
+        update(PelletReceipt)
+          .where(PelletReceipt.id == r.id,
+                 PelletReceipt.manifest_verified == False)  # noqa: E712
+          .values(manifest_verified=True,
+                  manifest_verified_by=by,
+                  manifest_verified_at=now)
+    ).rowcount
+    if not claimed:
+        raise HTTPException(status_code=409, detail="receipt already verified")
+    db.refresh(r)
 
     # If the receipt is tied to an order, build a dose_type -> order_line
     # map so we can copy unit cost onto each lot and track doses-received
@@ -1836,12 +1849,32 @@ def receive_transfer(transfer_id: str, payload: TransferReceiveIn,
         if not (payload.witness_user or "").strip():
             raise HTTPException(status_code=422,
                                 detail="witness_user required for controlled (Schedule III)")
+        if payload.witness_user.strip().lower() == by.lower():
+            raise HTTPException(status_code=422,
+                                detail="witness must be a different user than the receiver")
+
+    # Atomic claim — same pattern as verify_manifest. Two concurrent
+    # /transfers/{id}/receive calls (double-click on the receive button)
+    # would otherwise both pass the status check above and each add
+    # t.doses to stock. The UPDATE matches a single source-of-truth row
+    # transition; the second caller's rowcount is 0 → 409.
+    # (Fable audit #2.)
+    allowed_from = ["in_transit"] if is_controlled else ["packed", "in_transit"]
+    now = datetime.utcnow()
+    claimed = db.execute(
+        update(PelletTransfer)
+          .where(PelletTransfer.id == t.id,
+                 PelletTransfer.status.in_(allowed_from))
+          .values(status="received", received_at=now, received_by=by)
+    ).rowcount
+    if not claimed:
+        db.refresh(t)
+        raise HTTPException(status_code=409,
+                            detail=f"transfer is {t.status}")
+    db.refresh(t)
 
     dest = _get_or_create_stock(db, t.lot_id, t.to_location)
     _adjust_stock(db, dest, t.doses)
-    t.status = "received"
-    t.received_at = datetime.utcnow()
-    t.received_by = by
 
     _audit(db, actor=by, action="transfer_received",
            lot_id=t.lot_id, transfer_id=t.id, location=t.to_location,
