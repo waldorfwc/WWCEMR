@@ -1305,6 +1305,16 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                 detail=("cannot set status via PATCH — use "
                         f"POST /surgery/{{id}}/cancel for 'cancelled'; "
                         "'completed' is not yet reachable via API"))
+        # Hold/unresponsive transitions also need the cancellation
+        # pipeline so the slot is released, BoldSign envelopes are
+        # voided, and a SurgeryCancellation audit row is written. Going
+        # via PATCH leaves the slot on the OR schedule. (Fable surgery
+        # audit H5.)
+        if data["status"] in ("hold", "unresponsive") and s.status != data["status"]:
+            raise HTTPException(status_code=409,
+                detail=("cannot set status via PATCH — use "
+                        f"POST /surgery/{{id}}/cancel with the matching reason "
+                        "so the slot is released and audit row is written"))
     if "selected_facility" in data and data["selected_facility"] is not None:
         if data["selected_facility"] not in SURGERY_FACILITY_VALUES:
             raise HTTPException(status_code=422,
@@ -1340,24 +1350,41 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     elif "dob" in data:
         data["dob"] = None
 
-    # scheduled_date string → date  (manual override path)
-    if "scheduled_date" in data and data["scheduled_date"]:
-        try:
-            data["scheduled_date"] = datetime.strptime(data["scheduled_date"][:10], "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(status_code=422, detail="scheduled_date must be YYYY-MM-DD")
-    elif "scheduled_date" in data:
-        data["scheduled_date"] = None
+    # scheduled_date / scheduled_start_time are not editable via the
+    # generic PATCH — the booking pipeline (coordinator_schedule,
+    # waitlist_claim, patient_picks, self-schedule) is the single
+    # writer because the Surgery row and its SurgerySlot must agree on
+    # date / start / facility and the BlockDay row lock must arbitrate
+    # concurrent bookings. A direct PATCH desynchronizes Surgery ↔
+    # SurgerySlot and bypasses blackout / capacity / overlap checks.
+    # (Fable surgery audit H6.)
+    if data.get("scheduled_date") is not None or data.get("scheduled_start_time") is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=("scheduled_date / scheduled_start_time are not editable via PATCH — "
+                    "use POST /surgery/{id}/schedule (coordinator), "
+                    "the patient picker, or POST /surgery/{id}/cancel + reschedule. "
+                    "PATCH bypasses the BlockDay capacity lock and blackout checks."))
+    # Drop these keys so they can't slip through setattr below either.
+    data.pop("scheduled_date", None)
+    data.pop("scheduled_start_time", None)
 
-    # scheduled_start_time string ("HH:MM") → time
-    if "scheduled_start_time" in data and data["scheduled_start_time"]:
-        try:
-            parts = data["scheduled_start_time"].split(":")
-            data["scheduled_start_time"] = _time(int(parts[0]), int(parts[1]))
-        except (ValueError, IndexError):
-            raise HTTPException(status_code=422, detail="scheduled_start_time must be HH:MM")
-    elif "scheduled_start_time" in data:
-        data["scheduled_start_time"] = None
+    # (scheduled_date/scheduled_start_time blocked above — no PATCH path)
+
+    # Money columns must flow through the ledgered payment endpoints,
+    # never the generic PATCH. PATCH at WORK-tier had no audit, no
+    # SurgeryPayment row, and let any staffer mutate amount_paid /
+    # patient_responsibility to any value 0..$50k. (Fable surgery
+    # audit H1.) The legitimate writers are
+    # POST /surgery/{id}/payments/manual and the benefits calculator.
+    if data.get("amount_paid") is not None or data.get("patient_responsibility") is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=("amount_paid / patient_responsibility are not editable via PATCH — "
+                    "use POST /surgery/{id}/payments/manual to record a payment, "
+                    "or POST /surgery/{id}/benefits to recalculate responsibility"))
+    data.pop("amount_paid", None)
+    data.pop("patient_responsibility", None)
 
     # Assistant surgeon appt date string → date
     if "assistant_surgeon_appt_date" in data and data["assistant_surgeon_appt_date"]:
@@ -3175,15 +3202,6 @@ def coordinator_schedule(
                    f"({blackout.scope})",
         )
 
-    # Conflict check: reject if the new slot's time window overlaps any existing slot.
-    conflict = overlapping_slot(db, bd.id, start, duration)
-    if conflict:
-        raise HTTPException(
-            status_code=409,
-            detail=f"that time overlaps an existing slot at "
-                   f"{conflict.start_time.strftime('%H:%M')} "
-                   f"({conflict.duration_minutes} min)",
-        )
     # If >10% off the template default, require an override reason.
     threshold = default * 0.10
     if abs(duration - default) > threshold and not (payload.override_reason or "").strip():
@@ -3191,16 +3209,21 @@ def coordinator_schedule(
                             detail="override_reason required: duration differs >10% from template default")
 
     actor = current_user.get("email") or "system"
-    slot = SurgerySlot(
-        block_day_id=bd.id, surgery_id=s.id,
-        start_time=start, duration_minutes=duration,
-        procedure_kind=bd.block_kind,
-    )
-    db.add(slot)
-    s.scheduled_date = bd.block_date
-    s.selected_facility = bd.facility
-    if s.status in ("new", "in_progress"):
-        s.status = "confirmed"
+    # Route through book_slot so we get: BlockDay row lock (closes the
+    # TOCTOU race on overlap), can_fit capacity check, block-window
+    # guard, prior-slot release, and a single writer of
+    # scheduled_date/scheduled_start_time/selected_facility/status.
+    # (Fable surgery audit C1.)
+    from app.services.surgery_block_schedule import book_slot, CapacityViolation
+    try:
+        slot = book_slot(
+            db, block_day_id=str(bd.id), surgery_id=str(s.id),
+            start_time=start, duration_minutes=duration,
+            procedure_kind=bd.block_kind,
+        )
+    except CapacityViolation as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
     audit_body = (f"Coordinator scheduled {bd.block_date} {start.strftime('%H:%M')} "
                   f"({duration} min, template default {default} min) at {bd.facility}.")
     if payload.override_reason:
@@ -3830,6 +3853,28 @@ def record_manual_payment(surgery_id: str, payload: ManualPaymentPayload,
 
     from app.models.stripe_payment import SurgeryPayment
     from app.models.surgery import SurgeryNote
+
+    # Idempotency window — a double-click on "Record" used to create two
+    # SurgeryPayment rows and double-bump amount_paid. Reject a second
+    # manual-offset for the same surgery + amount within 60s. The window
+    # is narrow enough that legitimate same-amount cash entries (e.g.
+    # two patients paying their copay within the same minute on
+    # different surgeries) are unaffected — different surgery_id.
+    # (Fable surgery audit H4.)
+    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    recent = (db.query(SurgeryPayment)
+                .filter(SurgeryPayment.surgery_id == s.id,
+                        SurgeryPayment.kind == "manual_offset",
+                        SurgeryPayment.amount_paid == Decimal(str(amt)),
+                        SurgeryPayment.paid_at >= cutoff)
+                .first())
+    if recent:
+        raise HTTPException(
+            status_code=409,
+            detail=(f"a manual payment of ${amt:.2f} was just recorded on this "
+                    f"surgery {int((datetime.utcnow() - recent.paid_at).total_seconds())}s ago "
+                    f"(id {recent.id}). If this is intentional, wait 60s and re-submit."))
+
     pretty = {"modpay": "ModMed Pay", "check": "Check",
               "cash": "Cash", "other": "Other"}[method]
     description = f"Manual payment · {pretty}" + (f" — {payload.note}" if payload.note else "")
@@ -4334,6 +4379,13 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
     except CapacityViolation as exc:
         raise HTTPException(status_code=409, detail=str(exc))
 
+    # book_slot writes scheduled_date / scheduled_start_time /
+    # selected_facility / status — Fable's C2 finding misattributed the
+    # gap to this endpoint, but the real missing pieces below are the
+    # SurgeryNote audit row, calendar sync, and confirmation email that
+    # coordinator_schedule's path produces. Without them a waitlist-
+    # claimed surgery has no audit trail and no patient confirmation.
+
     # Advance milestone, remove from waitlist
     m_row = next((m for m in s.milestones if m.kind == "patient_picks_date"), None)
     if m_row and m_row.status not in ("done", "skipped"):
@@ -4344,7 +4396,31 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
     w.removed_at = datetime.utcnow()
     w.removed_reason = "claimed_slot"
 
+    from app.models.surgery import SurgeryNote
+    actor = current_user.get("email") or "system"
+    db.add(SurgeryNote(
+        surgery_id=s.id, created_by=actor,
+        content=(f"Waitlist claim: booked {bd.block_date} "
+                 f"{h:02d}:{m:02d} ({duration} min) at {bd.facility}."),
+    ))
+
     db.commit()
+
+    # Mirror coordinator_schedule's side-effects so the patient gets a
+    # confirmation and the Google calendar reflects the booking.
+    try:
+        from app.services.google_calendar_sync import upsert_event_for_surgery
+        upsert_event_for_surgery(db, s)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("calendar sync failed: %s", e)
+    try:
+        from app.routers.patient_surgery import _send_surgery_confirmation_email
+        _send_surgery_confirmation_email(db, s, slot, sent_by=actor)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("confirmation email failed: %s", e)
+
     return {
         "ok": True,
         "scheduled_date": str(bd.block_date),

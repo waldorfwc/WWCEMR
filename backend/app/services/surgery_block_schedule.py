@@ -297,6 +297,16 @@ def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
     if not surgery:
         raise ValueError("surgery not found")
 
+    # Release any prior slot for this surgery — a rebook would otherwise
+    # leave an orphan that keeps consuming capacity on the abandoned
+    # block day and shows up in calendar_day_detail. cancel_surgery only
+    # frees .first() so a second-slot rebook would survive even the
+    # cancellation pathway. (Fable surgery audit C1.1.)
+    prior_slots = (db.query(SurgerySlot)
+                     .filter(SurgerySlot.surgery_id == surgery.id).all())
+    for old in prior_slots:
+        db.delete(old)
+
     ok, reason = can_fit(db, block_day, procedure_kind)
     if not ok:
         raise CapacityViolation(reason)
@@ -310,6 +320,19 @@ def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
         raise CapacityViolation(
             f"That time conflicts with an existing slot at "
             f"{conflict.start_time.strftime('%H:%M')} — pick another."
+        )
+
+    # Block-window guard — staff-side coordinator_schedule used to skip
+    # this; a 16:30 start + 240 min would otherwise sail past the end of
+    # the OR block. (Fable surgery audit C1.3.)
+    block_start_min = block_day.start_time.hour * 60 + block_day.start_time.minute
+    block_end_min   = block_day.end_time.hour * 60 + block_day.end_time.minute
+    slot_start_min  = start_time.hour * 60 + start_time.minute
+    if slot_start_min < block_start_min or (slot_start_min + duration_minutes) > block_end_min:
+        raise CapacityViolation(
+            f"That slot would run from {start_time.strftime('%H:%M')} for "
+            f"{duration_minutes} min — outside the block window "
+            f"({block_day.start_time.strftime('%H:%M')}–{block_day.end_time.strftime('%H:%M')})."
         )
 
     slot = SurgerySlot(
