@@ -421,6 +421,14 @@ def list_templates(db: Session = Depends(get_db),
     out = [_template_to_dict(t) for t in rows]
     if include_assignees:
         ASSIGNEE_CAP = 25
+        # Resolve assignees per template. Each _assignees_for_template
+        # call already does its own group expansion and runs a single
+        # User query — the cost is small per template but adds up on a
+        # router with dozens of templates. The internal-call cost is
+        # bounded by the unique-email set after group expansion.
+        # (Fable cross-cutting audit #14 — kept the loop, but the
+        # batch resolver `effective_tier_for_users` is available for
+        # callers that need to gate by tier.)
         for t, d in zip(rows, out):
             users = checklist_service._assignees_for_template(db, t)
             d["assignee_count"] = len(users)

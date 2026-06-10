@@ -101,6 +101,38 @@ async def preview_csv(
     )
     parsed = parse_csv_from_bytes(content, filters)
 
+    # Persist the filter snapshot so /generate consumes exactly what the
+    # user approved. Without this, the client could (legitimately or
+    # via a stale tab) re-send different skip_* flags to /generate and
+    # the system would generate a different transaction set than the
+    # user reviewed. (Fable cross-cutting audit #12.)
+    import json as _json
+    snapshot = {
+        "preview_id": preview_id,
+        "ext": ext,
+        "filters": {
+            "skip_withdrawals": skip_withdrawals,
+            "skip_modmed": skip_modmed,
+            "skip_stripe": skip_stripe,
+            "skip_zero": skip_zero,
+        },
+        "candidate_dedup_keys": [t.dedup_key for t in parsed.transactions],
+        "covered_by_prior_import": [
+            t.dedup_key for t in parsed.transactions
+            if any(s <= t.transaction_date <= e
+                    for (s, e) in [
+                        (s, e) for (s, e) in db.query(
+                            Bai2Import.date_range_start,
+                            Bai2Import.date_range_end).all()
+                        if s and e])
+        ],
+    }
+    save_blob_with_key(
+        key=f"bank-recon-csv/{preview_id}.snapshot.json",
+        body=_json.dumps(snapshot).encode("utf-8"),
+        content_type="application/json",
+    )
+
     # Mark each transaction with whether its dedup_key already exists in DB
     keys = [t.dedup_key for t in parsed.transactions]
     already_in_db = set()
@@ -236,15 +268,35 @@ def generate_bai2(payload: GenerateRequest,
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="preview CSV not found — re-upload")
 
+    # Load the server-side filter snapshot so /generate produces exactly
+    # the same transaction set the user reviewed at /preview. The client
+    # still sends skip_* flags but they're a fall-back; the snapshot
+    # wins when available. (Fable cross-cutting audit #12.)
+    import json as _json
+    snapshot = None
+    try:
+        snap_bytes = read_blob(f"bank-recon-csv/{payload.preview_id}.snapshot.json")
+        snapshot = _json.loads(snap_bytes.decode("utf-8"))
+    except FileNotFoundError:
+        log.warning("BAI2 generate: no snapshot for preview %s — falling "
+                    "back to client-supplied filters", payload.preview_id)
+
+    snap_filters = (snapshot or {}).get("filters") or {}
     filters = FilterOptions(
-        skip_withdrawals=payload.skip_withdrawals,
-        skip_modmed=payload.skip_modmed,
-        skip_stripe=payload.skip_stripe,
-        skip_zero=payload.skip_zero,
+        skip_withdrawals=snap_filters.get("skip_withdrawals", payload.skip_withdrawals),
+        skip_modmed=snap_filters.get("skip_modmed", payload.skip_modmed),
+        skip_stripe=snap_filters.get("skip_stripe", payload.skip_stripe),
+        skip_zero=snap_filters.get("skip_zero", payload.skip_zero),
     )
     parsed = parse_csv_from_bytes(csv_bytes, filters)
 
     excluded = set(payload.excluded_keys or [])
+
+    # Enforce the snapshot's covered-by-prior-import set (Fable #12).
+    # The preview shows these as warnings; at generate time they are
+    # blocked outright unless the user explicitly excluded them or the
+    # /preview flagged none.
+    covered_keys = set((snapshot or {}).get("covered_by_prior_import") or [])
 
     # Cross-import dedup
     keys = [t.dedup_key for t in parsed.transactions]
@@ -255,6 +307,9 @@ def generate_bai2(payload: GenerateRequest,
             for row in db.query(Bai2Transaction.dedup_key)
             .filter(Bai2Transaction.dedup_key.in_(keys)).all()
         }
+    # Combine dedup_key + date-coverage signals so a re-worded bank
+    # description doesn't slip through.
+    already |= covered_keys
 
     new_txns = [
         t for t in parsed.transactions
@@ -455,3 +510,60 @@ def delete_import(
     )
     db.delete(imp); db.commit()
     return {"deleted": True}
+
+
+@router.post("/sweep-preview-csvs")
+def sweep_preview_csvs(
+    db: Session = Depends(get_db),
+    ttl_hours: int = Query(24, ge=1, le=24 * 30),
+    hard_ttl_days: int = Query(7, ge=1, le=90),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.WORK)),
+):
+    """Delete preview CSVs that have either been consumed (matching
+    Bai2Import row > ttl_hours old) or that are simply older than
+    hard_ttl_days regardless. (Fable cross-cutting audit #20.)
+
+    Every /preview write used to leave a CSV at bank-recon-csv/{uuid}
+    forever. Bank account data sitting in storage is unbounded growth
+    + a passive exposure surface; cron this hourly.
+    """
+    from datetime import datetime, timezone, timedelta
+    from app.services.storage import (
+        list_blob_keys, blob_metadata, delete_blob,
+    )
+    now = datetime.now(timezone.utc)
+    consumed_cutoff = now - timedelta(hours=ttl_hours)
+    hard_cutoff = now - timedelta(days=hard_ttl_days)
+
+    # Consumed previews — Bai2Import.csv_path is set; delete if generated_at
+    # is old enough.
+    consumed_keys = {
+        r.csv_path
+        for r in db.query(Bai2Import).filter(
+            Bai2Import.csv_path.isnot(None),
+            Bai2Import.generated_at < consumed_cutoff,
+        ).all()
+        if r.csv_path
+    }
+
+    deleted = 0
+    inspected = 0
+    for key in list_blob_keys("bank-recon-csv/"):
+        inspected += 1
+        if key in consumed_keys:
+            if delete_blob(key):
+                deleted += 1
+            continue
+        meta = blob_metadata(key)
+        if not meta or not meta.get("created"):
+            continue
+        created = meta["created"]
+        if created < hard_cutoff:
+            if delete_blob(key):
+                deleted += 1
+
+    log.info("bank-recon preview CSV sweep: inspected=%d deleted=%d",
+             inspected, deleted)
+    return {"inspected": inspected, "deleted": deleted,
+            "ttl_hours": ttl_hours, "hard_ttl_days": hard_ttl_days}

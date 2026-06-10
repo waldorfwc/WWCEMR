@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import uuid
 from datetime import datetime, date, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -476,17 +476,37 @@ def active_ar_summary(db: Session = Depends(get_db),
         for r in plan_rows
     ]
 
-    # Timely-filing buckets (per-payer rules) — computed in Python
+    # Timely-filing buckets — SQL aggregation over precomputed
+    # tf_deadline_date. Old code loaded every open claim into Python and
+    # called the classifier per row (O(n) Python work + N+1 hot path on
+    # every dashboard load). Now: 4 SQL GROUP BYs.
+    # Status thresholds (mirror timely_filing.timely_filing_info):
+    #   past   = deadline <= today
+    #   urgent = today < deadline <= today+14
+    #   soon   = today+14 < deadline <= today+30
+    #   safe   = deadline > today+30
+    # (Fable cross-cutting audit #13.)
     tf_buckets = {"past": {"count": 0, "balance": 0.0},
                   "urgent": {"count": 0, "balance": 0.0},
                   "soon":   {"count": 0, "balance": 0.0},
                   "safe":   {"count": 0, "balance": 0.0}}
-    for c in base.all():
-        info = timely_filing_info(c.insurance_company, c.dos)
-        s = info["tf_status"]
-        if s in tf_buckets:
-            tf_buckets[s]["count"] += 1
-            tf_buckets[s]["balance"] += float(c.insurance_balance or 0)
+    tf_base = base.filter(ActiveClaim.tf_deadline_date.isnot(None))
+    for label, lo_excl, hi_incl in [
+        ("past",   None,                    today),
+        ("urgent", today,                   today + timedelta(days=14)),
+        ("soon",   today + timedelta(days=14), today + timedelta(days=30)),
+        ("safe",   today + timedelta(days=30), None),
+    ]:
+        sub = tf_base
+        if lo_excl is not None:
+            sub = sub.filter(ActiveClaim.tf_deadline_date > lo_excl)
+        if hi_incl is not None:
+            sub = sub.filter(ActiveClaim.tf_deadline_date <= hi_incl)
+        cnt, bal = sub.with_entities(
+            func.count(ActiveClaim.id),
+            func.sum(ActiveClaim.insurance_balance),
+        ).first()
+        tf_buckets[label] = {"count": cnt or 0, "balance": float(bal or 0)}
 
     return {
         "open_count": open_count,
@@ -1017,9 +1037,14 @@ def list_assignees(db: Session = Depends(get_db),
     or higher. Plus any historical assignees already attached to claims (in
     case a user was deleted but their email still appears on past claims)."""
     from app.permissions.catalog import Module, Tier
-    from app.permissions.resolver import effective_tier
-    role_users = [u for u in db.query(User).all()
-                  if effective_tier(db, u.email, Module.ACTIVE_AR) >= Tier.VIEW]
+    from app.permissions.resolver import effective_tier_for_users
+    # Batch the tier resolution — the previous N+1 loop ran 3 queries per
+    # user. (Fable cross-cutting audit #14.)
+    all_users = db.query(User).all()
+    tier_by_email = effective_tier_for_users(
+        db, [u.email for u in all_users if u.email], Module.ACTIVE_AR)
+    role_users = [u for u in all_users
+                  if u.email and tier_by_email.get(u.email, Tier.NONE) >= Tier.VIEW]
     assignees = {
         u.email: {
             "email": u.email,
@@ -1192,41 +1217,60 @@ def _recompute_claim_rollup(c: ActiveClaim, lines: list) -> None:
 
     Also derives paid_amount (sum of insurance_paid across lines that have an
     EOB entered) and insurance_balance (charges on lines still awaiting EOB).
-    Assumes line-settle is the sole driver of these totals — if check-level
-    payments via /payments are ever mixed in on the same claim, this rollup
-    would overwrite that increment.
-    """
-    def _sum(field):
-        vals = [ln.get(field) for ln in lines if ln.get(field) is not None]
-        return float(sum(vals)) if vals else None
 
-    c.allowed_amount = _sum("allowed")
-    c.contractual_adjustment = _sum("contractual")
-    c.copay = _sum("copay")
-    c.deductible = _sum("deductible")
-    c.coinsurance = _sum("coinsurance")
-    pt_resps = []
+    All arithmetic done in Decimal (line JSON stores floats but we convert
+    immediately) so we don't accumulate float-to-binary rounding error
+    across thousands of lines. The ORM columns are Numeric(10,2) which
+    handles Decimal natively. (Fable cross-cutting audit #23.)
+    """
+    def _to_dec(v):
+        if v is None or v == "":
+            return None
+        try:
+            d = Decimal(str(v))
+            return d if d.is_finite() else None
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    def _sum_dec(field):
+        vals = [_to_dec(ln.get(field)) for ln in lines]
+        vals = [v for v in vals if v is not None]
+        if not vals:
+            return None
+        return sum(vals, Decimal("0")).quantize(Decimal("0.01"))
+
+    c.allowed_amount = _sum_dec("allowed")
+    c.contractual_adjustment = _sum_dec("contractual")
+    c.copay = _sum_dec("copay")
+    c.deductible = _sum_dec("deductible")
+    c.coinsurance = _sum_dec("coinsurance")
+
+    pt_resps: list[Decimal] = []
     for ln in lines:
-        co = ln.get("copay") or 0
-        de = ln.get("deductible") or 0
-        ci = ln.get("coinsurance") or 0
-        pp = ln.get("patient_paid") or 0
-        pt_resps.append(max(0, (co + de + ci) - pp))
+        co = _to_dec(ln.get("copay")) or Decimal("0")
+        de = _to_dec(ln.get("deductible")) or Decimal("0")
+        ci = _to_dec(ln.get("coinsurance")) or Decimal("0")
+        pp = _to_dec(ln.get("patient_paid")) or Decimal("0")
+        pt_resps.append(max(Decimal("0"), (co + de + ci) - pp))
     if any(ln.get("allowed") is not None for ln in lines):
-        c.patient_balance = float(sum(pt_resps))
+        c.patient_balance = sum(pt_resps, Decimal("0")).quantize(Decimal("0.01"))
 
     # Insurance paid: sum across lines where EOB has been entered.
     # Insurance balance: remaining charges on lines still without an EOB
     # (lines with `allowed` set are considered EOB-processed; insurance has
     # paid what it's going to pay on those, even if pt_balance > 0).
-    ins_paid_total = sum(float(ln.get("insurance_paid") or 0) for ln in lines)
+    ins_paid_total = sum(
+        (_to_dec(ln.get("insurance_paid")) or Decimal("0") for ln in lines),
+        Decimal("0"),
+    )
     outstanding = sum(
-        float(ln.get("charge") or 0)
-        for ln in lines if ln.get("allowed") is None
+        (_to_dec(ln.get("charge")) or Decimal("0")
+         for ln in lines if ln.get("allowed") is None),
+        Decimal("0"),
     )
     if any(ln.get("allowed") is not None for ln in lines):
-        c.paid_amount = round(ins_paid_total, 2)
-        c.insurance_balance = round(outstanding, 2)
+        c.paid_amount = ins_paid_total.quantize(Decimal("0.01"))
+        c.insurance_balance = outstanding.quantize(Decimal("0.01"))
 
 
 @router.patch("/claims/{claim_id}/service-lines/{line_num}")
@@ -1277,7 +1321,19 @@ def settle_service_line(
     if target is None:
         raise HTTPException(status_code=404, detail=f"line {line_num} not found on claim")
 
-    # Apply user inputs (only if provided — None means "don't change")
+    # Apply user inputs (only if provided — None means "don't change").
+    # Inputs arrive as Decimal (ArMoney) from Pydantic. JSON blob stores
+    # floats — we only convert to float at the JSON write boundary; all
+    # arithmetic below stays in Decimal. (Fable cross-cutting audit #23.)
+    def _d(v):
+        if v is None or v == "":
+            return Decimal("0")
+        try:
+            d = Decimal(str(v))
+            return d if d.is_finite() else Decimal("0")
+        except (InvalidOperation, TypeError, ValueError):
+            return Decimal("0")
+
     if payload.allowed is not None:
         target["allowed"] = float(payload.allowed)
     if payload.copay is not None:
@@ -1291,23 +1347,31 @@ def settle_service_line(
     if payload.notes is not None:
         target["notes"] = payload.notes
 
-    # Auto-compute derived fields
-    charge = float(target.get("charge") or 0)
-    allowed = float(target.get("allowed") or 0)
-    copay = float(target.get("copay") or 0)
-    deductible = float(target.get("deductible") or 0)
-    coinsurance = float(target.get("coinsurance") or 0)
-    pt_resp = copay + deductible + coinsurance
-    pt_paid = float(target.get("patient_paid") or 0)
+    # Auto-compute derived fields in Decimal, store as float in the JSON blob.
+    Q = Decimal("0.01")
+    charge = _d(target.get("charge"))
+    allowed = _d(target.get("allowed"))
+    copay = _d(target.get("copay"))
+    deductible = _d(target.get("deductible"))
+    coinsurance = _d(target.get("coinsurance"))
+    pt_resp = (copay + deductible + coinsurance).quantize(Q)
+    pt_paid = _d(target.get("patient_paid"))
 
-    contractual_amt = round(max(0, charge - allowed), 2) if target.get("allowed") is not None else None
-    target["contractual"] = contractual_amt
+    contractual_amt = (
+        max(Decimal("0"), charge - allowed).quantize(Q)
+        if target.get("allowed") is not None else None
+    )
+    target["contractual"] = float(contractual_amt) if contractual_amt is not None else None
     if payload.insurance_paid_override is not None:
-        target["insurance_paid"] = float(payload.insurance_paid_override)
+        target["insurance_paid"] = float(Decimal(str(payload.insurance_paid_override)).quantize(Q))
     elif target.get("allowed") is not None:
-        target["insurance_paid"] = round(max(0, allowed - pt_resp), 2)
-    target["patient_resp"] = round(pt_resp, 2) if target.get("allowed") is not None else None
-    target["patient_balance"] = round(max(0, pt_resp - pt_paid), 2) if target.get("allowed") is not None else None
+        target["insurance_paid"] = float(
+            max(Decimal("0"), allowed - pt_resp).quantize(Q))
+    target["patient_resp"] = (
+        float(pt_resp) if target.get("allowed") is not None else None)
+    target["patient_balance"] = (
+        float(max(Decimal("0"), pt_resp - pt_paid).quantize(Q))
+        if target.get("allowed") is not None else None)
 
     # Adjustment codes per line. If user provided codes explicitly, store
     # them. Otherwise, when allowed is set and contractual > 0, default to a
@@ -1315,7 +1379,8 @@ def settle_service_line(
     if payload.adjustment_codes is not None:
         target["adjustment_codes"] = [
             {"group_code": ac.group_code, "reason_code": ac.reason_code,
-             "amount": float(ac.amount or 0), "description": ac.description}
+             "amount": float(Decimal(str(ac.amount or 0)).quantize(Q)),
+             "description": ac.description}
             for ac in payload.adjustment_codes
         ]
     elif target.get("allowed") is not None and contractual_amt and contractual_amt > 0:
@@ -1323,7 +1388,7 @@ def settle_service_line(
         if not target.get("adjustment_codes"):
             target["adjustment_codes"] = [{
                 "group_code": "CO", "reason_code": "45",
-                "amount": contractual_amt,
+                "amount": float(contractual_amt),
                 "description": "Charge exceeds fee schedule (contractual)",
             }]
         # If user has codes, append CO-45 only if it's not already there
@@ -1336,7 +1401,7 @@ def settle_service_line(
             if not existing:
                 target["adjustment_codes"].append({
                     "group_code": "CO", "reason_code": "45",
-                    "amount": contractual_amt,
+                    "amount": float(contractual_amt),
                     "description": "Charge exceeds fee schedule (contractual)",
                 })
 
@@ -1344,8 +1409,9 @@ def settle_service_line(
     if payload.settled is not None:
         target["settled"] = payload.settled
     elif target.get("allowed") is not None:
-        # Auto-mark settled if patient owes nothing further
-        target["settled"] = (target.get("patient_balance") or 0) <= 0.01
+        # Auto-mark settled if patient owes nothing further. patient_balance
+        # already quantized to cents; compare in Decimal to avoid float fuzz.
+        target["settled"] = _d(target.get("patient_balance")) <= Decimal("0.01")
     target["settled_at"] = datetime.utcnow().isoformat() + "Z" if target.get("settled") else None
 
     # Persist + recompute claim rollup
@@ -1378,12 +1444,12 @@ def settle_service_line(
     # lose track of the real revenue gap.
     all_insurance_done = lines and all(ln.get("allowed") is not None for ln in lines)
     if all_insurance_done and not has_appealable:
-        total_allowed = sum(float(ln.get("allowed") or 0) for ln in lines)
-        total_ins_paid = sum(float(ln.get("insurance_paid") or 0) for ln in lines)
+        total_allowed = sum((_d(ln.get("allowed")) for ln in lines), Decimal("0"))
+        total_ins_paid = sum((_d(ln.get("insurance_paid")) for ln in lines), Decimal("0"))
         total_pt_resp = sum(
-            float(ln.get("copay") or 0) + float(ln.get("deductible") or 0)
-            + float(ln.get("coinsurance") or 0)
-            for ln in lines
+            (_d(ln.get("copay")) + _d(ln.get("deductible")) + _d(ln.get("coinsurance"))
+             for ln in lines),
+            Decimal("0"),
         )
         any_adj_codes = any(
             ln.get("adjustment_codes") for ln in lines
@@ -1395,7 +1461,7 @@ def settle_service_line(
         zero_pay_legit = (
             total_ins_paid > 0
             or any_adj_codes
-            or total_pt_resp >= total_allowed - 0.01
+            or total_pt_resp >= total_allowed - Decimal("0.01")
         )
         if not zero_pay_legit:
             raise HTTPException(

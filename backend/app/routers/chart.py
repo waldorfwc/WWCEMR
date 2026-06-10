@@ -191,10 +191,19 @@ def get_chart(chart_number: str, db: Session = Depends(get_db),
 @router.post("/import-clinical")
 def import_clinical_data(background_tasks: BackgroundTasks,
                           _: dict = Depends(requires_tier(Module.CHART, Tier.MANAGE))):
-    """Import all clinical data from the PrimeSuite export on the external drive."""
+    """Import all clinical data from the PrimeSuite export on the external drive.
+
+    Path comes from CLINICAL_IMPORT_ROOT env (defaulting to the historical
+    laptop-mount path for backwards compat). (Fable cross-cutting audit #26.)
+    """
     import os
-    if not os.path.isdir("/Volumes/OWC External/400387"):
-        raise HTTPException(status_code=404, detail="External drive not connected or 400387 folder missing")
+    root = os.environ.get("CLINICAL_IMPORT_ROOT",
+                           "/Volumes/OWC External/400387")
+    if not os.path.isdir(root):
+        raise HTTPException(
+            status_code=404,
+            detail=(f"Clinical-import source directory not found at {root!r}. "
+                    "Connect the external drive or set CLINICAL_IMPORT_ROOT."))
     background_tasks.add_task(_bg_import_clinical)
     return {"status": "importing"}
 

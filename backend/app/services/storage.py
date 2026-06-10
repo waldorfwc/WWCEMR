@@ -198,3 +198,64 @@ def is_legacy_local_path(path: Optional[str]) -> bool:
     return (path.startswith("/")     # absolute (Mac Mini, mounted volume)
               or path.startswith("./")   # relative — `./uploads/...`
               or path.startswith("../"))
+
+
+def delete_blob(key: str) -> bool:
+    """Best-effort delete. Returns True if the blob was removed, False if
+    it didn't exist. Used by TTL sweeps (e.g. bank-recon preview CSV
+    cleanup). Does NOT raise on missing — callers can re-call safely.
+    """
+    if not key:
+        return False
+    if _STORAGE_BACKEND == "gcs":
+        client = _gcs_client()
+        blob = client.bucket(_GCS_BUCKET).blob(key)
+        try:
+            blob.delete()
+            return True
+        except Exception:
+            return False
+    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    p = root / key
+    if p.is_file():
+        try:
+            p.unlink()
+            return True
+        except Exception:
+            return False
+    return False
+
+
+def list_blob_keys(prefix: str) -> list[str]:
+    """Enumerate stored keys under a prefix. Used by sweeps."""
+    if _STORAGE_BACKEND == "gcs":
+        client = _gcs_client()
+        return [
+            b.name for b in client.bucket(_GCS_BUCKET).list_blobs(prefix=prefix)
+        ]
+    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    out: list[str] = []
+    p = root / prefix
+    if p.is_dir():
+        for f in p.rglob("*"):
+            if f.is_file():
+                out.append(str(f.relative_to(root)))
+    return out
+
+
+def blob_metadata(key: str) -> Optional[dict]:
+    """Return creation time + size for a key, or None if missing."""
+    if _STORAGE_BACKEND == "gcs":
+        client = _gcs_client()
+        blob = client.bucket(_GCS_BUCKET).get_blob(key)
+        if not blob:
+            return None
+        return {"created": blob.time_created, "size": blob.size}
+    root = Path(os.environ.get("DOCUMENTS_LOCAL_ROOT", "/var/data/wwc-docs"))
+    p = root / key
+    if not p.is_file():
+        return None
+    stat = p.stat()
+    from datetime import datetime as _dt, timezone
+    return {"created": _dt.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+            "size": stat.st_size}

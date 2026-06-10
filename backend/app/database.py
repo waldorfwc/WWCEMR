@@ -186,6 +186,9 @@ def _apply_lightweight_migrations():
         ("active_claims", "primary_plan_detail", "VARCHAR(200)"),
         ("active_claims", "enriched_at", "DATETIME"),
         ("active_claims", "service_lines_json", "TEXT"),
+        # Precomputed timely-filing deadline (Fable cross-cutting audit #13).
+        ("active_claims", "tf_deadline_date", "DATE"),
+        ("active_claims", "tf_days_allowed", "INTEGER"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),
@@ -505,6 +508,10 @@ def _apply_lightweight_migrations():
         # Pellet dashboard — open-count "lines_remaining" uncounted lookup
         ("ix_pellet_count_line_uncounted",
          "pellet_count_lines", "count_id, counted_at"),
+        # Active AR summary — tf bucket SQL aggregation by deadline date.
+        # (Fable cross-cutting audit #13.)
+        ("ix_active_claim_tf_deadline",
+         "active_claims", "tf_deadline_date"),
     ]
     with engine.begin() as conn:
         for idx_name, table, cols_clause in indexes:
@@ -685,6 +692,40 @@ def _apply_lightweight_migrations():
                 conn.execute(text(
                     "SELECT setval('surgery_number_seq', :v, false)"),
                   {"v": max(int(max_n) + 1, 1)})
+
+    # One-time backfill of active_claims.tf_deadline_date — only fills
+    # rows where the column was just added (NULL) but DOS is present.
+    # Bounded by open claim count (typically a few thousand). Falls back
+    # silently on any error so it never blocks startup.
+    # (Fable cross-cutting audit #13.)
+    if "active_claims" in existing_tables:
+        try:
+            from app.services.timely_filing import timely_filing_info
+            from app.models.active_ar import ActiveClaim as _AC
+            db = SessionLocal()
+            try:
+                pending = (db.query(_AC)
+                              .filter(_AC.tf_deadline_date.is_(None),
+                                      _AC.dos.isnot(None))
+                              .limit(20000)  # cap so a runaway never hangs boot
+                              .all())
+                touched = 0
+                for ac in pending:
+                    tf = timely_filing_info(ac.insurance_company, ac.dos)
+                    ac.tf_deadline_date = tf["tf_deadline_date"]
+                    ac.tf_days_allowed = tf["tf_days_allowed"]
+                    touched += 1
+                if touched:
+                    db.commit()
+                    import logging
+                    logging.getLogger(__name__).info(
+                        "Backfilled tf_deadline_date on %d active claims", touched)
+            finally:
+                db.close()
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                "tf_deadline_date backfill skipped: %s", exc)
 
 
 # practice_role enum → seed group name. Used only by the one-time

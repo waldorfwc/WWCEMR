@@ -217,7 +217,36 @@ def generate_instances_for_date(db: Session, target_date: date) -> dict:
             added_keys.add(key)
             created += 1
 
-    db.commit()
+    # Commit + race fallback. The uq_task_inst_template_user_date unique
+    # constraint catches any duplicate created by a manual + cron
+    # collision (or admin double-click); when that fires, fall back to
+    # per-row inserts so the legitimate new rows still land and the
+    # duplicates are counted as skipped. (Fable cross-cutting audit #15.)
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Replay the same insert set one at a time, swallowing the
+        # constraint violation (= another worker beat us to that row).
+        re_created = 0
+        for tmpl, d in candidates:
+            users = _assignees_for_template(db, tmpl)
+            for u in users:
+                due_at = (datetime.combine(d, tmpl.due_time)
+                            if tmpl.due_time else None)
+                db.add(TaskInstance(
+                    template_id=tmpl.id,
+                    assigned_to_email=u.email,
+                    due_date=d, due_at=due_at, status="pending",
+                ))
+                try:
+                    db.commit()
+                    re_created += 1
+                except IntegrityError:
+                    db.rollback()
+                    skipped += 1
+        created = re_created
     return {"target_date": str(target_date), "created": created, "skipped": skipped}
 
 

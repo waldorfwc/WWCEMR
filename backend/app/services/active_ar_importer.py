@@ -143,11 +143,18 @@ def import_unpaid_claims(
             existing_claim = existing.get(key)
             if existing_claim is None:
                 # New
+                dos_parsed = _parse_date(raw.get("Date of Service"))
+                ins_co = _str(raw.get("Insurance Company"))
+                # Precompute timely-filing deadline so the AR summary
+                # endpoint can bucket by deadline via SQL.
+                # (Fable cross-cutting audit #13.)
+                from app.services.timely_filing import timely_filing_info
+                tf = timely_filing_info(ins_co, dos_parsed)
                 ac = ActiveClaim(
                     claim_number=claim_number,
                     patient_external_id=patient_external_id,
                     patient_name=_str(raw.get("Patient Name")),
-                    dos=_parse_date(raw.get("Date of Service")),
+                    dos=dos_parsed,
                     care_provider=_str(raw.get("Care Provider")),
                     claim_state=claim_state,
                     claim_status=claim_status,
@@ -157,13 +164,15 @@ def import_unpaid_claims(
                     total_charges=total_charges,
                     insurance_priority=priority,
                     payor_id=_str(raw.get("Payor ID")),
-                    insurance_company=_str(raw.get("Insurance Company")),
+                    insurance_company=ins_co,
                     plan_name=_str(raw.get("Plan Name")),
                     policy_number=_str(raw.get("Policy Number")),
                     practice_location=_str(raw.get("Practice Location")),
                     workflow_state="new",
                     last_seen_in_export_at=now,
                     imported_at=now,
+                    tf_deadline_date=tf["tf_deadline_date"],
+                    tf_days_allowed=tf["tf_days_allowed"],
                 )
                 db.add(ac)
                 new_count += 1
@@ -192,6 +201,17 @@ def import_unpaid_claims(
                         setattr(existing_claim, fld, new_val)
                         changed = True
                 existing_claim.last_seen_in_export_at = now
+                # If DOS or insurance changed, refresh tf_deadline_date.
+                # Cheap to recompute on every row regardless, since the
+                # classifier is a dict lookup + date math. (Audit #13.)
+                from app.services.timely_filing import timely_filing_info
+                tf = timely_filing_info(
+                    existing_claim.insurance_company, existing_claim.dos)
+                if (existing_claim.tf_deadline_date != tf["tf_deadline_date"]
+                        or existing_claim.tf_days_allowed != tf["tf_days_allowed"]):
+                    existing_claim.tf_deadline_date = tf["tf_deadline_date"]
+                    existing_claim.tf_days_allowed = tf["tf_days_allowed"]
+                    changed = True
                 if changed:
                     updated_count += 1
                 else:

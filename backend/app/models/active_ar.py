@@ -82,6 +82,14 @@ class ActiveClaim(Base):
     #   {line, cpt, modifiers, units, charge, gross_charge, fee_schedule_charge, dx}
     service_lines_json = Column(Text, nullable=True)
 
+    # Precomputed timely-filing deadline. Derived from (insurance_company, dos)
+    # via timely_filing_info(). Persisted so the AR summary endpoint doesn't
+    # have to load every open claim into Python and call the classifier per
+    # row. Refreshed on import + when DOS/insurance change.
+    # (Fable cross-cutting audit #13.)
+    tf_deadline_date = Column(Date, nullable=True, index=True)
+    tf_days_allowed = Column(Integer, nullable=True)
+
     # Insurance routing
     insurance_priority = Column(String(20), nullable=False)   # Primary / Secondary / Tertiary
     payor_id = Column(String(50))
