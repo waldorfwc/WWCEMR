@@ -534,6 +534,18 @@ def _apply_lightweight_migrations():
              "device_id",
              "approval_status IN ('pending', 'approved') "
              "AND outcome IS NULL AND device_id IS NOT NULL"),
+            # LARC: at most one live enrollment envelope per
+            # (assignment, template). A double-click on Send used to
+            # create two live BoldSign envelopes — patient signs both
+            # → two pharmacy faxes → duplicate $300-$1,100 orders.
+            # The app-level guard in send_enrollment_envelope is the
+            # primary defense; this index is the DB-side backstop.
+            # (Fable LARC audit C2.) Excludes terminal statuses so a
+            # voided/declined/failed envelope can be re-sent.
+            ("ix_larc_envelope_live_unique",
+             "larc_enrollment_envelopes",
+             "assignment_id, boldsign_template_id",
+             "status NOT IN ('voided', 'declined', 'failed', 'faxed', 'fax_failed')"),
             # Pellet: at most one non-cancelled count per (location, day).
             # start_count has an app-level existence check, but two staff
             # clicking "Start count" within the same second both pass it

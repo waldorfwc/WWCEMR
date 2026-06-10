@@ -545,6 +545,66 @@ def _resolve_app(a: LarcAssignment,
     return name, npi
 
 
+def void_live_envelopes_for_assignment(
+    db: Session,
+    assignment: LarcAssignment,
+    *,
+    reason: str,
+    actor_email: str,
+) -> list[LarcEnrollmentEnvelope]:
+    """Revoke every still-live BoldSign envelope tied to this assignment.
+
+    Used when the assignment is cancelled (patient_no_show /
+    patient_canceled / office_canceled) so the patient can't sign a
+    pharmacy-enrollment form weeks later that would auto-fax the order
+    to the dispensing pharmacy. Best-effort: BoldSign failures get
+    recorded on the row (status='failed', last_fax_error=...) so the
+    sweep can surface them, but they don't abort the cancellation.
+    Returns the list of envelopes that were processed (voided or
+    flagged failed). (Fable LARC audit C2.)
+    """
+    _LIVE = {"pending", "sent", "partially_signed", "signed"}
+    rows = (db.query(LarcEnrollmentEnvelope)
+              .filter(LarcEnrollmentEnvelope.assignment_id == assignment.id,
+                      LarcEnrollmentEnvelope.status.in_(_LIVE))
+              .all())
+    if not rows:
+        return []
+    processed = []
+    for env in rows:
+        if not env.boldsign_envelope_id:
+            env.status = "voided"
+            env.voided_at = datetime.utcnow()
+            processed.append(env)
+            continue
+        if not _is_configured():
+            env.last_fax_error = (
+                f"void skipped — BoldSign not configured ({reason})")
+            processed.append(env)
+            continue
+        try:
+            with httpx.Client(
+                base_url=API_BASE,
+                headers={"X-API-KEY": _api_key()},
+                timeout=10.0,
+            ) as c:
+                r = c.post(
+                    "/v1/document/revoke",
+                    params={"documentId": env.boldsign_envelope_id},
+                    json={"message": reason[:120]},
+                )
+            if r.status_code >= 300:
+                env.last_fax_error = (
+                    f"BoldSign revoke {r.status_code}: {r.text[:200]}")
+            else:
+                env.status = "voided"
+                env.voided_at = datetime.utcnow()
+        except Exception as e:
+            env.last_fax_error = f"BoldSign revoke error: {e!r}"[:300]
+        processed.append(env)
+    return processed
+
+
 def send_enrollment_envelope(
     db: Session,
     assignment: LarcAssignment,
@@ -561,6 +621,24 @@ def send_enrollment_envelope(
     burning a BoldSign envelope on bad data."""
     if not _is_configured():
         raise LarcEnrollmentError("BoldSign API key not configured")
+
+    # Refuse to send if a live envelope already exists for this
+    # assignment. Otherwise a double-click creates two BoldSign envelopes
+    # → patient signs both → two completed webhooks → two pharmacy faxes
+    # → duplicate $300-$1,100 device orders + duplicate PHI transmission.
+    # (Fable LARC audit C2.) "Live" = anything not in a terminal
+    # state; staff must explicitly void before re-sending.
+    _LIVE_STATUSES = {"pending", "sent", "partially_signed", "signed", "faxed"}
+    live_existing = (db.query(LarcEnrollmentEnvelope)
+                       .filter(LarcEnrollmentEnvelope.assignment_id == assignment.id,
+                               LarcEnrollmentEnvelope.status.in_(_LIVE_STATUSES))
+                       .first())
+    if live_existing:
+        raise LarcEnrollmentError(
+            f"A live enrollment envelope already exists for this assignment "
+            f"(status={live_existing.status}, "
+            f"id={(live_existing.boldsign_envelope_id or '')[:8]}…). "
+            f"Void it before sending a new one.")
 
     # Prerequisites — resolve device_type. Pharmacy-order assignments
     # are created with device_id=NULL (the physical device hasn't shipped

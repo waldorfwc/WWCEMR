@@ -15,6 +15,7 @@ Phase 1 endpoints:
 """
 from __future__ import annotations
 
+import logging
 from datetime import date as _date, datetime, timedelta
 from typing import Optional
 
@@ -824,6 +825,47 @@ def create_device(payload: DeviceIn,
     return _device_dict(d)
 
 
+@router.get("/devices/unallocated")
+def list_unallocated_devices(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
+    device_type_id: Optional[str] = None,
+    category: Optional[str] = None,
+    location: Optional[str] = None,
+):
+    """List devices that are in stock and not yet bound to a patient.
+    Used by the Surgery module to pick an office-procedure device when
+    scheduling a D&C (Bensta) or endometrial ablation (NovaSure).
+
+    NB — this route MUST be registered before the /devices/{device_id}
+    catch-all below or FastAPI will treat 'unallocated' as a device id
+    and 404 the call. (Fable LARC audit C1.)
+    """
+    q = (db.query(LarcDevice)
+           .options(joinedload(LarcDevice.device_type))
+           .filter(LarcDevice.status == "unassigned"))
+    if device_type_id:
+        q = q.filter(LarcDevice.device_type_id == device_type_id)
+    if category:
+        q = q.join(LarcDeviceType).filter(LarcDeviceType.category == category)
+    if location:
+        q = q.filter(LarcDevice.location == location)
+    rows = q.order_by(LarcDevice.expiration_date.asc().nullslast()).all()
+    return [
+        {
+            "id": str(d.id), "our_id": d.our_id,
+            "device_type_id": str(d.device_type_id),
+            "device_type_name": d.device_type.name if d.device_type else None,
+            "category": d.device_type.category if d.device_type else None,
+            "manufacturer_lot": d.manufacturer_lot,
+            "expiration_date": str(d.expiration_date) if d.expiration_date else None,
+            "location": d.location,
+            "location_label": LOCATION_LABELS.get(d.location, d.location),
+        }
+        for d in rows
+    ]
+
+
 @router.get("/devices/{device_id}")
 def get_device(device_id: str,
                 db: Session = Depends(get_db),
@@ -1479,6 +1521,31 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
             # Device returns to stock; new appointment / new assignment may follow
             a.device.status = "unassigned"
         a.is_active = False
+        # Void any still-live BoldSign enrollment envelopes — otherwise
+        # a patient who signs days later auto-faxes the order to the
+        # pharmacy for an assignment that no longer applies. Best-effort;
+        # failures are recorded on the envelope row for the sweep job.
+        # (Fable LARC audit C2.)
+        from app.services.larc_enrollment_sender import (
+            void_live_envelopes_for_assignment,
+        )
+        try:
+            voided = void_live_envelopes_for_assignment(
+                db, a, reason=f"Assignment {payload.outcome}", actor_email=by)
+            for env in voided:
+                log_audit(db, actor=by, action="envelope_voided",
+                          device=a.device, assignment=a,
+                          summary=(f"Voided enrollment envelope "
+                                   f"{(env.boldsign_envelope_id or '')[:8]}… "
+                                   f"on {payload.outcome}"),
+                          detail={"envelope_id": str(env.id),
+                                  "new_status": env.status,
+                                  "boldsign_envelope_id": env.boldsign_envelope_id,
+                                  "last_fax_error": env.last_fax_error})
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "envelope void on outcome %s failed for assignment %s: %s",
+                payload.outcome, a.id, exc)
     elif payload.outcome == "lost":
         if a.device:
             a.device.status = "lost"
@@ -1536,6 +1603,7 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
     from app.services.larc_enrollment_sender import (
         send_enrollment_envelope, LarcEnrollmentError,
     )
+    from sqlalchemy.exc import IntegrityError
     try:
         env = send_enrollment_envelope(
             db, a, sent_by_email=by,
@@ -1545,6 +1613,14 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
     except LarcEnrollmentError as exc:
         # Sender raises these for missing prerequisites or BoldSign errors.
         raise HTTPException(status_code=409, detail=str(exc))
+    except IntegrityError:
+        # ix_larc_envelope_live_unique fired — a concurrent send raced
+        # past the app-level guard. Surface a clean 409. (Fable C2.)
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=("Another envelope for this assignment was sent "
+                    "concurrently. Refresh to see the live envelope."))
 
     _mark_milestone(a, "enrollment_sent", status="done", by=by)
     log_audit(db, actor=by, action="enrollment_sent",
@@ -1779,16 +1855,48 @@ def allocate_device(assignment_id: str,
                    f"{a.device_type_id}, device is {d.device_type_id}",
         )
 
+    # Atomic claim: only one allocation succeeds when two staff try to
+    # bind the same device. Without this, the previous read-then-mutate
+    # let both threads pass d.status=='unassigned' and both set
+    # d.status='assigned' (last write wins) → corrupted chain of custody
+    # for an implantable device. Postgres' partial unique
+    # ix_larc_assignment_active_unique helps at the assignment side, but
+    # the device-side race needed its own conditional UPDATE.
+    # (Fable LARC audit C3.)
+    from sqlalchemy import update as _sql_update
+    claimed = db.execute(
+        _sql_update(LarcDevice)
+          .where(LarcDevice.id == d.id, LarcDevice.status == "unassigned")
+          .values(status="assigned")
+    ).rowcount
+    if not claimed:
+        db.refresh(d)
+        raise HTTPException(
+            status_code=409,
+            detail=(f"Device is in status {d.status!r} — was claimed by "
+                    "a concurrent allocation. Refresh the device list."))
+    db.refresh(d)
+
     # Bind
     a.device_id = d.id
-    d.status = "assigned"
     by = current_user.get("email") or "system"
     log_audit(db, actor=by, action="device_allocated",
               device=d, assignment=a,
               summary=f"Allocated device #{d.our_id} to {a.patient_name} "
                        f"(post benefits + payment)",
               detail={"device_our_id": d.our_id, "lot": d.manufacturer_lot})
-    db.commit(); db.refresh(a)
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.commit()
+    except IntegrityError:
+        # ix_larc_assignment_active_unique fired — this device is bound
+        # to another active assignment. Surface a clean 409.
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail=("Device is already bound to another active assignment. "
+                    "Refresh and try again."))
+    db.refresh(a)
     return _assignment_dict(a, include_milestones=True)
 
 
@@ -2113,9 +2221,49 @@ def decide_checkout(checkout_id: str, payload: CheckoutApprovalIn,
     c.approved_at = datetime.utcnow()
     a = c.assignment
     if payload.approve:
+        # Re-validate at approval time — the manager may be clearing a
+        # Friday request on Monday and the device may have since moved
+        # to lost / defective / expired / inserted, or the assignment
+        # may have been billed/closed. Without this, decide_checkout
+        # would force the device back to 'checked_out' and silently
+        # rewrite a terminal state. (Fable LARC audit H1.)
+        if a is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Checkout has no assignment — refuse to approve")
+        if a.status in ("billed", "cancelled"):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Assignment is {a.status} — cannot approve checkout")
+        device = a.device
+        if device is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Assignment has no bound device — cannot approve")
+        if device.status not in ("assigned", "checked_out"):
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Device #{device.our_id} is now {device.status!r} — "
+                        f"refuse to approve a stale request. Have the staffer "
+                        f"start a fresh checkout if appropriate."))
+        # Atomic device status flip — only succeeds when the device was
+        # 'assigned' (the normal pre-checkout state). 'checked_out'
+        # idempotency is preserved (still rowcount=1 once we widen).
+        from sqlalchemy import update as _sql_update
+        claimed = db.execute(
+            _sql_update(LarcDevice)
+              .where(LarcDevice.id == device.id,
+                     LarcDevice.status.in_(["assigned", "checked_out"]))
+              .values(status="checked_out")
+        ).rowcount
+        if not claimed:
+            db.refresh(device)
+            raise HTTPException(
+                status_code=409,
+                detail=(f"Device status changed to {device.status!r} between "
+                        "validation and update — refresh and try again."))
+
         c.approval_status = "approved"
-        if a and a.device:
-            a.device.status = "checked_out"
         _mark_milestone(a, "device_checked_out", status="done", by=by)
         action = "checkout_approved"
         summary = f"Manager approved checkout for {a.patient_name}"
@@ -2364,40 +2512,6 @@ def device_label_pdf(device_id: str,
 
 # ─── Office-procedure flow (NovaSure, Bensta) ──────────────────────
 
-@router.get("/devices/unallocated")
-def list_unallocated_devices(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW)),
-    device_type_id: Optional[str] = None,
-    category: Optional[str] = None,
-    location: Optional[str] = None,
-):
-    """List devices that are in stock and not yet bound to a patient.
-    Used by the Surgery module to pick an office-procedure device when
-    scheduling a D&C (Bensta) or endometrial ablation (NovaSure)."""
-    q = (db.query(LarcDevice)
-           .options(joinedload(LarcDevice.device_type))
-           .filter(LarcDevice.status == "unassigned"))
-    if device_type_id:
-        q = q.filter(LarcDevice.device_type_id == device_type_id)
-    if category:
-        q = q.join(LarcDeviceType).filter(LarcDeviceType.category == category)
-    if location:
-        q = q.filter(LarcDevice.location == location)
-    rows = q.order_by(LarcDevice.expiration_date.asc().nullslast()).all()
-    return [
-        {
-            "id": str(d.id), "our_id": d.our_id,
-            "device_type_id": str(d.device_type_id),
-            "device_type_name": d.device_type.name if d.device_type else None,
-            "category": d.device_type.category if d.device_type else None,
-            "manufacturer_lot": d.manufacturer_lot,
-            "expiration_date": str(d.expiration_date) if d.expiration_date else None,
-            "location": d.location,
-            "location_label": LOCATION_LABELS.get(d.location, d.location),
-        }
-        for d in rows
-    ]
 
 
 class OfficeProcedureAssignmentIn(BaseModel):
