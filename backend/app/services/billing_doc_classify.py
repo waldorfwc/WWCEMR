@@ -45,7 +45,18 @@ def _first_page_pdf(file_bytes: bytes) -> Optional[bytes]:
 
 def classify_pdf(file_bytes: bytes, mime_type: str = "application/pdf") -> Optional[str]:
     """Ask Claude to classify the document. Returns one of the LABELS
-    keys, or None if the API is unavailable / unconfigured / unsure."""
+    keys, or None if the API is unavailable / unconfigured / unsure.
+
+    Disabled by default — the first page of an EOB / patient payment is
+    PHI (name, member ID, claim details). Only enable once we've
+    confirmed a BAA covers the Anthropic API for our use. Set
+    BILLING_AI_CLASSIFY_ENABLED=1 in env to opt in. (Fable intake
+    audit #9.)
+    """
+    if (os.environ.get("BILLING_AI_CLASSIFY_ENABLED", "").strip().lower()
+            not in {"1", "true", "yes", "on"}):
+        log.info("Auto-classify skipped: BILLING_AI_CLASSIFY_ENABLED is not set")
+        return None
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if not api_key:
         log.info("Auto-classify skipped: ANTHROPIC_API_KEY not set")

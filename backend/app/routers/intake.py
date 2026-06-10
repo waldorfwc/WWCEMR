@@ -6,7 +6,6 @@ Intake document management:
 - Browse, download, override matches
 """
 
-import functools
 import logging
 import os
 from typing import Optional, Tuple
@@ -18,14 +17,25 @@ _INTAKE_LOCAL_ROOT = "/Volumes/OWC External/IntakeArchive/"
 _INTAKE_GCS_BUCKET = os.environ.get("DOCUMENTS_GCS_BUCKET", "wwc-app-docs")
 
 
-@functools.lru_cache(maxsize=200)
+# Module-level cache for archive lookups. Only successful, non-empty
+# results land here — a transient GCS error must not poison the year
+# forever. The old lru_cache decorator cached () on failure, which meant
+# every download for that DOB-year 404'd until the service restarted.
+# (Fable intake audit #5.)
+_archives_cache: dict[str, Tuple[str, ...]] = {}
+
+
 def _intake_archives_for_year(year: str) -> Tuple[str, ...]:
     """Return the archive folder names (e.g. '1975-20260417T074958Z-3-001')
-    matching a DOB-year prefix. One GCS list call per year; cached because
-    the intake archive set is import-once-then-stable.
+    matching a DOB-year prefix. One GCS list call per year on first hit.
 
-    Returns empty tuple if no archives match (e.g. invalid year).
+    On GCS error returns () but does NOT cache, so the next call retries.
+    On empty (legitimate "no archives for this year") returns () and
+    doesn't cache either — a year going from empty → populated is rare
+    but worth picking up without a restart.
     """
+    if year in _archives_cache:
+        return _archives_cache[year]
     try:
         from google.cloud import storage  # type: ignore
         client = storage.Client()
@@ -33,8 +43,10 @@ def _intake_archives_for_year(year: str) -> Tuple[str, ...]:
         prefix = f"intake/{year}-"
         iterator = client.list_blobs(bucket, prefix=prefix, delimiter="/")
         list(iterator)  # populate iterator.prefixes
-        out = [p[len("intake/"):].rstrip("/") for p in iterator.prefixes]
-        return tuple(sorted(out))
+        out = tuple(sorted(p[len("intake/"):].rstrip("/") for p in iterator.prefixes))
+        if out:
+            _archives_cache[year] = out
+        return out
     except Exception:
         logging.getLogger(__name__).exception(
             "Failed to list intake archives for year=%s", year)
@@ -199,10 +211,16 @@ def list_directory(
 @router.post("/index")
 def start_indexing(
     background_tasks: BackgroundTasks,
-    intake_dir: str = "~/Downloads/wwc_intake_docs",
     _: dict = Depends(requires_tier(Module.CHART, Tier.MANAGE)),
 ):
-    """Walk an intake archive directory and index all files."""
+    """Walk the intake archive directory and index all files.
+
+    Directory is configured server-side via INTAKE_DIR env var (default
+    ~/Downloads/wwc_intake_docs). Previously accepted as a request
+    param — an admin could point the indexer at any directory on the
+    box. (Fable intake audit #10.)
+    """
+    intake_dir = os.environ.get("INTAKE_DIR", "~/Downloads/wwc_intake_docs")
     abs_dir = os.path.expanduser(intake_dir)
     if not os.path.isdir(abs_dir):
         raise HTTPException(status_code=404, detail=f"Directory not found: {abs_dir}")

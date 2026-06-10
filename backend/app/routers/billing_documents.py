@@ -15,10 +15,11 @@ import hashlib
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
@@ -260,7 +261,31 @@ async def upload_document(
                  "classification": classification,
                  "ai_classified": bool(ai_suggested),
                  "assigned_to": assignees})
-    db.commit(); db.refresh(d)
+    try:
+        db.commit(); db.refresh(d)
+    except IntegrityError:
+        # Race: another upload with the same content_hash committed
+        # between our app-level check above and our commit. Roll back
+        # and surface the existing row. Backed by the partial unique
+        # index ix_billing_documents_content_hash_unique. (Fable #7.)
+        db.rollback()
+        if force:
+            raise
+        existing = (db.query(BillingDocument)
+                      .filter(BillingDocument.content_hash == content_hash)
+                      .order_by(BillingDocument.uploaded_at.desc())
+                      .first())
+        if not existing:
+            raise
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "duplicate",
+                "message": ("Another upload of identical contents arrived "
+                            "at the same time."),
+                "existing": {"id": str(existing.id)},
+            },
+        )
     out = _doc_dict(d)
     out["ai_classified"] = bool(ai_suggested)
     return out
@@ -276,8 +301,8 @@ def list_documents(
     classification: Optional[str] = None,
     assigned_to_me: bool = False,
     unassigned_only: bool = False,
-    page: int = 1,
-    per_page: int = 100,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=500),
 ):
     q = db.query(BillingDocument)
     if status:
@@ -380,7 +405,7 @@ class DocumentPatch(BaseModel):
 @router.patch("/{doc_id}")
 def patch_document(doc_id: str, payload: DocumentPatch,
                     db: Session = Depends(get_db),
-                    current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
+                    current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.WORK))):
     d = _load(db, doc_id)
     if not _visible_to(d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")
@@ -477,7 +502,7 @@ class NoteIn(BaseModel):
 @router.post("/{doc_id}/notes", status_code=201)
 def add_note(doc_id: str, payload: NoteIn,
               db: Session = Depends(get_db),
-              current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
+              current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.WORK))):
     d = _load(db, doc_id)
     if not _visible_to(d, current_user):
         raise HTTPException(status_code=403, detail="not authorized")

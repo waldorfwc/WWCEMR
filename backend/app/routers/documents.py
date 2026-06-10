@@ -66,20 +66,47 @@ def index_documents(
 
 
 def _do_index(docs_dir: str):
-    """Walk the directory tree and insert/update all documents."""
+    """Walk the directory tree and upsert documents into the index.
+
+    Previously deleted the entire index up-front and rebuilt it — staff
+    mid-visit saw empty charts during the rebuild, and a half-failed run
+    left the index empty since the delete was already committed. Now
+    upserts by (chart_number, filename) so the existing index keeps
+    serving until each row is replaced, and a mid-run exception leaves
+    the previous state intact. (Fable intake audit #4.)
+    """
+    import logging as _logging
+    _logger = _logging.getLogger("wwc.documents.index")
+    # Chart-numbers that actually showed up in this walk. After the walk,
+    # any chart row whose filename was NOT touched gets pruned — that's
+    # how we drop documents that have been removed from disk.
+    seen: set[tuple[str, str]] = set()
+
     from app.database import SessionLocal
     db = SessionLocal()
     try:
-        # Clear existing index and rebuild
-        db.query(PatientDocument).delete()
-        db.commit()
-
-        batch = []
         batch_size = 500
+        batch: list[PatientDocument] = []
+
+        def _flush():
+            if not batch:
+                return
+            db.bulk_save_objects(batch)
+            db.commit()
+            batch.clear()
+
+        # Chart number must look like a chart id (digits, with optional
+        # alpha prefix, ≤20 chars). Skips stray `temp/` or
+        # `old backup/` folders the previous code silently indexed as
+        # fake patient charts. (Fable intake audit #8.)
+        import re as _re
+        _chart_re = _re.compile(r"^[A-Za-z0-9_-]{1,20}$")
 
         for chart_number in os.listdir(docs_dir):
             chart_dir = os.path.join(docs_dir, chart_number)
             if not os.path.isdir(chart_dir):
+                continue
+            if not _chart_re.fullmatch(chart_number):
                 continue
             for filename in os.listdir(chart_dir):
                 if not filename.lower().endswith(".pdf"):
@@ -88,34 +115,54 @@ def _do_index(docs_dir: str):
                 doc_type, doc_date, doc_id, page = _parse_filename(filename)
                 if doc_type is None:
                     doc_type = os.path.splitext(filename)[0]
-
                 try:
                     size_kb = os.path.getsize(filepath) // 1024
                 except OSError:
                     size_kb = 0
 
-                batch.append(PatientDocument(
-                    chart_number=chart_number,
-                    doc_type=doc_type,
-                    doc_date=doc_date,
-                    doc_id=doc_id,
-                    page_number=page,
-                    filename=filename,
-                    file_path=filepath,
-                    file_size_kb=size_kb,
-                ))
-
+                seen.add((chart_number, filename))
+                existing = (db.query(PatientDocument)
+                              .filter(PatientDocument.chart_number == chart_number,
+                                      PatientDocument.filename == filename)
+                              .first())
+                if existing is not None:
+                    existing.doc_type = doc_type
+                    existing.doc_date = doc_date
+                    existing.doc_id = doc_id
+                    existing.page_number = page
+                    existing.file_path = filepath
+                    existing.file_size_kb = size_kb
+                else:
+                    batch.append(PatientDocument(
+                        chart_number=chart_number,
+                        doc_type=doc_type,
+                        doc_date=doc_date,
+                        doc_id=doc_id,
+                        page_number=page,
+                        filename=filename,
+                        file_path=filepath,
+                        file_size_kb=size_kb,
+                    ))
                 if len(batch) >= batch_size:
-                    db.bulk_save_objects(batch)
-                    db.commit()
-                    batch = []
+                    _flush()
+        _flush()
 
-        if batch:
-            db.bulk_save_objects(batch)
+        # Drop rows that didn't show up in this walk — file removed from
+        # disk. Done in chunks to keep the delete query small.
+        all_pairs = db.query(PatientDocument.id,
+                              PatientDocument.chart_number,
+                              PatientDocument.filename).all()
+        stale_ids = [pid for pid, c, f in all_pairs if (c, f) not in seen]
+        if stale_ids:
+            (db.query(PatientDocument)
+                .filter(PatientDocument.id.in_(stale_ids))
+                .delete(synchronize_session=False))
             db.commit()
+        _logger.info("index complete: walked=%d stale_removed=%d",
+                       len(seen), len(stale_ids))
     except Exception as e:
         db.rollback()
-        print(f"[documents] Index error: {e}")
+        _logger.exception("Index error: %s", e)
     finally:
         db.close()
 
@@ -315,7 +362,14 @@ def _resolve_file(doc: PatientDocument, db: Session) -> str:
     """
     Return a valid local file path for the document.
     If not extracted yet, attempt to extract from the tar archive on the external drive.
+
+    On Cloud Run (using_gcs()) the local-drive lookups + subprocess
+    extraction are dead code that would also try to mutate doc.file_path
+    inside a GET handler. Short-circuit so the GCS-mode path stays
+    side-effect-free. (Fable intake audit #7.)
     """
+    if using_gcs():
+        return ""
     if doc.file_path and os.path.isfile(doc.file_path):
         return doc.file_path
 
@@ -477,5 +531,9 @@ def _doc_to_dict(d: PatientDocument) -> dict:
         "page_number": d.page_number,
         "filename": d.filename,
         "file_size_kb": d.file_size_kb,
-        "available": bool(d.file_path and os.path.isfile(d.file_path)),
+        # On GCS the backend streams from the bucket regardless of any
+        # local path, so a doc that only lives in the bucket should still
+        # render as available. Old check was always False on Cloud Run.
+        # (Fable intake audit #5.)
+        "available": bool(using_gcs() or (d.file_path and os.path.isfile(d.file_path))),
     }

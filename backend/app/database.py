@@ -597,6 +597,15 @@ def _apply_lightweight_migrations():
              "fax_logs",
              "chart_number, client_request_id",
              "client_request_id IS NOT NULL"),
+            # Billing documents: at most one row per content_hash. App
+            # already checks-then-acts before write, but two concurrent
+            # uploads of the same scan both pass the check and both
+            # insert. (Fable intake audit #7.) Excludes NULLs so old
+            # rows without a hash don't block.
+            ("ix_billing_documents_content_hash_unique",
+             "billing_documents",
+             "content_hash",
+             "content_hash IS NOT NULL"),
             # NB: receipt-level dedup is enforced in app code (see
             # create_receipt) — historical data contains duplicates so a
             # DB unique index would fail to create. The race window in
