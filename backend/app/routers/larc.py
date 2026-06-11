@@ -295,7 +295,8 @@ def dashboard(db: Session = Depends(get_db),
     active_assignments = (db.query(LarcAssignment)
                             .options(joinedload(LarcAssignment.milestones),
                                      joinedload(LarcAssignment.device))
-                            .filter(LarcAssignment.status.notin_(["billed", "cancelled"]))
+                            .filter(LarcAssignment.not_deleted(),
+                                    LarcAssignment.status.notin_(["billed", "cancelled"]))
                             .all())
     bucket_counts = {b: 0 for b in ALL_BUCKETS}
     for a in active_assignments:
@@ -305,7 +306,8 @@ def dashboard(db: Session = Depends(get_db),
     # Pharmacy-order overdue (faxed >SLA days, not received)
     overdue_pharmacy = (db.query(LarcAssignment)
                           .options(joinedload(LarcAssignment.device))
-                          .filter(LarcAssignment.source_flow == "pharmacy_order",
+                          .filter(LarcAssignment.not_deleted(),
+                                  LarcAssignment.source_flow == "pharmacy_order",
                                   LarcAssignment.request_faxed_at.isnot(None),
                                   LarcAssignment.device_received_at.is_(None),
                                   LarcAssignment.request_faxed_at
@@ -1129,7 +1131,11 @@ def list_assignments(
 ):
     q = (db.query(LarcAssignment)
            .options(joinedload(LarcAssignment.milestones),
-                    joinedload(LarcAssignment.device).joinedload(LarcDevice.device_type)))
+                    joinedload(LarcAssignment.device).joinedload(LarcDevice.device_type))
+           # Honor SoftDeleteMixin — rows scrubbed via admin/cleanup must
+           # stay hidden. (Older read paths in this router are still
+           # missing this filter and are tracked separately.)
+           .filter(LarcAssignment.not_deleted()))
     if not include_completed:
         q = q.filter(LarcAssignment.status.notin_(["billed", "cancelled"]))
     if status:
