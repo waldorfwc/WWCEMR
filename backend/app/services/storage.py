@@ -174,12 +174,20 @@ def save_blob_with_key(*, key: str, body: bytes,
 
 def read_blob(key: str) -> bytes:
     """Download bytes for a stored key. Raises FileNotFoundError if the
-    object/file doesn't exist."""
+    object/file doesn't exist.
+
+    Accepts either a real GCS object key (e.g. "extracted/Document/…")
+    or a pre-migration absolute path (e.g.
+    "/Volumes/OWC External/ExtractedDocuments/Document/…"). Legacy
+    paths are translated via legacy_path_to_gcs_key() so older DB rows
+    that still carry the Mac absolute path continue to work."""
     if _STORAGE_BACKEND == "gcs":
+        translated = legacy_path_to_gcs_key(key) if is_legacy_local_path(key) else None
+        effective_key = translated or key
         client = _gcs_client()
-        blob = client.bucket(_GCS_BUCKET).blob(key)
+        blob = client.bucket(_GCS_BUCKET).blob(effective_key)
         if not blob.exists():
-            raise FileNotFoundError(f"gs://{_GCS_BUCKET}/{key}")
+            raise FileNotFoundError(f"gs://{_GCS_BUCKET}/{effective_key}")
         return blob.download_as_bytes()
 
     root = Path(settings.documents_local_root)
@@ -197,6 +205,31 @@ def is_legacy_local_path(path: Optional[str]) -> bool:
     return (path.startswith("/")     # absolute (Mac Mini, mounted volume)
               or path.startswith("./")   # relative — `./uploads/...`
               or path.startswith("../"))
+
+
+# Pre-migration absolute paths from the Mac external drive. Each maps to
+# the GCS prefix the corresponding objects were uploaded under during the
+# May 2026 migration. Add new entries here if more legacy roots surface.
+_LEGACY_PREFIX_MAP = (
+    ("/Volumes/OWC External/ExtractedDocuments/", "extracted/"),
+    ("/Volumes/OWC External/IntakeArchive/",       "intake/"),
+)
+
+
+def legacy_path_to_gcs_key(path: str) -> Optional[str]:
+    """Translate a pre-migration absolute path (Mac external drive) to the
+    GCS object key the file was uploaded under. Returns None when `path`
+    doesn't match a known legacy prefix.
+
+    Used by fetch helpers (read_blob, fax pipeline) so callers with a
+    legacy file_path in the DB don't need to know about the migration.
+    """
+    if not path:
+        return None
+    for prefix, replacement in _LEGACY_PREFIX_MAP:
+        if path.startswith(prefix):
+            return replacement + path[len(prefix):]
+    return None
 
 
 def delete_blob(key: str) -> bool:
