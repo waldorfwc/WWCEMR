@@ -280,13 +280,13 @@ function TaskRow({ task, qc }) {
           {/* Recorded answer summary */}
           {answeredYes && (
             <div className="text-[11px] text-green-700 mt-1">
-              ✓ Yes — {task.completed_by?.split('@')[0]} · {fmt.date(task.completed_at?.slice(0, 10))} {fmt.time(task.completed_at)}
+              ✓ Yes — {task.completed_by?.split('@')[0]} · {fmt.date(task.completed_at)} {fmt.time(task.completed_at)}
             </div>
           )}
           {answeredNo && (
             <div className="mt-1.5 text-xs text-amber-800 bg-amber-100/60 rounded px-2 py-1">
               <span className="font-semibold">No</span> · answered by {task.completed_by?.split('@')[0]}{' '}
-              {task.completed_at && (<>· {fmt.date(task.completed_at?.slice(0, 10))} {fmt.time(task.completed_at)}</>)}
+              {task.completed_at && (<>· {fmt.date(task.completed_at)} {fmt.time(task.completed_at)}</>)}
               {task.followup_count != null && (
                 <div className="mt-0.5">
                   <span className="text-amber-900/70">{task.followup_prompt || 'How many?'}</span>{' '}
@@ -836,7 +836,7 @@ function PainPointOwnerRow({ pp, qc }) {
       {pp.response && !editing && (
         <div className="bg-plum-50/50 border-l-2 border-plum-300 pl-2 py-1 mb-2">
           <div className="text-[10px] text-plum-700 font-semibold mb-0.5">
-            Your response{pp.reviewed_at && ` · ${fmt.date(pp.reviewed_at.slice(0, 10))}`}
+            Your response{pp.reviewed_at && ` · ${fmt.date(pp.reviewed_at)}`}
           </div>
           <div className="text-gray-800 whitespace-pre-wrap">{pp.response}</div>
           <button type="button"
@@ -926,7 +926,7 @@ function PainPointResponsesCard() {
             <div className="bg-plum-50/70 border-l-2 border-plum-400 pl-2 py-1">
               <div className="text-[10px] text-plum-700 font-semibold">
                 Response from {pp.reviewed_by?.split('@')[0] || 'owner'}
-                {pp.reviewed_at && ` · ${fmt.date(pp.reviewed_at.slice(0, 10))}`}
+                {pp.reviewed_at && ` · ${fmt.date(pp.reviewed_at)}`}
               </div>
               <div className="text-gray-800 whitespace-pre-wrap">{pp.response}</div>
             </div>

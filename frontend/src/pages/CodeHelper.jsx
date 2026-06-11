@@ -197,7 +197,7 @@ export default function CodeHelper() {
                   onClick={() => setDraft(r)}>
                 <td className="table-td">{r.patient_name || '—'}</td>
                 <td className="table-td text-[11px]">{r.patient_dob ? fmt.date(r.patient_dob) : '—'}</td>
-                <td className="table-td text-[11px]">{r.requested_at ? fmt.date(r.requested_at.slice(0, 10)) : '—'}</td>
+                <td className="table-td text-[11px]">{r.requested_at ? fmt.date(r.requested_at) : '—'}</td>
                 <td className="table-td text-[11px]">{r.payer_name || '—'}</td>
                 <td className="table-td text-[11px]">
                   {(r.cpt_codes || []).map(c => c.code).join(', ') || '—'}

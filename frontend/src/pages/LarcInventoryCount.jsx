@@ -405,7 +405,7 @@ function HistoryTable({ history, onOpen }) {
           {history.map(c => (
             <tr key={c.id} className="hover:bg-plum-50/30 cursor-pointer"
                 onClick={() => onOpen(c.id)}>
-              <td className="table-td text-[11px]">{fmt.date(c.started_at.slice(0, 10))}</td>
+              <td className="table-td text-[11px]">{fmt.date(c.started_at)}</td>
               <td className="table-td text-[11px]">{c.started_by?.split('@')[0]}</td>
               <td className="table-td text-[11px]">{c.scope_location || 'all'}</td>
               <td className="table-td text-[11px]">

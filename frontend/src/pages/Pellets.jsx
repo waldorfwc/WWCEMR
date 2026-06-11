@@ -802,7 +802,7 @@ function InventoryLockCard({ state, canManage }) {
             <div className="text-[12px] text-red-700 mt-0.5">
               Reason: {state.reason || '(none provided)'}
               {state.locked_by && <> · by {state.locked_by.split('@')[0]}</>}
-              {state.locked_at && <> · {fmt.date(state.locked_at.slice(0,10))}</>}
+              {state.locked_at && <> · {fmt.date(state.locked_at)}</>}
             </div>
             <div className="text-[11px] text-gray-600 mt-1">
               Lot edits, dose-type catalog, and historical visit fix-ups are blocked.
@@ -984,7 +984,7 @@ function EditLotDrawer({ lot, onClose, onSaved }) {
         </div>
         <div>
           <div className="text-[11px] uppercase text-gray-500">Received</div>
-          <div>{lot.received_at ? fmt.date(lot.received_at.slice(0, 10)) : '—'}</div>
+          <div>{lot.received_at ? fmt.date(lot.received_at) : '—'}</div>
         </div>
       </div>
 
@@ -1364,7 +1364,7 @@ function PlaceOrderDrawer({ types, onClose }) {
             <option value="">— pick a disposal that is being resent —</option>
             {disposals.map(d => (
               <option key={d.id} value={d.id}>
-                {fmt.date(d.occurred_at?.slice(0, 10))} · {d.doses}× {d.lot_label || ''}
+                {fmt.date(d.occurred_at)} · {d.doses}× {d.lot_label || ''}
                 {' '}· {d.reason}{d.qualgen_lot ? ` · lot ${d.qualgen_lot}` : ''}
               </option>
             ))}
@@ -2069,7 +2069,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                   <option value="">— pick the disposal being resent —</option>
                   {disposals.map(d => (
                     <option key={d.id} value={d.id}>
-                      {fmt.date(d.occurred_at?.slice(0, 10))} · {d.doses}× {d.lot_label || ''}
+                      {fmt.date(d.occurred_at)} · {d.doses}× {d.lot_label || ''}
                       {' '}· {d.reason}{d.qualgen_lot ? ` · lot ${d.qualgen_lot}` : ''}
                     </option>
                   ))}

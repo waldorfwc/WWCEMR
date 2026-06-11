@@ -449,7 +449,7 @@ export default function Larc() {
                   </span>
                 </td>
                 <td className="table-td text-[11px] text-gray-500">
-                  {a.created_at ? fmt.date(a.created_at.slice(0, 10)) : '—'}
+                  {a.created_at ? fmt.date(a.created_at) : '—'}
                 </td>
               </tr>
             ))}

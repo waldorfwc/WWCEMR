@@ -277,7 +277,7 @@ export default function InsuranceDocuments() {
                 </td>
                 <td className="table-td text-[11px] text-gray-500">{d.page_count ?? '—'}</td>
                 <td className="table-td text-[11px]">
-                  <div>{fmt.date(d.uploaded_at.slice(0, 10))}</div>
+                  <div>{fmt.date(d.uploaded_at)}</div>
                   <div className="text-[10px] text-gray-500">{d.uploaded_by?.split('@')[0]}</div>
                 </td>
                 <td className="table-td text-[11px]">
@@ -566,7 +566,7 @@ function DocumentDrawer({ docId, onClose, picks }) {
               </div>
             )}
             <div className="text-[11px] text-gray-500 mt-0.5">
-              Uploaded {fmt.date(doc.uploaded_at.slice(0, 10))} by {doc.uploaded_by?.split('@')[0]}
+              Uploaded {fmt.date(doc.uploaded_at)} by {doc.uploaded_by?.split('@')[0]}
               {doc.assigned_to?.length > 0 && (
                 <> · <Lock size={10} className="inline" /> assigned to {doc.assigned_to.map(a => a.split('@')[0]).join(', ')}</>
               )}
@@ -707,7 +707,7 @@ function DocumentDrawer({ docId, onClose, picks }) {
                 {doc.status === 'worked' && doc.worked_by && (
                   <span className="text-[11px] text-gray-500">
                     by {doc.worked_by.split('@')[0]}
-                    {doc.worked_at && ` on ${fmt.date(doc.worked_at.slice(0,10))}`}
+                    {doc.worked_at && ` on ${fmt.date(doc.worked_at)}`}
                   </span>
                 )}
               </div>
@@ -1062,7 +1062,7 @@ function NotesSection({ docId, notes }) {
         {notes.map(n => (
           <div key={n.id} className="border-l-2 border-plum-200 pl-2 py-0.5">
             <div className="text-[10px] text-gray-500">
-              {n.author?.split('@')[0]} · {fmt.date(n.created_at.slice(0, 10))}{' '}
+              {n.author?.split('@')[0]} · {fmt.date(n.created_at)}{' '}
               {fmt.time(n.created_at)}
             </div>
             <div className="text-[12px] text-gray-800 whitespace-pre-wrap">{n.body}</div>
@@ -1102,7 +1102,7 @@ function AuditSection({ log }) {
                 {' '}{a.action.replace(/_/g, ' ')}
               </span>
               <span className="text-gray-400 shrink-0 ml-2">
-                {fmt.date(a.at.slice(0, 10))} {fmt.time(a.at)}
+                {fmt.date(a.at)} {fmt.time(a.at)}
               </span>
             </div>
           ))}

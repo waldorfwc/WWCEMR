@@ -54,7 +54,7 @@ function PendingRow({ c, qc }) {
             Chart {c.chart_number} · device <span className="font-mono">{c.device_our_id}</span> ({c.device_type})
           </div>
           <div className="text-[11px] text-gray-500 mt-0.5">
-            Requested by {c.requested_by?.split('@')[0]} at {fmt.date(c.requested_at.slice(0,10))}{' '}
+            Requested by {c.requested_by?.split('@')[0]} at {fmt.date(c.requested_at)}{' '}
             {fmt.time(c.requested_at)}
             {c.given_to && <> · giving to {c.given_to}</>}
           </div>

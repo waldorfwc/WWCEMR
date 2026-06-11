@@ -715,7 +715,7 @@ function PatientNotesCard({ patient, qc }) {
           <div key={n.id} className="border-l-2 border-plum-200 pl-2 py-0.5 flex items-baseline justify-between">
             <div className="flex-1">
               <div className="text-[10px] text-gray-500">
-                {n.author?.split('@')[0]} · {fmt.date(n.created_at.slice(0, 10))}{' '}
+                {n.author?.split('@')[0]} · {fmt.date(n.created_at)}{' '}
                 {fmt.time(n.created_at)}
               </div>
               <div className="text-[12px] text-gray-800 whitespace-pre-wrap">{n.body}</div>
@@ -1091,7 +1091,7 @@ function VisitCard({ visit, patient, qc }) {
       {visit.claim_number && (
         <div className="mt-3 text-[12px] text-green-700">
           ✓ Billed under claim #<span className="font-mono">{visit.claim_number}</span>
-          {visit.billed_at && <> on {fmt.date(visit.billed_at.slice(0, 10))}</>}
+          {visit.billed_at && <> on {fmt.date(visit.billed_at)}</>}
         </div>
       )}
 
@@ -1205,7 +1205,7 @@ function RevertControl({ visit, patient, qc }) {
             <li key={h.id} className="text-[11px] text-gray-600">
               <span className="font-mono">{h.before} → {h.after}</span>
               {' · '}{(h.actor || '').split('@')[0]}
-              {h.at && <> · {fmt.date(h.at.slice(0, 10))}</>}
+              {h.at && <> · {fmt.date(h.at)}</>}
               {h.reason && <> · "{h.reason}"</>}
             </li>
           ))}
@@ -1879,7 +1879,7 @@ function MilestoneRow({ visit, milestone, qc }) {
           </span>
           {milestone.completed_at && (
             <span className="text-[10px] text-gray-400">
-              {fmt.date(milestone.completed_at.slice(0, 10))}
+              {fmt.date(milestone.completed_at)}
               {milestone.completed_by && ` · ${milestone.completed_by.split('@')[0]}`}
             </span>
           )}
@@ -2241,7 +2241,7 @@ function VisitDoseRow({ visit, patient, isActive, qc, proposedOnly, confirmedOnl
       <div className="flex items-baseline justify-between flex-wrap gap-1">
         <div>
           <strong>{v.visit_kind}</strong>
-          {v.inserted_at && <> · {fmt.date(v.inserted_at.slice(0, 10))}</>}
+          {v.inserted_at && <> · {fmt.date(v.inserted_at)}</>}
           {!v.inserted_at && v.scheduled_date && <> · scheduled {fmt.date(v.scheduled_date)}</>}
           {' · '}
           <span className={tone(v.status)}>{v.status.replace(/_/g, ' ')}</span>
@@ -2473,7 +2473,7 @@ function SetDoseDrawer({ patient, visits, qc, onClose }) {
         {patient.patient_type === 'new'
           ? <>Enter the Dosagio-computed dose for this <strong>new</strong> patient.</>
           : <>Carrying forward the prior dose
-             {prior?.inserted_at && <> from {fmt.date(prior.inserted_at.slice(0, 10))}</>}.{' '}
+             {prior?.inserted_at && <> from {fmt.date(prior.inserted_at)}</>}.{' '}
              Adjust as needed before saving.</>}
       </div>
 
@@ -2717,7 +2717,7 @@ function PaymentBox({ visit, qc }) {
         {sent && !collected && (
           <>
             <span className="text-[11px] text-amber-700">
-              ✓ Klara sent {visit.klara_sent_at && fmt.date(visit.klara_sent_at.slice(0,10))}
+              ✓ Klara sent {visit.klara_sent_at && fmt.date(visit.klara_sent_at)}
               {visit.klara_sent_by && ` by ${visit.klara_sent_by.split('@')[0]}`}
             </span>
             <button className="btn-primary text-[12px] flex items-center gap-1"
@@ -2729,7 +2729,7 @@ function PaymentBox({ visit, qc }) {
         )}
         {collected && (
           <span className="text-[11px] text-green-700">
-            ✓ Payment collected {visit.payment_collected_at && fmt.date(visit.payment_collected_at.slice(0,10))}
+            ✓ Payment collected {visit.payment_collected_at && fmt.date(visit.payment_collected_at)}
             {visit.payment_collected_by && ` by ${visit.payment_collected_by.split('@')[0]}`}
           </span>
         )}

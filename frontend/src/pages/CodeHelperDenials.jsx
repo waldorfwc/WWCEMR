@@ -117,7 +117,7 @@ export default function CodeHelperDenials() {
                 <td className="table-td text-[11px]">{d.payer_name || <em>all</em>}</td>
                 <td className="table-td text-[11px]">{d.reason || '—'}</td>
                 <td className="table-td text-[11px]">
-                  {fmt.date(d.added_at.slice(0, 10))} · {d.added_by?.split('@')[0]}
+                  {fmt.date(d.added_at)} · {d.added_by?.split('@')[0]}
                 </td>
                 <td className="table-td">
                   <input type="checkbox" checked={d.is_active}

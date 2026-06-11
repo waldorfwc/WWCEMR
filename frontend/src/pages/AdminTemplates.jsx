@@ -1148,7 +1148,7 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
               <li key={t.id} className="flex items-center gap-2 text-[12px]">
                 <span className="font-mono">{t.user_email}</span>
                 <span className="text-[10px] text-muted">
-                  authorized {fmt.date(t.authorized_at?.slice(0, 10))}
+                  authorized {fmt.date(t.authorized_at)}
                   {t.authorized_by && ` by ${t.authorized_by.split('@')[0]}`}
                 </span>
                 <button type="button"
@@ -1220,7 +1220,7 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
                 )}
                 <span className="text-[10px] text-muted">
                   by {c.trainer_email?.split('@')[0] || '—'}
-                  {c.trainer_signed_at && ` · ${fmt.date(c.trainer_signed_at.slice(0, 10))}`}
+                  {c.trainer_signed_at && ` · ${fmt.date(c.trainer_signed_at)}`}
                   {c.expires_on && ` · expires ${fmt.date(c.expires_on)}`}
                 </span>
                 {pending && (

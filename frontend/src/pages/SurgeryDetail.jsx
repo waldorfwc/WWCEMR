@@ -315,7 +315,7 @@ export default function SurgeryDetail() {
                      onChange={e => patch.mutate({ sms_consent: e.target.checked })} />
               <span>
                 {s.sms_consent
-                  ? `Opted in${s.sms_consented_at ? ' on ' + fmt.date(s.sms_consented_at.slice(0,10)) : ''}`
+                  ? `Opted in${s.sms_consented_at ? ' on ' + fmt.date(s.sms_consented_at) : ''}`
                   : 'Not opted in — SMS sends will skip'}
               </span>
             </label>
@@ -332,7 +332,7 @@ export default function SurgeryDetail() {
             {s.schedule_gate_override && s.schedule_gate_override_by && (
               <div className="text-[10px] text-gray-400 mt-0.5">
                 Set by {s.schedule_gate_override_by}
-                {s.schedule_gate_override_at ? ' on ' + fmt.date(s.schedule_gate_override_at.slice(0, 10)) : ''}
+                {s.schedule_gate_override_at ? ' on ' + fmt.date(s.schedule_gate_override_at) : ''}
               </div>
             )}
           </Field>
@@ -1468,7 +1468,7 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
                   </button>
                 )}
                 <span className="text-[10px] text-gray-500 shrink-0">
-                  {fmt.date(f.uploaded_at?.slice(0, 10))} · {f.uploaded_by?.split('@')[0] || '—'}
+                  {fmt.date(f.uploaded_at)} · {f.uploaded_by?.split('@')[0] || '—'}
                 </span>
               </li>
             )
@@ -2661,7 +2661,7 @@ function MilestoneRow({ m, surgery }) {
           </div>
           {m.completed_at && (
             <div className="text-[10px] text-gray-500 mt-0.5">
-              {isDone ? '✓ Completed' : 'Updated'} {fmt.date(m.completed_at?.slice(0, 10))}
+              {isDone ? '✓ Completed' : 'Updated'} {fmt.date(m.completed_at)}
               {m.completed_by && ` by ${m.completed_by.replace('system:', '')}`}
             </div>
           )}
@@ -3533,7 +3533,7 @@ function PatientPicksDateBody({ surgery }) {
           <div className="font-medium text-gray-800">Added appointment to ModMed schedule</div>
           {modmedDone && (
             <div className="text-[11px] text-green-700">
-              ✓ {fmt.date(surgery.scheduled_in_modmed_at?.slice(0,10))}
+              ✓ {fmt.date(surgery.scheduled_in_modmed_at)}
               {surgery.scheduled_in_modmed_by && ` by ${surgery.scheduled_in_modmed_by.split('@')[0]}`}
             </div>
           )}
@@ -3555,7 +3555,7 @@ function PatientPicksDateBody({ surgery }) {
             </div>
             {medsDone && (
               <div className="text-[11px] text-green-700 mt-0.5">
-                ✓ Confirmed {fmt.date(surgery.office_meds_pickup_confirmed_at?.slice(0,10))}
+                ✓ Confirmed {fmt.date(surgery.office_meds_pickup_confirmed_at)}
                 {surgery.office_meds_pickup_confirmed_by && ` by ${surgery.office_meds_pickup_confirmed_by.split('@')[0]}`}
               </div>
             )}
@@ -4099,7 +4099,7 @@ function AssistantSurgeonCardBody({ surgery }) {
             </div>
             {officeNotified ? (
               <div className="text-[11px] text-green-700">
-                Notified {fmt.date(surgery.assistant_surgeon_office_notified_at?.slice(0,10))}
+                Notified {fmt.date(surgery.assistant_surgeon_office_notified_at)}
                 {surgery.assistant_surgeon_office_notified_by &&
                   ` by ${surgery.assistant_surgeon_office_notified_by.split('@')[0]}`}
               </div>
@@ -4131,7 +4131,7 @@ function AssistantSurgeonCardBody({ surgery }) {
                 {surgery.assistant_surgeon_appt_date && (
                   <>Appt: {fmt.date(surgery.assistant_surgeon_appt_date)} · </>
                 )}
-                Confirmed {fmt.date(surgery.assistant_surgeon_appt_confirmed_at?.slice(0,10))}
+                Confirmed {fmt.date(surgery.assistant_surgeon_appt_confirmed_at)}
                 {surgery.assistant_surgeon_appt_confirmed_by &&
                   ` by ${surgery.assistant_surgeon_appt_confirmed_by.split('@')[0]}`}
               </div>
@@ -4326,7 +4326,7 @@ function LabsCardBody({ surgery }) {
                 : reportedBy ? `entered ${reportedBy.replace('staff:', 'by ')}`
                 : ''}
               {surgery.lab_appointment_reported_at &&
-                ` · ${fmt.date(surgery.lab_appointment_reported_at.slice(0, 10))}`}
+                ` · ${fmt.date(surgery.lab_appointment_reported_at)}`}
             </div>
           )}
           <button className="text-[11px] text-plum-700 hover:underline"
@@ -4631,7 +4631,7 @@ function SurgeryBilledCardBody({ surgery }) {
 
         {surgery.billed_at && (
           <div className="text-[10px] text-gray-500 mt-2">
-            Codes saved {fmt.date(surgery.billed_at.slice(0,10))}
+            Codes saved {fmt.date(surgery.billed_at)}
             {surgery.billed_by && ` by ${surgery.billed_by.split('@')[0]}`}
           </div>
         )}

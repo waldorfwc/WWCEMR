@@ -50,7 +50,7 @@ export default function Embed() {
                      strokeWidth={1.5} />
             ))}
             <span className="ml-2 text-xs opacity-60">
-              {fmt.date(r.submitted_at?.slice(0, 10))}
+              {fmt.date(r.submitted_at)}
             </span>
           </div>
           {r.body && (

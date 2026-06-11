@@ -178,7 +178,7 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
               {' '}{claim.insurance_company}
               {claim.last_status_check_at && (
                 <span className="ml-2 text-gray-400">
-                  Last Waystar check: {fmt.date(claim.last_status_check_at?.slice(0, 10))} {fmt.time(claim.last_status_check_at)}
+                  Last Waystar check: {fmt.date(claim.last_status_check_at)} {fmt.time(claim.last_status_check_at)}
                 </span>
               )}
             </div>
@@ -339,7 +339,7 @@ function ServiceLinesCard({ claim, qc }) {
           </div>
         </div>
         {claim.enriched_at && (
-          <div className="text-[10px] text-gray-400">enriched {fmt.date(claim.enriched_at?.slice(0,10))}</div>
+          <div className="text-[10px] text-gray-400">enriched {fmt.date(claim.enriched_at)}</div>
         )}
       </div>
       <ServiceLinesTable claim={claim} qc={qc} />
@@ -754,7 +754,7 @@ function PaymentHistoryCard({ claim }) {
         <tbody>
           {claim.allocations.map(a => (
             <tr key={a.id} className="border-t border-border-subtle">
-              <td className="py-1.5 text-xs">{fmt.date(a.check_date) || fmt.date(a.created_at?.slice(0, 10))}</td>
+              <td className="py-1.5 text-xs">{fmt.date(a.check_date) || fmt.date(a.created_at)}</td>
               <td className="py-1.5 text-xs">{a.payer_name}</td>
               <td className="py-1.5 text-xs font-mono">{a.check_number || '—'}</td>
               <td className="py-1.5 text-xs font-mono text-right text-green-700">{fmt.currency(a.amount_applied)}</td>
@@ -1343,7 +1343,7 @@ function DocumentsCard({ claimId, docs, qc }) {
                   <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 uppercase tracking-wide">{d.document_type}</span>
                 </div>
                 <div className="text-[10px] text-gray-500">
-                  {fmtSize(d.file_size)} · {(d.uploaded_by || '').split('@')[0]} · {fmt.date(d.uploaded_at?.slice(0, 10))}
+                  {fmtSize(d.file_size)} · {(d.uploaded_by || '').split('@')[0]} · {fmt.date(d.uploaded_at)}
                   {d.description && <> · {d.description}</>}
                 </div>
               </div>
@@ -1441,7 +1441,7 @@ function AppealLettersCard({ claimId, claim, qc }) {
               <div className="text-[11px] text-gray-500 mt-0.5">
                 {a.recipient_name}
                 {a.recipient_fax && <> · Fax {a.recipient_fax}</>}
-                {a.sent_at && <> · Sent {fmt.date(a.sent_at?.slice(0, 10))} via {a.sent_via}</>}
+                {a.sent_at && <> · Sent {fmt.date(a.sent_at)} via {a.sent_via}</>}
                 {a.response_outcome && <> · Response: <strong>{a.response_outcome}</strong></>}
               </div>
             </li>

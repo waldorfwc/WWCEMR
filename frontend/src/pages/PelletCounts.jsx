@@ -263,13 +263,13 @@ export default function PelletCounts() {
                   )}
                 </td>
                 <td className="table-td text-[11px]">
-                  <div>{fmt.date(c.started_at.slice(0, 10))}</div>
+                  <div>{fmt.date(c.started_at)}</div>
                   <div className="text-[10px] text-gray-500">by {c.started_by?.split('@')[0]}</div>
                 </td>
                 <td className="table-td text-[11px]">
                   {c.finished_at ? (
                     <>
-                      <div>{fmt.date(c.finished_at.slice(0, 10))}</div>
+                      <div>{fmt.date(c.finished_at)}</div>
                       <div className="text-[10px] text-gray-500">by {c.finished_by?.split('@')[0]}</div>
                     </>
                   ) : '—'}

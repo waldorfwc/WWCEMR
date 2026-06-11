@@ -191,7 +191,7 @@ function LarcMilestoneCard({ m, assignment }) {
           </div>
           {m.completed_at && (
             <div className="text-[10px] text-gray-500 mt-0.5">
-              ✓ {fmt.date(m.completed_at.slice(0, 10))}
+              ✓ {fmt.date(m.completed_at)}
               {m.completed_by && ` by ${m.completed_by.split('@')[0]}`}
             </div>
           )}
@@ -664,7 +664,7 @@ function EnrollmentEnvelopeStatus({ a, env }) {
   ]
   const allSigned = !!env.signed_at
   const fax = env.faxed_at
-        ? { kind: 'done', text: `Faxed ${fmt.date(env.faxed_at.slice(0, 10))} — ${env.fax_status || 'sent'}` }
+        ? { kind: 'done', text: `Faxed ${fmt.date(env.faxed_at)} — ${env.fax_status || 'sent'}` }
         : env.fax_status === 'SendingFailed' || env.last_fax_error
           ? { kind: 'err', text: `Fax failed — ${env.last_fax_error || env.fax_status}` }
           : allSigned
@@ -677,7 +677,7 @@ function EnrollmentEnvelopeStatus({ a, env }) {
         <span className="font-mono text-[10px] text-gray-500">
           BoldSign {env.boldsign_envelope_id ? env.boldsign_envelope_id.slice(0, 8) + '…' : ''}
         </span>
-        {' '}sent {env.sent_at ? fmt.date(env.sent_at.slice(0, 10)) : '—'}
+        {' '}sent {env.sent_at ? fmt.date(env.sent_at) : '—'}
         {env.sent_by && <> by <span className="text-gray-600">{env.sent_by}</span></>}
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
@@ -703,10 +703,10 @@ function EnrollmentEnvelopeStatus({ a, env }) {
         </div>
       )}
       {env.declined_at && (
-        <div className="text-danger">Declined {fmt.date(env.declined_at.slice(0, 10))}</div>
+        <div className="text-danger">Declined {fmt.date(env.declined_at)}</div>
       )}
       {env.voided_at && (
-        <div className="text-gray-500 italic">Voided {fmt.date(env.voided_at.slice(0, 10))}</div>
+        <div className="text-gray-500 italic">Voided {fmt.date(env.voided_at)}</div>
       )}
     </div>
   )
@@ -733,7 +733,7 @@ function EnrollmentSignedBody({ a }) {
         </div>
         {done && (
           <div className="text-[11px] text-green-700 mt-0.5">
-            ✓ Signed {fmt.date(a.enrollment_signed_at.slice(0, 10))}
+            ✓ Signed {fmt.date(a.enrollment_signed_at)}
           </div>
         )}
       </div>
@@ -768,7 +768,7 @@ function FaxPharmacyBody({ a }) {
   if (a.request_faxed_at) {
     return (
       <div className="text-[11px] text-green-700 space-y-0.5">
-        <div>✓ Faxed {fmt.date(a.request_faxed_at.slice(0, 10))}</div>
+        <div>✓ Faxed {fmt.date(a.request_faxed_at)}</div>
         {a.expected_received_by && (
           <div className="text-gray-600">Expecting device by {fmt.date(a.expected_received_by)} (14-day SLA)</div>
         )}
@@ -857,7 +857,7 @@ function ReceiveDeviceBody({ a }) {
   if (a.device_received_at) {
     return (
       <div className="text-[11px] text-green-700">
-        ✓ Received {fmt.date(a.device_received_at.slice(0, 10))} — device <strong>{a.device_our_id}</strong>
+        ✓ Received {fmt.date(a.device_received_at)} — device <strong>{a.device_our_id}</strong>
       </div>
     )
   }
@@ -1085,7 +1085,7 @@ function OutcomeBody({ a }) {
   if (a.status === 'inserted' || a.status === 'billed') {
     return (
       <div className="text-[11px] text-green-700">
-        ✓ Inserted on {a.inserted_at && fmt.date(a.inserted_at.slice(0, 10))}
+        ✓ Inserted on {a.inserted_at && fmt.date(a.inserted_at)}
         {a.inserted_at && ` by ${(a.milestones?.find(m=>m.kind==='device_inserted')?.completed_by || '').split('@')[0]}`}
       </div>
     )
@@ -1139,7 +1139,7 @@ function BilledBody({ a }) {
   if (a.status === 'billed') {
     return (
       <div className="text-[11px] text-green-700">
-        ✓ Billed under claim #{a.claim_number} on {a.billed_at && fmt.date(a.billed_at.slice(0,10))}
+        ✓ Billed under claim #{a.claim_number} on {a.billed_at && fmt.date(a.billed_at)}
         {a.billed_by && ` by ${a.billed_by.split('@')[0]}`}
       </div>
     )
@@ -1199,7 +1199,7 @@ function ConsumeBody({ a }) {
   if (a.inserted_at) {
     return (
       <div className="text-[11px] text-green-700">
-        ✓ Consumed {fmt.date(a.inserted_at.slice(0, 10))}
+        ✓ Consumed {fmt.date(a.inserted_at)}
       </div>
     )
   }
@@ -1286,7 +1286,7 @@ function AllocateInventoryCard({ a }) {
           <span className={benefitsDone ? 'text-gray-700' : 'text-gray-500'}>
             Benefits verified
             {benefitsDone && <span className="text-[10px] text-gray-500 ml-1">
-              {fmt.date(a.benefits_verified_at?.slice(0, 10))}
+              {fmt.date(a.benefits_verified_at)}
             </span>}
           </span>
           {!benefitsDone && (
@@ -1302,7 +1302,7 @@ function AllocateInventoryCard({ a }) {
           <span className={paidDone ? 'text-gray-700' : 'text-gray-500'}>
             Patient paid responsibility
             {paidDone && <span className="text-[10px] text-gray-500 ml-1">
-              {fmt.date(a.patient_paid_at?.slice(0, 10))}
+              {fmt.date(a.patient_paid_at)}
               {a.patient_paid_amount && <> · ${parseFloat(a.patient_paid_amount).toFixed(2)}</>}
               {a.patient_paid_by && <> · {a.patient_paid_by}</>}
             </span>}

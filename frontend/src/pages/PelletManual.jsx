@@ -151,7 +151,7 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
                           [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2"
              dangerouslySetInnerHTML={{ __html: renderMarkdown(section.body_md) }} />
         <div className="text-[10px] text-gray-400 mt-3">
-          Last edited {fmt.date(section.updated_at?.slice(0, 10))}
+          Last edited {fmt.date(section.updated_at)}
           {section.updated_by && section.updated_by !== 'system:seed'
             && ` by ${section.updated_by.split('@')[0]}`}
         </div>

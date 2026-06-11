@@ -585,7 +585,7 @@ function CalendarVisitCard({ patient, onOpen }) {
             <span className={`px-1 rounded ${
               bagged ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'
             }`} title={bagged
-                      ? `Bagged ${patient.active_visit_bagged_at?.slice(0, 10) || ''}`.trim()
+                      ? `Bagged ${fmt.date(patient.active_visit_bagged_at)}`
                       : 'Bag NOT filled'}>
               {bagged ? 'bag ✓' : 'bag ✗'}
             </span>

@@ -211,7 +211,7 @@ function PendingAckRow({ cert, qc }) {
     <div className="bg-white border border-amber-200 rounded p-2.5">
       <div className="flex items-baseline gap-2 mb-1">
         <strong className="text-sm">{cert.template?.title}</strong>
-        <span className="text-[10px] text-muted">signed by {cert.trainer_email} on {fmt.date(cert.trainer_signed_at?.slice(0, 10))}</span>
+        <span className="text-[10px] text-muted">signed by {cert.trainer_email} on {fmt.date(cert.trainer_signed_at)}</span>
       </div>
       {cert.template?.training_material_url && (
         <a href={cert.template.training_material_url} target="_blank" rel="noopener noreferrer"
@@ -268,7 +268,7 @@ function CertRow({ cert }) {
         </div>
         <div className="text-[10px] text-gray-500">
           trained by {cert.trainer_email}
-          {cert.trainee_signed_at && <> · acknowledged {fmt.date(cert.trainee_signed_at.slice(0, 10))}</>}
+          {cert.trainee_signed_at && <> · acknowledged {fmt.date(cert.trainee_signed_at)}</>}
         </div>
       </div>
       <div className={`text-[11px] font-medium shrink-0 ${tone} flex items-center gap-1`}>

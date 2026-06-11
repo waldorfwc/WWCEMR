@@ -85,7 +85,7 @@ function EstimateCard({ sid, estimate }) {
             <div className="text-gray-800">{estimate.filename}</div>
             {estimate.uploaded_at && (
               <div className="text-[11px] text-gray-500 mt-0.5">
-                Prepared {fmt.date(estimate.uploaded_at.slice(0, 10))}
+                Prepared {fmt.date(estimate.uploaded_at)}
               </div>
             )}
           </div>
@@ -231,7 +231,7 @@ function LabsAppointmentCard({ sid, labs, refetchDocs }) {
         <div className="text-xs text-gray-600">
           ✓ Reported: <strong>{longFmt(labs.appointment_date)}</strong>
           {labs.reported_at && (
-            <span className="text-gray-400"> · saved {fmt.date(labs.reported_at.slice(0, 10))}</span>
+            <span className="text-gray-400"> · saved {fmt.date(labs.reported_at)}</span>
           )}
         </div>
       )}
@@ -330,7 +330,7 @@ function ClearanceCard({ sid, clearance, uploads, refetchUploads }) {
                 <span className="truncate mr-2">
                   {u.filename}
                   <span className="text-xs text-gray-500 ml-2">
-                    {fmt.date(u.uploaded_at?.slice(0, 10))}
+                    {fmt.date(u.uploaded_at)}
                   </span>
                 </span>
                 {u.download_url && (

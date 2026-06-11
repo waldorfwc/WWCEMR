@@ -794,7 +794,7 @@ export default function ActiveAR() {
                             <span className="text-[10px] text-gray-500 shrink-0">
                               {c.latest_note.user?.split('@')[0] || 'unknown'}
                               {' · '}
-                              {fmt.date(c.latest_note.created_at.slice(0, 10))}
+                              {fmt.date(c.latest_note.created_at)}
                               :
                             </span>
                             <span className="italic whitespace-pre-wrap line-clamp-2">

@@ -150,9 +150,9 @@ function EnvelopeRow({ env, sid }) {
             <span className={`uppercase tracking-wide px-2 py-0.5 rounded-full border ${tone}`}>
               {label}
             </span>
-            {env.sent_at && <span>sent {fmt.date(env.sent_at.slice(0, 10))}</span>}
+            {env.sent_at && <span>sent {fmt.date(env.sent_at)}</span>}
             {env.patient_signed_at && (
-              <span>you signed {fmt.date(env.patient_signed_at.slice(0, 10))}</span>
+              <span>you signed {fmt.date(env.patient_signed_at)}</span>
             )}
           </div>
           {err && <div className="text-xs text-rose-700 mt-2">{err}</div>}

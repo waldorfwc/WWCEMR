@@ -99,7 +99,7 @@ function OwedRow({ o, qc }) {
           <div className="text-[10px] text-gray-500 font-mono">{o.chart_number}</div>
         </td>
         <td className="table-td text-[11px]">
-          {fmt.date(o.owed_since.slice(0, 10))}
+          {fmt.date(o.owed_since)}
           <div className="text-[10px] text-gray-500">
             {Math.floor((Date.now() - new Date(o.owed_since).getTime()) / 86400000)} days ago
           </div>

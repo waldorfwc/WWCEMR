@@ -77,9 +77,9 @@ export default function PelletCountDetail() {
             Count · {LOC_LABEL[count.location] || count.location}
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Started {fmt.date(count.started_at.slice(0, 10))} by {count.started_by?.split('@')[0]}
+            Started {fmt.date(count.started_at)} by {count.started_by?.split('@')[0]}
             {isDone && (
-              <> · Finished {fmt.date(count.finished_at.slice(0, 10))} by {count.finished_by?.split('@')[0]}</>
+              <> · Finished {fmt.date(count.finished_at)} by {count.finished_by?.split('@')[0]}</>
             )}
           </p>
         </div>
