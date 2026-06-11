@@ -152,6 +152,11 @@ def send_fax(
             "pages": data.get("pgCnt"),
         }
     else:
+        # Surface RC's error detail to Cloud Run logs so we can see *why*
+        # a non-2xx came back (missing scope, blocked recipient, etc.).
+        # The same detail is also stored on the FaxLog row.
+        log.error("RingCentral fax failed HTTP %s to %s: %s",
+                  r.status_code, clean_num, r.text[:500])
         return {
             "error": f"Fax failed: {r.status_code}",
             "detail": r.text[:300],
