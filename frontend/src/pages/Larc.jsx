@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
+import EmptyState from '../components/EmptyState'
 
 
 const BUCKET_DEFS = [
@@ -209,8 +210,13 @@ export default function Larc() {
       })()}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 mb-4">
         {Object.keys(dash?.on_hand_by_type || {}).length === 0 && (
-          <div className="col-span-full text-xs text-gray-500 italic card !p-3">
-            No devices in inventory yet. Click <strong>Devices</strong> to add some.
+          <div className="col-span-full card">
+            <EmptyState
+              icon={Box}
+              title="No devices in inventory yet"
+              body={<>Click <strong>Devices</strong> to add your first LARC.</>}
+              compact
+            />
           </div>
         )}
       </div>

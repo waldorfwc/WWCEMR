@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { Search, Filter } from 'lucide-react'
+import { Search, Filter, SearchX } from 'lucide-react'
 import api, { fmt, statusColors } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 function followUpClass(dateStr, state) {
   if (!dateStr) return 'text-gray-400'
@@ -182,7 +183,16 @@ export default function Claims() {
                 <tr><td colSpan={12} className="table-td text-center text-gray-400 py-8">Loading…</td></tr>
               )}
               {!isLoading && data?.claims?.length === 0 && (
-                <tr><td colSpan={12} className="table-td text-center text-gray-400 py-8">No claims match these filters.</td></tr>
+                <tr>
+                  <td colSpan={12} className="table-td">
+                    <EmptyState
+                      icon={SearchX}
+                      title="No claims match these filters"
+                      body="Try clearing a filter or widening the date range."
+                      compact
+                    />
+                  </td>
+                </tr>
               )}
               {data?.claims?.map(claim => {
                 const age = daysBetween(claim.date_of_service_from)

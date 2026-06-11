@@ -9,6 +9,7 @@ import {
   RefreshCw, CheckCircle, XCircle, Wifi, WifiOff,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 const BUCKET_COLORS = {
   '0–30 Days': '#2E7D32',
@@ -314,9 +315,11 @@ export default function ARDashboard() {
               </div>
             </>
           ) : (
-            <div className="text-center text-gray-400 py-10 text-sm">
-              No open claim data. Import ERA 835 files to see aging.
-            </div>
+            <EmptyState
+              icon={Upload}
+              title="No open claim data yet"
+              body="Import ERA 835 files to start seeing aging."
+            />
           )}
         </div>
 

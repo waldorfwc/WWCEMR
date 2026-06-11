@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Mail, Download, Check } from 'lucide-react'
 import api, { fmt, statusColors } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 export default function Appeals() {
   const qc = useQueryClient()
@@ -33,11 +34,11 @@ export default function Appeals() {
         <div className="w-80 card p-0 overflow-y-auto">
           {isLoading && <div className="p-4 text-gray-400 text-sm">Loading…</div>}
           {appeals?.length === 0 && (
-            <div className="p-6 text-center text-gray-400 text-sm">
-              <Mail size={32} className="mx-auto mb-2 text-gray-300" />
-              No appeal letters yet.<br />
-              <a href="/denials" className="text-primary-500 hover:underline">Go to Denials to generate one.</a>
-            </div>
+            <EmptyState
+              icon={Mail}
+              title="No appeal letters yet"
+              body={<a href="/denials" className="text-plum-700 hover:underline">Go to Denials to generate one.</a>}
+            />
           )}
           {appeals?.map(a => (
             <div

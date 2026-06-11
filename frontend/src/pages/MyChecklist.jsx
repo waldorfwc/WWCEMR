@@ -10,6 +10,7 @@ import { Link } from 'react-router-dom'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MODULE, TIER } from '../routes.jsx'
+import EmptyState from '../components/EmptyState'
 
 
 const ROLE_LABELS = {
@@ -131,9 +132,12 @@ export default function MyChecklist() {
       )}
 
       {role && total === 0 && (
-        <div className="card text-sm text-gray-500 italic">
-          No tasks for today. Either you've finished everything (nice work) or nothing has been
-          generated yet — your administrator may need to seed templates.
+        <div className="card">
+          <EmptyState
+            icon={CheckCircle2}
+            title="No tasks for today"
+            body="Either you've finished everything (nice work) or nothing has been generated yet — your administrator may need to seed templates."
+          />
         </div>
       )}
 
@@ -997,9 +1001,12 @@ function MyTasksCard() {
 
       {isLoading && <div className="text-xs text-gray-400">Loading…</div>}
       {!isLoading && tasks.length === 0 && (
-        <div className="text-xs text-gray-500 italic">
-          No tasks yet — click <strong>+ New task</strong> to add one.
-        </div>
+        <EmptyState
+          icon={ClipboardList}
+          title="No tasks yet"
+          body={<>Click <strong>+ New task</strong> to add one.</>}
+          compact
+        />
       )}
 
       <ul className="space-y-2">

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useFacilities } from '../hooks/useFacilities'
+import EmptyState from '../components/EmptyState'
 
 const URGENCY_TONE = {
   routine:   'bg-gray-100 text-gray-700',
@@ -126,8 +127,12 @@ export default function SurgeryWaitlist() {
       </div>
 
       {list.length === 0 ? (
-        <div className="card text-sm text-gray-500 italic">
-          No one on the waitlist. Use the "Add to waitlist" button on a surgery's detail page.
+        <div className="card">
+          <EmptyState
+            icon={ListPlus}
+            title="No one on the waitlist"
+            body={<>Use the <strong>Add to waitlist</strong> button on a surgery's detail page.</>}
+          />
         </div>
       ) : (
         <div className="card !p-0 overflow-hidden">

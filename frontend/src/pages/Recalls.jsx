@@ -8,6 +8,8 @@ import {
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MODULE, TIER } from '../routes.jsx'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
+import { SearchX } from 'lucide-react'
 
 
 const PRIORITY_BADGE = {
@@ -239,7 +241,16 @@ export default function Recalls() {
               <tr><td colSpan={9} className="table-td text-center text-muted py-8">Loading…</td></tr>
             )}
             {!isLoading && recalls.length === 0 && (
-              <tr><td colSpan={9} className="table-td text-center text-muted py-8">No recalls match these filters.</td></tr>
+              <tr>
+                <td colSpan={9} className="table-td">
+                  <EmptyState
+                    icon={SearchX}
+                    title="No recalls match these filters"
+                    body="Try clearing a filter or widening the priority range."
+                    compact
+                  />
+                </td>
+              </tr>
             )}
             {recalls.map(r => (
               <RecallRow key={r.id} r={r} onOpen={() => setOpenId(r.id)} />

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Activity, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Activity, ChevronLeft, ChevronRight, Inbox } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 
 function todayIso() {
@@ -185,7 +186,7 @@ function Section({ title, children }) {
 
 
 function Empty({ children }) {
-  return <div className="text-xs text-gray-400 italic px-2 py-1">{children}</div>
+  return <EmptyState icon={Inbox} title={children} compact />
 }
 
 
