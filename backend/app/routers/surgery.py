@@ -1134,7 +1134,10 @@ def scheduler_alerts(db: Session = Depends(get_db),
       - Office procedure days within 14 days that have <6 cases booked
         (Dr. Cooke's day isn't full — release the rest for clinic).
     """
-    from app.services.surgery.release_alerts import OFFICE_FULL_THRESHOLD
+    # Threshold lives in SurgeryConfig (`office_full_threshold`) with a
+    # default of 6; the release_alerts service is the source of truth.
+    from app.services.surgery.release_alerts import _cfg
+    threshold = int(_cfg(db, "office_full_threshold"))
     today = _date.today()
     horizon = today + timedelta(days=14)
     rows = (db.query(BlockDay)
@@ -1147,7 +1150,7 @@ def scheduler_alerts(db: Session = Depends(get_db),
     underbooked = []
     for bd in rows:
         booked = len(bd.slots or [])
-        if booked >= OFFICE_FULL_THRESHOLD:
+        if booked >= threshold:
             continue
         underbooked.append({
             "block_day_id": str(bd.id),
@@ -1155,15 +1158,15 @@ def scheduler_alerts(db: Session = Depends(get_db),
             "weekday":      bd.block_date.strftime("%A"),
             "facility":     bd.facility,
             "booked":       booked,
-            "threshold":    OFFICE_FULL_THRESHOLD,
-            "open_slots":   OFFICE_FULL_THRESHOLD - booked,
+            "threshold":    threshold,
+            "open_slots":   threshold - booked,
             "days_out":     (bd.block_date - today).days,
             "alerted_at":   (bd.release_alert_sent_at.isoformat()
                               if bd.release_alert_sent_at else None),
         })
     return {
         "office_underbooked": underbooked,
-        "threshold": OFFICE_FULL_THRESHOLD,
+        "threshold": threshold,
     }
 
 
