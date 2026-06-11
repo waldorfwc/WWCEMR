@@ -104,7 +104,7 @@ export default function PatientDetail() {
         )}
         {dos_entries?.map(entry => (
           <div key={entry.date_of_service} className="mb-6 last:mb-0">
-            <div className="flex items-center gap-2 mb-2 pb-1 border-b border-gray-100">
+            <div className="flex items-center gap-2 mb-2 pb-1 border-b border-border-subtle">
               <span className="font-semibold text-gray-800 text-sm">DOS: {fmt.date(entry.date_of_service)}</span>
               <span className="text-xs text-gray-400">
                 Billed {fmt.currency(entry.total_billed)} ·
@@ -142,7 +142,7 @@ export default function PatientDetail() {
                     ['Pt. Resp.', fmt.currency(claim.patient_responsibility), 'text-orange-600'],
                     ['Pt. Paid', fmt.currency(claim.patient_paid), 'text-green-700'],
                   ].map(([label, val, cls]) => (
-                    <div key={label} className="bg-white rounded p-2 border border-gray-100">
+                    <div key={label} className="bg-white rounded p-2 border border-border-subtle">
                       <div className="text-gray-400">{label}</div>
                       <div className={`font-mono font-semibold ${cls}`}>{val}</div>
                     </div>

@@ -348,7 +348,7 @@ function ScheduleForm({ onClose, qc }) {
                           onClick={() => toggleNth(n)}
                           className={`text-xs w-10 h-9 rounded border ${on
                             ? 'bg-plum-100 border-plum-300 text-plum-700 font-semibold'
-                            : 'bg-white border-gray-200 text-muted'}`}>
+                            : 'bg-white border-border-subtle text-muted'}`}>
                     {['1st', '2nd', '3rd', '4th', '5th'][n - 1]}
                   </button>
                 )
@@ -390,7 +390,7 @@ function ScheduleForm({ onClose, qc }) {
               </div>
 
               {/* Or generate from a range */}
-              <div className="border-t border-gray-100 pt-2">
+              <div className="border-t border-border-subtle pt-2">
                 <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
                   Or fill from a date range
                 </div>
@@ -749,7 +749,7 @@ function BlackoutForm({ onClose, qc }) {
               </button>
             </div>
             {/* Or a date range (every day inclusive) */}
-            <div className="border-t border-gray-100 pt-2">
+            <div className="border-t border-border-subtle pt-2">
               <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
                 Or add a range (every day inclusive — useful for vacations)
               </div>

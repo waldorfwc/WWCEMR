@@ -305,7 +305,7 @@ export default function ActiveAR() {
             <MoreHorizontal size={14} /> Actions <ChevronDown size={12} />
           </button>
           {actionsOpen && (
-            <div className="absolute right-[180px] top-9 z-30 bg-white border border-gray-200 rounded-lg shadow-lg w-56 py-1">
+            <div className="absolute right-[180px] top-9 z-30 bg-white border border-border-subtle rounded-lg shadow-lg w-56 py-1">
               <ActionItem onClick={() => { setShowUpload(true); setActionsOpen(false) }}>
                 <Upload size={14} /> Upload Unpaid Claims
               </ActionItem>
@@ -386,7 +386,7 @@ export default function ActiveAR() {
       )}
 
       {/* WORKFLOW TABS */}
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-border-subtle">
         {QUICK_TABS.map(t => (
           <button
             key={t.key}
@@ -462,7 +462,7 @@ export default function ActiveAR() {
         >
           <Save size={11} /> Save Preset
         </button>
-        <div className="flex border border-gray-200 rounded overflow-hidden">
+        <div className="flex border border-border-subtle rounded overflow-hidden">
           <button
             className={`text-xs px-2 py-1.5 ${view === 'table' ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:bg-gray-50'}`}
             onClick={() => setView('table')}
@@ -609,7 +609,7 @@ export default function ActiveAR() {
               <div className="text-[12px] text-ink">
                 {Object.entries(summary.by_workflow_state).map(([state, count]) => (
                   <div key={state}
-                       className="py-1 border-b border-gray-100 last:border-b-0 flex justify-between items-center cursor-pointer hover:text-plum-700"
+                       className="py-1 border-b border-border-subtle last:border-b-0 flex justify-between items-center cursor-pointer hover:text-plum-700"
                        onClick={() => { setWorkflowState(state); setPage(1) }}>
                     <span className="capitalize">{state.replace(/_/g, ' ')}</span>
                     <span className="font-medium font-mono">{count.toLocaleString()}</span>
@@ -625,21 +625,21 @@ export default function ActiveAR() {
           <div className="card py-2 px-3">
             <h2 className="text-xs uppercase text-gray-500 mb-2">Needs your attention</h2>
             <div className="text-[12px] text-ink">
-              <div className="py-1 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:text-plum-700"
+              <div className="py-1 border-b border-border-subtle flex justify-between items-center cursor-pointer hover:text-plum-700"
                    onClick={() => { setTfStatus('urgent'); setPage(1) }}>
                 <span>Claims with TF deadline ≤14 days</span>
                 <span className={`font-medium font-mono ${(summary.tf_buckets?.urgent?.count || 0) > 0 ? 'text-red-600' : ''}`}>
                   {summary.tf_buckets?.urgent?.count || 0}
                 </span>
               </div>
-              <div className="py-1 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:text-plum-700"
+              <div className="py-1 border-b border-border-subtle flex justify-between items-center cursor-pointer hover:text-plum-700"
                    onClick={() => { setTfStatus('soon'); setPage(1) }}>
                 <span>Claims with TF deadline 15–30 days</span>
                 <span className={`font-medium font-mono ${(summary.tf_buckets?.soon?.count || 0) > 0 ? 'text-amber-600' : ''}`}>
                   {summary.tf_buckets?.soon?.count || 0}
                 </span>
               </div>
-              <div className="py-1 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:text-plum-700"
+              <div className="py-1 border-b border-border-subtle flex justify-between items-center cursor-pointer hover:text-plum-700"
                    onClick={() => { setWorkflowState('denied'); setPage(1) }}>
                 <span>Denied (in active workflow)</span>
                 <span className="font-medium font-mono">{summary.by_workflow_state?.denied || 0}</span>
@@ -657,7 +657,7 @@ export default function ActiveAR() {
       {/* DOS-GROUPED VIEW */}
       {view === 'dos' && (
         <div className="card p-0 overflow-hidden">
-          <div className="px-3 py-2 border-b border-gray-100 text-xs text-gray-500">
+          <div className="px-3 py-2 border-b border-border-subtle text-xs text-gray-500">
             {groupedLoading ? 'Loading…' : `${grouped?.group_count?.toLocaleString() || 0} unique DOS groups across ${grouped?.groups?.reduce((s,g)=>s+g.claims.length,0).toLocaleString() || 0} claims`}
           </div>
           <div className="divide-y divide-gray-100 max-h-[70vh] overflow-y-auto">
@@ -812,7 +812,7 @@ export default function ActiveAR() {
           </div>
 
           {data && data.total > 50 && (
-            <div className="border-t border-gray-100 px-3 py-2 flex items-center justify-between text-xs text-gray-500">
+            <div className="border-t border-border-subtle px-3 py-2 flex items-center justify-between text-xs text-gray-500">
               <span>Page {page} of {Math.ceil(data.total / 50)} · {data.total.toLocaleString()} total</span>
               <div className="flex gap-2">
                 <button className="btn-secondary py-1 px-2 text-xs" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</button>

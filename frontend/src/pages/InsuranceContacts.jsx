@@ -270,7 +270,7 @@ function DisplayRow({ row, startEdit, isAdmin, onDelete, disabled }) {
       </td>
       <td className="px-5 py-3 align-top text-right">
         <div className="inline-flex items-center gap-1">
-          <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1 disabled:opacity-30"
+          <button className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1 disabled:opacity-30"
                   onClick={startEdit}
                   disabled={disabled}
                   title="Edit row">

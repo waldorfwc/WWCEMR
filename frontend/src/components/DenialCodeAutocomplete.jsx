@@ -83,7 +83,7 @@ export default function DenialCodeAutocomplete({ onPick }) {
       <Search size={13} className="absolute left-2.5 top-2 text-gray-400" />
       <input
         ref={inputRef}
-        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-plum-400"
+        className="w-full pl-7 pr-2 py-1.5 border border-border-subtle rounded text-xs focus:outline-none focus:ring-1 focus:ring-plum-400"
         placeholder="Look up a denial code… (e.g. 197, M86)"
         value={q}
         onChange={e => setQ(e.target.value)}
@@ -92,14 +92,14 @@ export default function DenialCodeAutocomplete({ onPick }) {
         onBlur={() => setTimeout(() => setFocused(false), 150)}
       />
       {focused && items.length > 0 && (
-        <div className="absolute left-0 right-0 mt-1 max-h-80 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg z-30">
+        <div className="absolute left-0 right-0 mt-1 max-h-80 overflow-y-auto bg-white border border-border-subtle rounded shadow-lg z-30">
           {items.map((row, i) => (
             <button
               key={row.key}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(row)}
               onMouseEnter={() => setActiveIdx(i)}
-              className={`w-full text-left px-2.5 py-1.5 text-xs border-b border-gray-100 last:border-0 ${
+              className={`w-full text-left px-2.5 py-1.5 text-xs border-b border-border-subtle last:border-0 ${
                 i === activeIdx ? 'bg-plum-100' : 'hover:bg-plum-50'
               }`}
             >

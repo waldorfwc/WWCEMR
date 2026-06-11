@@ -728,7 +728,7 @@ function LarcCheckoutRow({ row, qc }) {
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded p-2.5">
+    <div className="bg-white border border-border-subtle rounded p-2.5">
       <div className="flex items-baseline justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-medium text-gray-900 truncate">{row.patient_name}</div>
@@ -1129,7 +1129,7 @@ function TaskRow2({ task, qc, onEdit, onAddSubtask }) {
                 </div>
               </div>
               {expanded && (
-                <ul className="mt-1.5 space-y-1 pl-3 border-l-2 border-gray-100">
+                <ul className="mt-1.5 space-y-1 pl-3 border-l-2 border-border-subtle">
                   {task.subtasks.map(st => (
                     <SubtaskRow key={st.id} subtask={st} qc={qc} />
                   ))}
@@ -1436,7 +1436,7 @@ function SharedWithPicker({ users, selected, onChange, disabled }) {
         )}
       </div>
       {open && !disabled && (
-        <div className="border-t border-gray-200 max-h-48 overflow-y-auto">
+        <div className="border-t border-border-subtle max-h-48 overflow-y-auto">
           <input className="input text-[11px] w-full !border-0 !rounded-none"
                   placeholder="Filter by name or email…"
                   value={filter}

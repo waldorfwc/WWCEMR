@@ -226,7 +226,7 @@ export default function PelletPatients() {
           </button>
         </div>
         {savingPreset && (
-          <div className="mt-2 pt-2 border-t border-gray-100 flex items-end gap-2">
+          <div className="mt-2 pt-2 border-t border-border-subtle flex items-end gap-2">
             <div className="flex-1 max-w-xs">
               <label className="text-[11px] uppercase text-gray-500 block mb-1">Preset name</label>
               <input className="input text-sm w-full"
@@ -609,7 +609,7 @@ function CalendarVisitCard({ patient, onOpen }) {
             <MoreVertical size={12}/>
           </button>
           {menuOpen && (
-            <div className="absolute top-5 right-1 z-10 bg-white border border-gray-200 rounded shadow text-[11px] py-1 min-w-[140px]"
+            <div className="absolute top-5 right-1 z-10 bg-white border border-border-subtle rounded shadow text-[11px] py-1 min-w-[140px]"
                   onClick={e => e.stopPropagation()}>
               <button className="block w-full text-left px-3 py-1 hover:bg-gray-100"
                        onClick={() => { setMenuOpen(false); setRescheduleOpen(true) }}>

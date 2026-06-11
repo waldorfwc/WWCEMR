@@ -249,7 +249,7 @@ function PharmacyEditCard({ initial, onCancel, onSaved }) {
                       className={
                         on
                           ? 'text-[11px] bg-plum-100 text-plum-700 px-2 py-0.5 rounded border border-plum-300'
-                          : 'text-[11px] bg-white text-gray-500 px-2 py-0.5 rounded border border-gray-200 hover:border-plum-200'
+                          : 'text-[11px] bg-white text-gray-500 px-2 py-0.5 rounded border border-border-subtle hover:border-plum-200'
                       }>
                 {d}
               </button>
@@ -272,7 +272,7 @@ function PharmacyEditCard({ initial, onCancel, onSaved }) {
                       className={
                         on
                           ? 'text-[11px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded border border-amber-300 flex items-center gap-0.5'
-                          : 'text-[11px] bg-white text-gray-500 px-2 py-0.5 rounded border border-gray-200 hover:border-amber-200'
+                          : 'text-[11px] bg-white text-gray-500 px-2 py-0.5 rounded border border-border-subtle hover:border-amber-200'
                       }>
                 {on && <Star size={9} fill="currentColor" />} {d}
               </button>

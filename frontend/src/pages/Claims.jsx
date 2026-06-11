@@ -257,7 +257,7 @@ export default function Claims() {
         </div>
 
         {data && data.total > 50 && (
-          <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-between text-sm text-gray-500">
+          <div className="border-t border-border-subtle px-4 py-3 flex items-center justify-between text-sm text-gray-500">
             <span>Page {page} of {Math.ceil(data.total / 50)}</span>
             <div className="flex gap-2">
               <button className="btn-secondary py-1 px-3 text-xs" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Prev</button>

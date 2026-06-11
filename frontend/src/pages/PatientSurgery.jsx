@@ -397,7 +397,7 @@ function FmlaUploadPanel({ surgeryId, headers }) {
   }
 
   return (
-    <div className="mt-4 border-t border-gray-100 pt-3">
+    <div className="mt-4 border-t border-border-subtle pt-3">
       <div className="text-xs font-semibold text-gray-700 mb-1">
         Need FMLA paperwork filled out?
       </div>
@@ -876,7 +876,7 @@ function ConfirmationScreen({ status, confirmation }) {
         </ol>
       </div>
 
-      <p className="text-xs text-gray-500 mt-5 pt-3 border-t border-gray-100">
+      <p className="text-xs text-gray-500 mt-5 pt-3 border-t border-border-subtle">
         Questions? Call us at <a href="tel:+12402522140" className="text-plum-700">240-252-2140</a>.
       </p>
     </div>

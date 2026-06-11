@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="WWC">
+  <!-- Plum rounded square — matches login wordmark frame -->
+  <rect x="3" y="3" width="58" height="58" rx="10" fill="#6A3876"/>
+  <!-- Subtle inner stroke echoes the framed-symbol look of the full logo -->
+  <rect x="7" y="7" width="50" height="50" rx="7" fill="none" stroke="#FBF6FC" stroke-opacity="0.45" stroke-width="1.5"/>
+  <!-- Serif "W" centered. Fraunces-flavored: bracketed serifs, contrasting strokes. -->
+  <text x="32" y="46"
+        text-anchor="middle"
+        font-family="Fraunces, Georgia, 'Times New Roman', serif"
+        font-weight="600"
+        font-size="36"
+        fill="#FBF6FC">W</text>
+</svg>

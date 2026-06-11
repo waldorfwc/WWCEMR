@@ -147,7 +147,7 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
   const tfBanner = tfBannerSpec(tf, tfDays)
 
   return (
-    <div className="bg-white border-b border-gray-200 px-2 py-3 -mx-6 -mt-6 mb-1">
+    <div className="bg-white border-b border-border-subtle px-2 py-3 -mx-6 -mt-6 mb-1">
       <div className="px-6">
         <div className="flex items-start gap-3 mb-2">
           <button onClick={onBack} className="text-gray-400 hover:text-gray-600 mt-1.5">
@@ -330,7 +330,7 @@ function ServiceLinesCard({ claim, qc }) {
   }
   return (
     <div className="card p-0 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
         <div>
           <h2 className="text-sm font-semibold text-gray-700">Service Lines</h2>
           <div className="text-[11px] text-gray-500">
@@ -411,7 +411,7 @@ function CardThumbnail({ doc }) {
       href={doc.view_url}
       target="_blank"
       rel="noopener noreferrer"
-      className="group block border border-gray-200 rounded overflow-hidden bg-white hover:border-plum-300 hover:shadow-sm transition-all"
+      className="group block border border-border-subtle rounded overflow-hidden bg-white hover:border-plum-300 hover:shadow-sm transition-all"
       title={doc.filename}
     >
       <div className="aspect-[4/3] bg-gray-50 overflow-hidden flex items-center justify-center">
@@ -429,7 +429,7 @@ function CardThumbnail({ doc }) {
           </div>
         )}
       </div>
-      <div className="px-2 py-1.5 border-t border-gray-100">
+      <div className="px-2 py-1.5 border-t border-border-subtle">
         <div className="text-[10px] text-gray-500 truncate">{doc.doc_category}</div>
         {yearLabel && (
           <div className="text-[11px] font-mono text-gray-400 mt-0.5">{yearLabel}</div>
@@ -493,7 +493,7 @@ function NotesCard({ claim, qc, claimId }) {
       {userNotes.length === 0 ? (
         <EmptyState icon={MessageSquare} title="No notes yet" compact />
       ) : (
-        <div className="space-y-2 border-t border-gray-100 pt-2">
+        <div className="space-y-2 border-t border-border-subtle pt-2">
           {userNotes.map(n => (
             <div key={n.id} className="border-l-2 border-plum-200 pl-3 py-0.5">
               <div className="flex items-baseline gap-2 text-[11px]">
@@ -566,7 +566,7 @@ function InsuranceCard({ claim }) {
         </div>
       </div>
       {claim.secondary_insurance_company && (
-        <div className="mt-2 pt-2 border-t border-gray-100">
+        <div className="mt-2 pt-2 border-t border-border-subtle">
           <div className="text-[11px] uppercase tracking-wide text-gray-400">Secondary</div>
           <div className="text-xs text-gray-700">{claim.secondary_insurance_company}</div>
           {claim.secondary_plan_name && (
@@ -700,7 +700,7 @@ function ActivityLogSidebar({ claim, qc, claimId }) {
           <Send size={11} /> {noteMutation.isPending ? 'Saving…' : 'Log Action'}
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto pr-1 -mr-1 space-y-2 border-t border-gray-100 pt-2">
+      <div className="flex-1 overflow-y-auto pr-1 -mr-1 space-y-2 border-t border-border-subtle pt-2">
         {claim.notes?.length === 0 && (
           <div className="text-[11px] text-gray-400 italic">No activity yet.</div>
         )}
@@ -752,7 +752,7 @@ function PaymentHistoryCard({ claim }) {
         </thead>
         <tbody>
           {claim.allocations.map(a => (
-            <tr key={a.id} className="border-t border-gray-100">
+            <tr key={a.id} className="border-t border-border-subtle">
               <td className="py-1.5 text-xs">{fmt.date(a.check_date) || fmt.date(a.created_at?.slice(0, 10))}</td>
               <td className="py-1.5 text-xs">{a.payer_name}</td>
               <td className="py-1.5 text-xs font-mono">{a.check_number || '—'}</td>
@@ -886,7 +886,7 @@ function ServiceLinesTable({ claim, qc }) {
             const ptResp = ln.allowed != null ? ((ln.copay || 0) + (ln.deductible || 0) + (ln.coinsurance || 0)) : null
             return (
               <>
-                <tr key={ln.line} className={`border-t border-gray-100 ${ln.settled ? 'bg-green-50/30' : ''}`}>
+                <tr key={ln.line} className={`border-t border-border-subtle ${ln.settled ? 'bg-green-50/30' : ''}`}>
                   <td className="py-1.5 px-2 font-mono text-xs">{ln.line}</td>
                   <td className="py-1.5 px-2 font-mono text-xs">{ln.cpt || '—'}</td>
                   <td className="py-1.5 px-2 font-mono text-xs">{ln.modifiers || '—'}</td>
@@ -1139,11 +1139,11 @@ function LineSettleForm({ claim, line, qc, onClose }) {
           </Labeled>
         </div>
         <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-2 text-xs">
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Charge</div><div className="font-mono">{fmt.currency(charge)}</div></div>
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Pt Resp (auto)</div><div className="font-mono text-orange-600">{fmt.currency(ptResp)}</div></div>
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Ins Paid {insPaidOverride === '' ? '(auto)' : '(override)'}</div><div className="font-mono text-green-700">{fmt.currency(insPaidValue)}</div></div>
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Pt Balance (auto)</div><div className="font-mono text-red-600">{fmt.currency(ptBalance)}</div></div>
-          <div className="col-span-2 bg-white border border-gray-100 rounded p-1.5">
+          <div className="bg-white border border-border-subtle rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Charge</div><div className="font-mono">{fmt.currency(charge)}</div></div>
+          <div className="bg-white border border-border-subtle rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Pt Resp (auto)</div><div className="font-mono text-orange-600">{fmt.currency(ptResp)}</div></div>
+          <div className="bg-white border border-border-subtle rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Ins Paid {insPaidOverride === '' ? '(auto)' : '(override)'}</div><div className="font-mono text-green-700">{fmt.currency(insPaidValue)}</div></div>
+          <div className="bg-white border border-border-subtle rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Pt Balance (auto)</div><div className="font-mono text-red-600">{fmt.currency(ptBalance)}</div></div>
+          <div className="col-span-2 bg-white border border-border-subtle rounded p-1.5">
             <div className="text-gray-400 uppercase text-[11px]">Balance Check</div>
             <div className={`text-xs ${balanced ? 'text-green-700 font-medium' : (allowedNum > 0 || contractualNum > 0 ? 'text-amber-700' : 'text-gray-400')}`}>
               {balanced ? '✓ Balanced' : (allowedNum > 0 || contractualNum > 0)

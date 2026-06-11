@@ -143,8 +143,8 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
                           [&>blockquote]:text-gray-700
                           [&>table]:my-3 [&>table]:text-[12px] [&>th]:bg-plum-50 [&>th]:px-2 [&>th]:py-1 [&>td]:px-2 [&>td]:py-1
                           [&_table]:border-collapse [&_table]:my-3 [&_table]:text-[12px]
-                          [&_th]:bg-plum-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:border [&_th]:border-gray-200
-                          [&_td]:px-2 [&_td]:py-1 [&_td]:border [&_td]:border-gray-200
+                          [&_th]:bg-plum-50 [&_th]:px-2 [&_th]:py-1 [&_th]:text-left [&_th]:border [&_th]:border-border-subtle
+                          [&_td]:px-2 [&_td]:py-1 [&_td]:border [&_td]:border-border-subtle
                           [&_code]:bg-gray-100 [&_code]:px-1 [&_code]:rounded [&_code]:text-[12px]
                           [&_strong]:font-semibold
                           [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2
@@ -182,7 +182,7 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
           </button>
         </div>
         {previewing ? (
-          <div className="border border-gray-200 rounded p-3 bg-white min-h-[200px]
+          <div className="border border-border-subtle rounded p-3 bg-white min-h-[200px]
                           prose prose-sm max-w-none text-[13px]
                           [&_table]:border-collapse [&_th]:bg-plum-50 [&_th]:px-2 [&_th]:py-1 [&_th]:border [&_td]:border [&_td]:px-2 [&_td]:py-1"
                dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }} />

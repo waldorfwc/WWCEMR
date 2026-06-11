@@ -176,7 +176,7 @@ export default function SurgeryWaitlist() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 inline-flex items-center gap-1"
+                    <button className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 inline-flex items-center gap-1"
                             onClick={() => {
                               if (confirm(`Remove ${w.patient_name} from the waitlist?`)) {
                                 removeFromWaitlist.mutate(w.surgery_id)
@@ -278,7 +278,7 @@ export function MatchesDrawer({ blockDayId, onClose }) {
                   <ul className="space-y-2">
                     {data.matches.map((m, i) => (
                       <li key={m.waitlist_id}
-                          className="bg-white border border-gray-200 rounded p-3 flex items-baseline justify-between gap-3">
+                          className="bg-white border border-border-subtle rounded p-3 flex items-baseline justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-gray-900">
                             {i + 1}. {m.patient_name}

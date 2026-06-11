@@ -103,7 +103,7 @@ export default function Denials() {
               key={cat}
               onClick={() => setCategory(cat === category ? '' : cat)}
               className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
-                category === cat ? 'bg-plum-700 text-white border-plum-700' : 'bg-white border-gray-200 text-gray-700 hover:border-plum-300'
+                category === cat ? 'bg-plum-700 text-white border-plum-700' : 'bg-white border-border-subtle text-gray-700 hover:border-plum-300'
               }`}
             >
               {cat.replace(/_/g, ' ')} <span className="font-bold">({d.count})</span>

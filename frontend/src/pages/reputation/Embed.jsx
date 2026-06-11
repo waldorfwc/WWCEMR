@@ -25,7 +25,7 @@ export default function Embed() {
     : 'min-h-screen bg-transparent text-gray-900'
   const cardClass = isDark
     ? 'bg-gray-800/50 border border-gray-700 rounded-lg p-4'
-    : 'bg-white shadow-sm border border-gray-100 rounded-lg p-4'
+    : 'bg-white shadow-sm border border-border-subtle rounded-lg p-4'
 
   if (error) {
     return <div className={`${wrapClass} p-6 text-sm`}>{error}</div>

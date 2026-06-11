@@ -391,7 +391,7 @@ export default function Larc() {
                 </th>
               ))}
             </tr>
-            <tr className="bg-white border-t border-gray-100">
+            <tr className="bg-white border-t border-border-subtle">
               {['patient', 'device', 'flow', 'status', 'created'].map(k => (
                 <th key={k} className="px-2 py-1 align-top">
                   <div className="relative">

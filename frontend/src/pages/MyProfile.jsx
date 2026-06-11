@@ -166,7 +166,7 @@ function MyTrainingPanel() {
         )}
 
         {trainerFor.length > 0 && (
-          <div className="mt-4 pt-3 border-t border-gray-100">
+          <div className="mt-4 pt-3 border-t border-border-subtle">
             <div className="flex items-center gap-1.5 text-xs text-blue-700 mb-1.5">
               <ShieldCheck size={12} /> You are an authorized trainer for:
             </div>

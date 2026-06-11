@@ -182,7 +182,7 @@ export default function Recalls() {
           </button>
         </div>
         {savingPreset && (
-          <div className="mt-3 pt-3 border-t border-gray-100 flex items-end gap-2">
+          <div className="mt-3 pt-3 border-t border-border-subtle flex items-end gap-2">
             <div className="flex-1 max-w-xs">
               <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
               <input className="input text-sm w-full"
@@ -836,7 +836,7 @@ function WWEHistorySection({ total, latest, expectedNext, nextScheduled, visits 
         </div>
       )}
       {open && visits.length > 0 && (
-        <ul className="mt-2 max-h-48 overflow-y-auto border-t border-gray-100 pt-2 text-[11px]">
+        <ul className="mt-2 max-h-48 overflow-y-auto border-t border-border-subtle pt-2 text-[11px]">
           {visits.map((v, i) => (
             <li key={`${v.visit_date}-${v.procedure_code}-${i}`}
                 className="flex items-baseline justify-between py-0.5">

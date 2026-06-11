@@ -183,7 +183,7 @@ export default function ReviewForm() {
         </div>
 
         {/* Optional: I'm a patient */}
-        <div className="border-t border-gray-100 pt-4">
+        <div className="border-t border-border-subtle pt-4">
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -248,7 +248,7 @@ export default function ReviewForm() {
         </div>
 
         {/* Optional: display name on Webflow embed */}
-        <div className="border-t border-gray-100 pt-4">
+        <div className="border-t border-border-subtle pt-4">
           <label className="flex items-start gap-2 text-sm text-gray-700">
             <input
               type="checkbox"

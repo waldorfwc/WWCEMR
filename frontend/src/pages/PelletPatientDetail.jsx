@@ -491,7 +491,7 @@ function MammoFacilityPicker({ patient, qc, onClose }) {
         </div>
       </div>
 
-      <div className="border-t border-gray-100 pt-2 mt-2">
+      <div className="border-t border-border-subtle pt-2 mt-2">
         <div className="flex items-baseline justify-between mb-1">
           <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
             Facility details
@@ -568,7 +568,7 @@ function MammoHistoryCard({ patient, qc, onAdd }) {
       ) : (
         <ul className="space-y-1 text-[12px]">
           {mammos.map((m, idx) => (
-            <li key={m.id} className="flex items-baseline justify-between gap-2 py-0.5 border-b border-gray-100 last:border-0">
+            <li key={m.id} className="flex items-baseline justify-between gap-2 py-0.5 border-b border-border-subtle last:border-0">
               <div className="flex-1">
                 <span className="font-medium">{fmt.date(m.mammo_date)}</span>
                 <span className="ml-2">{m.result}</span>
@@ -648,7 +648,7 @@ function LabsHistoryCard({ patient, qc, onAdd }) {
       ) : (
         <ul className="space-y-1 text-[12px]">
           {labs.map((l, idx) => (
-            <li key={l.id} className="flex items-baseline justify-between gap-2 py-0.5 border-b border-gray-100 last:border-0">
+            <li key={l.id} className="flex items-baseline justify-between gap-2 py-0.5 border-b border-border-subtle last:border-0">
               <div className="flex-1">
                 <span className="font-medium">{fmt.date(l.labs_date)}</span>
                 <span className="ml-2 text-[11px] text-gray-700">
@@ -833,7 +833,7 @@ function MammoDrawer({ patient, qc, onClose }) {
           <option value="Not Required - Testosterone Only">Not Required — Testosterone Only</option>
         </select>
       </div>
-      <div className="border-t border-gray-100 pt-2">
+      <div className="border-t border-border-subtle pt-2">
         <div className="text-[11px] uppercase text-gray-500 font-semibold mb-1">
           Imaging facility (where the mammo was done)
         </div>
@@ -1068,7 +1068,7 @@ function VisitCard({ visit, patient, qc }) {
 
       {/* Confirm-what-was-inserted (per-line) and Reschedule/Cancel outcome */}
       {(hasPlanned || hasPulled) && !['billed','cancelled'].includes(visit.status) && (
-        <div className="mt-3 border-t border-gray-100 pt-3 flex flex-wrap gap-2">
+        <div className="mt-3 border-t border-border-subtle pt-3 flex flex-wrap gap-2">
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => setConfirmInsertionOpen(true)}>
             <CheckCircle2 size={12}/> Confirm What Was Inserted…
@@ -1160,7 +1160,7 @@ function RevertControl({ visit, patient, qc }) {
   })
 
   return (
-    <div className="mt-3 border-t border-gray-100 pt-3">
+    <div className="mt-3 border-t border-border-subtle pt-3">
       <div className="flex items-center gap-3">
         {target && !open && (
           <button className="text-[11px] flex items-center gap-1 text-amber-700 hover:underline"
@@ -1543,7 +1543,7 @@ function EditProposedDoseDrawer({ visit, onClose }) {
       <div className="absolute inset-0 bg-black/30" />
       <div className="relative w-full max-w-xl bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between z-10">
           <h2 className="text-[15px] font-semibold text-gray-900">
             Edit proposed dose
           </h2>
@@ -1666,7 +1666,7 @@ function LotSwapDrawer({ visit, dose, onClose }) {
       <div className="absolute inset-0 bg-black/30" />
       <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <h2 className="text-[15px] font-semibold text-gray-900">
             Swap lot · {dose.quantity}× {dose.dose_label}
           </h2>
@@ -1763,7 +1763,7 @@ function CorrectLotDrawer({ visit, dose, onClose }) {
       <div className="absolute inset-0 bg-black/30" />
       <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
           <div>
             <h2 className="text-[15px] font-semibold text-gray-900">
               Correct lot · {dose.quantity}× {dose.dose_label}
@@ -1921,7 +1921,7 @@ function BillBox({ visit, qc }) {
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
   return (
-    <div className="mt-3 border-t border-gray-100 pt-3 flex items-center gap-2">
+    <div className="mt-3 border-t border-border-subtle pt-3 flex items-center gap-2">
       <DollarSign size={14} className="text-plum-700" />
       <input className="input text-sm flex-1 font-mono"
               placeholder="ModMed claim #"
@@ -2000,7 +2000,7 @@ function PelletDosingCard({ visits, activeVisit, patient, qc }) {
       </div>
 
       {/* ─── Dosing history section (confirmed visits) ─── */}
-      <div className="border border-gray-200 rounded p-2">
+      <div className="border border-border-subtle rounded p-2">
         <div className="flex items-baseline justify-between mb-2">
           <h3 className="text-[12px] font-semibold text-gray-800 uppercase tracking-wide flex items-center gap-1">
             <History size={11}/> Dosing history
@@ -2235,7 +2235,7 @@ function VisitDoseRow({ visit, patient, isActive, qc, proposedOnly, confirmedOnl
 
   return (
     <li className={`border-l-2 pl-3 py-1 ${
-      isActive ? 'border-plum-500' : 'border-gray-200'
+      isActive ? 'border-plum-500' : 'border-border-subtle'
     }`}>
       <div className="flex items-baseline justify-between flex-wrap gap-1">
         <div>
@@ -2514,7 +2514,7 @@ function SetDoseDrawer({ patient, visits, qc, onClose }) {
       </div>
 
       {/* Visit picker */}
-      <div className="border-t border-gray-100 pt-2 mt-2">
+      <div className="border-t border-border-subtle pt-2 mt-2">
         <label className="text-[11px] uppercase text-gray-500 block mb-1">Linked appointment *</label>
         <select className="input text-sm w-full" value={visitChoice}
                  onChange={e => setVisitChoice(e.target.value)}>
@@ -2561,7 +2561,7 @@ function SetDoseDrawer({ patient, visits, qc, onClose }) {
 
       {/* Suggestions per hormone */}
       {(targetEst > 0 || targetT > 0) && (
-        <div className="border-t border-gray-100 pt-2 mt-2">
+        <div className="border-t border-border-subtle pt-2 mt-2">
           <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1">
             Suggested combinations at {LOC_LABEL[visitLocation]}
           </div>
@@ -2700,7 +2700,7 @@ function PaymentBox({ visit, qc }) {
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
   return (
-    <div className="mt-3 border-t border-gray-100 pt-3 bg-amber-50/40 -mx-3 px-3 py-2 rounded">
+    <div className="mt-3 border-t border-border-subtle pt-3 bg-amber-50/40 -mx-3 px-3 py-2 rounded">
       <div className="text-[11px] text-gray-700 font-semibold flex items-center gap-1 mb-1.5">
         <DollarSign size={12} className="text-amber-700"/>
         Payment workflow — ${visit.price_amount} via Klara → ModMed
@@ -2833,7 +2833,7 @@ function BagFillDrawer({ visit, qc, onClose }) {
           const currentPick = picks[d.id] || ''
           const isFifoPick  = currentPick && recommended && currentPick === recommended.id
           return (
-            <div key={d.id} className="border border-gray-200 rounded p-2">
+            <div key={d.id} className="border border-border-subtle rounded p-2">
               <div className="text-[12px] font-medium mb-1 flex items-baseline justify-between">
                 <span>
                   {d.quantity}× {d.dose_label}
@@ -2987,7 +2987,7 @@ function ConfirmInsertionDrawer({ visit, qc, onClose }) {
       <div className="absolute inset-0 bg-black/30" />
       <div className="relative w-full max-w-2xl bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between z-10">
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between z-10">
           <h2 className="text-[15px] font-semibold text-gray-900">
             Confirm what was inserted
           </h2>
@@ -3079,7 +3079,7 @@ function ConfirmInsertionDrawer({ visit, qc, onClose }) {
           </ul>
 
           {/* Additions */}
-          <div className="border-t border-gray-200 pt-3">
+          <div className="border-t border-border-subtle pt-3">
             <div className="flex items-center justify-between mb-2">
               <div className="text-[12px] font-semibold text-gray-800">
                 Add new dose(s) (provider added in-room)

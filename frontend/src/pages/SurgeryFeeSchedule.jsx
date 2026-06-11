@@ -30,7 +30,7 @@ export default function SurgeryFeeSchedule() {
         per-surgery allowed-amount calculator on the Surgery Detail page.
       </p>
 
-      <div className="flex gap-1 border-b border-gray-200 mb-4">
+      <div className="flex gap-1 border-b border-border-subtle mb-4">
         <TabButton active={tab === 'fee'} onClick={() => setTab('fee')}
                     icon={<DollarSign size={13} />}>
           Allowed Amounts

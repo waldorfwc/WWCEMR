@@ -684,7 +684,7 @@ function TemplateDrawer({ templateId, onClose }) {
           </section>
 
           {/* Yes/No question */}
-          <section className="border-t border-gray-100 pt-4">
+          <section className="border-t border-border-subtle pt-4">
             <h3 className="text-sm font-semibold text-ink mb-1">Yes/No question</h3>
             <p className="text-[11px] text-muted mb-3">
               The user sees this prompt and answers Yes or No. If they answer No, the
@@ -716,7 +716,7 @@ function TemplateDrawer({ templateId, onClose }) {
           </section>
 
           {/* Recurrence */}
-          <section className="border-t border-gray-100 pt-4">
+          <section className="border-t border-border-subtle pt-4">
             <h3 className="text-sm font-semibold text-ink mb-1">Schedule</h3>
             <p className="text-[11px] text-muted mb-3">
               Pick how often this task fires. Sat/Sun are skipped by default for daily +
@@ -756,7 +756,7 @@ function TemplateDrawer({ templateId, onClose }) {
                                 onClick={() => toggleWeekday(i)}
                                 className={`text-xs w-10 h-9 rounded border ${
                                   on ? 'bg-plum-100 border-plum-300 text-plum-700 font-semibold'
-                                     : 'bg-white border-gray-200 text-muted hover:border-plum-300'
+                                     : 'bg-white border-border-subtle text-muted hover:border-plum-300'
                                 }`}>
                           {d}
                         </button>
@@ -828,7 +828,7 @@ function TemplateDrawer({ templateId, onClose }) {
           </section>
 
           {/* Manager escalation */}
-          <section className="border-t border-gray-100 pt-4">
+          <section className="border-t border-border-subtle pt-4">
             <h3 className="text-sm font-semibold text-ink mb-1">Accountability</h3>
             <p className="text-[11px] text-muted mb-3">
               When the task isn't answered in time (or is answered No), the listed
@@ -862,7 +862,7 @@ function TemplateDrawer({ templateId, onClose }) {
           </section>
 
           {/* Training */}
-          <section className="border-t border-gray-100 pt-4">
+          <section className="border-t border-border-subtle pt-4">
             <h3 className="text-sm font-semibold text-ink mb-1">Training & certification</h3>
             <p className="text-[11px] text-muted mb-3">
               When required, only users with an active certification on this task receive
@@ -918,7 +918,7 @@ function TemplateDrawer({ templateId, onClose }) {
           </section>
 
           {/* Targeting */}
-          <section className="border-t border-gray-100 pt-4">
+          <section className="border-t border-border-subtle pt-4">
             <h3 className="text-sm font-semibold text-ink mb-1">Who gets this task</h3>
             <p className="text-[11px] text-muted mb-3">
               Pick any combination — the system spawns one instance for the
@@ -935,7 +935,7 @@ function TemplateDrawer({ templateId, onClose }) {
                       onClick={() => toggleGroup(g.id)}
                       className={`text-[11px] px-2 py-1 rounded border ${
                         checked ? 'bg-plum-100 border-plum-300 text-plum-700'
-                                : 'bg-white border-gray-200 text-muted hover:border-plum-300'
+                                : 'bg-white border-border-subtle text-muted hover:border-plum-300'
                       }`}
                     >
                       {g.name} ({g.member_count})
@@ -1132,7 +1132,7 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
   const certifiedEmails = new Set(certs.map(c => c.user_email))
 
   return (
-    <div className="mt-4 border-t border-gray-100 pt-4 space-y-4">
+    <div className="mt-4 border-t border-border-subtle pt-4 space-y-4">
       <div>
         <h4 className="text-[12px] font-semibold text-ink mb-1">Authorized Trainers</h4>
         <p className="text-[11px] text-muted mb-2">
@@ -1341,7 +1341,7 @@ function UserPicker({ users, selected, onChange }) {
         onChange={e => setText(e.target.value)}
       />
       {text && candidates.length > 0 && (
-        <div className="border border-gray-200 rounded mt-1 bg-white max-h-44 overflow-y-auto">
+        <div className="border border-border-subtle rounded mt-1 bg-white max-h-44 overflow-y-auto">
           {candidates.map(u => (
             <button
               key={u.email} type="button"

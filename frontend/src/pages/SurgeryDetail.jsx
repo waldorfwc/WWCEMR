@@ -139,7 +139,7 @@ export default function SurgeryDetail() {
             <button
               type="button"
               onClick={viewAsPatient}
-              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              className="text-xs px-2 py-1 rounded border bg-white border-border-subtle text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
               title="Open this patient's portal in a new tab (read-only)"
             >
               <Eye size={11} /> View as Patient
@@ -147,7 +147,7 @@ export default function SurgeryDetail() {
             <button
               type="button"
               onClick={() => setShowKlara(true)}
-              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              className="text-xs px-2 py-1 rounded border bg-white border-border-subtle text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
               title="Draft a Klara message for this patient"
             >
               <MessageSquare size={11} /> Klara message
@@ -155,7 +155,7 @@ export default function SurgeryDetail() {
             <button
               type="button"
               onClick={() => setShowPortalInvite(true)}
-              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              className="text-xs px-2 py-1 rounded border bg-white border-border-subtle text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
               title="Email the patient their surgery portal login link"
             >
               <Send size={11} /> Send Portal Access
@@ -163,7 +163,7 @@ export default function SurgeryDetail() {
             <button
               type="button"
               onClick={() => setShowMessages(true)}
-              className="text-xs px-2 py-1 rounded border bg-white border-gray-200 text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+              className="text-xs px-2 py-1 rounded border bg-white border-border-subtle text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
               title="Patient portal messages, emails, and SMS"
             >
               <Mail size={11} /> Messages
@@ -173,7 +173,7 @@ export default function SurgeryDetail() {
               onClick={() => patch.mutate({ urgency: s.urgency === "urgent" ? "routine" : "urgent" })}
               className={`text-xs px-2 py-1 rounded border flex items-center gap-1 ${
                 s.urgency === "urgent" ? 'bg-red-50 border-red-200 text-red-700'
-                                       : 'bg-white border-gray-200 text-gray-600 hover:border-red-300'
+                                       : 'bg-white border-border-subtle text-gray-600 hover:border-red-300'
               }`}
               disabled={patch.isPending}
             >
@@ -606,7 +606,7 @@ function FeeSchedulePreviewModal({ result, busy, onApply, onClose }) {
       <div className="absolute inset-0 bg-black/30" />
       <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full"
            onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+        <div className="px-5 py-3 border-b border-border-subtle flex items-center justify-between">
           <h3 className="font-semibold text-gray-900 text-sm">
             Fee schedule preview · {result.insurance || 'no insurance set'}
           </h3>
@@ -653,7 +653,7 @@ function FeeSchedulePreviewModal({ result, busy, onApply, onClose }) {
             </div>
           )}
         </div>
-        <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+        <div className="px-5 py-3 border-t border-border-subtle flex justify-end gap-2">
           <button onClick={onClose} className="btn-secondary text-sm">Close</button>
           <button onClick={onApply} disabled={busy}
                   className="btn-primary text-sm flex items-center gap-1">
@@ -1303,7 +1303,7 @@ function NotesPanel({ surgery }) {
 
       {/* Legacy notes (pre-log field) preserved here so nothing is hidden */}
       {surgery.notes && (
-        <div className="mb-2 text-[11px] text-gray-700 italic border-l-2 border-gray-200 pl-2 whitespace-pre-wrap">
+        <div className="mb-2 text-[11px] text-gray-700 italic border-l-2 border-border-subtle pl-2 whitespace-pre-wrap">
           <div className="text-[11px] uppercase tracking-wide text-gray-400 not-italic mb-0.5">
             Legacy note
           </div>
@@ -1410,7 +1410,7 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
       </div>
 
       {/* Upload form */}
-      <div className="border border-gray-200 rounded p-2 mb-2 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+      <div className="border border-border-subtle rounded p-2 mb-2 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
         {!kindFilter && (
           <div>
             <div className="text-[11px] uppercase text-gray-500">Kind</div>
@@ -2645,7 +2645,7 @@ function MilestoneRow({ m, surgery }) {
       isDone ? 'bg-green-50/40 border-green-100'
       : isInProgress ? 'bg-amber-50/30 border-amber-100'
       : m.status === 'not_applicable' ? 'bg-gray-50 border-gray-100 opacity-60'
-      : 'bg-white border-gray-100'
+      : 'bg-white border-border-subtle'
     }`}>
       <div className="flex items-start gap-3">
         <div className="mt-0.5 shrink-0">{MILESTONE_ICON[m.status] || MILESTONE_ICON.pending}</div>
@@ -2698,7 +2698,7 @@ function MilestoneRow({ m, surgery }) {
             {isOpen && !isInProgress && (
               <Tip text="Start working on this — mark in progress">
                 <button aria-label="Mark in progress"
-                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-amber-300 text-gray-600"
+                        className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:border-amber-300 text-gray-600"
                         onClick={() => action.mutate({ act: 'start' })}
                         disabled={action.isPending}>
                   <Clock size={11} />
@@ -2709,7 +2709,7 @@ function MilestoneRow({ m, surgery }) {
               <>
                 <Tip text="Mark this milestone complete">
                   <button aria-label="Mark done"
-                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:border-green-300 hover:bg-green-50 text-green-700 flex items-center gap-1"
+                          className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:border-green-300 hover:bg-green-50 text-green-700 flex items-center gap-1"
                           onClick={() => action.mutate({ act: 'done' })}
                           disabled={action.isPending}>
                     <Check size={11} /> Done
@@ -2787,7 +2787,7 @@ function MilestoneCard({ m, surgery, flat = false }) {
         )}
       </div>
       {body && open && (
-        <div className="mt-3 border-t border-gray-100 pt-3">{body}</div>
+        <div className="mt-3 border-t border-border-subtle pt-3">{body}</div>
       )}
     </div>
   )
@@ -3700,7 +3700,7 @@ function PostOpApptsCardBody({ surgery }) {
                 className={`px-1.5 py-0.5 rounded border ${
                   value === 'office'
                     ? 'bg-plum-100 border-plum-300 text-plum-800'
-                    : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
+                    : 'bg-white border-border-subtle text-gray-600 hover:border-plum-200'
                 }`}
                 title={suggestedLoc === 'office' ? 'Suggested' : ''}>
           Office{suggestedLoc === 'office' && <span className="text-[11px]"> ★</span>}
@@ -3713,7 +3713,7 @@ function PostOpApptsCardBody({ surgery }) {
                     ? 'bg-gray-50 border-gray-200 text-gray-300 cursor-not-allowed line-through'
                     : value === 'telehealth'
                         ? 'bg-plum-100 border-plum-300 text-plum-800'
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
+                        : 'bg-white border-border-subtle text-gray-600 hover:border-plum-200'
                 }`}
                 title={locked ? 'Required in-person' : (suggestedLoc === 'telehealth' ? 'Suggested' : '')}>
           Telehealth{!locked && suggestedLoc === 'telehealth' && <span className="text-[11px]"> ★</span>}
@@ -3763,7 +3763,7 @@ function PostOpApptsCardBody({ surgery }) {
           const loc = i === 0 ? firstLoc : secondLoc
           const setLoc = i === 0 ? setFirstLoc : setSecondLoc
           return (
-            <div key={i} className="border border-gray-100 rounded p-1.5 space-y-1">
+            <div key={i} className="border border-border-subtle rounded p-1.5 space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] text-gray-700 w-32 shrink-0">{v.label}:</span>
                 <input type="date" className="input text-[12px]"
@@ -4088,7 +4088,7 @@ function AssistantSurgeonCardBody({ surgery }) {
       </button>
 
       {/* Two-step coordination checklist */}
-      <div className="border border-gray-200 rounded p-2 space-y-2">
+      <div className="border border-border-subtle rounded p-2 space-y-2">
         <div className="flex items-start gap-2">
           <div className={`shrink-0 mt-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
             officeNotified ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'
@@ -4237,7 +4237,7 @@ function PriorAuthCardBody({ surgery }) {
 
       <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior Auth Response" />
 
-      <div className="border-t border-gray-200 pt-2 space-y-1">
+      <div className="border-t border-border-subtle pt-2 space-y-1">
         <div className="text-[11px] uppercase tracking-wide text-gray-500">
           Prior Auth No. / Reference No.
         </div>
@@ -4562,7 +4562,7 @@ function SurgeryBilledCardBody({ surgery }) {
         </div>
       </div>
 
-      <div className="border border-gray-200 rounded p-2">
+      <div className="border border-border-subtle rounded p-2">
         <div className="flex items-center justify-between mb-1.5">
           <div className="text-[11px] uppercase tracking-wide text-gray-500">
             AI billing codes (from op + path reports)
@@ -5885,7 +5885,7 @@ function LarcDevicePickerDrawer({ surgery, preferred, onClose }) {
               {sorted.map(d => (
                 <li key={d.id}>
                   <label className={`flex items-center gap-2 text-[12px] border rounded px-2 py-1.5 cursor-pointer hover:bg-teal-50 ${
-                    deviceId === d.id ? 'bg-teal-50 border-teal-400' : 'border-gray-200'
+                    deviceId === d.id ? 'bg-teal-50 border-teal-400' : 'border-border-subtle'
                   }`}>
                     <input type="radio" name="device" value={d.id}
                            checked={deviceId === d.id}
@@ -6046,7 +6046,7 @@ function ScheduleForPatientModal({ surgery, templates, onClose, onSaved }) {
                                 className={`text-[12px] px-2 py-0.5 rounded border ${
                                   isSelected
                                     ? 'border-plum-700 bg-plum-50 text-plum-800 font-medium'
-                                    : 'border-gray-200 hover:bg-plum-50 hover:border-plum-300'
+                                    : 'border-border-subtle hover:bg-plum-50 hover:border-plum-300'
                                 }`}>
                           {t}
                         </button>

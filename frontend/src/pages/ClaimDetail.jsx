@@ -143,7 +143,7 @@ export default function ClaimDetail() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-xs text-gray-500 uppercase">
+                <tr className="border-b border-border-subtle text-xs text-gray-500 uppercase">
                   <th className="pb-2 text-left">CPT/Code</th>
                   <th className="pb-2 text-left">Modifiers</th>
                   <th className="pb-2 text-left">DOS</th>

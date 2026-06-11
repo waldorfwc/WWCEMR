@@ -149,7 +149,7 @@ function UserMenu({ user, isAdmin, canSeeAudit, onLogout }) {
               <History size={14} className="text-plum-600" /> Audit Log
             </button>
           )}
-          <div className="border-t border-gray-100 my-1" />
+          <div className="border-t border-border-subtle my-1" />
           <button
             type="button"
             onClick={() => { setOpen(false); onLogout() }}

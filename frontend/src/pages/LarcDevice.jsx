@@ -136,7 +136,7 @@ export default function LarcDevice() {
           )}
         </div>
         {d.notes && (
-          <div className="mt-3 text-xs text-gray-700 italic border-l-2 border-gray-200 pl-2">
+          <div className="mt-3 text-xs text-gray-700 italic border-l-2 border-border-subtle pl-2">
             {d.notes}
           </div>
         )}

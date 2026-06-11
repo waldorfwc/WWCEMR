@@ -431,8 +431,8 @@ function FacilityColumn({ bd, onPickOpen, onPickBooked, onDeleted }) {
     onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
   })
   return (
-    <div className="border border-gray-200 rounded">
-      <div className={`px-2 py-1.5 border-b border-gray-200 flex items-baseline justify-between ${fac.tone}`}>
+    <div className="border border-border-subtle rounded">
+      <div className={`px-2 py-1.5 border-b border-border-subtle flex items-baseline justify-between ${fac.tone}`}>
         <strong className="text-[12px]">{fac.label}</strong>
         <span className="text-[10px] opacity-80 flex items-center gap-1.5">
           {bd.start_time?.slice(0, 5)}–{bd.end_time?.slice(0, 5)}
@@ -513,7 +513,7 @@ function BookSurgeryPicker({ slot, unscheduled, date, onBooked, onClose }) {
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-4 py-3 flex items-center justify-between">
           <div>
             <div className="text-[13px] font-semibold">Book a surgery at {slot.time}</div>
             <div className="text-[10px] text-muted">
@@ -613,7 +613,7 @@ function SurgeryCard({ surgery, onClick }) {
 
   const cardClass = surgery.is_incomplete
     ? 'w-full text-left rounded border border-amber-300 bg-amber-50/50 hover:border-amber-500 hover:bg-amber-50 px-1.5 py-1 transition'
-    : 'w-full text-left rounded border border-gray-200 bg-white hover:border-plum-300 hover:bg-plum-50 px-1.5 py-1 transition'
+    : 'w-full text-left rounded border border-border-subtle bg-white hover:border-plum-300 hover:bg-plum-50 px-1.5 py-1 transition'
 
   return (
     <button type="button"

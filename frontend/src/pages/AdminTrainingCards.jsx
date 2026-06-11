@@ -354,7 +354,7 @@ function TaskCard({ task, allGroups, qc }) {
       )}
 
       {/* Add picker */}
-      <div className="border-t border-gray-100 pt-2 mt-2">
+      <div className="border-t border-border-subtle pt-2 mt-2">
         <div className="text-[11px] text-muted mb-1.5 flex items-center gap-2">
           <Plus size={11}/> Add to this task:
           <label className="flex items-center gap-1 ml-2">

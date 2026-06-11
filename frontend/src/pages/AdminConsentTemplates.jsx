@@ -295,7 +295,7 @@ function TemplateForm({ initial, onClose, onSave }) {
                       placeholder="Optional internal notes about this template" />
           </div>
 
-          <div className="border-t border-gray-100 pt-4">
+          <div className="border-t border-border-subtle pt-4">
             <h3 className="text-[12px] font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
               <ShieldCheck size={13} className="text-plum-600" />
               Test match

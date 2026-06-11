@@ -203,7 +203,7 @@ function LarcMilestoneCard({ m, assignment }) {
         )}
       </div>
       {body && open && (
-        <div className="mt-3 border-t border-gray-100 pt-3">{body}</div>
+        <div className="mt-3 border-t border-border-subtle pt-3">{body}</div>
       )}
     </div>
   )
@@ -516,7 +516,7 @@ function EnrollmentSentBody({ a }) {
         <summary className="cursor-pointer text-plum-700 hover:underline">
           Form options
         </summary>
-        <div className="mt-1 space-y-1 pl-3 border-l border-gray-200">
+        <div className="mt-1 space-y-1 pl-3 border-l border-border-subtle">
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={dispense}
                    onChange={e => setDispense(e.target.checked)} />
@@ -609,7 +609,7 @@ function ClinicianPicker({ a, kind }) {
         )}
         {saved && <span className="text-success ml-1">✓ saved</span>}
       </summary>
-      <div className="mt-1 pl-3 border-l border-gray-200 space-y-1.5">
+      <div className="mt-1 pl-3 border-l border-border-subtle space-y-1.5">
         <div className="text-[10px] text-gray-500">
           {isProvider
             ? 'Prescribing physician on the enrollment form. Falls back to the practice provider if blank.'
@@ -1455,7 +1455,7 @@ function InsuranceCardCard({ a }) {
              title="Open full size in a new tab">
             {previewUrl ? (
               <img src={previewUrl} alt="Insurance card"
-                   className="max-h-40 border border-gray-200 rounded"
+                   className="max-h-40 border border-border-subtle rounded"
                    onError={() => setPreviewError('Could not render image')} />
             ) : (
               <div className="text-[10px] text-gray-400 italic">Loading…</div>

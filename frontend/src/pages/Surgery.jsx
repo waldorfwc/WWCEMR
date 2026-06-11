@@ -420,7 +420,7 @@ export default function Surgery() {
         </div>
 
         {showAdvanced && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 pt-3 border-t border-gray-100">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 pt-3 border-t border-border-subtle">
             <div>
               <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Procedure type</label>
               <select className="input text-sm w-full" value={filters.procedure_classification}
@@ -530,7 +530,7 @@ export default function Surgery() {
         )}
 
         {savingPreset && (
-          <div className="mt-3 pt-3 border-t border-gray-100 flex items-end gap-2">
+          <div className="mt-3 pt-3 border-t border-border-subtle flex items-end gap-2">
             <div className="flex-1 max-w-xs">
               <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
               <input className="input text-sm w-full"
@@ -961,7 +961,7 @@ function SurgeryRow({ s, onOpen }) {
                       .join(' or ')
 
   return (
-    <tr className="border-t border-gray-100 hover:bg-plum-50/30 cursor-pointer" onClick={onOpen}>
+    <tr className="border-t border-border-subtle hover:bg-plum-50/30 cursor-pointer" onClick={onOpen}>
       <td className="px-3 py-1.5">
         <div className="flex items-center gap-1">
           {s.urgency === "urgent" && <span title="Urgent">🚨</span>}
@@ -1546,7 +1546,7 @@ function ManualCreateDrawer({ onClose }) {
                           className={`text-xs px-2 py-1 rounded border ${
                             form.eligible_facilities.includes(f)
                               ? 'bg-plum-100 border-plum-300 text-plum-700 font-semibold'
-                              : 'bg-white border-gray-200 text-muted'
+                              : 'bg-white border-border-subtle text-muted'
                           }`}>
                     {labelOf(f)}
                   </button>

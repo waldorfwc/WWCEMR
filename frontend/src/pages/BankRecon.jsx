@@ -194,7 +194,7 @@ export default function BankRecon() {
             <button className="text-xs text-plum-700 hover:underline" onClick={selectOnlyNew}>Select Only New (default)</button>
           </div>
 
-          <div className="overflow-x-auto max-h-[60vh] overflow-y-auto border border-gray-100 rounded">
+          <div className="overflow-x-auto max-h-[60vh] overflow-y-auto border border-border-subtle rounded">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
@@ -212,7 +212,7 @@ export default function BankRecon() {
                   const excluded = excludedKeys.has(t.dedup_key)
                   return (
                     <tr key={t.dedup_key}
-                        className={`border-t border-gray-100 ${(t.already_imported || t.date_already_covered) ? 'bg-amber-50/40' : ''} ${excluded ? 'opacity-50' : ''}`}>
+                        className={`border-t border-border-subtle ${(t.already_imported || t.date_already_covered) ? 'bg-amber-50/40' : ''} ${excluded ? 'opacity-50' : ''}`}>
                       <td className="px-2 py-1 text-center">
                         <input
                           type="checkbox"
@@ -317,7 +317,7 @@ function HistoryList({ imports }) {
             {showOlder ? 'Hide older' : `Show ${older.length} older file${older.length !== 1 ? 's' : ''}`}
           </button>
           {showOlder && (
-            <ul className="divide-y divide-gray-100 mt-2 border-t border-gray-100 pt-2">
+            <ul className="divide-y divide-gray-100 mt-2 border-t border-border-subtle pt-2">
               {older.map(imp => <ImportRow key={imp.id} imp={imp} />)}
             </ul>
           )}

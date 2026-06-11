@@ -475,7 +475,7 @@ export default function ARDashboard() {
                       <thead>
                         <tr className="bg-gray-100">
                           {Object.keys(uploadResult.data.rows[0]).filter(k => !k.startsWith('_')).slice(0, 8).map(h => (
-                            <th key={h} className="text-left p-1 border border-gray-200 font-medium text-gray-600">
+                            <th key={h} className="text-left p-1 border border-border-subtle font-medium text-gray-600">
                               {h.replace(/_/g, ' ')}
                             </th>
                           ))}
@@ -485,7 +485,7 @@ export default function ARDashboard() {
                         {uploadResult.data.rows.slice(0, 5).map((row, i) => (
                           <tr key={i}>
                             {Object.entries(row).filter(([k]) => !k.startsWith('_')).slice(0, 8).map(([k, v]) => (
-                              <td key={k} className="p-1 border border-gray-200 text-gray-700">
+                              <td key={k} className="p-1 border border-border-subtle text-gray-700">
                                 {v ?? '—'}
                               </td>
                             ))}

@@ -636,7 +636,7 @@ function UserDrawerBody({ email, onJumpToModule }) {
       </div>
 
       {/* Super Admin toggle */}
-      <div className="border-t border-gray-100 pt-4">
+      <div className="border-t border-border-subtle pt-4">
         <label className="flex items-baseline gap-2 cursor-pointer">
           <input type="checkbox"
                  checked={isSA}
@@ -664,7 +664,7 @@ function UserDrawerBody({ email, onJumpToModule }) {
       </div>
 
       {/* Groups */}
-      <div className="border-t border-gray-100 pt-4">
+      <div className="border-t border-border-subtle pt-4">
         <div className="flex items-baseline justify-between mb-2">
           <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Users size={13} /> Groups
@@ -703,7 +703,7 @@ function UserDrawerBody({ email, onJumpToModule }) {
       </div>
 
       {/* Full 15-module profile */}
-      <div className="border-t border-gray-100 pt-4">
+      <div className="border-t border-border-subtle pt-4">
         <h3 className="text-sm font-semibold text-ink mb-2">
           Module access ({overrideCount > 0
             ? `${overrideCount} override${overrideCount === 1 ? '' : 's'}`
@@ -859,7 +859,7 @@ function GroupDrawerBody({ groupId, onJumpToModule, onClose }) {
       </div>
 
       {/* Members */}
-      <div className="border-t border-gray-100 pt-4">
+      <div className="border-t border-border-subtle pt-4">
         <div className="flex items-baseline justify-between mb-2">
           <h3 className="text-sm font-semibold text-ink flex items-center gap-2">
             <Users size={13} /> Members
@@ -912,7 +912,7 @@ function GroupDrawerBody({ groupId, onJumpToModule, onClose }) {
       </div>
 
       {/* Full 15-module grants */}
-      <div className="border-t border-gray-100 pt-4">
+      <div className="border-t border-border-subtle pt-4">
         <h3 className="text-sm font-semibold text-ink mb-2">
           Module grants ({grantedCount > 0
             ? `${grantedCount} granted`
@@ -942,7 +942,7 @@ function GroupDrawerBody({ groupId, onJumpToModule, onClose }) {
 
       {/* Danger zone */}
       {!g.system_protected && (
-        <div className="border-t border-gray-100 pt-4">
+        <div className="border-t border-border-subtle pt-4">
           <button className="text-danger text-[12px] flex items-center gap-1 hover:underline"
                   onClick={() => {
                     if (window.confirm(`Delete group "${g.name}"?`)) remove.mutate()

@@ -32,7 +32,7 @@ export default function DenialCodeDrawer({ open, onClose, initialRequest }) {
         />
       )}
       <aside
-        className={`fixed top-0 right-0 h-full w-[440px] bg-white border-l border-gray-200 shadow-2xl z-50 transition-transform duration-200 overflow-y-auto ${
+        className={`fixed top-0 right-0 h-full w-[440px] bg-white border-l border-border-subtle shadow-2xl z-50 transition-transform duration-200 overflow-y-auto ${
           open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
@@ -96,7 +96,7 @@ function GroupView({ request }) {
         <p className="text-xs text-gray-800 leading-relaxed">{g.disposition}</p>
       </Section>
 
-      <div className="mt-4 pt-3 border-t border-gray-100">
+      <div className="mt-4 pt-3 border-t border-border-subtle">
         <div className="text-[11px] uppercase font-semibold text-gray-500 mb-2">All group codes</div>
         <div className="space-y-2">
           {Object.entries(GROUP_CODES).map(([k, info]) => (
@@ -134,7 +134,7 @@ function JumpToCode({ onPick }) {
     <div className="relative">
       <Search size={12} className="absolute left-2.5 top-2.5 text-gray-400" />
       <input
-        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-plum-400"
+        className="w-full pl-7 pr-2 py-1.5 border border-border-subtle rounded text-xs focus:outline-none focus:ring-1 focus:ring-plum-400"
         placeholder="Jump to another code… (e.g. 197, M86)"
         value={q}
         onChange={e => setQ(e.target.value)}
@@ -142,11 +142,11 @@ function JumpToCode({ onPick }) {
         onBlur={() => setTimeout(() => setFocused(false), 150)}
       />
       {focused && items.length > 0 && (
-        <div className="absolute left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white border border-gray-200 rounded shadow-lg z-10">
+        <div className="absolute left-0 right-0 mt-1 max-h-72 overflow-y-auto bg-white border border-border-subtle rounded shadow-lg z-10">
           {items.map(row => (
             <button
               key={`${row.code_type}-${row.code}`}
-              className="w-full text-left px-2.5 py-1.5 hover:bg-plum-50 text-xs border-b border-gray-100 last:border-0"
+              className="w-full text-left px-2.5 py-1.5 hover:bg-plum-50 text-xs border-b border-border-subtle last:border-0"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
                 onPick({ mode: 'single', code_type: row.code_type, code: row.code })
@@ -248,7 +248,7 @@ function ComboView({ request }) {
       </div>
 
       {/* Also let the user drill into each individual code — cheap links */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
+      <div className="mt-3 pt-3 border-t border-border-subtle">
         <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">
           Individual codes in this combo
         </div>
@@ -289,7 +289,7 @@ function WwcNotesSection({ row }) {
   })
 
   return (
-    <div className="mt-4 pt-3 border-t border-gray-200">
+    <div className="mt-4 pt-3 border-t border-border-subtle">
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-1 text-[11px] font-semibold uppercase text-gray-500">
           <NotebookPen size={11} /> WWC Notes
@@ -321,7 +321,7 @@ function WwcNotesSection({ row }) {
       {editing ? (
         <div>
           <textarea
-            className="w-full text-xs border border-gray-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-plum-400"
+            className="w-full text-xs border border-border-subtle rounded p-2 focus:outline-none focus:ring-1 focus:ring-plum-400"
             rows={4}
             value={draft}
             onChange={e => setDraft(e.target.value)}
@@ -380,12 +380,12 @@ function NotesHistory({ row }) {
         Revision history ({revs.length})
       </div>
       {revs.map((r, i) => (
-        <details key={r.id} className="border border-gray-100 rounded bg-white">
+        <details key={r.id} className="border border-border-subtle rounded bg-white">
           <summary className="cursor-pointer px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50">
             {i === 0 && <span className="text-[11px] font-semibold text-green-700 mr-1.5">CURRENT</span>}
             {r.saved_by} · {fmt.dateTime(r.saved_at)}
           </summary>
-          <pre className="whitespace-pre-wrap font-sans text-[11px] text-gray-700 px-3 py-2 border-t border-gray-100 leading-relaxed">
+          <pre className="whitespace-pre-wrap font-sans text-[11px] text-gray-700 px-3 py-2 border-t border-border-subtle leading-relaxed">
             {r.body || <span className="italic text-gray-400">(cleared)</span>}
           </pre>
         </details>

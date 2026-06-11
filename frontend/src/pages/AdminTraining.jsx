@@ -237,7 +237,7 @@ export default function AdminTraining() {
                     const cov = templateCoverage[t.id]
                     return (
                       <tr key={t.id} className="hover:bg-plum-50/30">
-                        <td className="table-td sticky left-0 bg-white z-10 border-r border-gray-100"
+                        <td className="table-td sticky left-0 bg-white z-10 border-r border-border-subtle"
                             style={{ minWidth: 280, maxWidth: 280 }}>
                           <div className="text-[12px] font-medium leading-tight">{t.title}</div>
                           <div className="text-[10px] text-muted mt-0.5 flex items-center gap-2 flex-wrap">
@@ -439,7 +439,7 @@ function CellEditor({ user, template, cell, canAuthorize, currentUser, onClose, 
             </a>
           )}
 
-          <div className="border border-gray-200 rounded p-3 space-y-2 text-sm">
+          <div className="border border-border-subtle rounded p-3 space-y-2 text-sm">
             <div className="flex items-center gap-2">
               <Cell status={status} />
               <span className="capitalize">{status.kind === 'none' ? 'Not certified' : status.kind.replace('-', ' ')}</span>
@@ -483,7 +483,7 @@ function CellEditor({ user, template, cell, canAuthorize, currentUser, onClose, 
           )}
 
           {canAuthorize && !isMe && (
-            <div className="border border-gray-200 rounded p-3 space-y-2">
+            <div className="border border-border-subtle rounded p-3 space-y-2">
               <div className="text-xs text-muted">Trainer authorization (managers only)</div>
               {!isTrainer ? (
                 <button className="btn-secondary text-xs flex items-center gap-1"
@@ -508,7 +508,7 @@ function CellEditor({ user, template, cell, canAuthorize, currentUser, onClose, 
           )}
 
           {!isMe && (
-            <div className="border border-gray-200 rounded p-3 space-y-2">
+            <div className="border border-border-subtle rounded p-3 space-y-2">
               <div className="text-xs text-muted">
                 Certify {user.display_name || user.email.split('@')[0]} as trained
               </div>

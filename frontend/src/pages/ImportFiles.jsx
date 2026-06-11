@@ -337,7 +337,7 @@ function ChargeAnalysisPreview({ preview, committing, onCancel, onCommit }) {
   const expired = remaining <= 0
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+    <div className="border border-border-subtle rounded-lg p-4 bg-white">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-semibold text-gray-800">Preview · {preview.source_filename}</div>
         <div className="text-xs text-gray-500 font-mono">
@@ -470,7 +470,7 @@ function BootstrapPreview({ preview, committing, onCancel, onCommit }) {
   const expired = remaining <= 0
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+    <div className="border border-border-subtle rounded-lg p-4 bg-white">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-semibold text-gray-800">Preview · {preview.source_filename}</div>
         <div className="text-xs text-gray-500 font-mono">
@@ -558,7 +558,7 @@ function EraPreview({ preview, committing, onCancel, onCommit }) {
   const t = preview.totals
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white">
+    <div className="border border-border-subtle rounded-lg p-4 bg-white">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-semibold text-gray-800">
           Preview · {t.n_files} ERA file{t.n_files > 1 ? 's' : ''}
@@ -584,7 +584,7 @@ function EraPreview({ preview, committing, onCancel, onCommit }) {
       <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Per file</div>
       <div className="text-xs space-y-1 mb-3">
         {preview.files.map((f, idx) => (
-          <div key={idx} className="border border-gray-100 rounded p-2">
+          <div key={idx} className="border border-border-subtle rounded p-2">
             <div className="font-mono truncate">{f.source_filename}</div>
             <div className="text-gray-500">
               Check #{f.check_number} · ${f.check_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })} ·

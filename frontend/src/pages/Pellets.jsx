@@ -358,7 +358,7 @@ function HormoneCard({ title, tone, counts }) {
       <div className={`text-[11px] uppercase tracking-wide ${text} font-semibold mb-2`}>{title}</div>
       <div className="grid grid-cols-3 gap-2">
         {Object.entries(LOC_LABEL).map(([k, l]) => (
-          <div key={k} className="bg-white border border-gray-200 rounded p-2">
+          <div key={k} className="bg-white border border-border-subtle rounded p-2">
             <div className="text-[11px] uppercase text-gray-500">{l}</div>
             <div className="text-xl font-bold mt-0.5">{counts?.[k] ?? 0}</div>
             <div className="text-[10px] text-gray-400">doses</div>
@@ -599,7 +599,7 @@ function LotsCard({ types = [], onQuickTransfer }) {
                 <div key={l.id}
                      className={`grid ${colTemplate} gap-2 px-3 py-1.5 items-center
                                  border-b last:border-b-0 ${
-                                   isExpired ? 'bg-red-50/30 border-red-100' : 'border-gray-100'
+                                   isExpired ? 'bg-red-50/30 border-red-100' : 'border-border-subtle'
                                  }`}>
                   <div className="pl-7 flex items-baseline gap-2 min-w-0">
                     <span className="font-mono text-[12px] truncate">{l.qualgen_lot_number}</span>
@@ -834,7 +834,7 @@ function InventoryLockCard({ state, canManage }) {
 
   if (!canManage) return null
   return (
-    <div className="card mb-3 border-gray-200">
+    <div className="card mb-3 border-border-subtle">
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
         <div>
           <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">

@@ -133,7 +133,7 @@ export default function MissingCharges() {
                     })}
                     className={`card !p-2 text-left border transition ${
                       active ? 'border-plum-600 ring-2 ring-plum-200' :
-                      'border-gray-200 hover:border-plum-300'
+                      'border-border-subtle hover:border-plum-300'
                     }`}>
               <div className="text-[11px] uppercase text-gray-500 truncate">{s.l}</div>
               <div className="text-xl font-bold mt-0.5">{count}</div>
@@ -809,7 +809,7 @@ function ProviderMappingsPanel({ mapData, workforce, loading, error, onRefresh }
   // unmapped to the top.
 
   return (
-    <div className="border border-gray-200 rounded">
+    <div className="border border-border-subtle rounded">
       <details open>
         <summary className="cursor-pointer px-3 py-2 bg-gray-50 text-[12px] font-medium text-gray-700 flex items-center justify-between rounded-t">
           <span>Provider → email mappings</span>

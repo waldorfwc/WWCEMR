@@ -796,27 +796,27 @@ function ImageViewer({ docId, filename }) {
     <div className="h-full flex flex-col">
       {/* Toolbar */}
       <div className="bg-white border-b border-border-subtle px-3 py-2 flex items-center gap-2 sticky top-0 z-10">
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={zoomOut} title="Zoom out">
           <ZoomOut size={12} />
         </button>
         <span className="text-[12px] font-mono w-12 text-center">{Math.round(scale * 100)}%</span>
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={zoomIn} title="Zoom in">
           <ZoomIn size={12} />
         </button>
-        <div className="border-l border-gray-200 h-5 mx-1" />
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <div className="border-l border-border-subtle h-5 mx-1" />
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={rotateCcw} title="Rotate left 90°">
           <RotateCcw size={12} />
         </button>
         <span className="text-[12px] font-mono w-12 text-center">{rotation}°</span>
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={rotateCw} title="Rotate right 90°">
           <RotateCw size={12} />
         </button>
-        <div className="border-l border-gray-200 h-5 mx-1" />
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <div className="border-l border-border-subtle h-5 mx-1" />
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={reset} title="Reset zoom + rotation">
           <Maximize size={12} /> Reset
         </button>
@@ -954,7 +954,7 @@ function PdfViewer({ docId, totalPages }) {
         {/* Page nav — scrolls to the target page; native scroll between
             pages otherwise (scroll down → next, scroll up → previous). */}
         <button type="button"
-                className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 disabled:opacity-30 flex items-center gap-1"
+                className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 disabled:opacity-30 flex items-center gap-1"
                 disabled={pageNum <= 1}
                 onClick={() => goto(pageNum - 1)}>
           <ChevronLeft size={12} /> Prev
@@ -967,41 +967,41 @@ function PdfViewer({ docId, totalPages }) {
           {' '}/ {numPages ?? '—'}
         </div>
         <button type="button"
-                className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 disabled:opacity-30 flex items-center gap-1"
+                className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 disabled:opacity-30 flex items-center gap-1"
                 disabled={!numPages || pageNum >= numPages}
                 onClick={() => goto(pageNum + 1)}>
           Next <ChevronRight size={12} />
         </button>
 
-        <div className="border-l border-gray-200 h-5 mx-1" />
+        <div className="border-l border-border-subtle h-5 mx-1" />
 
         {/* Zoom */}
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={zoomOut} title="Zoom out">
           <ZoomOut size={12} />
         </button>
         <span className="text-[12px] font-mono w-12 text-center">{Math.round(scale * 100)}%</span>
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={zoomIn} title="Zoom in">
           <ZoomIn size={12} />
         </button>
 
-        <div className="border-l border-gray-200 h-5 mx-1" />
+        <div className="border-l border-border-subtle h-5 mx-1" />
 
         {/* Rotate */}
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={rotateCcw} title="Rotate left 90°">
           <RotateCcw size={12} />
         </button>
         <span className="text-[12px] font-mono w-12 text-center">{rotation}°</span>
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={rotateCw} title="Rotate right 90°">
           <RotateCw size={12} />
         </button>
 
-        <div className="border-l border-gray-200 h-5 mx-1" />
+        <div className="border-l border-border-subtle h-5 mx-1" />
 
-        <button type="button" className="text-[12px] px-2 py-1 rounded border border-gray-200 hover:bg-plum-50 flex items-center gap-1"
+        <button type="button" className="text-[12px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1"
                 onClick={reset} title="Reset zoom + rotation">
           <Maximize size={12} /> Reset
         </button>

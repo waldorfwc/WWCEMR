@@ -95,7 +95,7 @@ export default function ProviderMissingChargesPortal() {
       ) : (
         <div className="space-y-3">
           {charges.map(c => (
-            <div key={c.id} className="border border-gray-200 rounded-lg p-3 bg-white">
+            <div key={c.id} className="border border-border-subtle rounded-lg p-3 bg-white">
               <div className="flex items-baseline justify-between gap-2 flex-wrap">
                 <div>
                   <div className="font-semibold text-gray-900">{c.patient_name}</div>
