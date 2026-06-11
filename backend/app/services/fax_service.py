@@ -64,8 +64,23 @@ def send_fax(
     if not token:
         return {"error": "Failed to authenticate with RingCentral"}
 
-    if not os.path.isfile(file_path):
-        return {"error": f"File not found: {file_path}"}
+    # file_path may be either a local filesystem path (legacy / dev) or a
+    # storage key (Cloud Run on GCS). Load the bytes either way, then send
+    # those bytes to RingCentral. The pre-fix code did
+    # os.path.isfile(file_path) and short-circuited with "File not found"
+    # on every prod fax because GCS keys aren't local files.
+    file_bytes: Optional[bytes] = None
+    if os.path.isfile(file_path):
+        with open(file_path, "rb") as f:
+            file_bytes = f.read()
+    else:
+        try:
+            from app.services.storage import read_blob
+            file_bytes = read_blob(file_path)
+        except FileNotFoundError:
+            return {"error": f"File not found: {file_path}"}
+        except Exception as e:
+            return {"error": f"Could not load file '{file_path}': {e}"}
 
     # Normalize phone number and reject anything that doesn't end up as a
     # full +1NXXNXXXXXX. The old code would silently pass 9-digit or
@@ -103,9 +118,8 @@ def send_fax(
         cover = f"Patient: {patient_name}\n{cover}"
     cover = cover.strip() or "Document attached"
 
-    # Build multipart request
-    with open(file_path, "rb") as f:
-        file_content = f.read()
+    # Build multipart request — file_bytes was resolved above (local or GCS).
+    file_content = file_bytes
 
     # RingCentral fax API uses multipart/mixed
     json_part = json.dumps({
