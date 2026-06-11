@@ -742,7 +742,7 @@ function NotesSection({ chargeId, notes }) {
           <div key={n.id} className="border-l-2 border-plum-200 pl-2 py-0.5">
             <div className="text-[10px] text-gray-500">
               {n.author?.split('@')[0]} · {fmt.date(n.created_at.slice(0, 10))}{' '}
-              {n.created_at.slice(11, 16)}
+              {fmt.time(n.created_at)}
             </div>
             <div className="text-[12px] text-gray-800 whitespace-pre-wrap">{n.body}</div>
           </div>

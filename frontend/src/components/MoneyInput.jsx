@@ -22,6 +22,10 @@ export default function MoneyInput({ value, onChange, disabled, placeholder, cla
         className={`input w-full pl-5 py-1 text-[12px] font-mono ${className}`}
         value={displayValue}
         onChange={(e) => onChange(e.target.value)}
+        // Blur on scroll so a focused amount field can't be silently
+        // changed by the user scrolling the page. This was producing
+        // silent dollar errors in billing data entry. (Fable UX #4.)
+        onWheel={(e) => e.currentTarget.blur()}
         disabled={disabled}
         placeholder={placeholder}
       />

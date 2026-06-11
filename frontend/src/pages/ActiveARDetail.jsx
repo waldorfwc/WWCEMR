@@ -175,7 +175,7 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
               {' '}{claim.insurance_company}
               {claim.last_status_check_at && (
                 <span className="ml-2 text-gray-400">
-                  Last Waystar check: {fmt.date(claim.last_status_check_at?.slice(0, 10))} {claim.last_status_check_at?.slice(11, 16)}
+                  Last Waystar check: {fmt.date(claim.last_status_check_at?.slice(0, 10))} {fmt.time(claim.last_status_check_at)}
                 </span>
               )}
             </div>

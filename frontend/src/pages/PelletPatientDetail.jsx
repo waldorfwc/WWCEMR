@@ -715,7 +715,7 @@ function PatientNotesCard({ patient, qc }) {
             <div className="flex-1">
               <div className="text-[10px] text-gray-500">
                 {n.author?.split('@')[0]} · {fmt.date(n.created_at.slice(0, 10))}{' '}
-                {n.created_at.slice(11, 16)}
+                {fmt.time(n.created_at)}
               </div>
               <div className="text-[12px] text-gray-800 whitespace-pre-wrap">{n.body}</div>
             </div>

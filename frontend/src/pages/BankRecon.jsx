@@ -367,7 +367,7 @@ function ImportRow({ imp }) {
             <span>·</span>
             <span className="font-mono">{fmt.currency(imp.total_amount)}</span>
             <span>·</span>
-            <span>{fmt.date(imp.generated_at?.slice(0, 10))} {imp.generated_at?.slice(11, 16)}</span>
+            <span>{fmt.date(imp.generated_at?.slice(0, 10))} {fmt.time(imp.generated_at)}</span>
             {imp.generated_by && <><span>·</span><span>by {imp.generated_by.split('@')[0]}</span></>}
           </div>
         </div>

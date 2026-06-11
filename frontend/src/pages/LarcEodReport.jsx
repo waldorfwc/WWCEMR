@@ -84,7 +84,7 @@ export default function LarcEodReport() {
                 <tbody className="divide-y divide-gray-100">
                   {data.checkouts.map(c => (
                     <tr key={c.checkout_id}>
-                      <td className="table-td text-[11px]">{c.requested_at.slice(11, 16)}</td>
+                      <td className="table-td text-[11px]">{fmt.time(c.requested_at)}</td>
                       <td className="table-td">{c.patient_name}</td>
                       <td className="table-td font-mono text-[11px]">
                         {c.device_our_id}
@@ -115,7 +115,7 @@ export default function LarcEodReport() {
                 {data.inserted.map(a => (
                   <li key={a.assignment_id} className="flex items-baseline gap-2 px-2 py-1">
                     <span className="text-[11px] text-gray-500 w-12">
-                      {a.inserted_at.slice(11, 16)}
+                      {fmt.time(a.inserted_at)}
                     </span>
                     <Link to={`/larc/assignments/${a.assignment_id}`}
                           className="font-medium text-plum-700 hover:underline">
@@ -139,7 +139,7 @@ export default function LarcEodReport() {
                 {data.outcome_events.map((e, ix) => (
                   <li key={ix} className="flex items-baseline gap-2 px-2 py-1 text-[12px]">
                     <span className="text-[11px] text-gray-500 w-12">
-                      {e.occurred_at.slice(11, 16)}
+                      {fmt.time(e.occurred_at)}
                     </span>
                     <code className="text-[10px] text-plum-700 w-44 truncate shrink-0">{e.action}</code>
                     <span className="flex-1">{e.summary}</span>

@@ -226,7 +226,7 @@ function TaskRow({ task, qc }) {
     } finally { setBusy(false) }
   }
 
-  const dueTime = task.due_at ? task.due_at.slice(11, 16) : null
+  const dueTime = task.due_at ? fmt.time(task.due_at) : null
 
   const cardTone = answeredYes
     ? 'bg-green-50/40'
@@ -275,13 +275,13 @@ function TaskRow({ task, qc }) {
           {/* Recorded answer summary */}
           {answeredYes && (
             <div className="text-[11px] text-green-700 mt-1">
-              ✓ Yes — {task.completed_by?.split('@')[0]} · {fmt.date(task.completed_at?.slice(0, 10))} {task.completed_at?.slice(11, 16)}
+              ✓ Yes — {task.completed_by?.split('@')[0]} · {fmt.date(task.completed_at?.slice(0, 10))} {fmt.time(task.completed_at)}
             </div>
           )}
           {answeredNo && (
             <div className="mt-1.5 text-xs text-amber-800 bg-amber-100/60 rounded px-2 py-1">
               <span className="font-semibold">No</span> · answered by {task.completed_by?.split('@')[0]}{' '}
-              {task.completed_at && (<>· {fmt.date(task.completed_at?.slice(0, 10))} {task.completed_at?.slice(11, 16)}</>)}
+              {task.completed_at && (<>· {fmt.date(task.completed_at?.slice(0, 10))} {fmt.time(task.completed_at)}</>)}
               {task.followup_count != null && (
                 <div className="mt-0.5">
                   <span className="text-amber-900/70">{task.followup_prompt || 'How many?'}</span>{' '}

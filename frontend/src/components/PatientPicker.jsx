@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../utils/api'
 
@@ -15,6 +15,26 @@ import api from '../utils/api'
 export default function PatientPicker({ value, onChange, disabled }) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const ref = useRef(null)
+
+  // Close on outside click + Escape. The picker used to stay open
+  // forever, swallowing keystrokes and obscuring the page underneath.
+  // (Fable UX critique.)
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    }
+    function handleEsc(e) {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleClick)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [open])
 
   const { data: current } = useQuery({
     queryKey: ['patient', value],
@@ -41,7 +61,7 @@ export default function PatientPicker({ value, onChange, disabled }) {
     : (value ? 'Loading…' : '— no patient —')
 
   return (
-    <div className="relative">
+    <div className="relative" ref={ref}>
       <button
         type="button"
         disabled={disabled}

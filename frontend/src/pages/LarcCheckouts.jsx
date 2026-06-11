@@ -55,7 +55,7 @@ function PendingRow({ c, qc }) {
           </div>
           <div className="text-[11px] text-gray-500 mt-0.5">
             Requested by {c.requested_by?.split('@')[0]} at {fmt.date(c.requested_at.slice(0,10))}{' '}
-            {c.requested_at.slice(11, 16)}
+            {fmt.time(c.requested_at)}
             {c.given_to && <> · giving to {c.given_to}</>}
           </div>
         </div>

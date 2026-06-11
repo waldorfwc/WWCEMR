@@ -109,6 +109,11 @@ export default function AdminPermissions() {
     })),
   })
 
+  // Banner for the worst possible UX failure mode on a permission grid:
+  // a silent failure where the office manager believes she granted access
+  // and the MA still can't see the page. (Fable UX critique.)
+  const [mutError, setMutError] = useState(null)
+
   // ─── Mutations ──────────────────────────────────────────────────────
   const setUserTier = useMutation({
     mutationFn: ({ email, moduleSlug, tier }) =>
@@ -116,7 +121,12 @@ export default function AdminPermissions() {
               { tier }).then(r => r.data),
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['user-tiers', vars.email] })
+      setMutError(null)
     },
+    onError: (e, vars) => setMutError({
+      kind: 'user', email: vars.email,
+      msg: e?.response?.data?.detail || e.message || 'Save failed',
+    }),
   })
   const setGroupTier = useMutation({
     mutationFn: ({ groupId, moduleSlug, tier }) =>
@@ -126,7 +136,12 @@ export default function AdminPermissions() {
       qc.invalidateQueries({ queryKey: ['group-tiers', vars.groupId] })
       // user tiers may resolve through this group, invalidate them all
       qc.invalidateQueries({ queryKey: ['user-tiers'] })
+      setMutError(null)
     },
+    onError: (e, vars) => setMutError({
+      kind: 'group', groupId: vars.groupId,
+      msg: e?.response?.data?.detail || e.message || 'Save failed',
+    }),
   })
 
   // ─── Derived: list of {subject, tierForModule} for the selected mod ─
@@ -264,6 +279,24 @@ export default function AdminPermissions() {
 
       {creatingGroup && (
         <CreateGroupCard onClose={() => setCreatingGroup(false)} />
+      )}
+
+      {mutError && (
+        <div className="card bg-red-50 border-red-200 text-sm flex items-start gap-3">
+          <div className="text-red-700 font-medium flex-1">
+            Couldn't save permission change
+            <div className="text-xs text-red-600 mt-1 font-normal">
+              {mutError.kind === 'user'
+                ? <>For user <span className="font-mono">{mutError.email}</span>: {mutError.msg}</>
+                : <>For a group: {mutError.msg}</>}
+            </div>
+            <div className="text-xs text-red-600 mt-1 font-normal">
+              The cell may have reverted — try again, and if it keeps failing, ping engineering.
+            </div>
+          </div>
+          <button className="text-red-400 hover:text-red-700"
+                  onClick={() => setMutError(null)}>×</button>
+        </div>
       )}
 
       <div className="card p-0 overflow-hidden">

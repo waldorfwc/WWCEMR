@@ -111,7 +111,7 @@ export default function ManagerDashboard() {
               <div className="text-sm font-medium text-gray-900">{it.task}</div>
               <div className="text-xs text-gray-500">
                 <strong>{it.owner.split('@')[0]}</strong> · {fmt.date(it.due_date)}
-                {it.answered_at && <> · answered {it.answered_at.slice(11, 16)}</>}
+                {it.answered_at && <> · answered {fmt.time(it.answered_at)}</>}
               </div>
               {it.followup_count != null && (
                 <div className="text-xs mt-1 text-amber-800 bg-amber-50 rounded px-2 py-1 inline-block">
@@ -140,7 +140,7 @@ export default function ManagerDashboard() {
               <div className="text-sm font-medium text-gray-900">{it.task}</div>
               <div className="text-xs text-gray-500">
                 <strong>{it.owner.split('@')[0]}</strong> · due {fmt.date(it.due_date)}
-                {it.due_at && <> at {it.due_at.slice(11, 16)}</>}
+                {it.due_at && <> at {fmt.time(it.due_at)}</>}
                 <span className="text-red-600 ml-2">· {it.hours_late}h late</span>
               </div>
             </div>
