@@ -275,6 +275,33 @@ def _hhmm(s: str) -> _time:
     return _time(int(h), int(m))
 
 
+@router.post("/fix-imported-confirmed-status")
+def fix_imported_confirmed_status(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_super_admin()),
+):
+    """One-shot backfill: bump any candidate_imported surgery that
+    actually has a scheduled_date + scheduled_start_time but status is
+    still 'incomplete' to 'confirmed'. Pre-fix bulk imports left a few
+    rows in this state because book_slot only auto-confirms from 'new'
+    or 'in_progress', not from 'incomplete'."""
+    rows = (db.query(Surgery)
+              .filter(Surgery.status == "incomplete",
+                      Surgery.scheduled_date.isnot(None),
+                      Surgery.scheduled_start_time.isnot(None))
+              .all())
+    out = []
+    for s in rows:
+        s.status = "confirmed"
+        out.append({
+            "chart_number":  s.chart_number,
+            "patient_name":  s.patient_name,
+            "scheduled":     f"{s.scheduled_date} {s.scheduled_start_time}",
+        })
+    db.commit()
+    return {"fixed": len(out), "rows": out}
+
+
 @router.post("/silent-schedule")
 def silent_schedule(payload: _SilentScheduleIn,
                      db: Session = Depends(get_db),

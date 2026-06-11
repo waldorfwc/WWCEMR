@@ -339,6 +339,15 @@ def import_rows(db: Session, rows: list[dict], *,
                     "reason":       str(exc),
                 })
                 continue
+            # book_slot only auto-confirms when prior status was 'new' or
+            # 'in_progress' — but the importer created this row as
+            # 'incomplete', so the status stayed 'incomplete' and the
+            # surgery dropped out of the calendar/list filters
+            # (`Surgery.status.in_(("new","in_progress","confirmed"))`).
+            # Explicitly bump to 'confirmed' here since we just booked a
+            # real slot for this row.
+            if s.status == "incomplete":
+                s.status = "confirmed"
             db.add(SurgeryNote(
                 surgery_id=s.id,
                 created_by=by_email,
