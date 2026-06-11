@@ -30,24 +30,41 @@ router = APIRouter(prefix="/admin/cleanup", tags=["admin-cleanup"])
 
 
 # Sentinel prefix QA used to push test rows to the end of alphabetical lists.
-_TEST_PREFIXES = ("zz",)
+_TEST_NAME_PREFIXES = ("zz",)
 # Names commonly typed during development / audit runs.
-_TEST_EXACT = ("audit", "run", "test", "demo", "sample", "dummy", "fake")
+_TEST_EXACT = ("audit", "run", "test", "demo", "sample", "dummy", "fake",
+                "testpatient", "walkthru", "walkthru2", "uitest", "testcard",
+                "verify", "reserve", "reception")
+# Charts in this prefix range are reserved for QA/test (never minted for
+# real patients).
+_TEST_CHART_PREFIXES = ("zzz-", "zzz_", "wwc-recv-test")
 
 
-def _is_test(col):
-    """Build an OR expression: column matches any test pattern (case-insensitive)."""
+def _is_test_name(col):
+    """Build an OR expression: column matches any test name pattern (case-insensitive)."""
     lower = func.lower(func.coalesce(col, ""))
-    conds = [lower.like(f"{pfx}%") for pfx in _TEST_PREFIXES]
+    conds = [lower.like(f"{pfx}%") for pfx in _TEST_NAME_PREFIXES]
     conds += [lower == name for name in _TEST_EXACT]
     return or_(*conds)
 
 
+def _is_test_chart(col):
+    """SQL expression: chart_number starts with one of the QA-reserved prefixes."""
+    lower = func.lower(func.coalesce(col, ""))
+    return or_(*[lower.like(f"{pfx}%") for pfx in _TEST_CHART_PREFIXES])
+
+
+def _is_test(col):
+    """Back-compat alias — name-only test match. Use _is_test_name / _is_test_chart."""
+    return _is_test_name(col)
+
+
 def _assignment_match(a: LarcAssignment):
     return or_(
-        _is_test(a.patient_first_name),
-        _is_test(a.patient_last_name),
-        _is_test(a.patient_name),
+        _is_test_name(a.patient_first_name),
+        _is_test_name(a.patient_last_name),
+        _is_test_name(a.patient_name),
+        _is_test_chart(a.chart_number),
     )
 
 
@@ -59,11 +76,17 @@ def _scan(db: Session) -> dict[str, Any]:
                      .order_by(LarcAssignment.created_at.desc())
                      .all())
     devices = (db.query(LarcDevice)
-                 .filter(_is_test(LarcDevice.purchasing_patient_name))
+                 .filter(or_(
+                     _is_test_name(LarcDevice.purchasing_patient_name),
+                     _is_test_chart(LarcDevice.purchasing_patient_chart),
+                 ))
                  .order_by(LarcDevice.created_at.desc())
                  .all())
     owed = (db.query(LarcOwedPatient)
-              .filter(_is_test(LarcOwedPatient.patient_name))
+              .filter(or_(
+                  _is_test_name(LarcOwedPatient.patient_name),
+                  _is_test_chart(LarcOwedPatient.chart_number),
+              ))
               .all())
 
     return {
@@ -146,7 +169,10 @@ def delete_test_patients(
     # Null out the purchasing-patient association on devices that point at
     # a test patient. The device itself stays — it may be sittable inventory.
     devices = (db.query(LarcDevice)
-                 .filter(_is_test(LarcDevice.purchasing_patient_name))
+                 .filter(or_(
+                     _is_test_name(LarcDevice.purchasing_patient_name),
+                     _is_test_chart(LarcDevice.purchasing_patient_chart),
+                 ))
                  .all())
     for d in devices:
         d.purchasing_patient_name = None
@@ -154,7 +180,10 @@ def delete_test_patients(
 
     # Hard-delete owed rows (they're derived; no audit value)
     owed = (db.query(LarcOwedPatient)
-              .filter(_is_test(LarcOwedPatient.patient_name))
+              .filter(or_(
+                  _is_test_name(LarcOwedPatient.patient_name),
+                  _is_test_chart(LarcOwedPatient.chart_number),
+              ))
               .all())
     owed_ids = [str(o.id) for o in owed]
     for o in owed:

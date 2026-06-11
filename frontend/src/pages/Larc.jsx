@@ -115,8 +115,8 @@ export default function Larc() {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
-        <div>
+      <div className="flex items-baseline justify-between mb-4 flex-wrap gap-y-3 gap-x-2">
+        <div className="min-w-0">
           <h1 className="page-title flex items-center gap-2">
             <Box size={22} className="text-plum-700" />
             Device Tracking
@@ -127,7 +127,7 @@ export default function Larc() {
             {' '}(NovaSure, Bensta)
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Link to="/larc/devices" className="btn-secondary text-sm flex items-center gap-1">
             <Package size={13} /> Devices
           </Link>
