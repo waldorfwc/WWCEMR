@@ -42,7 +42,7 @@
            hover:border-plum-300;
   }
 
-  /* Badges — colors unchanged, radius matches chips */
+  /* Badges — claim-status pills (kept for back-compat with statusColors map). */
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
   }
@@ -52,6 +52,19 @@
   .badge-pending    { @apply badge bg-gray-100 text-gray-800; }
   .badge-appealing  { @apply badge bg-blue-100 text-blue-800; }
   .badge-written_off{ @apply badge bg-plum-100 text-plum-900; }
+
+  /* Chips — pill-shaped status/filter/tag primitive. Prefer this over hand-
+     rolled `inline-flex items-center gap-1 text-[11px] bg-plum-50 …` patterns
+     so new code stays visually consistent. */
+  .chip {
+    @apply inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border;
+  }
+  .chip-plum    { @apply chip bg-plum-50   border-plum-200   text-plum-700; }
+  .chip-neutral { @apply chip bg-gray-50   border-gray-200   text-gray-700; }
+  .chip-success { @apply chip bg-green-50  border-green-200  text-green-800; }
+  .chip-warn    { @apply chip bg-yellow-50 border-yellow-200 text-yellow-800; }
+  .chip-danger  { @apply chip bg-red-50    border-red-200    text-red-800; }
+  .chip-info    { @apply chip bg-blue-50   border-blue-200   text-blue-800; }
 
   /* Tables */
   .table-th {

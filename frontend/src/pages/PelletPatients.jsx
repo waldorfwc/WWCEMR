@@ -549,7 +549,7 @@ function CalendarVisitCard({ patient, onOpen }) {
             </span>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-1 text-[9px] text-gray-600 mt-0.5">
+        <div className="flex flex-wrap items-center gap-1 text-[11px] text-gray-600 mt-0.5">
           {/* Mammogram — meets ready requirement (acceptable result + within 1yr of visit) */}
           <span className={`px-1 rounded ${
             mammoOk ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'

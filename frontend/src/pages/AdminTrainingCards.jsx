@@ -175,7 +175,7 @@ function CoverageStat({ label, value, accent, onClick, active }) {
   const inner = (
     <div className={`px-2 ${onClick ? 'cursor-pointer hover:bg-plum-50 rounded' : ''} ${active ? 'bg-plum-50 rounded' : ''}`}
          onClick={onClick}>
-      <div className="text-[9px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
       <div className={`text-[18px] font-semibold leading-tight ${accent || 'text-ink'}`}>{value}</div>
     </div>
   )

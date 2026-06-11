@@ -200,7 +200,7 @@ function IntakeSection({ docs, onFax }) {
                   <div className="text-[10px] text-gray-700 font-medium truncate" title={doc.filename}>
                     {doc.filename}
                   </div>
-                  <div className="text-[9px] text-gray-400 flex items-center gap-1">
+                  <div className="text-[11px] text-gray-400 flex items-center gap-1">
                     <span className="uppercase">{doc.file_type}</span>
                     {doc.file_size_kb > 0 && <span>· {doc.file_size_kb} KB</span>}
                   </div>

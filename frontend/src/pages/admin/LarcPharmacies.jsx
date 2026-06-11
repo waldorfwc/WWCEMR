@@ -58,7 +58,7 @@ export default function LarcPharmacies() {
 
       <div className="card p-0 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-stone-50 border-b border-stone-200 text-left">
+          <thead className="bg-plum-50 border-b border-plum-200 text-left">
             <tr>
               <th className="px-3 py-2 font-medium">Name</th>
               <th className="px-3 py-2 font-medium">Fax</th>
@@ -78,7 +78,7 @@ export default function LarcPharmacies() {
               </td></tr>
             )}
             {(pharms || []).map(p => (
-              <tr key={p.id} className="border-t border-stone-100 hover:bg-stone-50">
+              <tr key={p.id} className="border-t border-plum-100 hover:bg-plum-50">
                 <td className="px-3 py-2">
                   <div className="font-medium text-gray-800">{p.name}</div>
                   {p.notes && (

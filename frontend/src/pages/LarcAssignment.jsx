@@ -413,7 +413,7 @@ function DollarInput({ label, value, onChange, hint }) {
                 value={value}
                 onChange={e => onChange(e.target.value)} />
       </div>
-      {hint && <div className="text-[9px] text-gray-400 mt-0.5">{hint}</div>}
+      {hint && <div className="text-[11px] text-gray-400 mt-0.5">{hint}</div>}
     </div>
   )
 }
@@ -441,9 +441,9 @@ function Stat({ label, val, sub, big, tone }) {
   const tones = { green: 'text-green-700', amber: 'text-amber-700' }
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
       <div className={`${big ? 'text-lg' : 'text-sm'} font-bold ${tones[tone] || 'text-gray-800'}`}>{val}</div>
-      {sub && <div className="text-[9px] text-gray-500">{sub}</div>}
+      {sub && <div className="text-[11px] text-gray-500">{sub}</div>}
     </div>
   )
 }
@@ -1548,12 +1548,12 @@ function ReplacementChainCard({ a }) {
         {isDefective && !isReturned && (
           <div className="grid grid-cols-3 gap-2 text-[12px]">
             <div>
-              <div className="text-[9px] text-gray-500">RMA #</div>
+              <div className="text-[11px] text-gray-500">RMA #</div>
               <input className="input text-[11px] w-full font-mono" value={rma}
                      onChange={e => setRma(e.target.value)} />
             </div>
             <div>
-              <div className="text-[9px] text-gray-500">Method</div>
+              <div className="text-[11px] text-gray-500">Method</div>
               <select className="input text-[11px] w-full" value={method}
                       onChange={e => setMethod(e.target.value)}>
                 <option value="fedex">FedEx</option>
@@ -1563,7 +1563,7 @@ function ReplacementChainCard({ a }) {
               </select>
             </div>
             <div>
-              <div className="text-[9px] text-gray-500">Tracking #</div>
+              <div className="text-[11px] text-gray-500">Tracking #</div>
               <input className="input text-[11px] w-full font-mono" value={tracking}
                      onChange={e => setTracking(e.target.value)} />
             </div>
@@ -1586,33 +1586,33 @@ function ReplacementChainCard({ a }) {
           </div>
           <div className="grid grid-cols-2 gap-2 text-[12px]">
             <div>
-              <div className="text-[9px] text-gray-500">New label ID *</div>
+              <div className="text-[11px] text-gray-500">New label ID *</div>
               <input className="input text-[11px] w-full font-mono" required
                      placeholder="WWC0700" value={newOurId}
                      onChange={e => setNewOurId(e.target.value)} />
             </div>
             <div>
-              <div className="text-[9px] text-gray-500">New lot #</div>
+              <div className="text-[11px] text-gray-500">New lot #</div>
               <input className="input text-[11px] w-full font-mono" value={newLot}
                      onChange={e => setNewLot(e.target.value)} />
             </div>
             <div>
-              <div className="text-[9px] text-gray-500">New serial #</div>
+              <div className="text-[11px] text-gray-500">New serial #</div>
               <input className="input text-[11px] w-full font-mono" value={newSerial}
                      onChange={e => setNewSerial(e.target.value)} />
             </div>
             <div>
-              <div className="text-[9px] text-gray-500">New expiration</div>
+              <div className="text-[11px] text-gray-500">New expiration</div>
               <input type="date" className="input text-[11px] w-full" value={newExp}
                      onChange={e => setNewExp(e.target.value)} />
             </div>
             <div>
-              <div className="text-[9px] text-gray-500">Price ($) — usually $0 for replacement</div>
+              <div className="text-[11px] text-gray-500">Price ($) — usually $0 for replacement</div>
               <input type="number" step="0.01" className="input text-[11px] w-full font-mono"
                      value={newPrice} onChange={e => setNewPrice(e.target.value)} />
             </div>
             <div>
-              <div className="text-[9px] text-gray-500">Location</div>
+              <div className="text-[11px] text-gray-500">Location</div>
               <select className="input text-[11px] w-full" value={newLocation}
                       onChange={e => setNewLocation(e.target.value)}>
                 <option value="white_plains">White Plains</option>
@@ -1641,7 +1641,7 @@ function ReplacementChainCard({ a }) {
 function Field({ label, children }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
       <div className="text-gray-800">{children}</div>
     </div>
   )

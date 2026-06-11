@@ -212,7 +212,7 @@ export default function AdminTraining() {
                              title={`${u.display_name || ''}\n${u.email}`}>
                           {display}
                         </div>
-                        <div className="text-[9px] text-muted mt-0.5">
+                        <div className="text-[11px] text-muted mt-0.5">
                           {cov.active}/{cov.total}
                         </div>
                       </div>

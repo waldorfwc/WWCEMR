@@ -330,7 +330,7 @@ function ChangeOwnershipModal({ device, onClose, onSaved }) {
 function Field({ label, children }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
       <div className="text-gray-800">{children}</div>
     </div>
   )

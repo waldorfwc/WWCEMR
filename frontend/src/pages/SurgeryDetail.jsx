@@ -1304,7 +1304,7 @@ function NotesPanel({ surgery }) {
       {/* Legacy notes (pre-log field) preserved here so nothing is hidden */}
       {surgery.notes && (
         <div className="mb-2 text-[11px] text-gray-700 italic border-l-2 border-gray-200 pl-2 whitespace-pre-wrap">
-          <div className="text-[9px] uppercase tracking-wide text-gray-400 not-italic mb-0.5">
+          <div className="text-[11px] uppercase tracking-wide text-gray-400 not-italic mb-0.5">
             Legacy note
           </div>
           {surgery.notes}
@@ -1491,7 +1491,7 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
 function Field({ label, children }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
       <div className="text-gray-800">{children}</div>
     </div>
   )
@@ -1958,7 +1958,7 @@ function PreopDateCell({ s, onPatch }) {
             ? <span className="inline-flex items-center gap-1">
                 {fmt.date(s.preop_date)}
                 {s.preop_needs_repeat && (
-                  <span className="text-[9px] font-semibold uppercase bg-red-100 text-red-700 px-1 py-0.5 rounded">
+                  <span className="text-[11px] font-semibold uppercase bg-red-100 text-red-700 px-1 py-0.5 rounded">
                     needs repeat (&gt;180d)
                   </span>
                 )}
@@ -2106,7 +2106,7 @@ function AuthSummaryCell({ s }) {
     <div>
       <span className="capitalize">{s.auth_status?.replace(/_/g, ' ') || '—'}</span>
       {s.auth_number && <div className="text-[10px] text-gray-500 font-mono">{s.auth_number}</div>}
-      <div className="text-[9px] text-gray-400 italic">edit on Prior Auth card below</div>
+      <div className="text-[11px] text-gray-400 italic">edit on Prior Auth card below</div>
     </div>
   )
 }
@@ -2121,7 +2121,7 @@ function PtResponsibilityCell({ s }) {
       {s.amount_paid && Number(s.amount_paid) > 0 && (
         <div className="text-[10px] text-green-700">paid ${s.amount_paid}</div>
       )}
-      <div className="text-[9px] text-gray-400 italic">edit on Benefits card below</div>
+      <div className="text-[11px] text-gray-400 italic">edit on Benefits card below</div>
     </div>
   )
 }
@@ -3703,7 +3703,7 @@ function PostOpApptsCardBody({ surgery }) {
                     : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
                 }`}
                 title={suggestedLoc === 'office' ? 'Suggested' : ''}>
-          Office{suggestedLoc === 'office' && <span className="text-[9px]"> ★</span>}
+          Office{suggestedLoc === 'office' && <span className="text-[11px]"> ★</span>}
         </button>
         <button type="button"
                 disabled={locked}
@@ -3716,7 +3716,7 @@ function PostOpApptsCardBody({ surgery }) {
                         : 'bg-white border-gray-200 text-gray-600 hover:border-plum-200'
                 }`}
                 title={locked ? 'Required in-person' : (suggestedLoc === 'telehealth' ? 'Suggested' : '')}>
-          Telehealth{!locked && suggestedLoc === 'telehealth' && <span className="text-[9px]"> ★</span>}
+          Telehealth{!locked && suggestedLoc === 'telehealth' && <span className="text-[11px]"> ★</span>}
         </button>
         {locked && (
           <span className="text-[10px] text-amber-700 italic">in-person required</span>
@@ -5033,7 +5033,7 @@ function ConsentPanel({ surgery }) {
                 <span className="font-medium flex-1">
                   {e.template_name || 'Unknown template'}
                   {e.is_supplemental && (
-                    <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>
+                    <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>
                   )}
                 </span>
                 <span className="text-[10px] uppercase tracking-wide font-medium">{e.status}</span>
@@ -5073,7 +5073,7 @@ function ConsentPanel({ surgery }) {
                   <div key={m.template_id} className="flex items-center gap-2">
                     <Check size={11} className="text-green-600" />
                     <span className="font-medium">{m.template_name}</span>
-                    {m.is_supplemental && <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>}
+                    {m.is_supplemental && <span className="text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>}
                     {m.warning && (
                       <span className="text-[10px] text-red-700">⚠️ {m.warning}</span>
                     )}
@@ -5509,7 +5509,7 @@ function DollarInput({ label, value, onChange, hint }) {
                 value={value}
                 onChange={e => onChange(e.target.value)} />
       </div>
-      {hint && <div className="text-[9px] text-gray-400 mt-0.5">{hint}</div>}
+      {hint && <div className="text-[11px] text-gray-400 mt-0.5">{hint}</div>}
     </div>
   )
 }
@@ -5540,9 +5540,9 @@ function Stat({ label, val, sub, big, tone }) {
   }
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide text-gray-400">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-400">{label}</div>
       <div className={`${big ? 'text-lg' : 'text-sm'} font-bold ${tones[tone] || 'text-gray-800'}`}>{val}</div>
-      {sub && <div className="text-[9px] text-gray-500">{sub}</div>}
+      {sub && <div className="text-[11px] text-gray-500">{sub}</div>}
     </div>
   )
 }

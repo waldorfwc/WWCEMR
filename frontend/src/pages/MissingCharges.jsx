@@ -951,7 +951,7 @@ function ProviderMappingsPanel({ mapData, workforce, loading, error, onRefresh }
                         <td className="py-1 pr-2 truncate">
                           {m.provider_name}
                           {m.is_ignored && (
-                            <span className="ml-1 text-[9px] uppercase bg-gray-200 text-gray-600 px-1 rounded">ignored</span>
+                            <span className="ml-1 text-[11px] uppercase bg-gray-200 text-gray-600 px-1 rounded">ignored</span>
                           )}
                         </td>
                         <td className="py-1 pr-2">

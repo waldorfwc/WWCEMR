@@ -124,7 +124,7 @@ export default function Pellets() {
                      className="flex items-baseline justify-between bg-amber-50 px-2 py-1 rounded">
                   <span>
                     <strong>{r.label}</strong>
-                    {r.is_controlled && <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>}
+                    {r.is_controlled && <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>}
                     {r.location && (
                       <span className="ml-1 text-[10px] uppercase px-1 rounded bg-plum-100 text-plum-800">
                         @ {LOC_LABEL[r.location] || r.location}
@@ -260,7 +260,7 @@ export default function Pellets() {
                 <td className="table-td">
                   {t.label}
                   {t.is_controlled && (
-                    <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+                    <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
                   )}
                 </td>
                 <td className="table-td text-right font-mono text-[11px]">
@@ -539,13 +539,13 @@ function LotsCard({ types = [], onQuickTransfer }) {
             }`}>
               {g.dose_type_label}
               {g.is_controlled && (
-                <span className="ml-2 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+                <span className="ml-2 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
               )}
               <span className="ml-2 text-[11px] text-gray-500 font-normal">
                 {g.lots.length} lot{g.lots.length === 1 ? '' : 's'}
               </span>
               {lowStock && (
-                <span className="ml-2 text-[9px] uppercase px-1 py-[1px] rounded bg-amber-100 text-amber-800">
+                <span className="ml-2 text-[11px] uppercase px-1 py-[1px] rounded bg-amber-100 text-amber-800">
                   reorder
                 </span>
               )}
@@ -1072,7 +1072,7 @@ function TransferRow({ t }) {
           <strong>{t.doses}</strong> doses ·{' '}
           {t.dose_label && <span className="font-medium">{t.dose_label}</span>}
           {t.is_controlled && (
-            <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+            <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
           )}
           {' · '}{LOC_LABEL[t.from_location]} → {LOC_LABEL[t.to_location]}
           <span className={`text-[10px] ml-1 ${t.is_stale ? 'text-red-700 font-semibold' : 'text-gray-500'}`}>
@@ -1686,7 +1686,7 @@ function OrderDetailDrawer({ orderId, types, onClose, onReceive }) {
                 <td className="px-2 py-1">
                   {l.dose_label}
                   {l.is_controlled && (
-                    <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+                    <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
                   )}
                 </td>
                 <td className="px-2 py-1 text-right">{l.pack_count}× {l.pack_size}</td>

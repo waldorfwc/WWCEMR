@@ -767,7 +767,7 @@ function RecallDrawer({ recallId, onClose }) {
 function Field({ label, val }) {
   return (
     <div>
-      <div className="text-[9px] text-gray-400 uppercase tracking-wide">{label}</div>
+      <div className="text-[11px] text-gray-400 uppercase tracking-wide">{label}</div>
       <div className="text-gray-800 font-medium truncate">{val}</div>
     </div>
   )
@@ -808,13 +808,13 @@ function WWEHistorySection({ total, latest, expectedNext, nextScheduled, visits 
         <Field label="Total WWE visits" val={total} />
         <Field label="Most recent WWE" val={latest ? fmt.date(latest) : 'none on file'} />
         <div>
-          <div className="text-[9px] text-gray-400 uppercase tracking-wide">
+          <div className="text-[11px] text-gray-400 uppercase tracking-wide">
             {nextScheduled ? 'Next scheduled' : 'Expected next'}
           </div>
           <div className={`font-medium truncate ${expectedTone} flex items-center gap-1`}>
             {expectedNext ? fmt.date(expectedNext) : '—'}
             {nextScheduled && (
-              <span className="text-[9px] uppercase tracking-wide bg-green-100 text-green-800 px-1 py-0.5 rounded">booked</span>
+              <span className="text-[11px] uppercase tracking-wide bg-green-100 text-green-800 px-1 py-0.5 rounded">booked</span>
             )}
           </div>
         </div>
@@ -834,13 +834,13 @@ function WWEHistorySection({ total, latest, expectedNext, nextScheduled, visits 
                 <span>{v.procedure_code}</span>
                 <span className="text-gray-400">· {v.source}</span>
                 {v.is_future && (
-                  <span className="bg-green-100 text-green-800 px-1 rounded text-[9px]">scheduled</span>
+                  <span className="bg-green-100 text-green-800 px-1 rounded text-[11px]">scheduled</span>
                 )}
                 {v.status === 'cancelled' && (
-                  <span className="bg-red-100 text-red-700 px-1 rounded text-[9px]">cancelled</span>
+                  <span className="bg-red-100 text-red-700 px-1 rounded text-[11px]">cancelled</span>
                 )}
                 {v.status === 'noshow' && (
-                  <span className="bg-amber-100 text-amber-800 px-1 rounded text-[9px]">no-show</span>
+                  <span className="bg-amber-100 text-amber-800 px-1 rounded text-[11px]">no-show</span>
                 )}
               </span>
             </li>

@@ -234,7 +234,7 @@ export default function LarcDevices() {
                       onClick={() => navigate(`/larc/devices/${d.id}`)}>
                     {d.device_type_name}
                     {d.category === 'office_procedure' && (
-                      <span className="ml-1 text-[9px] bg-teal-100 text-teal-700 px-1 rounded">OP</span>
+                      <span className="ml-1 text-[11px] bg-teal-100 text-teal-700 px-1 rounded">OP</span>
                     )}
                   </td>
                   <td className="table-td font-mono text-[11px]">{d.manufacturer_lot || '—'}</td>

@@ -430,7 +430,7 @@ function CardThumbnail({ doc }) {
       <div className="px-2 py-1.5 border-t border-gray-100">
         <div className="text-[10px] text-gray-500 truncate">{doc.doc_category}</div>
         {yearLabel && (
-          <div className="text-[9px] font-mono text-gray-400 mt-0.5">{yearLabel}</div>
+          <div className="text-[11px] font-mono text-gray-400 mt-0.5">{yearLabel}</div>
         )}
       </div>
     </a>
@@ -496,7 +496,7 @@ function NotesCard({ claim, qc, claimId }) {
             <div key={n.id} className="border-l-2 border-primary-200 pl-3 py-0.5">
               <div className="flex items-baseline gap-2 text-[11px]">
                 <span className="font-medium text-gray-800">{(n.user || 'system').split('@')[0]}</span>
-                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[9px] uppercase tracking-wide">
+                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[11px] uppercase tracking-wide">
                   {n.action_type.replace(/_/g, ' ')}
                 </span>
                 <span className="text-gray-400 ml-auto font-mono">{formatStamp(n.created_at)}</span>
@@ -1137,12 +1137,12 @@ function LineSettleForm({ claim, line, qc, onClose }) {
           </Labeled>
         </div>
         <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-2 text-xs">
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[9px]">Charge</div><div className="font-mono">{fmt.currency(charge)}</div></div>
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[9px]">Pt Resp (auto)</div><div className="font-mono text-orange-600">{fmt.currency(ptResp)}</div></div>
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[9px]">Ins Paid {insPaidOverride === '' ? '(auto)' : '(override)'}</div><div className="font-mono text-green-700">{fmt.currency(insPaidValue)}</div></div>
-          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[9px]">Pt Balance (auto)</div><div className="font-mono text-red-600">{fmt.currency(ptBalance)}</div></div>
+          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Charge</div><div className="font-mono">{fmt.currency(charge)}</div></div>
+          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Pt Resp (auto)</div><div className="font-mono text-orange-600">{fmt.currency(ptResp)}</div></div>
+          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Ins Paid {insPaidOverride === '' ? '(auto)' : '(override)'}</div><div className="font-mono text-green-700">{fmt.currency(insPaidValue)}</div></div>
+          <div className="bg-white border border-gray-100 rounded p-1.5"><div className="text-gray-400 uppercase text-[11px]">Pt Balance (auto)</div><div className="font-mono text-red-600">{fmt.currency(ptBalance)}</div></div>
           <div className="col-span-2 bg-white border border-gray-100 rounded p-1.5">
-            <div className="text-gray-400 uppercase text-[9px]">Balance Check</div>
+            <div className="text-gray-400 uppercase text-[11px]">Balance Check</div>
             <div className={`text-xs ${balanced ? 'text-green-700 font-medium' : (allowedNum > 0 || contractualNum > 0 ? 'text-amber-700' : 'text-gray-400')}`}>
               {balanced ? '✓ Balanced' : (allowedNum > 0 || contractualNum > 0)
                 ? `⚠ Off by ${fmt.currency(Math.abs(charge - sum))}`

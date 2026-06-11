@@ -214,7 +214,7 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
             </div>
             <div>
               <label className="text-[10px] uppercase text-gray-500 block mb-1">
-                Reorder ≤ <span className="text-[9px] text-gray-400">(in-stock only)</span>
+                Reorder ≤ <span className="text-[11px] text-gray-400">(in-stock only)</span>
               </label>
               <input type="number" min="0" className="input text-sm w-full"
                      value={form.reorder_threshold}
@@ -223,7 +223,7 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
             </div>
             <div>
               <label className="text-[10px] uppercase text-gray-500 block mb-1">
-                Reorder qty <span className="text-[9px] text-gray-400">(how many to order)</span>
+                Reorder qty <span className="text-[11px] text-gray-400">(how many to order)</span>
               </label>
               <input type="number" min="0" className="input text-sm w-full"
                      value={form.reorder_quantity}

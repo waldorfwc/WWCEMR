@@ -65,7 +65,7 @@ export default function LarcPharmacies() {
                   ) : (
                     <div className="flex flex-wrap gap-1">
                       {p.accepts_insurance.map((i, ix) => (
-                        <span key={ix} className="text-[9px] bg-gray-100 px-1 py-0.5 rounded">{i}</span>
+                        <span key={ix} className="text-[11px] bg-gray-100 px-1 py-0.5 rounded">{i}</span>
                       ))}
                     </div>
                   )}

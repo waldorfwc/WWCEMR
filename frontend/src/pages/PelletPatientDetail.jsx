@@ -573,7 +573,7 @@ function MammoHistoryCard({ patient, qc, onAdd }) {
                 <span className="font-medium">{fmt.date(m.mammo_date)}</span>
                 <span className="ml-2">{m.result}</span>
                 {idx === 0 && (
-                  <span className="ml-1 text-[9px] bg-green-100 text-green-700 px-1 rounded">latest</span>
+                  <span className="ml-1 text-[11px] bg-green-100 text-green-700 px-1 rounded">latest</span>
                 )}
                 {m.facility_name && (
                   <div className="text-[10px] text-gray-600">
@@ -657,7 +657,7 @@ function LabsHistoryCard({ patient, qc, onAdd }) {
                   {' · '}E2 {l.estradiol || '?'} <span className="text-gray-400">pg/mL</span>
                 </span>
                 {idx === 0 && (
-                  <span className="ml-1 text-[9px] bg-green-100 text-green-700 px-1 rounded">latest</span>
+                  <span className="ml-1 text-[11px] bg-green-100 text-green-700 px-1 rounded">latest</span>
                 )}
                 {l.notes && (
                   <div className="text-[10px] text-gray-500 italic">{l.notes}</div>
@@ -1404,7 +1404,7 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
                   <span className="font-medium">{d.quantity}×</span>
                   <span>{d.dose_label}</span>
                   {d.is_controlled && (
-                    <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+                    <span className="text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
                   )}
                   {d.qualgen_lot && (
                     <span className="text-[10px] text-gray-500 font-mono">lot {d.qualgen_lot}</span>
@@ -1416,7 +1416,7 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-[9px] uppercase px-1.5 py-0.5 rounded ${DOSE_STATUS_TONES[d.status] || ''}`}>
+                  <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${DOSE_STATUS_TONES[d.status] || ''}`}>
                     {d.status}
                   </span>
                   {isSwappable && (
@@ -2304,10 +2304,10 @@ function DoseLineGroup({ label, color, doses, onDel, canDel, managerOnly }) {
             <span className="ml-0.5 text-[8px] bg-amber-100 text-amber-700 px-0.5 rounded">SCH III</span>
           )}
           {d.qualgen_lot && (
-            <span className="ml-0.5 text-[9px] text-gray-500 font-mono">lot {d.qualgen_lot}</span>
+            <span className="ml-0.5 text-[11px] text-gray-500 font-mono">lot {d.qualgen_lot}</span>
           )}
           {d.lot_expiration_date && (
-            <span className="ml-0.5 text-[9px] text-gray-400">
+            <span className="ml-0.5 text-[11px] text-gray-400">
               exp {fmt.date(d.lot_expiration_date)}
             </span>
           )}
@@ -2838,7 +2838,7 @@ function BagFillDrawer({ visit, qc, onClose }) {
                 <span>
                   {d.quantity}× {d.dose_label}
                   {d.is_controlled && (
-                    <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+                    <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
                   )}
                 </span>
               </div>

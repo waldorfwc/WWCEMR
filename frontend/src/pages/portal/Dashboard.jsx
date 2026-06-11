@@ -319,7 +319,7 @@ function ActionCard({ icon: Icon, tone, title, meta, body, cta, urgent, disabled
     <div className={`relative bg-white rounded-2xl border ${t.ring} p-6 shadow-sm
                       hover:shadow-md transition group overflow-hidden h-full`}>
       {urgent && (
-        <div className="absolute top-4 right-4 text-[9px] uppercase tracking-[0.18em]
+        <div className="absolute top-4 right-4 text-[11px] uppercase tracking-[0.18em]
                           text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full font-semibold border border-rose-200">
           due now
         </div>

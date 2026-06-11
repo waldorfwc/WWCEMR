@@ -5,25 +5,40 @@ export default {
     extend: {
       colors: {
         // Plum scale — sampled from the WWC Gynecology & Aesthetics logo.
-        // `primary` kept as an alias so existing `text-primary-500` etc. still work.
+        // Full 50–900 scale. The 200/500/800 shades were previously
+        // referenced from components but undefined, so the page's
+        // most attention-grabbing moments (e.g. PainPointPanel
+        // highlight, LarcCheckoutCard ready state) silently rendered
+        // unstyled. (Fable UX critique.)
         plum: {
           50:  '#FBF6FC',
           100: '#F3E4F6',
+          200: '#E4C7E8',
           300: '#D4AED9',
           400: '#A876AB',
+          500: '#91609B',
           600: '#7B4A8A',
           700: '#6A3876',
+          800: '#572D60',
           900: '#4A2552',
           ink: '#3D1F45',
+          tinted: '#F3E4F6',  // alias for plum.100 (a few callers)
         },
+        // `primary` is the legacy palette — kept so callers like
+        // `text-primary-500` (which historically rendered the dark
+        // plum-700 hex) don't visibly shift color today. New code
+        // should prefer plum-* directly; primary-500 ≠ plum-500 by
+        // intentional historical drift.
         primary: {
           50:  '#FBF6FC',
           100: '#F3E4F6',
+          200: '#E4C7E8',
           300: '#D4AED9',
           400: '#A876AB',
-          500: '#6A3876',  // historical `primary-500` now maps to plum.700
+          500: '#6A3876',  // intentionally dark — historical primary-500
           600: '#7B4A8A',
           700: '#6A3876',
+          800: '#572D60',
           900: '#4A2552',
         },
         border: {

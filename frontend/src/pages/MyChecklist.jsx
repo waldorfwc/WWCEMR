@@ -1072,10 +1072,10 @@ function TaskRow2({ task, qc, onEdit, onAddSubtask }) {
             <span className={`text-[13px] font-medium ${task.status === 'closed' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
               {task.title}
             </span>
-            <span className={`text-[9px] uppercase tracking-wide px-1 rounded border ${PRIORITY_TONES[task.priority] || ''}`}>
+            <span className={`text-[11px] uppercase tracking-wide px-1 rounded border ${PRIORITY_TONES[task.priority] || ''}`}>
               {task.priority}
             </span>
-            <span className={`text-[9px] uppercase tracking-wide px-1 rounded ${STATUS_TONES[task.status] || ''}`}>
+            <span className={`text-[11px] uppercase tracking-wide px-1 rounded ${STATUS_TONES[task.status] || ''}`}>
               {STATUS_LABEL[task.status]}
             </span>
             {task.due_date && (
@@ -1202,7 +1202,7 @@ function SubtaskRow({ subtask, qc }) {
           {subtask.title}
         </span>
         {(subtask.assignees || []).filter(a => a !== me).length > 0 && (
-          <span className="text-[9px] text-blue-700"
+          <span className="text-[11px] text-blue-700"
                 title={`Assigned to ${(subtask.assignees || []).join(', ')}`}>
             → {(subtask.assignees || [])
                 .map(a => a.split('@')[0])
@@ -1352,7 +1352,7 @@ function TaskDrawer({ task, parent, onClose, qc }) {
               onChange={setAssignees}
               disabled={!isOwner} />
             {!isOwner && (
-              <div className="text-[9px] text-gray-400 mt-1">
+              <div className="text-[11px] text-gray-400 mt-1">
                 Only the task owner can change the assignees.
               </div>
             )}
@@ -1367,7 +1367,7 @@ function TaskDrawer({ task, parent, onClose, qc }) {
               onChange={setSharedWith}
               disabled={!isOwner} />
             {!isOwner && (
-              <div className="text-[9px] text-gray-400 mt-1">
+              <div className="text-[11px] text-gray-400 mt-1">
                 Only the task owner can change the sharing list.
               </div>
             )}

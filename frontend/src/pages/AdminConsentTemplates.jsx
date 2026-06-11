@@ -332,7 +332,7 @@ function TemplateForm({ initial, onClose, onSave }) {
                   <div key={r.template_id} className={`flex items-center gap-2 ${r.matches ? 'text-green-700' : 'text-gray-500'}`}>
                     {r.matches ? <Check size={11} /> : <X size={11} />}
                     <span className="font-medium">{r.name}</span>
-                    {r.is_supplemental && <span className="text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>}
+                    {r.is_supplemental && <span className="text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>}
                     <span className="text-[10px] text-gray-400">
                       proc:{r.procedure_match_ok ? '✓' : '✗'} fac:{r.facility_match_ok ? '✓' : '✗'} ins:{r.insurance_match_ok ? '✓' : '✗'}
                     </span>

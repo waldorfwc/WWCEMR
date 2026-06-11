@@ -233,7 +233,7 @@ export default function Larc() {
                   <span>
                     <strong>{r.device_type}</strong>
                     {r.category === 'office_procedure' && (
-                      <span className="ml-1 text-[9px] bg-teal-100 text-teal-700 px-1 rounded">OP</span>
+                      <span className="ml-1 text-[11px] bg-teal-100 text-teal-700 px-1 rounded">OP</span>
                     )}
                   </span>
                   <span className="text-amber-700">
@@ -424,7 +424,7 @@ export default function Larc() {
                       {a.device_our_id || <span className="text-gray-400 italic">none yet</span>}
                     </span>
                     {a.device_ownership && (
-                      <span className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded ${OWNERSHIP_TONES[a.device_ownership] || 'bg-gray-100 text-gray-700'}`}
+                      <span className={`text-[11px] uppercase tracking-wide px-1 py-0.5 rounded ${OWNERSHIP_TONES[a.device_ownership] || 'bg-gray-100 text-gray-700'}`}
                             title={a.device_ownership === 'patient_owned'
                               ? 'Patient Owned — WWC does NOT bill insurance.'
                               : a.device_ownership === 'wwc_claimed'

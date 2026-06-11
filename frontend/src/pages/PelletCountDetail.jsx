@@ -296,7 +296,7 @@ function CountLineRow({ line, countId, disabled }) {
       <td className="table-td">
         {line.lot_label || '—'}
         {line.is_controlled && (
-          <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
+          <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>
         )}
       </td>
       <td className="table-td font-mono text-[11px]">{line.qualgen_lot || '—'}</td>

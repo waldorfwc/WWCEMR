@@ -678,13 +678,13 @@ export default function ActiveAR() {
                     return (
                       <div key={c.id} className="flex items-center gap-2 text-xs cursor-pointer hover:underline"
                            onClick={() => navigate(`/active-ar/${c.id}`)}>
-                        <span className={`px-1 py-0.5 text-[9px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
+                        <span className={`px-1 py-0.5 text-[11px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
                         <span className="font-mono text-primary-500">{c.claim_number}</span>
                         <span className="text-gray-600 truncate max-w-[260px]">{c.insurance_company}</span>
                         <span className={`font-mono font-semibold ml-auto ${c.insurance_balance > 0 ? 'text-red-600' : 'text-gray-500'}`}>
                           {fmt.currency(c.insurance_balance)}
                         </span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded border ${STATE_BADGE[c.workflow_state] || 'bg-gray-50 border-gray-200'}`}>
+                        <span className={`text-[11px] px-1.5 py-0.5 rounded border ${STATE_BADGE[c.workflow_state] || 'bg-gray-50 border-gray-200'}`}>
                           {c.workflow_state.replace(/_/g, ' ')}
                         </span>
                       </div>
@@ -736,7 +736,7 @@ export default function ActiveAR() {
                       </td>
                       <td className="px-2 py-1 font-mono text-xs font-medium text-primary-500">{c.claim_number}</td>
                       <td className="px-1 py-1">
-                        <span className={`px-1 py-0 text-[9px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
+                        <span className={`px-1 py-0 text-[11px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
                       </td>
                       <td className="px-2 py-1 text-xs">
                         <div className="font-medium text-gray-900">{c.patient_name || '—'}</div>
@@ -762,7 +762,7 @@ export default function ActiveAR() {
                         {fmt.currency(c.insurance_balance)}
                       </td>
                       <td className="px-2 py-1">
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded border ${STATE_BADGE[c.workflow_state] || 'bg-gray-50 border-gray-200'}`}>
+                        <span className={`text-[11px] px-1.5 py-0.5 rounded border ${STATE_BADGE[c.workflow_state] || 'bg-gray-50 border-gray-200'}`}>
                           {c.workflow_state.replace(/_/g, ' ')}
                         </span>
                       </td>

@@ -197,7 +197,7 @@ export default function PelletAudit() {
                       {ACTION_LABELS[e.action] || e.action}
                     </span>
                     {witnessed && (
-                      <span className="ml-1 text-[9px] bg-amber-100 text-amber-700 px-1 rounded inline-flex items-center gap-0.5"
+                      <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded inline-flex items-center gap-0.5"
                             title={`Witnessed by ${e.detail.witness}`}>
                         <Shield size={8} /> wit
                       </span>

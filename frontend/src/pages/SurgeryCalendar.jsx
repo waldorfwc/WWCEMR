@@ -274,7 +274,7 @@ export function MonthlyCalendar() {
               <div className="text-[11px] font-semibold mb-1">
                 {iso.slice(-2)}
                 {!isSurgeryDay && !dimMonth && (
-                  <span className="ml-1 text-[9px] text-gray-400 normal-case font-normal">
+                  <span className="ml-1 text-[11px] text-gray-400 normal-case font-normal">
                     no block
                   </span>
                 )}
@@ -630,7 +630,7 @@ function SurgeryCard({ surgery, onClick }) {
         <span className="text-[11px] font-semibold text-gray-900 truncate flex-1">{short}</span>
       </div>
       <div className="flex items-baseline gap-1 mt-0.5">
-        <span className={`text-[9px] uppercase tracking-wide px-1 py-px rounded border ${fac.tone} shrink-0`}>
+        <span className={`text-[11px] uppercase tracking-wide px-1 py-px rounded border ${fac.tone} shrink-0`}>
           {fac.label}
         </span>
         {surgery.scheduled_start_time && (

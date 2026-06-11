@@ -984,7 +984,7 @@ function SurgeryRow({ s, onOpen }) {
           {STATUS_LABEL[s.status] || s.status}
         </span>
         {s.sub_flag && (
-          <span className="text-[9px] text-gray-500 ml-1">· {s.sub_flag.replace(/_/g, ' ')}</span>
+          <span className="text-[11px] text-gray-500 ml-1">· {s.sub_flag.replace(/_/g, ' ')}</span>
         )}
       </td>
       <td className="px-3 py-1.5 text-right">
@@ -1157,7 +1157,7 @@ function ReleasePanel({ title, subtitle, tone, rows }) {
         {rows.map(r => (
           <li key={r.key} className="flex items-baseline justify-between gap-2">
             <span><strong>{r.primary}</strong> <span className="text-gray-500">{r.secondary}</span></span>
-            {r.alerted && <span className="text-[9px] text-gray-400 italic">notified</span>}
+            {r.alerted && <span className="text-[11px] text-gray-400 italic">notified</span>}
           </li>
         ))}
       </ul>
@@ -1655,7 +1655,7 @@ function ReleaseRow({ row, qc }) {
           {row.facility === 'medstar' ? 'MedStar' : 'CRMC'} · {row.hours}
         </span>
       </span>
-      {row.alerted && <span className="text-[9px] text-gray-400 italic">notified</span>}
+      {row.alerted && <span className="text-[11px] text-gray-400 italic">notified</span>}
     </li>
   )
 }

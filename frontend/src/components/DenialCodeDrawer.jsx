@@ -226,7 +226,7 @@ function ComboView({ request }) {
         <CodeChip type="CARC" code={carc} />
         {rarcs.map(r => <CodeChip key={r} type="RARC" code={r} />)}
         {data?.from_cache && (
-          <span className="ml-auto text-[9px] text-gray-400 italic" title="Combined explanation was served from cache">cached</span>
+          <span className="ml-auto text-[11px] text-gray-400 italic" title="Combined explanation was served from cache">cached</span>
         )}
       </div>
 
@@ -249,7 +249,7 @@ function ComboView({ request }) {
 
       {/* Also let the user drill into each individual code — cheap links */}
       <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="text-[9px] uppercase tracking-wide text-gray-400 mb-1">
+        <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">
           Individual codes in this combo
         </div>
         <div className="flex gap-1.5 flex-wrap">
@@ -376,13 +376,13 @@ function NotesHistory({ row }) {
   }
   return (
     <div className="mt-2 space-y-1.5">
-      <div className="text-[9px] uppercase tracking-wide text-gray-400">
+      <div className="text-[11px] uppercase tracking-wide text-gray-400">
         Revision history ({revs.length})
       </div>
       {revs.map((r, i) => (
         <details key={r.id} className="border border-gray-100 rounded bg-white">
           <summary className="cursor-pointer px-2 py-1 text-[10px] text-gray-600 hover:bg-gray-50">
-            {i === 0 && <span className="text-[9px] font-semibold text-green-700 mr-1.5">CURRENT</span>}
+            {i === 0 && <span className="text-[11px] font-semibold text-green-700 mr-1.5">CURRENT</span>}
             {r.saved_by} · {fmt.dateTime(r.saved_at)}
           </summary>
           <pre className="whitespace-pre-wrap font-sans text-[11px] text-gray-700 px-3 py-2 border-t border-gray-100 leading-relaxed">

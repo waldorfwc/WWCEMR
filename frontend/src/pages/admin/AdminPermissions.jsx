@@ -301,7 +301,7 @@ export default function AdminPermissions() {
 
       <div className="card p-0 overflow-hidden">
         <table className="w-full text-sm">
-          <thead className="bg-stone-50 border-b border-stone-200 text-left">
+          <thead className="bg-plum-50 border-b border-plum-200 text-left">
             <tr>
               <th className="px-3 py-2 font-medium">Subject</th>
               {tiers.map(t => (
@@ -320,7 +320,7 @@ export default function AdminPermissions() {
             )}
 
             {!isLoading && matchedGroups.length > 0 && (
-              <tr className="bg-stone-50 border-t border-stone-100">
+              <tr className="bg-plum-50 border-t border-plum-100">
                 <td colSpan={tiers.length + 2}
                     className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
                   Groups ({matchedGroups.length})
@@ -345,7 +345,7 @@ export default function AdminPermissions() {
             ))}
 
             {!isLoading && matchedUsers.length > 0 && (
-              <tr className="bg-stone-50 border-t border-stone-100">
+              <tr className="bg-plum-50 border-t border-plum-100">
                 <td colSpan={tiers.length + 2}
                     className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
                   Users ({matchedUsers.length})
@@ -412,7 +412,7 @@ export default function AdminPermissions() {
 function SubjectRow({ row, tiers, showDeniedCell, onCellClick, onOpen, disabled }) {
   const isSA = row.is_super_admin
   return (
-    <tr className="border-t border-stone-100 hover:bg-stone-50">
+    <tr className="border-t border-plum-100 hover:bg-plum-50">
       <td className="px-3 py-2">
         <button
           type="button"
@@ -460,7 +460,7 @@ function SubjectRow({ row, tiers, showDeniedCell, onCellClick, onOpen, disabled 
                   ? (row.kind === 'user' && row.source_kind === 'override'
                        ? 'inline-block w-3 h-3 rounded-full bg-amber-600'
                        : 'inline-block w-3 h-3 rounded-full bg-plum-700')
-                  : 'inline-block w-3 h-3 rounded-full border border-stone-300 hover:bg-plum-100 disabled:opacity-40'
+                  : 'inline-block w-3 h-3 rounded-full border border-plum-300 hover:bg-plum-100 disabled:opacity-40'
               }
             />
           </td>
