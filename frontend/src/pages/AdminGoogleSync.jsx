@@ -195,7 +195,7 @@ function Tile({ label, value, sub, tone, icon }) {
     <div className={`card border ${tones[tone] || 'bg-gray-50 border-gray-200 text-gray-800'} flex items-center justify-between`}>
       <div>
         <div className="text-[11px] uppercase tracking-wide opacity-80">{label}</div>
-        <div className="text-2xl font-bold mt-1">{value}</div>
+        <div className="text-2xl display-number mt-1">{value}</div>
         {sub && <div className="text-[10px] mt-0.5 capitalize opacity-70">{sub}</div>}
       </div>
       <div className="opacity-60">{icon}</div>

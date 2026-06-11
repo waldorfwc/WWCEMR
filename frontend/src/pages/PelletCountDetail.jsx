@@ -227,7 +227,7 @@ function StatCard({ label, value, tone, sub }) {
   return (
     <div className={`card border ${tones[tone] || tones.gray} !p-2.5`}>
       <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
-      <div className="text-2xl font-bold mt-0.5">{value}</div>
+      <div className="text-2xl display-number mt-0.5">{value}</div>
       {sub && <div className="text-[10px] text-red-700">{sub}</div>}
     </div>
   )

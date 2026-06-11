@@ -193,7 +193,7 @@ export default function Larc() {
                 return (
                   <div key={type} className={`card border ${cls} !p-2.5`}>
                     <div className={`text-[11px] uppercase tracking-wide ${label}`}>{type}</div>
-                    <div className="text-2xl font-bold mt-0.5">{count}</div>
+                    <div className="text-2xl display-number mt-0.5">{count}</div>
                     <div className="text-[10px] text-gray-500">on hand</div>
                   </div>
                 )

@@ -773,7 +773,7 @@ function BucketTile({ label, val, tone, descr, active, onClick }) {
       className={`text-left rounded border p-2 transition ${tones[tone] || tones.gray} ${activeRing}`}
     >
       <div className="text-[11px] uppercase tracking-wide opacity-80 truncate">{label}</div>
-      <div className="text-2xl font-bold mt-0.5 leading-tight">{val}</div>
+      <div className="text-2xl display-number mt-0.5 leading-tight">{val}</div>
     </button>
   )
 }
@@ -792,7 +792,7 @@ function Tile({ label, val, icon, tone }) {
     <div className={`card border ${tones[tone] || tones.neutral} flex items-center justify-between !p-2.5`}>
       <div>
         <div className="text-[11px] uppercase tracking-wide opacity-80">{label}</div>
-        <div className="text-2xl font-bold mt-0.5">{val ?? '—'}</div>
+        <div className="text-2xl display-number mt-0.5">{val ?? '—'}</div>
       </div>
       <div className="opacity-60">{icon}</div>
     </div>

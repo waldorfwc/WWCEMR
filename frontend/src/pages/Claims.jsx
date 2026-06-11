@@ -284,7 +284,7 @@ function SummaryChip({ label, value, sub, tone, onClick }) {
       className={`text-left rounded-lg border p-3 ${tones[tone] || tones.gray} ${onClick ? 'hover:shadow cursor-pointer' : 'cursor-default'}`}
     >
       <div className="text-[11px] uppercase tracking-wide opacity-80">{label}</div>
-      <div className="text-2xl font-bold leading-tight">{value}</div>
+      <div className="text-2xl display-number leading-tight">{value}</div>
       <div className="text-[11px] opacity-70 mt-0.5">{sub}</div>
     </button>
   )
