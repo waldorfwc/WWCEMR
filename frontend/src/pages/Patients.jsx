@@ -65,7 +65,7 @@ export default function Patients() {
                 <td className="table-td text-xs text-gray-400">{p.secondary_insurance_name || '—'}</td>
                 <td className="table-td">
                   <button
-                    className="text-xs text-primary-500 hover:underline"
+                    className="text-xs text-plum-700 hover:underline"
                     onClick={e => { e.stopPropagation(); navigate(`/patients/${p.id}`) }}
                   >
                     View Ledger

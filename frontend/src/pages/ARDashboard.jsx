@@ -45,7 +45,7 @@ function AgingBar({ label, amount, total, color }) {
   )
 }
 
-function StatCard({ label, value, sub, icon: Icon, color = 'text-primary-600', bg = 'bg-blue-50' }) {
+function StatCard({ label, value, sub, icon: Icon, color = 'text-plum-600', bg = 'bg-blue-50' }) {
   return (
     <div className="stat-card">
       <div className="flex items-start justify-between">

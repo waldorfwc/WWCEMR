@@ -81,7 +81,7 @@ export default function ImportFiles() {
       {/* Claim ID Bootstrap (Phase 2c Part 1) */}
       <div className="card mb-6">
         <div className="flex items-center gap-2 mb-1">
-          <Link2 size={16} className="text-primary-600" />
+          <Link2 size={16} className="text-plum-600" />
           <h2 className="text-sm font-semibold text-gray-800">Claims Analysis Import</h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
@@ -92,7 +92,7 @@ export default function ImportFiles() {
 
         {!bootstrapState && (
           <div
-            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-plum-400 hover:bg-gray-50"
             onClick={() => bootstrapInputRef.current?.click()}
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleBootstrapFile(f) }}
@@ -150,7 +150,7 @@ export default function ImportFiles() {
       {/* ERA 835 Payment Posting (Phase 2c Part 2) */}
       <div className="card mb-6">
         <div className="flex items-center gap-2 mb-1">
-          <FileText size={16} className="text-primary-600" />
+          <FileText size={16} className="text-plum-600" />
           <h2 className="text-sm font-semibold text-gray-800">ERA 835 Payment Posting</h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
@@ -160,7 +160,7 @@ export default function ImportFiles() {
 
         {!eraState && (
           <div
-            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-plum-400 hover:bg-gray-50"
             onClick={() => eraInputRef.current?.click()}
             onDragOver={e => e.preventDefault()}
             onDrop={e => { e.preventDefault(); handleEraFiles(e.dataTransfer.files) }}
@@ -217,7 +217,7 @@ export default function ImportFiles() {
       {/* Charge Analysis Import (Phase 2b) */}
       <div className="card mb-6">
         <div className="flex items-center gap-2 mb-1">
-          <Database size={16} className="text-primary-600" />
+          <Database size={16} className="text-plum-600" />
           <h2 className="text-sm font-semibold text-gray-800">Charge Analysis Import (PrimeSuite)</h2>
         </div>
         <p className="text-xs text-gray-500 mb-4">
@@ -227,7 +227,7 @@ export default function ImportFiles() {
 
         {!chargeState && (
           <div
-            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-primary-400 hover:bg-gray-50"
+            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer border-gray-300 hover:border-plum-400 hover:bg-gray-50"
             onClick={() => chargeInputRef.current?.click()}
             onDragOver={e => e.preventDefault()}
             onDrop={e => {
@@ -359,13 +359,13 @@ function ChargeAnalysisPreview({ preview, committing, onCancel, onCommit }) {
       <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Patients</div>
       <div className="text-sm space-y-0.5 mb-3">
         <div><span className="text-green-600 mr-1">✓</span>{preview.will_match_patients} matched to existing charts</div>
-        <div><span className="text-primary-600 mr-1">+</span>{preview.will_create_patients} new patients will be created</div>
+        <div><span className="text-plum-600 mr-1">+</span>{preview.will_create_patients} new patients will be created</div>
       </div>
 
       <div className="text-xs text-gray-600 mb-2">
         <strong>{preview.errors} errors · {preview.warnings} warnings</strong>
         {(preview.errors + preview.warnings) > 0 && (
-          <button className="ml-2 text-primary-600 underline" onClick={() => setShowIssues(v => !v)}>
+          <button className="ml-2 text-plum-600 underline" onClick={() => setShowIssues(v => !v)}>
             {showIssues ? 'Hide details ▴' : 'Show details ▾'}
           </button>
         )}
@@ -484,7 +484,7 @@ function BootstrapPreview({ preview, committing, onCancel, onCommit }) {
       <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-1">Claim IDs</div>
       <div className="text-sm space-y-0.5 mb-3">
         <div><span className="text-green-600 mr-1">✓</span>{preview.will_patch} will be linked</div>
-        <div><span className="text-primary-600 mr-1">+</span>{preview.will_create_secondary} secondary claims will be created</div>
+        <div><span className="text-plum-600 mr-1">+</span>{preview.will_create_secondary} secondary claims will be created</div>
         <div><span className="text-gray-400 mr-1">⊘</span>{preview.already_set} already linked</div>
         <div><span className="text-gray-400 mr-1">⊘</span>{preview.no_patient + preview.no_claim} not found in system</div>
         <div><span className="text-amber-600 mr-1">⚠</span>{preview.ambiguous} ambiguous</div>
@@ -494,7 +494,7 @@ function BootstrapPreview({ preview, committing, onCancel, onCommit }) {
       {preview.issues && preview.issues.length > 0 && (
         <div className="text-xs text-gray-600 mb-2">
           <strong>{preview.issues.length} issues</strong>
-          <button className="ml-2 text-primary-600 underline" onClick={() => setShowIssues(v => !v)}>
+          <button className="ml-2 text-plum-600 underline" onClick={() => setShowIssues(v => !v)}>
             {showIssues ? 'Hide ▴' : 'Show ▾'}
           </button>
         </div>
@@ -597,7 +597,7 @@ function EraPreview({ preview, committing, onCancel, onCommit }) {
       {preview.issues && preview.issues.length > 0 && (
         <div className="text-xs text-gray-600 mb-2">
           <strong>{preview.issues.length} flagged</strong>
-          <button className="ml-2 text-primary-600 underline" onClick={() => setShowIssues(v => !v)}>
+          <button className="ml-2 text-plum-600 underline" onClick={() => setShowIssues(v => !v)}>
             {showIssues ? 'Hide ▴' : 'Show ▾'}
           </button>
         </div>

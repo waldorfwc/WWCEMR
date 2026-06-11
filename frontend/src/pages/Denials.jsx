@@ -103,7 +103,7 @@ export default function Denials() {
               key={cat}
               onClick={() => setCategory(cat === category ? '' : cat)}
               className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
-                category === cat ? 'bg-primary-500 text-white border-primary-500' : 'bg-white border-gray-200 text-gray-700 hover:border-primary-300'
+                category === cat ? 'bg-plum-700 text-white border-plum-700' : 'bg-white border-gray-200 text-gray-700 hover:border-plum-300'
               }`}
             >
               {cat.replace(/_/g, ' ')} <span className="font-bold">({d.count})</span>
@@ -167,7 +167,7 @@ export default function Denials() {
                   </div>
                   <button
                     onClick={() => openCombo(d)}
-                    className="mt-1 text-[10px] text-primary-600 hover:underline flex items-center gap-1"
+                    className="mt-1 text-[10px] text-plum-600 hover:underline flex items-center gap-1"
                   >
                     <Sparkles size={10} /> Explain this denial
                   </button>
@@ -186,7 +186,7 @@ export default function Denials() {
                 <td className="table-td text-xs">
                   {d.claim && (
                     <>
-                      <a href={`/claims/${d.claim_id}`} className="font-mono text-primary-500 hover:underline">{d.claim.claim_number}</a>
+                      <a href={`/claims/${d.claim_id}`} className="font-mono text-plum-700 hover:underline">{d.claim.claim_number}</a>
                       <div className="text-gray-400">{fmt.date(d.claim.date_of_service_from)}</div>
                     </>
                   )}

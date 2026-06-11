@@ -65,7 +65,7 @@ export default function ClaimDetail() {
             <div className="text-[10px] uppercase tracking-wide text-gray-400">Patient</div>
             <a
               href={`/patients/${claim.patient.id}`}
-              className="font-semibold text-gray-900 hover:text-primary-500"
+              className="font-semibold text-gray-900 hover:text-plum-700"
             >
               {claim.patient.last_name || ''}
               {claim.patient.last_name && claim.patient.first_name ? ', ' : ''}

@@ -429,9 +429,9 @@ function PainPointPanel({ highlight }) {
   }
 
   return (
-    <div className={`card mt-4 ${highlight ? 'border-primary-200 bg-primary-50/40' : ''}`}>
+    <div className={`card mt-4 ${highlight ? 'border-plum-200 bg-plum-50/40' : ''}`}>
       <div className="flex items-center gap-2 mb-2">
-        <MessageSquareWarning size={16} className="text-primary-700" />
+        <MessageSquareWarning size={16} className="text-plum-700" />
         <h3 className="text-sm font-semibold text-gray-800">Pain Points</h3>
       </div>
 
@@ -656,10 +656,10 @@ function LarcCheckoutCard() {
   const count = rows.length
 
   return (
-    <div className="card border-primary-100 bg-primary-50/30">
+    <div className="card border-plum-100 bg-plum-50/30">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <PackageCheck size={18} className="text-primary-700" />
+          <PackageCheck size={18} className="text-plum-700" />
           <div>
             <div className="text-sm font-semibold text-gray-800">LARC checkout</div>
             <div className="text-xs text-gray-600">

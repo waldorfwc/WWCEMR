@@ -134,7 +134,7 @@ function JumpToCode({ onPick }) {
     <div className="relative">
       <Search size={12} className="absolute left-2.5 top-2.5 text-gray-400" />
       <input
-        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"
+        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-plum-400"
         placeholder="Jump to another code… (e.g. 197, M86)"
         value={q}
         onChange={e => setQ(e.target.value)}
@@ -153,7 +153,7 @@ function JumpToCode({ onPick }) {
                 setQ('')
               }}
             >
-              <span className="font-mono font-semibold text-primary-600">
+              <span className="font-mono font-semibold text-plum-600">
                 {row.code_type} {row.code}
               </span>
               <span className="text-gray-700 ml-2">
@@ -184,7 +184,7 @@ function SingleCodeView({ request }) {
   return (
     <div>
       <div className="flex items-baseline gap-2">
-        <span className="text-[10px] uppercase font-semibold text-primary-600">{data.code_type}</span>
+        <span className="text-[10px] uppercase font-semibold text-plum-600">{data.code_type}</span>
         <span className="font-mono text-lg font-bold text-gray-900">{data.code}</span>
       </div>
       <p className="text-sm text-gray-800 mt-1">{data.official_verbiage}</p>
@@ -230,8 +230,8 @@ function ComboView({ request }) {
         )}
       </div>
 
-      <div className="mt-3 border border-primary-100 bg-primary-50/40 rounded p-3">
-        <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-primary-700 mb-1">
+      <div className="mt-3 border border-plum-100 bg-plum-50/40 rounded p-3">
+        <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-plum-700 mb-1">
           <Sparkles size={11} /> Combined meaning
         </div>
         {isLoading && <Loading />}
@@ -239,7 +239,7 @@ function ComboView({ request }) {
         {data && (
           <>
             <p className="text-xs text-gray-800 leading-relaxed">{data.plain_english}</p>
-            <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-primary-700 mt-3 mb-1">
+            <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-plum-700 mt-3 mb-1">
               <Wrench size={11} /> Combined fix plan
             </div>
             <pre className="whitespace-pre-wrap font-sans text-xs text-gray-800 leading-relaxed">{data.how_to_fix}</pre>
@@ -255,7 +255,7 @@ function ComboView({ request }) {
         <div className="flex gap-1.5 flex-wrap">
           {[{ t: 'CARC', c: carc }, ...rarcs.map(r => ({ t: 'RARC', c: r }))].map(({ t, c }) => (
             <span key={`${t}-${c}`} className="text-[10px] text-gray-500">
-              <span className="font-mono text-primary-600">{t} {c}</span>
+              <span className="font-mono text-plum-600">{t} {c}</span>
               {' — '}
               <span className="text-gray-400">search above to open</span>
             </span>
@@ -310,7 +310,7 @@ function WwcNotesSection({ row }) {
           {!editing && (
             <button
               onClick={() => setEditing(true)}
-              className="text-[10px] text-primary-600 hover:underline"
+              className="text-[10px] text-plum-600 hover:underline"
             >
               {row.wwc_notes ? 'Edit' : 'Add notes'}
             </button>
@@ -321,7 +321,7 @@ function WwcNotesSection({ row }) {
       {editing ? (
         <div>
           <textarea
-            className="w-full text-xs border border-gray-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-primary-400"
+            className="w-full text-xs border border-gray-200 rounded p-2 focus:outline-none focus:ring-1 focus:ring-plum-400"
             rows={4}
             value={draft}
             onChange={e => setDraft(e.target.value)}

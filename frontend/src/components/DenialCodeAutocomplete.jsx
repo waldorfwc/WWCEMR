@@ -83,7 +83,7 @@ export default function DenialCodeAutocomplete({ onPick }) {
       <Search size={13} className="absolute left-2.5 top-2 text-gray-400" />
       <input
         ref={inputRef}
-        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-primary-400"
+        className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-plum-400"
         placeholder="Look up a denial code… (e.g. 197, M86)"
         value={q}
         onChange={e => setQ(e.target.value)}
@@ -112,7 +112,7 @@ export default function DenialCodeAutocomplete({ onPick }) {
                 </>
               ) : (
                 <>
-                  <span className="font-mono font-semibold text-primary-600">
+                  <span className="font-mono font-semibold text-plum-600">
                     {row.code_type} {row.code}
                   </span>
                   <span className="text-gray-700 ml-2">

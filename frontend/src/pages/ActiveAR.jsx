@@ -393,7 +393,7 @@ export default function ActiveAR() {
             onClick={() => { setWorkflowState(t.key); setPage(1) }}
             className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
               workflowState === t.key
-                ? 'border-primary-500 text-primary-600 font-medium'
+                ? 'border-plum-700 text-plum-600 font-medium'
                 : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >
@@ -449,14 +449,14 @@ export default function ActiveAR() {
           <SlidersHorizontal size={13} />
           More filters
           {activeFilterCount > 0 && (
-            <span className="ml-1 bg-primary-500 text-white text-[10px] rounded-full px-1.5 py-0">
+            <span className="ml-1 bg-plum-700 text-white text-[10px] rounded-full px-1.5 py-0">
               {activeFilterCount}
             </span>
           )}
         </button>
         <button
           type="button"
-          className="text-xs text-primary-600 hover:underline flex items-center gap-1 px-1"
+          className="text-xs text-plum-600 hover:underline flex items-center gap-1 px-1"
           onClick={() => setSavingPreset(true)}
           title="Save current filters as a named preset"
         >
@@ -586,7 +586,7 @@ export default function ActiveAR() {
                 <button
                   key={p.payer}
                   onClick={() => { setPayer(p.payer); setPage(1) }}
-                  className={`text-xs px-2 py-1 rounded border ${payer === p.payer ? 'bg-primary-500 text-white border-primary-500' : 'bg-gray-50 hover:bg-gray-100'}`}
+                  className={`text-xs px-2 py-1 rounded border ${payer === p.payer ? 'bg-plum-700 text-white border-plum-700' : 'bg-gray-50 hover:bg-gray-100'}`}
                   title={`${p.count} claims · ${fmt.currency(p.balance)}`}
                 >
                   <span className="font-medium">{p.payer.length > 30 ? p.payer.slice(0, 30) + '…' : p.payer}</span>
@@ -680,7 +680,7 @@ export default function ActiveAR() {
                       <div key={c.id} className="flex items-center gap-2 text-xs cursor-pointer hover:underline"
                            onClick={() => navigate(`/active-ar/${c.id}`)}>
                         <span className={`px-1 py-0.5 text-[11px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
-                        <span className="font-mono text-primary-500">{c.claim_number}</span>
+                        <span className="font-mono text-plum-700">{c.claim_number}</span>
                         <span className="text-gray-600 truncate max-w-[260px]">{c.insurance_company}</span>
                         <span className={`font-mono font-semibold ml-auto ${c.insurance_balance > 0 ? 'text-red-600' : 'text-gray-500'}`}>
                           {fmt.currency(c.insurance_balance)}
@@ -744,7 +744,7 @@ export default function ActiveAR() {
                       <td className="px-2 py-1">
                         {isFresh(c) && <span className="block w-1.5 h-1.5 rounded-full bg-blue-500" title="Updated in last 24h"></span>}
                       </td>
-                      <td className="px-2 py-1 font-mono text-xs font-medium text-primary-500">{c.claim_number}</td>
+                      <td className="px-2 py-1 font-mono text-xs font-medium text-plum-700">{c.claim_number}</td>
                       <td className="px-1 py-1">
                         <span className={`px-1 py-0 text-[11px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
                       </td>
@@ -884,7 +884,7 @@ function InlineAssigneePicker({ claimId, currentAssignee, assignees, onChanged }
   if (!editing) {
     return (
       <button
-        className="text-xs text-gray-600 hover:text-primary-500 hover:underline"
+        className="text-xs text-gray-600 hover:text-plum-700 hover:underline"
         onClick={() => setEditing(true)}
         title="Click to reassign"
       >
@@ -1071,21 +1071,21 @@ function PresetChip({ preset, onLoad, onSetDefault, onDelete }) {
   return (
     <div className={`group inline-flex items-center text-[11px] rounded-full border px-2 py-0.5 ${
       preset.is_default
-        ? 'border-primary-300 bg-primary-50 text-primary-700'
+        ? 'border-plum-300 bg-plum-50 text-plum-700'
         : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
     }`}>
       <button type="button"
               onClick={onLoad}
               title="Load this preset"
               className="flex items-center gap-1 pr-1">
-        {preset.is_default && <Star size={10} className="text-primary-600 fill-primary-600" />}
+        {preset.is_default && <Star size={10} className="text-plum-600 fill-plum-600" />}
         {preset.name}
       </button>
       {!preset.is_default && (
         <button type="button"
                 onClick={onSetDefault}
                 title="Set as default (auto-loads on next visit)"
-                className="text-gray-400 hover:text-primary-600 px-1 opacity-0 group-hover:opacity-100">
+                className="text-gray-400 hover:text-plum-600 px-1 opacity-0 group-hover:opacity-100">
           <Star size={10} />
         </button>
       )}

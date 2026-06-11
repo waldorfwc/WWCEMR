@@ -187,11 +187,11 @@ export default function BankRecon() {
           </div>
 
           <div className="flex gap-2 mb-3">
-            <button className="text-xs text-primary-500 hover:underline" onClick={selectAll}>Select All</button>
+            <button className="text-xs text-plum-700 hover:underline" onClick={selectAll}>Select All</button>
             <span className="text-gray-300">·</span>
-            <button className="text-xs text-primary-500 hover:underline" onClick={selectNone}>Select None</button>
+            <button className="text-xs text-plum-700 hover:underline" onClick={selectNone}>Select None</button>
             <span className="text-gray-300">·</span>
-            <button className="text-xs text-primary-500 hover:underline" onClick={selectOnlyNew}>Select Only New (default)</button>
+            <button className="text-xs text-plum-700 hover:underline" onClick={selectOnlyNew}>Select Only New (default)</button>
           </div>
 
           <div className="overflow-x-auto max-h-[60vh] overflow-y-auto border border-gray-100 rounded">
@@ -310,7 +310,7 @@ function HistoryList({ imports }) {
       {older.length > 0 && (
         <>
           <button
-            className="mt-2 text-xs text-primary-500 hover:underline flex items-center gap-1"
+            className="mt-2 text-xs text-plum-700 hover:underline flex items-center gap-1"
             onClick={() => setShowOlder(o => !o)}
           >
             {showOlder ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

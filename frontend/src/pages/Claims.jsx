@@ -145,7 +145,7 @@ export default function Claims() {
               onClick={() => { setWorkflowFilter(f.key); setPage(1) }}
               className={`px-2 py-1 text-xs rounded ${
                 workflowFilter === f.key
-                  ? 'bg-primary-500 text-white'
+                  ? 'bg-plum-700 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -199,7 +199,7 @@ export default function Claims() {
                 const pri = PRIORITY_BADGE[claim.insurance_order] || PRIORITY_BADGE.primary
                 return (
                   <tr key={claim.id} className="table-row cursor-pointer" onClick={() => navigate(`/claims/${claim.id}`)}>
-                    <td className="table-td font-mono text-xs font-medium text-primary-500">{claim.claim_number}</td>
+                    <td className="table-td font-mono text-xs font-medium text-plum-700">{claim.claim_number}</td>
                     <td className="table-td">
                       <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
                     </td>

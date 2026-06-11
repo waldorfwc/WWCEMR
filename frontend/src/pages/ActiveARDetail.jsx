@@ -156,7 +156,7 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2 flex-wrap">
               <h1 className="text-2xl font-bold text-gray-900 leading-none">
-                Claim <span className="font-mono text-primary-500">{claim.claim_number}</span>
+                Claim <span className="font-mono text-plum-700">{claim.claim_number}</span>
               </h1>
               <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${pri.cls}`}>{pri.label}</span>
               <span className="text-sm text-gray-500">·</span>
@@ -165,7 +165,7 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
                 {claim.patient_external_id && (
                   <a
                     href={`/chart/${claim.patient_external_id}`}
-                    className="ml-1.5 text-primary-500 hover:underline text-sm"
+                    className="ml-1.5 text-plum-700 hover:underline text-sm"
                   >
                     (chart {claim.patient_external_id} ↗)
                   </a>
@@ -495,7 +495,7 @@ function NotesCard({ claim, qc, claimId }) {
       ) : (
         <div className="space-y-2 border-t border-gray-100 pt-2">
           {userNotes.map(n => (
-            <div key={n.id} className="border-l-2 border-primary-200 pl-3 py-0.5">
+            <div key={n.id} className="border-l-2 border-plum-200 pl-3 py-0.5">
               <div className="flex items-baseline gap-2 text-[11px]">
                 <span className="font-medium text-gray-800">{(n.user || 'system').split('@')[0]}</span>
                 <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 text-[11px] uppercase tracking-wide">
@@ -536,7 +536,7 @@ function PatientCard({ claim }) {
         {claim.patient_dob && <> · DOB {fmt.date(claim.patient_dob)}</>}
       </div>
       {claim.patient_external_id && (
-        <a href={`/chart/${claim.patient_external_id}`} className="text-xs text-primary-500 hover:underline flex items-center gap-1 mt-1">
+        <a href={`/chart/${claim.patient_external_id}`} className="text-xs text-plum-700 hover:underline flex items-center gap-1 mt-1">
           <ExternalLink size={11} /> Open Chart
         </a>
       )}
@@ -639,7 +639,7 @@ function WorkflowCard({ claim, assignees, onUpdate }) {
           {me && (
             <button
               type="button"
-              className="text-[10px] text-primary-500 hover:underline"
+              className="text-[10px] text-plum-700 hover:underline"
               onClick={() => onUpdate({ assigned_to: me })}
             >
               ← me
@@ -705,7 +705,7 @@ function ActivityLogSidebar({ claim, qc, claimId }) {
           <div className="text-[11px] text-gray-400 italic">No activity yet.</div>
         )}
         {claim.notes?.map(n => (
-          <div key={n.id} className="border-l-2 border-primary-200 pl-2">
+          <div key={n.id} className="border-l-2 border-plum-200 pl-2">
             <div className="flex items-baseline gap-1.5 text-[10px] text-gray-500">
               <span className="font-medium text-gray-700">{(n.user || 'system').split('@')[0]}</span>
               <span className="text-gray-400">·</span>
@@ -784,7 +784,7 @@ function RelatedClaimsCard({ related, claim, navigate }) {
           {related.map(r => (
             <tr key={r.id} className="border-t border-gray-100 cursor-pointer hover:bg-gray-50"
                 onClick={() => navigate(`/active-ar/${r.id}`)}>
-              <td className="py-1.5 font-mono text-xs text-primary-500">{r.claim_number}</td>
+              <td className="py-1.5 font-mono text-xs text-plum-700">{r.claim_number}</td>
               <td className="py-1.5 text-xs">{r.insurance_priority?.charAt(0)}</td>
               <td className="py-1.5 text-xs">{r.insurance_company}</td>
               <td className="py-1.5 text-xs font-mono text-right">{fmt.currency(r.total_charges || r.claim_amount)}</td>
@@ -909,7 +909,7 @@ function ServiceLinesTable({ claim, qc }) {
                   </td>
                   <td className="py-1.5 px-2 text-right">
                     <button
-                      className="text-xs text-primary-500 hover:underline"
+                      className="text-xs text-plum-700 hover:underline"
                       onClick={() => setEditingLine(isEditing ? null : ln.line)}
                     >
                       {isEditing ? 'Cancel' : ln.allowed != null ? 'Edit' : 'Settle'}
@@ -1161,7 +1161,7 @@ function LineSettleForm({ claim, line, qc, onClose }) {
                 — defaults to CO-45 if you leave empty and contractual &gt; 0
               </span>
             </div>
-            <button type="button" className="text-xs text-primary-500 hover:underline" onClick={addCode}>
+            <button type="button" className="text-xs text-plum-700 hover:underline" onClick={addCode}>
               + Add Code
             </button>
           </div>
@@ -1349,7 +1349,7 @@ function DocumentsCard({ claimId, docs, qc }) {
               <a
                 href={`/api${d.download_url.startsWith('/api') ? d.download_url.slice(4) : d.download_url}`}
                 target="_blank" rel="noopener noreferrer"
-                className="text-primary-500 hover:underline flex items-center gap-1"
+                className="text-plum-700 hover:underline flex items-center gap-1"
               >
                 <Download size={12} /> View
               </a>
@@ -1425,14 +1425,14 @@ function AppealLettersCard({ claimId, claim, qc }) {
                 )}
                 <span className="ml-auto flex gap-1">
                   <button
-                    className="text-xs text-primary-500 hover:underline"
+                    className="text-xs text-plum-700 hover:underline"
                     onClick={() => setEditingId(a.id)}
                   >Edit</button>
                   {a.pdf_path && (
                     <a
                       href={`/api/active-ar/appeals/${a.id}/pdf`}
                       target="_blank" rel="noopener noreferrer"
-                      className="text-xs text-primary-500 hover:underline flex items-center gap-0.5"
+                      className="text-xs text-plum-700 hover:underline flex items-center gap-0.5"
                     ><Download size={11} /> PDF</a>
                   )}
                 </span>

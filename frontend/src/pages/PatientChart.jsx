@@ -63,7 +63,7 @@ function FaxModal({ doc, docType, onClose, patient }) {
 
         <label className="block text-xs font-medium text-gray-700 mb-1">Fax Number</label>
         <input
-          className="w-full border rounded px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-1 focus:ring-primary-400"
+          className="w-full border rounded px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-1 focus:ring-plum-400"
           placeholder="(240) 555-1234"
           value={faxNumber}
           onChange={e => setFaxNumber(e.target.value)}
@@ -71,7 +71,7 @@ function FaxModal({ doc, docType, onClose, patient }) {
 
         <label className="block text-xs font-medium text-gray-700 mb-1">Cover Page Note (optional)</label>
         <textarea
-          className="w-full border rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-primary-400"
+          className="w-full border rounded px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-1 focus:ring-plum-400"
           rows={2}
           placeholder="Please add to patient chart..."
           value={coverText}
@@ -439,7 +439,7 @@ export default function PatientChart() {
         {!isLoading && !error && chart && (<>
       {/* Header */}
       <div className="mb-4">
-        <Link to="/documents" className="text-xs text-primary-600 hover:underline flex items-center gap-1 mb-2">
+        <Link to="/documents" className="text-xs text-plum-600 hover:underline flex items-center gap-1 mb-2">
           <ChevronLeft size={12} /> All Patients
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">{d.patient_name}</h1>
@@ -464,7 +464,7 @@ export default function PatientChart() {
           {d.email && (
             <div className="flex items-center gap-1.5">
               <span className="text-gray-400 w-14 shrink-0">Email:</span>
-              <a href={`mailto:${d.email}`} className="text-primary-600 hover:underline">{d.email}</a>
+              <a href={`mailto:${d.email}`} className="text-plum-600 hover:underline">{d.email}</a>
             </div>
           )}
         </div>

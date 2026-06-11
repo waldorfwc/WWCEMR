@@ -89,7 +89,7 @@ export default function PatientDetail() {
                 <span className="font-medium">{fmt.currency(d.denied_amount)}</span>
                 <span className="text-gray-500">· DOS {fmt.date(d.dos)} · {d.payer}</span>
                 {d.appeal_deadline && <span className="font-medium">· Deadline: {fmt.date(d.appeal_deadline)}</span>}
-                <a href={`/claims/${d.claim_id}`} className="text-primary-500 hover:underline ml-auto">View Claim →</a>
+                <a href={`/claims/${d.claim_id}`} className="text-plum-700 hover:underline ml-auto">View Claim →</a>
               </div>
             ))}
           </div>
@@ -116,18 +116,18 @@ export default function PatientDetail() {
             {entry.claims.map(claim => (
               <div key={claim.claim_id} className="ml-4 mb-3 p-3 rounded-lg border border-gray-100 bg-gray-50">
                 <div className="flex items-center gap-2 mb-2 text-sm">
-                  <span className="font-mono text-xs text-primary-500">{claim.claim_number}</span>
+                  <span className="font-mono text-xs text-plum-700">{claim.claim_number}</span>
                   <span className="text-gray-500 text-xs">{claim.payer_name}</span>
                   <span className={`${statusColors[claim.status] || 'badge-pending'} text-xs`}>{claim.status?.replace(/_/g, ' ')}</span>
                   <span className="text-xs text-gray-400 uppercase">{claim.insurance_order}</span>
                   <button
-                    className="ml-auto text-xs text-primary-500 hover:underline"
+                    className="ml-auto text-xs text-plum-700 hover:underline"
                     onClick={() => window.open(`/api/patients/${id}/ledger/pdf?visit_id=${encodeURIComponent(claim.claim_number)}`, '_blank')}
                   >
                     Statement
                   </button>
                   <button
-                    className="text-xs text-primary-500 hover:underline"
+                    className="text-xs text-plum-700 hover:underline"
                     onClick={() => window.open(`/api/eob/${claim.claim_id}/pdf`, '_blank')}
                   >
                     EOB
