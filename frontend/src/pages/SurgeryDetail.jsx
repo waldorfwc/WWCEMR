@@ -115,8 +115,8 @@ export default function SurgeryDetail() {
 
       {/* Patient header */}
       <div id="patient-header" className="card mb-4 scroll-mt-16">
-        <div className="flex items-baseline justify-between gap-3 mb-2">
-          <div>
+        <div className="flex flex-wrap items-baseline justify-between gap-y-3 gap-x-3 mb-2">
+          <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-xl font-bold text-gray-900">{s.patient_name}</h1>
               {s.urgency === "urgent" && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">🚨 URGENT</span>}
@@ -135,7 +135,7 @@ export default function SurgeryDetail() {
             </div>
             <PickDateLink />
           </div>
-          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <button
               type="button"
               onClick={viewAsPatient}
