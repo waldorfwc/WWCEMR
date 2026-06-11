@@ -71,7 +71,7 @@ export default function MyChecklist() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Checklist</h1>
+          <h1 className="page-title">My Checklist</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {data?.user?.display_name || data?.user?.email?.split('@')[0]}
             {role && <> · <span className="font-medium">{ROLE_LABELS[role] || role}</span></>}

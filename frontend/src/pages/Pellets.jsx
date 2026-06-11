@@ -48,7 +48,7 @@ export default function Pellets() {
       {/* Header */}
       <div className="flex items-baseline justify-between mb-4 flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="page-title flex items-center gap-2">
             <Pill size={22} className="text-plum-700" />
             Pellet inventory
           </h1>

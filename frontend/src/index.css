@@ -81,4 +81,11 @@
   .eyebrow {
     @apply text-[11px] uppercase tracking-wider font-semibold text-muted;
   }
+
+  /* Canonical page-title heading — serif (Fraunces) ties pages back to the
+     brand wordmark + favicon. Replaces ad-hoc Inter `text-2xl font-bold
+     text-gray-900` patterns. */
+  .page-title {
+    @apply font-serif text-2xl font-semibold tracking-tight text-ink;
+  }
 }

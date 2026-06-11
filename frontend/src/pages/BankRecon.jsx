@@ -118,7 +118,7 @@ export default function BankRecon() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Bank Reconciliation</h1>
+          <h1 className="page-title">Bank Reconciliation</h1>
           <p className="text-sm text-gray-500 mt-0.5">Upload bank CSV → review → generate BAI2 file for ModMed import</p>
         </div>
       </div>

@@ -15,7 +15,7 @@ export default function Billing() {
   return (
     <div>
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900">Billing</h1>
+        <h1 className="page-title">Billing</h1>
         <p className="text-sm text-gray-500 mt-0.5">
           Bank reconciliation, missing-charge tracking, and insurance-document workflow.
         </p>

@@ -18,7 +18,7 @@ export default function PelletDoseTypes() {
       <Link to="/pellets/inventory" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
         <ArrowLeft size={12}/> Pellet inventory
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 mb-1">
+      <h1 className="page-title flex items-center gap-2 mb-1">
         <Pill size={22} className="text-plum-700"/>
         Dose type catalog
       </h1>

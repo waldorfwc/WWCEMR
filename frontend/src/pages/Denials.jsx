@@ -84,7 +84,7 @@ export default function Denials() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-4 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Denial Management</h1>
+          <h1 className="page-title">Denial Management</h1>
           <p className="text-gray-500 text-sm mt-1">
             {summary?.open || 0} open · {fmt.currency(summary?.total_denied_amount || 0)} at risk ·
             <span className="text-red-600 font-medium ml-1">{summary?.urgent || 0} urgent · {summary?.overdue || 0} overdue</span>

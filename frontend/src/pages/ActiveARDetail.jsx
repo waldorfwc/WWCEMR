@@ -156,7 +156,7 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
           </button>
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold text-gray-900 leading-none">
+              <h1 className="page-title leading-none">
                 Claim <span className="font-mono text-plum-700">{claim.claim_number}</span>
               </h1>
               <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${pri.cls}`}>{pri.label}</span>

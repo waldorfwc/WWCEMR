@@ -47,7 +47,7 @@ export default function SurgeryBulkImport() {
       <Link to="/surgery" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
         <ArrowLeft size={12} /> Surgery dashboard
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 mb-1">
+      <h1 className="page-title flex items-center gap-2 mb-1">
         <FileSpreadsheet size={22} className="text-plum-700" />
         Bulk import surgery candidates
       </h1>

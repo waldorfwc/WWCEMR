@@ -38,7 +38,7 @@ export default function StaffMessageTemplates() {
   return (
     <div className="p-4 max-w-4xl">
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-semibold">Message Templates</h1>
+        <h1 className="page-title">Message Templates</h1>
         <button onClick={() => setEditing({ name: '', body: '' })}
                  className="btn-primary text-sm">+ New</button>
       </div>

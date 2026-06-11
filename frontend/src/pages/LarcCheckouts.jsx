@@ -18,7 +18,7 @@ export default function LarcCheckouts() {
       <Link to="/larc" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
         <ArrowLeft size={12} /> LARC dashboard
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2 mb-3">
+      <h1 className="page-title flex items-center gap-2 mb-3">
         <AlertTriangle size={22} className="text-amber-700" />
         Pending checkout approvals
       </h1>

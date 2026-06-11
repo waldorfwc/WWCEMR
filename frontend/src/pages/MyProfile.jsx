@@ -21,7 +21,7 @@ export default function MyProfile() {
   return (
     <div className="space-y-4 max-w-3xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
+        <h1 className="page-title">My Profile</h1>
         <p className="text-sm text-gray-500 mt-0.5">
           What you can access in this system. To request changes, ask your administrator.
         </p>

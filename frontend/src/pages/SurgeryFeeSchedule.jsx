@@ -23,7 +23,7 @@ export default function SurgeryFeeSchedule() {
             className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
         <ArrowLeft size={12} /> Surgery dashboard
       </Link>
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Fee Schedule</h1>
+      <h1 className="page-title mb-1">Fee Schedule</h1>
       <p className="text-sm text-gray-600 mb-4 max-w-2xl">
         Contracted allowed amounts per payer + CPT, and Correct Coding
         Initiative / Multiple Procedure Reduction overrides. Used by the

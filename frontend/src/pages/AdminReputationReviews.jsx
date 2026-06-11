@@ -19,7 +19,7 @@ export default function AdminReputationReviews() {
   const reviews = data?.reviews || []
   return (
     <div className="p-4 max-w-5xl">
-      <h1 className="text-2xl font-semibold mb-4">Reviews</h1>
+      <h1 className="page-title mb-4">Reviews</h1>
       {reviews.length === 0 ? (
         <EmptyState
           icon={Star}

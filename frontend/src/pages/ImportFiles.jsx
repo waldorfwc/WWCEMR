@@ -71,7 +71,7 @@ export default function ImportFiles() {
 
   return (
     <div className="p-6 max-w-4xl">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Import</h1>
+      <h1 className="page-title mb-2">Import</h1>
       <p className="text-gray-500 text-sm mb-6">
         Three upload flows below: <strong>Charge Analysis</strong> creates claims from PrimeSuite,
         <strong>Claims Analysis</strong> links Claim IDs + workflow fields, <strong>ERA 835</strong>

@@ -15,7 +15,7 @@ export default function StaffInbox() {
   const rows = data?.rows || []
   return (
     <div className="p-4 max-w-4xl">
-      <h1 className="text-2xl font-semibold text-gray-900 mb-4">Messages</h1>
+      <h1 className="page-title mb-4">Messages</h1>
       {rows.length === 0 ? (
         <div className="text-sm text-muted">No unread patient messages.</div>
       ) : (

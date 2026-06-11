@@ -32,7 +32,7 @@ export default function LarcEodReport() {
         <ArrowLeft size={12} /> LARC dashboard
       </Link>
       <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <Activity size={22} className="text-plum-700" />
           End-of-day reconciliation
         </h1>

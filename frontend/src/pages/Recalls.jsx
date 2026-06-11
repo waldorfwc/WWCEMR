@@ -105,7 +105,7 @@ export default function Recalls() {
     <div>
       <div className="mb-4 flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Recalls</h1>
+          <h1 className="page-title">Recalls</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Patients due for follow-up. Click the phone number to dial via RingCentral, then log the outcome.
           </p>

@@ -13,7 +13,7 @@ export default function AdminReputationLeaderboard() {
   const rows = data?.rows || []
   return (
     <div className="p-4 max-w-5xl">
-      <h1 className="text-2xl font-semibold mb-4">Leaderboard</h1>
+      <h1 className="page-title mb-4">Leaderboard</h1>
       {rows.length === 0 ? (
         <div className="text-sm text-muted">No profiles yet.</div>
       ) : (

@@ -286,7 +286,7 @@ export default function ActiveAR() {
       {/* HEADER */}
       <div className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Active AR</h1>
+          <h1 className="page-title">Active AR</h1>
           {summary && (
             <p className="text-sm text-gray-500 mt-0.5">
               {summary.open_count.toLocaleString()} open · {fmt.currency(summary.total_balance)} outstanding

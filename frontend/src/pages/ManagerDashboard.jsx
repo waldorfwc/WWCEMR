@@ -35,7 +35,7 @@ export default function ManagerDashboard() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Manager Dashboard</h1>
+          <h1 className="page-title">Manager Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Accountability across {reports.length} direct report{reports.length === 1 ? '' : 's'}
             {reports.length > 0 && (

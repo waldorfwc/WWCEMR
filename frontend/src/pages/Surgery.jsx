@@ -225,7 +225,7 @@ export default function Surgery() {
     <div>
       <div className="mb-4 flex items-baseline justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Surgery Scheduling</h1>
+          <h1 className="page-title">Surgery Scheduling</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             {data?.total || 0} surgeries currently in the system. Click a row to open milestones.
           </p>

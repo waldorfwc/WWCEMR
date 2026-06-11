@@ -26,7 +26,7 @@ export default function Appeals() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Appeal Letters</h1>
+      <h1 className="page-title mb-2">Appeal Letters</h1>
       <p className="text-gray-500 text-sm mb-6">AI-generated appeal letters for denied claims</p>
 
       <div className="flex gap-4 h-[calc(100vh-180px)]">

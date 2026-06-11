@@ -78,7 +78,7 @@ export default function LarcDevices() {
         <ArrowLeft size={12} /> LARC dashboard
       </Link>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <Package size={22} className="text-plum-700" />
           Device Tracking · Inventory
         </h1>

@@ -29,7 +29,7 @@ export default function LarcInventoryCount() {
         <ArrowLeft size={12} /> LARC dashboard
       </Link>
       <div className="flex items-baseline justify-between mb-3">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <ClipboardCheck size={22} className="text-plum-700" />
           Physical inventory count
         </h1>

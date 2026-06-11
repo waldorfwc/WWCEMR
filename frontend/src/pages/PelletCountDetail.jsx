@@ -72,7 +72,7 @@ export default function PelletCountDetail() {
       </Link>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="page-title flex items-center gap-2">
             <ClipboardList size={22} className="text-plum-700" />
             Count · {LOC_LABEL[count.location] || count.location}
           </h1>

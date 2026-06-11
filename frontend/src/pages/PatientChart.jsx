@@ -442,7 +442,7 @@ export default function PatientChart() {
         <Link to="/documents" className="text-xs text-plum-600 hover:underline flex items-center gap-1 mb-2">
           <ChevronLeft size={12} /> All Patients
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900">{d.patient_name}</h1>
+        <h1 className="page-title">{d.patient_name}</h1>
         <div className="flex items-center gap-4 text-sm text-gray-500 mt-1">
           <span className="font-mono">Chart #{d.chart_number}</span>
           {d.dob && <span>DOB: {fmt.date(d.dob)}</span>}

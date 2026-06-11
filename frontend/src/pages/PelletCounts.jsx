@@ -157,7 +157,7 @@ export default function PelletCounts() {
         <ArrowLeft size={12} /> Pellet inventory
       </Link>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="page-title flex items-center gap-2">
           <ClipboardList size={22} className="text-plum-700" />
           Daily counts
         </h1>

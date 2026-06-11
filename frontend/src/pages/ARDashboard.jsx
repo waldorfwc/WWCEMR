@@ -146,7 +146,7 @@ export default function ARDashboard() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">A/R Dashboard</h1>
+          <h1 className="page-title">A/R Dashboard</h1>
           <p className="text-gray-500 text-sm mt-1">
             Accounts Receivable — ERA Database + Waystar + PrimeSuite
           </p>

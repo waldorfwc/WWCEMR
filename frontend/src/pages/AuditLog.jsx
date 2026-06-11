@@ -29,7 +29,7 @@ export default function AuditLog() {
       <div className="flex items-center gap-3 mb-6">
         <Shield size={22} className="text-plum-700" />
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">HIPAA Audit Log</h1>
+          <h1 className="page-title">HIPAA Audit Log</h1>
           <p className="text-gray-500 text-sm">{data?.total?.toLocaleString() || 0} events · All PHI access and modifications recorded</p>
         </div>
       </div>
