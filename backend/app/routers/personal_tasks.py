@@ -31,6 +31,18 @@ def _norm_email(s: Optional[str]) -> Optional[str]:
     return (s or "").lower().strip() or None
 
 
+def _norm_email_list(raw: Optional[list[str]]) -> list[str]:
+    """Normalize + dedup an email list while preserving first-seen order.
+    Drops empty values. Used wherever assignees / shared_with come in
+    from a payload so the stored JSON never carries dup entries."""
+    seen: dict[str, None] = {}
+    for e in (raw or []):
+        n = _norm_email(e)
+        if n and n not in seen:
+            seen[n] = None
+    return list(seen)
+
+
 def _ensure_visible(task: PersonalTask, email: str) -> None:
     """Raises 404 (not 403, to avoid disclosing existence) when caller
     doesn't have at least read access to this task."""
@@ -73,8 +85,10 @@ def _serialize(task: PersonalTask, *, subtasks: Optional[list[PersonalTask]] = N
         "id":             str(task.id),
         "parent_id":      str(task.parent_id) if task.parent_id else None,
         "owner_email":    task.owner_email,
-        "assignees":      list(task.assignees or []),
-        "shared_with":    list(task.shared_with or []),
+        # Defensively dedup at the read path too — older rows may have
+        # been written before the create/patch handlers learned to dedup.
+        "assignees":      _norm_email_list(task.assignees),
+        "shared_with":    _norm_email_list(task.shared_with),
         "title":          task.title,
         "description":    task.description,
         "priority":       task.priority,
@@ -207,8 +221,8 @@ def create_task(payload: CreateTaskIn,
         except ValueError:
             raise HTTPException(status_code=422, detail="due_date must be YYYY-MM-DD")
 
-    shared    = [_norm_email(e) for e in (payload.shared_with or []) if _norm_email(e)]
-    assignees = [_norm_email(e) for e in (payload.assignees   or []) if _norm_email(e)]
+    shared    = _norm_email_list(payload.shared_with)
+    assignees = _norm_email_list(payload.assignees)
     t = PersonalTask(
         parent_id=parent.id if parent else None,
         owner_email=me,
@@ -276,11 +290,9 @@ def patch_task(task_id: str, payload: PatchTaskIn,
             except ValueError:
                 raise HTTPException(status_code=422, detail="due_date must be YYYY-MM-DD")
     if "assignees" in data:
-        t.assignees = [_norm_email(e) for e in (data["assignees"] or [])
-                       if _norm_email(e)]
+        t.assignees = _norm_email_list(data["assignees"])
     if "shared_with" in data:
-        t.shared_with = [_norm_email(e) for e in (data["shared_with"] or [])
-                         if _norm_email(e)]
+        t.shared_with = _norm_email_list(data["shared_with"])
     if "status" in data:
         if data["status"] not in STATUSES:
             raise HTTPException(status_code=422,
