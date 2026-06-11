@@ -2555,6 +2555,12 @@ def send_boarding_slip(surgery_id: str,
 async def bulk_import_candidates(
     file: UploadFile = File(...),
     dry_run: bool = Query(True),
+    auto_schedule: bool = Query(False,
+        description=("When true, also book each row that has an "
+                      "Appointment Type/Date/Time onto its matching "
+                      "BlockDay — silent (no patient email/SMS, no "
+                      "calendar sync). Use when the dates were already "
+                      "confirmed with patients out-of-band.")),
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
@@ -2564,6 +2570,10 @@ async def bulk_import_candidates(
 
     Skips a chart number when an active (non-cancelled, non-completed)
     surgery already exists for that chart.
+
+    When auto_schedule=true, also books each row's slot onto the matching
+    BlockDay silently. Rows without a recognized Appointment Type or
+    without a BlockDay for the day are reported in `schedule_error_rows`.
     """
     contents = await file.read()
     if not contents:
@@ -2587,7 +2597,8 @@ async def bulk_import_candidates(
                 "dry_run": dry_run, "filename": file.filename}
 
     result = import_rows(db, rows, dry_run=dry_run,
-                          by_email=current_user.get("email") or "system")
+                          by_email=current_user.get("email") or "system",
+                          auto_schedule=auto_schedule)
     result["filename"] = file.filename
     return result
 

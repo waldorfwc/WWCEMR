@@ -21,10 +21,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from datetime import date as _date, datetime, time as _time
+
 from app.database import get_db
 from app.permissions.dependencies import requires_super_admin
 from app.models.larc import LarcAssignment, LarcDevice, LarcOwedPatient
-from app.models.surgery import Surgery
+from app.models.surgery import Surgery, BlockDay
 from app.models.pellet import PelletPatient
 
 
@@ -241,4 +243,121 @@ def delete_test_patients(
         "devices_cleared_purchasing_patient": len(devices),
         "owed_hard_deleted": len(owed),
         "owed_ids": owed_ids[:200],
+    }
+
+
+# ─── Silent surgery scheduling ──────────────────────────────────────
+# One-off admin path that books slots without firing the patient
+# confirmation email/SMS or syncing to Google Calendar. Used when the
+# scheduler has already coordinated dates with patients directly
+# (e.g. phone call) and just needs the system to reflect what was
+# agreed without a duplicate notification going out.
+
+from pydantic import BaseModel
+
+
+class _SilentScheduleItem(BaseModel):
+    chart_number: str
+    start_time:   str        # "HH:MM" 24-hour
+    duration_minutes: int = 180
+
+
+class _SilentScheduleIn(BaseModel):
+    block_date:     str      # YYYY-MM-DD
+    facility:       str      # "medstar" / "crmc" / "office" etc.
+    procedure_kind: str = "robotic_180"
+    items:          list[_SilentScheduleItem]
+    dry_run:        bool = False
+
+
+def _hhmm(s: str) -> _time:
+    h, m = s.split(":")[:2]
+    return _time(int(h), int(m))
+
+
+@router.post("/silent-schedule")
+def silent_schedule(payload: _SilentScheduleIn,
+                     db: Session = Depends(get_db),
+                     current_user: dict = Depends(requires_super_admin())):
+    """Book one or more surgeries onto an existing BlockDay without firing
+    the patient confirmation email/SMS or syncing to Google Calendar.
+    Uses the same book_slot() the UI does so capacity / overlap / block-
+    window guards still run.
+
+    Set dry_run=true to validate input + lookups without writing.
+    """
+    block_date = _date.fromisoformat(payload.block_date)
+    bd = (db.query(BlockDay)
+            .filter(BlockDay.block_date == block_date,
+                    BlockDay.facility == payload.facility)
+            .first())
+    if not bd:
+        raise HTTPException(status_code=404,
+                            detail=(f"No BlockDay for {payload.block_date} at "
+                                    f"{payload.facility}. Create one first or check the facility slug."))
+
+    results: list[dict] = []
+    actor = (current_user or {}).get("email") or "admin-cleanup"
+
+    for it in payload.items:
+        entry: dict = {"chart_number": it.chart_number,
+                        "start_time":   it.start_time,
+                        "duration_minutes": it.duration_minutes}
+        surgery = (db.query(Surgery)
+                     .filter(Surgery.chart_number == it.chart_number)
+                     .order_by(Surgery.created_at.desc())
+                     .first())
+        if not surgery:
+            entry["status"] = "not_found"
+            results.append(entry); continue
+        entry["surgery_id"]   = str(surgery.id)
+        entry["patient_name"] = surgery.patient_name
+        entry["prior_scheduled_date"] = (str(surgery.scheduled_date)
+                                          if surgery.scheduled_date else None)
+        entry["prior_scheduled_start_time"] = (str(surgery.scheduled_start_time)
+                                                if surgery.scheduled_start_time else None)
+
+        if payload.dry_run:
+            entry["status"] = "would_schedule"
+            results.append(entry); continue
+
+        try:
+            from app.services.surgery.block_schedule import (
+                book_slot, CapacityViolation,
+            )
+            slot = book_slot(
+                db, block_day_id=str(bd.id), surgery_id=str(surgery.id),
+                start_time=_hhmm(it.start_time),
+                duration_minutes=it.duration_minutes,
+                procedure_kind=payload.procedure_kind,
+            )
+        except CapacityViolation as exc:
+            entry["status"] = "capacity_violation"
+            entry["error"]  = str(exc); results.append(entry); continue
+        except Exception as exc:
+            entry["status"] = "error"
+            entry["error"]  = str(exc); results.append(entry); continue
+
+        # Audit note on the surgery
+        from app.models.surgery import SurgeryNote
+        db.add(SurgeryNote(
+            surgery_id=surgery.id,
+            created_by=actor,
+            content=(f"Silent-scheduled {bd.block_date} {it.start_time} "
+                     f"({it.duration_minutes} min) at {bd.facility}. "
+                     f"Confirmation email/SMS suppressed — coordinator "
+                     f"confirmed directly."),
+        ))
+        db.commit()
+        entry["status"]   = "scheduled"
+        entry["slot_id"]  = str(slot.id)
+        results.append(entry)
+
+    return {
+        "block_day_id":  str(bd.id),
+        "block_date":    str(bd.block_date),
+        "facility":      bd.facility,
+        "actor":         actor,
+        "dry_run":       payload.dry_run,
+        "results":       results,
     }
