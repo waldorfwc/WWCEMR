@@ -17,7 +17,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import or_
+from sqlalchemy import String, cast, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -147,12 +147,16 @@ def list_my_tasks(db: Session = Depends(get_db),
     surface closed parents too."""
     me = _norm_email(current_user.get("email")) or ""
     q = db.query(PersonalTask).filter(PersonalTask.parent_id.is_(None))
-    # Visibility: owner / any assignee / shared. JSON contains via LIKE
-    # on the serialized list — SQLite-safe.
+    # Visibility: owner / any assignee / shared. JSON columns don't
+    # support LIKE directly on Postgres (works on SQLite because JSON is
+    # stored as TEXT there), so cast to text first. The serialized form
+    # has each email wrapped in double quotes inside a JSON array, so
+    # searching for `"me"` is exact-token-safe.
+    me_token = f'%"{me}"%'
     q = q.filter(or_(
         PersonalTask.owner_email == me,
-        PersonalTask.assignees.like(f'%"{me}"%'),
-        PersonalTask.shared_with.like(f'%"{me}"%'),
+        cast(PersonalTask.assignees,   String).like(me_token),
+        cast(PersonalTask.shared_with, String).like(me_token),
     ))
     if not include_closed:
         q = q.filter(PersonalTask.status != "closed")

@@ -1122,6 +1122,51 @@ def get_picklists(current_user: dict = Depends(requires_tier(Module.SURGERY, Tie
     return all_picklists()
 
 
+# Must be registered BEFORE the `/{surgery_id}` wildcard below — otherwise
+# FastAPI matches `scheduler-alerts` as a surgery_id UUID and the wildcard
+# 404s on the lookup. (Same applies to any future static GETs added to
+# this router.)
+@router.get("/scheduler-alerts")
+def scheduler_alerts(db: Session = Depends(get_db),
+                      current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
+    """Surfaces actionable scheduling alerts for the surgery scheduler's
+    checklist. Currently:
+      - Office procedure days within 14 days that have <6 cases booked
+        (Dr. Cooke's day isn't full — release the rest for clinic).
+    """
+    from app.services.surgery.release_alerts import OFFICE_FULL_THRESHOLD
+    today = _date.today()
+    horizon = today + timedelta(days=14)
+    rows = (db.query(BlockDay)
+              .options(joinedload(BlockDay.slots))
+              .filter(BlockDay.facility == "office",
+                      BlockDay.block_date >= today,
+                      BlockDay.block_date <= horizon)
+              .order_by(BlockDay.block_date)
+              .all())
+    underbooked = []
+    for bd in rows:
+        booked = len(bd.slots or [])
+        if booked >= OFFICE_FULL_THRESHOLD:
+            continue
+        underbooked.append({
+            "block_day_id": str(bd.id),
+            "block_date":   str(bd.block_date),
+            "weekday":      bd.block_date.strftime("%A"),
+            "facility":     bd.facility,
+            "booked":       booked,
+            "threshold":    OFFICE_FULL_THRESHOLD,
+            "open_slots":   OFFICE_FULL_THRESHOLD - booked,
+            "days_out":     (bd.block_date - today).days,
+            "alerted_at":   (bd.release_alert_sent_at.isoformat()
+                              if bd.release_alert_sent_at else None),
+        })
+    return {
+        "office_underbooked": underbooked,
+        "threshold": OFFICE_FULL_THRESHOLD,
+    }
+
+
 # ─── Detail + edit + milestone advance ──────────────────────────────
 
 @router.get("/{surgery_id}")
@@ -1983,47 +2028,6 @@ def trigger_release_sweep(db: Session = Depends(get_db),
     app/jobs/run.py). Super-admin only. (Fable note 6.)"""
     from app.services.surgery.release_alerts import run_release_sweep
     return run_release_sweep(db)
-
-
-@router.get("/scheduler-alerts")
-def scheduler_alerts(db: Session = Depends(get_db),
-                      current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
-    """Surfaces actionable scheduling alerts for the surgery scheduler's
-    checklist. Currently:
-      - Office procedure days within 14 days that have <6 cases booked
-        (Dr. Cooke's day isn't full — release the rest for clinic).
-    """
-    from app.services.surgery.release_alerts import OFFICE_FULL_THRESHOLD
-    today = _date.today()
-    horizon = today + timedelta(days=14)
-    rows = (db.query(BlockDay)
-              .options(joinedload(BlockDay.slots))
-              .filter(BlockDay.facility == "office",
-                      BlockDay.block_date >= today,
-                      BlockDay.block_date <= horizon)
-              .order_by(BlockDay.block_date)
-              .all())
-    underbooked = []
-    for bd in rows:
-        booked = len(bd.slots or [])
-        if booked >= OFFICE_FULL_THRESHOLD:
-            continue
-        underbooked.append({
-            "block_day_id": str(bd.id),
-            "block_date":   str(bd.block_date),
-            "weekday":      bd.block_date.strftime("%A"),
-            "facility":     bd.facility,
-            "booked":       booked,
-            "threshold":    OFFICE_FULL_THRESHOLD,
-            "open_slots":   OFFICE_FULL_THRESHOLD - booked,
-            "days_out":     (bd.block_date - today).days,
-            "alerted_at":   (bd.release_alert_sent_at.isoformat()
-                              if bd.release_alert_sent_at else None),
-        })
-    return {
-        "office_underbooked": underbooked,
-        "threshold": OFFICE_FULL_THRESHOLD,
-    }
 
 
 @router.post("/admin/block-days/{block_day_id}/mark-released")
