@@ -393,7 +393,7 @@ export default function ActiveAR() {
             onClick={() => { setWorkflowState(t.key); setPage(1) }}
             className={`px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
               workflowState === t.key
-                ? 'border-plum-700 text-plum-600 font-medium'
+                ? 'border-plum-700 text-plum-700 font-medium'
                 : 'border-transparent text-gray-500 hover:text-gray-800'
             }`}
           >

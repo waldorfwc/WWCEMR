@@ -1241,7 +1241,7 @@ export default function SurgeryRules() {
                     onClick={() => setTab(t.k)}
                     className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition ${
                       tab === t.k
-                        ? 'border-plum-600 text-plum-700'
+                        ? 'border-plum-700 text-plum-700'
                         : 'border-transparent text-gray-500 hover:text-plum-700 hover:border-plum-200'
                     }`}>
               <Icon size={14} /> {t.label}

@@ -153,7 +153,7 @@ export default function PelletPatients() {
                        onClick={() => setView(t.k)}
                        className={`flex items-center gap-1.5 px-3 py-2 text-[12px] border-b-2 transition whitespace-nowrap ${
                          active
-                           ? 'border-plum-600 text-plum-700 font-medium'
+                           ? 'border-plum-700 text-plum-700 font-medium'
                            : 'border-transparent text-gray-500 hover:text-plum-700 hover:border-plum-200'
                        }`}>
                 <Icon size={13} />

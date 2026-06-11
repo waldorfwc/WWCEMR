@@ -52,7 +52,7 @@ function TabButton({ active, onClick, icon, children }) {
     <button onClick={onClick}
             className={`px-3 py-2 text-sm flex items-center gap-1.5 border-b-2 -mb-px ${
               active
-                ? 'border-plum-700 text-plum-700 font-semibold'
+                ? 'border-plum-700 text-plum-700 font-medium'
                 : 'border-transparent text-gray-600 hover:text-gray-800'
             }`}>
       {icon}{children}
