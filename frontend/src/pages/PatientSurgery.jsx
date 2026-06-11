@@ -114,7 +114,7 @@ function AuthScreen({ surgeryId, onAuthed }) {
 
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 block">
+          <label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 block">
             Date of birth
           </label>
           <input
@@ -126,7 +126,7 @@ function AuthScreen({ surgeryId, onAuthed }) {
           />
         </div>
         <div>
-          <label className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 block">
+          <label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 block">
             Last 4 digits of your phone number
           </label>
           <input
@@ -1028,7 +1028,7 @@ function CardiologistAskScreen({ surgeryId, headers, status, onUpdated }) {
             We'll fax your cardiologist's office a clearance request. Please provide:
           </p>
           <div>
-            <label className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 block">
+            <label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 block">
               Cardiologist's name *
             </label>
             <input className="input text-sm w-full" value={name}
@@ -1037,7 +1037,7 @@ function CardiologistAskScreen({ surgeryId, headers, status, onUpdated }) {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 block">
+              <label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 block">
                 Phone
               </label>
               <input className="input text-sm w-full font-mono"
@@ -1046,7 +1046,7 @@ function CardiologistAskScreen({ surgeryId, headers, status, onUpdated }) {
                       onChange={e => setPhone(e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 block">
+              <label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 block">
                 Fax (preferred)
               </label>
               <input className="input text-sm w-full font-mono"

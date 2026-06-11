@@ -307,7 +307,7 @@ function MoneyStat({ label, val, tone }) {
   }
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-400 tracking-wide">{label}</div>
+      <div className="text-[11px] uppercase text-gray-400 tracking-wide">{label}</div>
       <div className={`text-2xl font-bold mt-0.5 ${tones[tone]}`}>{fmt.currency(val)}</div>
     </div>
   )
@@ -425,7 +425,7 @@ function CardThumbnail({ doc }) {
         ) : (
           <div className="flex flex-col items-center gap-1.5 text-gray-400 group-hover:text-plum-600">
             <FileText size={32} />
-            <span className="text-[10px] font-mono uppercase">{doc.file_type || 'file'}</span>
+            <span className="text-[11px] font-mono uppercase">{doc.file_type || 'file'}</span>
           </div>
         )}
       </div>
@@ -529,7 +529,7 @@ function formatStamp(iso) {
 function PatientCard({ claim }) {
   return (
     <div className="card">
-      <h3 className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">Patient</h3>
+      <h3 className="text-[11px] uppercase tracking-wide text-gray-400 mb-2">Patient</h3>
       <div className="font-semibold text-gray-900 text-sm">{claim.patient_name}</div>
       <div className="text-xs text-gray-500 mt-1">
         Chart #{claim.patient_external_id}
@@ -550,7 +550,7 @@ function PatientCard({ claim }) {
 function InsuranceCard({ claim }) {
   return (
     <div className="card">
-      <h3 className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">Insurance</h3>
+      <h3 className="text-[11px] uppercase tracking-wide text-gray-400 mb-2">Insurance</h3>
       <div className="text-sm font-medium text-gray-900 leading-snug">
         {claim.insurance_company || '—'}
       </div>
@@ -567,7 +567,7 @@ function InsuranceCard({ claim }) {
       </div>
       {claim.secondary_insurance_company && (
         <div className="mt-2 pt-2 border-t border-gray-100">
-          <div className="text-[10px] uppercase tracking-wide text-gray-400">Secondary</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-400">Secondary</div>
           <div className="text-xs text-gray-700">{claim.secondary_insurance_company}</div>
           {claim.secondary_plan_name && (
             <div className="text-[11px] text-gray-500">Plan: {claim.secondary_plan_name}</div>
@@ -588,7 +588,7 @@ function ProviderCard({ claim }) {
   if (!claim.care_provider && !claim.rendering_provider_name_full && !claim.billable_provider_npi) return null
   return (
     <div className="card">
-      <h3 className="text-[10px] uppercase tracking-wide text-gray-400 mb-2">Provider</h3>
+      <h3 className="text-[11px] uppercase tracking-wide text-gray-400 mb-2">Provider</h3>
       {claim.care_provider && (
         <div className="text-sm text-gray-900">{claim.care_provider}</div>
       )}
@@ -623,7 +623,7 @@ function WorkflowCard({ claim, assignees, onUpdate }) {
     <div className="card space-y-3">
       <div>
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-[10px] uppercase tracking-wide text-gray-400">Workflow</h3>
+          <h3 className="text-[11px] uppercase tracking-wide text-gray-400">Workflow</h3>
         </div>
         <select
           className="input text-sm"
@@ -635,7 +635,7 @@ function WorkflowCard({ claim, assignees, onUpdate }) {
       </div>
       <div>
         <div className="flex items-center justify-between mb-1">
-          <h3 className="text-[10px] uppercase tracking-wide text-gray-400">Assigned To</h3>
+          <h3 className="text-[11px] uppercase tracking-wide text-gray-400">Assigned To</h3>
           {me && (
             <button
               type="button"
@@ -678,7 +678,7 @@ function ActivityLogSidebar({ claim, qc, claimId }) {
   return (
     <div className="card flex flex-col" style={{ maxHeight: 'calc(100vh - 100px)' }}>
       <div className="flex items-center justify-between mb-2">
-        <h3 className="text-[10px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
+        <h3 className="text-[11px] uppercase tracking-wide text-gray-400 flex items-center gap-1">
           <Clock size={11} /> Activity Log
         </h3>
         <span className="text-[10px] text-gray-400">{claim.notes?.length || 0} entries</span>
@@ -824,7 +824,7 @@ function Collapsible({ title, defaultOpen, children }) {
 function Field({ label, val }) {
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-400 tracking-wide">{label}</div>
+      <div className="text-[11px] uppercase text-gray-400 tracking-wide">{label}</div>
       <div className="text-gray-900 text-sm">{val || <span className="text-gray-400">—</span>}</div>
     </div>
   )
@@ -833,7 +833,7 @@ function Field({ label, val }) {
 function Labeled({ label, children }) {
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
+      <div className="text-[11px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
       {children}
     </div>
   )
@@ -1155,7 +1155,7 @@ function LineSettleForm({ claim, line, qc, onClose }) {
         {/* Adjustment codes editor */}
         <div className="mb-2">
           <div className="flex items-center justify-between mb-1">
-            <div className="text-[10px] uppercase text-gray-500 tracking-wide">
+            <div className="text-[11px] uppercase text-gray-500 tracking-wide">
               Adjustment Codes (CARC/RARC)
               <span className="ml-2 text-gray-400 normal-case">
                 — defaults to CO-45 if you leave empty and contractual &gt; 0
@@ -1339,7 +1339,7 @@ function DocumentsCard({ claimId, docs, qc }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-gray-900 truncate">{d.filename}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 uppercase tracking-wide">{d.document_type}</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 uppercase tracking-wide">{d.document_type}</span>
                 </div>
                 <div className="text-[10px] text-gray-500">
                   {fmtSize(d.file_size)} · {(d.uploaded_by || '').split('@')[0]} · {fmt.date(d.uploaded_at?.slice(0, 10))}
@@ -1413,7 +1413,7 @@ function AppealLettersCard({ claimId, claim, qc }) {
           {appeals.map(a => (
             <li key={a.id} className="py-2 text-sm">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase tracking-wide bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                <span className="text-[11px] uppercase tracking-wide bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
                   L{a.level}
                 </span>
                 <span className="font-medium text-gray-900">{a.template_type.replace(/_/g, ' ')}</span>

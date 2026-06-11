@@ -96,7 +96,7 @@ export default function PelletCountDetail() {
             </button>
           )}
           {isDone && (
-            <span className="text-[10px] uppercase px-2 py-0.5 rounded bg-green-100 text-green-700">
+            <span className="text-[11px] uppercase px-2 py-0.5 rounded bg-green-100 text-green-700">
               <CheckCircle2 size={11} className="inline mr-0.5"/> finished
             </span>
           )}
@@ -195,7 +195,7 @@ export default function PelletCountDetail() {
                 </div>
               )}
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Closing notes (optional)</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Closing notes (optional)</label>
                 <textarea className="input text-[12px] w-full" rows={2}
                           value={finishNotes} onChange={e => setFinishNotes(e.target.value)} />
               </div>
@@ -225,7 +225,7 @@ function StatCard({ label, value, tone, sub }) {
   }
   return (
     <div className={`card border ${tones[tone] || tones.gray} !p-2.5`}>
-      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
       <div className="text-2xl font-bold mt-0.5">{value}</div>
       {sub && <div className="text-[10px] text-red-700">{sub}</div>}
     </div>

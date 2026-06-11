@@ -129,7 +129,7 @@ export default function PelletPatients() {
       {/* Saved filter presets — chip bar */}
       {(presets.data?.length ?? 0) > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap mb-2">
-          <span className="text-[10px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
+          <span className="text-[11px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
           {presets.data.map(p => (
             <PresetChip key={p.id} preset={p}
                          onLoad={() => applyPreset(p.filters_json || {})}
@@ -175,7 +175,7 @@ export default function PelletPatients() {
       <div className="card mb-3">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Search</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Search</label>
             <div className="relative">
               <Search size={11} className="absolute left-2 top-2 text-muted" />
               <input className="input text-sm pl-7 w-full"
@@ -185,7 +185,7 @@ export default function PelletPatients() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Patient type</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Patient type</label>
             <select className="input text-sm w-full" aria-label="Patient type" value={filters.patient_type}
                     onChange={e => setFilters({ ...filters, patient_type: e.target.value })}>
               <option value="">All</option>
@@ -194,7 +194,7 @@ export default function PelletPatients() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1 flex items-center justify-between">
+            <label className="text-[11px] uppercase text-gray-500 block mb-1 flex items-center justify-between">
               <span>Status</span>
               <ActiveMonthsControl />
             </label>
@@ -207,7 +207,7 @@ export default function PelletPatients() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
             <select className="input text-sm w-full" aria-label="Location" value={filters.location}
                     onChange={e => setFilters({ ...filters, location: e.target.value })}>
               <option value="">All locations</option>
@@ -228,7 +228,7 @@ export default function PelletPatients() {
         {savingPreset && (
           <div className="mt-2 pt-2 border-t border-gray-100 flex items-end gap-2">
             <div className="flex-1 max-w-xs">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Preset name</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Preset name</label>
               <input className="input text-sm w-full"
                      autoFocus
                      placeholder="e.g. Recall-due established"
@@ -455,7 +455,7 @@ function UpcomingCalendar({ onOpen, location }) {
                    isToday ? 'ring-2 ring-plum-400' :
                    isWeekend ? 'bg-gray-50/40' : ''
                  }`}>
-              <div className="text-[10px] uppercase tracking-wide text-gray-500">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500">
                 {dayLabel(d)}
               </div>
               <div className={`text-[15px] font-bold mb-1 ${isToday ? 'text-plum-700' : ''}`}>
@@ -670,7 +670,7 @@ function CalendarRescheduleDialog({ visitId, currentDate, patientName, qc, onClo
   return (
     <MiniDialog title={`Reschedule ${patientName}`} onClose={onClose}>
       <div>
-        <div className="text-[10px] uppercase text-gray-500 mb-1">New date</div>
+        <div className="text-[11px] uppercase text-gray-500 mb-1">New date</div>
         <input type="date" className="input text-sm w-full"
                 value={date} onChange={e => setDate(e.target.value)} />
         <div className="text-[10px] text-gray-500 mt-1">
@@ -678,7 +678,7 @@ function CalendarRescheduleDialog({ visitId, currentDate, patientName, qc, onClo
         </div>
       </div>
       <div>
-        <div className="text-[10px] uppercase text-gray-500 mb-1">Reason (optional)</div>
+        <div className="text-[11px] uppercase text-gray-500 mb-1">Reason (optional)</div>
         <textarea className="input text-sm w-full" rows={2}
                   value={reason} onChange={e => setReason(e.target.value)} />
       </div>
@@ -719,7 +719,7 @@ function CalendarCancelDialog({ visitId, patientName, qc, onClose }) {
         Any pulled doses will be returned to stock automatically.
       </div>
       <div>
-        <div className="text-[10px] uppercase text-gray-500 mb-1">Reason *</div>
+        <div className="text-[11px] uppercase text-gray-500 mb-1">Reason *</div>
         <textarea className="input text-sm w-full" rows={3}
                   value={reason} onChange={e => setReason(e.target.value)} autoFocus />
       </div>
@@ -805,7 +805,7 @@ function viewColumns(view) {
   const Type = {
     key: 'type', label: 'Type',
     render: p => (
-      <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${
+      <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${
         p.patient_type === 'new' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-700'
       }`}>
         {p.patient_type}
@@ -1042,7 +1042,7 @@ function ApptUploadDrawer({ onClose }) {
             </ul>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Excel file (.xlsx)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Excel file (.xlsx)</label>
             <input type="file" accept=".xlsx,.xls"
                    className="text-[12px] w-full"
                    onChange={e => { setFile(e.target.files?.[0] || null); setResult(null) }} />
@@ -1176,13 +1176,13 @@ function EnrollDrawer({ onClose }) {
         <div className="p-5 space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Chart # *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Chart # *</label>
               <input className="input text-sm w-full font-mono" required
                      value={form.chart_number}
                      onChange={e => upd('chart_number', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Type *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Type *</label>
               <select className="input text-sm w-full" value={form.patient_type}
                       onChange={e => upd('patient_type', e.target.value)}>
                 <option value="new">New ($500)</option>
@@ -1191,36 +1191,36 @@ function EnrollDrawer({ onClose }) {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Patient name *</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Patient name *</label>
             <input className="input text-sm w-full" required
                    value={form.patient_name}
                    onChange={e => upd('patient_name', e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">DOB</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">DOB</label>
               <input type="date" className="input text-sm w-full"
                      value={form.patient_dob}
                      onChange={e => upd('patient_dob', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Phone</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Phone</label>
               <input className="input text-sm w-full" value={form.patient_phone}
                      onChange={e => upd('patient_phone', e.target.value)} />
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Email (for Klara)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Email (for Klara)</label>
             <input className="input text-sm w-full" value={form.patient_email}
                    onChange={e => upd('patient_email', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Primary insurance</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Primary insurance</label>
             <input className="input text-sm w-full" value={form.primary_insurance}
                    onChange={e => upd('primary_insurance', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-[12px] w-full" rows={2}
                       value={form.notes}
                       onChange={e => upd('notes', e.target.value)} />

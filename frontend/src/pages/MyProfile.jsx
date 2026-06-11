@@ -32,15 +32,15 @@ export default function MyProfile() {
         <h2 className="text-sm font-semibold text-gray-700 mb-2">Account</h2>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6 text-sm">
           <div>
-            <dt className="text-[10px] uppercase tracking-wide text-gray-400">Email</dt>
+            <dt className="text-[11px] uppercase tracking-wide text-gray-400">Email</dt>
             <dd className="font-mono text-gray-800">{data.email}</dd>
           </div>
           <div>
-            <dt className="text-[10px] uppercase tracking-wide text-gray-400">Display name</dt>
+            <dt className="text-[11px] uppercase tracking-wide text-gray-400">Display name</dt>
             <dd className="text-gray-800">{data.display_name || '—'}</dd>
           </div>
           <div>
-            <dt className="text-[10px] uppercase tracking-wide text-gray-400">Access level (legacy)</dt>
+            <dt className="text-[11px] uppercase tracking-wide text-gray-400">Access level (legacy)</dt>
             <dd className="text-gray-800 capitalize">{data.legacy_group}</dd>
           </div>
         </dl>

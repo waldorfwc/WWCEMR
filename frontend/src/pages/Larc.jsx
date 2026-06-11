@@ -192,7 +192,7 @@ export default function Larc() {
                 const label = isOP ? 'text-teal-700' : 'text-plum-700'
                 return (
                   <div key={type} className={`card border ${cls} !p-2.5`}>
-                    <div className={`text-[10px] uppercase tracking-wide ${label}`}>{type}</div>
+                    <div className={`text-[11px] uppercase tracking-wide ${label}`}>{type}</div>
                     <div className="text-2xl font-bold mt-0.5">{count}</div>
                     <div className="text-[10px] text-gray-500">on hand</div>
                   </div>
@@ -444,7 +444,7 @@ export default function Larc() {
                 </td>
                 <td className="table-td text-[11px] capitalize">{a.source_flow.replace('_', ' ')}</td>
                 <td className="table-td">
-                  <span className="text-[10px] uppercase bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                  <span className="text-[11px] uppercase bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
                     {a.status.replace(/_/g, ' ')}
                   </span>
                 </td>
@@ -596,52 +596,52 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
 
           <div className="grid grid-cols-6 gap-2">
             <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Chart # *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Chart # *</label>
               <input className="input text-sm w-full font-mono" required
                      value={form.chart_number}
                      onChange={e => update('chart_number', e.target.value)} />
             </div>
             <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">DOB</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">DOB</label>
               <input type="date" className="input text-sm w-full"
                      value={form.patient_dob}
                      onChange={e => update('patient_dob', e.target.value)} />
             </div>
             <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">First name *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">First name *</label>
               <input className="input text-sm w-full" required
                      value={form.patient_first_name}
                      onChange={e => update('patient_first_name', e.target.value)} />
             </div>
             <div className="col-span-1">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">MI</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">MI</label>
               <input className="input text-sm w-full"
                      maxLength={3}
                      value={form.patient_middle_initial}
                      onChange={e => update('patient_middle_initial', e.target.value)} />
             </div>
             <div className="col-span-2">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Last name *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Last name *</label>
               <input className="input text-sm w-full" required
                      value={form.patient_last_name}
                      onChange={e => update('patient_last_name', e.target.value)} />
             </div>
 
             <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Cell phone</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Cell phone</label>
               <input className="input text-sm w-full font-mono"
                      placeholder="240-555-1234"
                      value={form.patient_cell}
                      onChange={e => update('patient_cell', e.target.value)} />
             </div>
             <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Home / alt phone</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Home / alt phone</label>
               <input className="input text-sm w-full font-mono"
                      value={form.patient_phone}
                      onChange={e => update('patient_phone', e.target.value)} />
             </div>
             <div className="col-span-6">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Email</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Email</label>
               <input className="input text-sm w-full"
                      value={form.patient_email}
                      onChange={e => update('patient_email', e.target.value)} />
@@ -650,26 +650,26 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
             {!isReserve && (
               <>
                 <div className="col-span-6">
-                  <label className="text-[10px] uppercase text-gray-500 block mb-1">Street address</label>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-1">Street address</label>
                   <input className="input text-sm w-full"
                          value={form.patient_address}
                          onChange={e => update('patient_address', e.target.value)} />
                 </div>
                 <div className="col-span-3">
-                  <label className="text-[10px] uppercase text-gray-500 block mb-1">City</label>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-1">City</label>
                   <input className="input text-sm w-full"
                          value={form.patient_city}
                          onChange={e => update('patient_city', e.target.value)} />
                 </div>
                 <div className="col-span-1">
-                  <label className="text-[10px] uppercase text-gray-500 block mb-1">State</label>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-1">State</label>
                   <input className="input text-sm w-full"
                          maxLength={2}
                          value={form.patient_state}
                          onChange={e => update('patient_state', e.target.value.toUpperCase())} />
                 </div>
                 <div className="col-span-2">
-                  <label className="text-[10px] uppercase text-gray-500 block mb-1">ZIP</label>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-1">ZIP</label>
                   <input className="input text-sm w-full font-mono"
                          value={form.patient_zip}
                          onChange={e => update('patient_zip', e.target.value)} />
@@ -678,7 +678,7 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
             )}
 
             <div className="col-span-6">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Primary insurance</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Primary insurance</label>
               <select className="input text-sm w-full"
                       value={form.primary_insurance}
                       onChange={e => update('primary_insurance', e.target.value)}>
@@ -689,20 +689,20 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
               </select>
             </div>
             <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Policy / member #</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Policy / member #</label>
               <input className="input text-sm w-full font-mono"
                      value={form.insurance_policy_no}
                      onChange={e => update('insurance_policy_no', e.target.value)} />
             </div>
             <div className="col-span-3">
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Group #</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Group #</label>
               <input className="input text-sm w-full font-mono"
                      value={form.insurance_group_no}
                      onChange={e => update('insurance_group_no', e.target.value)} />
             </div>
             {!isReserve && (
               <div className="col-span-6">
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Insurance card (image)</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Insurance card (image)</label>
                 <input type="file" accept="image/*,application/pdf"
                        className="text-sm w-full"
                        onChange={e => setInsuranceCardFile(e.target.files?.[0] || null)} />
@@ -718,7 +718,7 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
 
 
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">
               {isReserve ? 'Device type to reserve *' : 'Device type to order *'}
             </label>
             <select className="input text-sm w-full"
@@ -740,7 +740,7 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-sm w-full" rows={2}
                       value={form.notes}
                       onChange={e => update('notes', e.target.value)} />

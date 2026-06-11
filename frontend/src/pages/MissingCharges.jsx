@@ -135,7 +135,7 @@ export default function MissingCharges() {
                       active ? 'border-plum-600 ring-2 ring-plum-200' :
                       'border-gray-200 hover:border-plum-300'
                     }`}>
-              <div className="text-[10px] uppercase text-gray-500 truncate">{s.l}</div>
+              <div className="text-[11px] uppercase text-gray-500 truncate">{s.l}</div>
               <div className="text-xl font-bold mt-0.5">{count}</div>
             </button>
           )
@@ -146,7 +146,7 @@ export default function MissingCharges() {
       <div className="card mb-3">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm">
           <div className="md:col-span-2">
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Search</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Search</label>
             <div className="relative">
               <Search size={11} className="absolute left-2 top-2 text-muted" />
               <input className="input text-sm pl-7 w-full"
@@ -156,19 +156,19 @@ export default function MissingCharges() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Patient</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Patient</label>
             <input className="input text-sm w-full" placeholder="Name contains…"
                    value={filters.patient}
                    onChange={e => setFilters({ ...filters, patient: e.target.value })} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">MRN</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">MRN</label>
             <input className="input text-sm w-full font-mono" placeholder="MRN contains…"
                    value={filters.mrn}
                    onChange={e => setFilters({ ...filters, mrn: e.target.value })} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Appointment</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Appointment</label>
             <select className="input text-sm w-full" aria-label="Appointment type"
                     value={filters.appointment}
                     onChange={e => setFilters({ ...filters, appointment: e.target.value })}>
@@ -179,7 +179,7 @@ export default function MissingCharges() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Provider</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Provider</label>
             <select className="input text-sm w-full" aria-label="Provider"
                     value={filters.provider}
                     onChange={e => setFilters({ ...filters, provider: e.target.value })}>
@@ -190,7 +190,7 @@ export default function MissingCharges() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Payer</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Payer</label>
             <select className="input text-sm w-full" aria-label="Payer"
                     value={filters.payer}
                     onChange={e => setFilters({ ...filters, payer: e.target.value })}>
@@ -201,7 +201,7 @@ export default function MissingCharges() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Status</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Status</label>
             <select className="input text-sm w-full" aria-label="Status"
                     value={filters.status}
                     onChange={e => setFilters({ ...filters, status: e.target.value, open_only: false })}>
@@ -212,13 +212,13 @@ export default function MissingCharges() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">DOS from</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">DOS from</label>
             <input type="date" className="input text-sm w-full" aria-label="DOS from"
                    value={filters.date_from}
                    onChange={e => setFilters({ ...filters, date_from: e.target.value })} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">DOS to</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">DOS to</label>
             <input type="date" className="input text-sm w-full" aria-label="DOS to"
                    value={filters.date_to}
                    onChange={e => setFilters({ ...filters, date_to: e.target.value })} />
@@ -279,7 +279,7 @@ export default function MissingCharges() {
                 <td className="table-td text-[11px] truncate max-w-[140px]">{c.primary_provider}</td>
                 <td className="table-td text-[11px] truncate max-w-[160px]">{c.payer}</td>
                 <td className="table-td">
-                  <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded border ${STATUS_TONES[c.status] || ''}`}>
+                  <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded border ${STATUS_TONES[c.status] || ''}`}>
                     {statusLabel(c.status).split(' — ')[0]}
                   </span>
                 </td>
@@ -485,7 +485,7 @@ function UploadDrawer({ onClose }) {
             skipped automatically — no duplicates.
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Excel file (.xlsx)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Excel file (.xlsx)</label>
             <input ref={fileRef} type="file" accept=".xlsx,.xls"
                    className="text-[12px] w-full"
                    onChange={e => { setFile(e.target.files?.[0] || null); setResult(null) }} />
@@ -607,7 +607,7 @@ function DetailDrawer({ id, picks, isAdmin, onClose }) {
         <div className="p-5 space-y-4 text-sm">
           {/* Current status */}
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Current status</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Current status</label>
             <span className={`text-[12px] uppercase px-2 py-1 rounded border ${STATUS_TONES[c.status] || ''}`}>
               {statusLabel(c.status)}
             </span>
@@ -669,7 +669,7 @@ function DetailDrawer({ id, picks, isAdmin, onClose }) {
           {(c.status === 'needs_to_be_billed' || c.status === 'provider_billed' ||
             c.status === 'provider_error' || c.status === 'billed') && (
             <div>
-              <label className="text-[10px] uppercase text-gray-500 flex items-center gap-1 mb-1">
+              <label className="text-[11px] uppercase text-gray-500 flex items-center gap-1 mb-1">
                 <DollarSign size={11} /> Claim # {c.status === 'billed' && '(billed)'}
               </label>
               <div className="flex gap-2">
@@ -731,7 +731,7 @@ function NotesSection({ chargeId, notes }) {
   })
   return (
     <section>
-      <label className="text-[10px] uppercase text-gray-500 flex items-center gap-1 mb-1">
+      <label className="text-[11px] uppercase text-gray-500 flex items-center gap-1 mb-1">
         <MessageSquare size={11} /> Notes ({notes.length})
       </label>
       <div className="space-y-2 max-h-48 overflow-y-auto mb-2">
@@ -881,7 +881,7 @@ function ProviderMappingsPanel({ mapData, workforce, loading, error, onRefresh }
           {/* Unmapped first — actionable */}
           {unmapped.length > 0 && (
             <div className="space-y-1">
-              <div className="text-[10px] uppercase text-amber-700 font-semibold">
+              <div className="text-[11px] uppercase text-amber-700 font-semibold">
                 Unmapped providers with open rows
               </div>
               {unmapped.map(name => (
@@ -939,7 +939,7 @@ function ProviderMappingsPanel({ mapData, workforce, loading, error, onRefresh }
           {mappings.length > 0 && (
             <div className="space-y-1">
               <button type="button"
-                       className="text-[10px] uppercase text-gray-500 font-semibold hover:text-plum-700"
+                       className="text-[11px] uppercase text-gray-500 font-semibold hover:text-plum-700"
                        onClick={() => setShowAll(v => !v)}>
                 Existing mappings ({mappings.length}) {showAll ? '▾' : '▸'}
               </button>

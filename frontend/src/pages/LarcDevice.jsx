@@ -75,7 +75,7 @@ export default function LarcDevice() {
                 <Trash2 size={12} /> {del.isPending ? 'Deleting…' : 'Delete'}
               </button>
             )}
-            <span className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded ${OWNERSHIP_TONES[d.ownership] || 'bg-gray-100 text-gray-700'}`}
+            <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded ${OWNERSHIP_TONES[d.ownership] || 'bg-gray-100 text-gray-700'}`}
                   title={d.ownership === 'patient_owned'
                     ? 'Patient or their insurance paid — WWC does NOT bill insurance.'
                     : d.ownership === 'wwc_claimed'
@@ -91,7 +91,7 @@ export default function LarcDevice() {
                 change
               </button>
             )}
-            <span className="text-[10px] uppercase tracking-wide bg-plum-100 text-plum-700 px-2 py-1 rounded">
+            <span className="text-[11px] uppercase tracking-wide bg-plum-100 text-plum-700 px-2 py-1 rounded">
               {d.status.replace(/_/g, ' ')}
             </span>
           </div>
@@ -161,7 +161,7 @@ export default function LarcDevice() {
                   <strong>{a.patient_name}</strong>
                   <span className="text-gray-500 text-[11px] ml-1">chart {a.chart_number}</span>
                 </span>
-                <span className="text-[10px] uppercase text-gray-600">
+                <span className="text-[11px] uppercase text-gray-600">
                   {a.status.replace(/_/g, ' ')}
                   {!a.is_active && ' · inactive'}
                 </span>
@@ -258,7 +258,7 @@ function ChangeOwnershipModal({ device, onClose, onSaved }) {
 
         <div className="p-5 space-y-4 text-sm">
           <div className="bg-gray-50 border border-gray-200 rounded p-2 text-[11px]">
-            <div className="text-gray-500 uppercase tracking-wide text-[10px]">Currently</div>
+            <div className="text-gray-500 uppercase tracking-wide text-[11px]">Currently</div>
             <div className="font-medium">
               {(device.ownership_label || device.ownership || '—')}
             </div>
@@ -269,7 +269,7 @@ function ChangeOwnershipModal({ device, onClose, onSaved }) {
           </div>
 
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
               Change to
             </div>
             <div className="space-y-1.5">
@@ -295,7 +295,7 @@ function ChangeOwnershipModal({ device, onClose, onSaved }) {
           </div>
 
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
               Reason <span className="text-red-600">*</span>
             </div>
             <textarea

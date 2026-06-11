@@ -54,24 +54,24 @@ export default function LarcAudit() {
       <div className="card mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">User (email contains)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">User (email contains)</label>
             <input className="input text-sm" value={filters.actor}
                    onChange={e => set('actor', e.target.value)}
                    placeholder="e.g. cooke" />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Device ID</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Device ID</label>
             <input className="input text-sm font-mono" value={filters.device_id}
                    onChange={e => set('device_id', e.target.value)}
                    placeholder="GUID" />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Patient chart #</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Patient chart #</label>
             <input className="input text-sm font-mono" aria-label="Patient chart number" value={filters.chart_number}
                    onChange={e => set('chart_number', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Action</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Action</label>
             <select className="input text-sm" aria-label="Action filter" value={filters.action}
                     onChange={e => set('action', e.target.value)}>
               <option value="">Any</option>

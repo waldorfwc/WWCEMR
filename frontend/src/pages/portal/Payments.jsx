@@ -94,7 +94,7 @@ function History({ rows, sid }) {
               <span className="text-plum-ink font-mono font-medium">
                 {fmtMoney(r.amount_paid)}
               </span>
-              <span className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded-full border ${tone}`}>
+              <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded-full border ${tone}`}>
                 {r.status}
               </span>
               {r.has_receipt ? (

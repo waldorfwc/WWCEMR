@@ -121,11 +121,11 @@ function OwedRow({ o, qc }) {
         </td>
         <td className="table-td">
           {isResolved ? (
-            <span className="text-[10px] uppercase bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+            <span className="text-[11px] uppercase bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
               {o.resolution}
             </span>
           ) : (
-            <span className="text-[10px] uppercase bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+            <span className="text-[11px] uppercase bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
               awaiting
             </span>
           )}
@@ -144,7 +144,7 @@ function OwedRow({ o, qc }) {
           <td colSpan={5} className="bg-plum-50/30 p-3">
             <div className="space-y-2">
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Resolution</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Resolution</label>
                 <select className="input text-sm" value={resolution}
                         onChange={e => setResolution(e.target.value)}>
                   <option value="reallocated">Reallocated — patient is being given a fresh device</option>
@@ -153,7 +153,7 @@ function OwedRow({ o, qc }) {
                 </select>
               </div>
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
                 <input className="input text-sm w-full" value={notes}
                        onChange={e => setNotes(e.target.value)}
                        placeholder="Optional context for the audit log" />

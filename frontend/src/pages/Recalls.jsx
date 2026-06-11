@@ -118,7 +118,7 @@ export default function Recalls() {
       {/* Saved filter presets — chip bar */}
       {(presets?.length ?? 0) > 0 && (
         <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-          <span className="text-[10px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
+          <span className="text-[11px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
           {presets.map(p => (
             <PresetChip key={p.id} preset={p}
                         onLoad={() => applyFilters(p.filters_json || {})}
@@ -134,7 +134,7 @@ export default function Recalls() {
       <div className="card mb-3">
         <div className="flex flex-wrap gap-2 items-end">
           <div className="flex-1 min-w-[260px]">
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Search</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Search</label>
             <input
               className="input text-sm w-full"
               placeholder="Name, chart #, or phone…"
@@ -143,7 +143,7 @@ export default function Recalls() {
             />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Status</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Status</label>
             <select className="input text-sm" aria-label="Status" value={statusFilter}
                     onChange={e => { setStatusFilter(e.target.value); setPage(1) }}>
               <option value="active">Active queue</option>
@@ -153,14 +153,14 @@ export default function Recalls() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Recall type</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Recall type</label>
             <input className="input text-sm w-44"
                    value={recallType}
                    onChange={e => { setRecallType(e.target.value); setPage(1) }}
                    placeholder="e.g. Est - Well-Woman Exam" />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Sort</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Sort</label>
             <select className="input text-sm" aria-label="Sort recalls by" value={sort}
                     onChange={e => setSort(e.target.value)}>
               <option value="recently_due_desc">Recently due first</option>
@@ -184,7 +184,7 @@ export default function Recalls() {
         {savingPreset && (
           <div className="mt-3 pt-3 border-t border-gray-100 flex items-end gap-2">
             <div className="flex-1 max-w-xs">
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
               <input className="input text-sm w-full"
                      autoFocus
                      placeholder="e.g. Overdue 90+ WWE"
@@ -441,7 +441,7 @@ function Stat({ icon, label, val, tone }) {
   }
   return (
     <div className="card !p-3">
-      <div className="flex items-center gap-1.5 text-[10px] text-gray-500 uppercase tracking-wide">
+      <div className="flex items-center gap-1.5 text-[11px] text-gray-500 uppercase tracking-wide">
         {icon} {label}
       </div>
       <div className={`text-2xl font-bold mt-1 ${tones[tone]}`}>{val ?? '—'}</div>

@@ -93,7 +93,7 @@ export default function LarcEodReport() {
                       </td>
                       <td className="table-td text-[11px]">{c.requested_by?.split('@')[0]}</td>
                       <td className="table-td">
-                        <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${
+                        <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${
                           c.approval_status === 'approved' ? 'bg-green-100 text-green-700' :
                           c.approval_status === 'denied' ? 'bg-red-100 text-red-700' :
                           'bg-amber-100 text-amber-700'
@@ -200,7 +200,7 @@ function Stat({ label, v, tone }) {
   }
   return (
     <div className={`card border ${tones[tone]} !p-2`}>
-      <div className="text-[10px] uppercase tracking-wide opacity-80">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide opacity-80">{label}</div>
       <div className="text-xl font-bold mt-0.5">{v}</div>
     </div>
   )

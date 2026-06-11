@@ -622,7 +622,7 @@ function FeeSchedulePreviewModal({ result, busy, onApply, onClose }) {
           </div>
           <table className="w-full text-[12px]">
             <thead>
-              <tr className="text-left text-[10px] uppercase text-gray-500 border-b">
+              <tr className="text-left text-[11px] uppercase text-gray-500 border-b">
                 <th className="py-1">CPT</th>
                 <th className="py-1 text-right">Schedule</th>
                 <th className="py-1 text-right">Applied</th>
@@ -998,7 +998,7 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
 
   const SendHistoryList = () => history.length === 0 ? null : (
     <div className="border border-gray-200 rounded p-2 bg-gray-50 space-y-1">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500">
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">
         Send history ({history.length})
       </div>
       <ul className="text-[11px] space-y-0.5">
@@ -1055,7 +1055,7 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
       </div>
 
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">
           {mode === 'fax' ? 'Fax number' : 'Email address'}
         </div>
         <input className={`input text-[12px] w-full ${mode === 'fax' ? 'font-mono' : ''}`}
@@ -1067,7 +1067,7 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
 
       {mode === 'email' && (
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">
             Subject (optional)
           </div>
           <input className="input text-[12px] w-full"
@@ -1078,7 +1078,7 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
       )}
 
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">
           {mode === 'fax' ? 'Cover sheet message' : 'Message'} (optional)
         </div>
         <textarea className="input text-[12px] w-full" rows={2}
@@ -1236,7 +1236,7 @@ function BoardingSlipFieldsEditor({ surgery, onClose, onRegenerate, isPending })
 function FE({ label, value, onChange, type = 'text', mono = false, textarea = false }) {
   return (
     <div>
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">{label}</div>
       {textarea ? (
         <textarea className={`input text-[12px] w-full ${mono ? 'font-mono' : ''}`}
                   rows={2}
@@ -1413,7 +1413,7 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
       <div className="border border-gray-200 rounded p-2 mb-2 grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
         {!kindFilter && (
           <div>
-            <div className="text-[10px] uppercase text-gray-500">Kind</div>
+            <div className="text-[11px] uppercase text-gray-500">Kind</div>
             <select className="input text-xs" value={kind} onChange={e => setKind(e.target.value)}>
               <option value="prior_auth">Prior Auth Response</option>
               <option value="op_notes">Operative Notes</option>
@@ -1426,12 +1426,12 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
           </div>
         )}
         <div>
-          <div className="text-[10px] uppercase text-gray-500">File</div>
+          <div className="text-[11px] uppercase text-gray-500">File</div>
           <input type="file" className="text-xs"
                  onChange={e => { setFile(e.target.files?.[0] || null); setError(null) }} />
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Notes (optional)</div>
+          <div className="text-[11px] uppercase text-gray-500">Notes (optional)</div>
           <input className="input text-xs" value={notes} onChange={e => setNotes(e.target.value)} />
         </div>
         <button className="btn-primary text-xs flex items-center gap-1"
@@ -1452,7 +1452,7 @@ function FilesPanel({ surgery, kindFilter = null, label = 'Files' }) {
             return (
               <li key={f.id} className="py-1.5 flex items-baseline gap-3">
                 {!kindFilter && (
-                  <span className="text-[10px] uppercase text-gray-500 w-20 shrink-0">
+                  <span className="text-[11px] uppercase text-gray-500 w-20 shrink-0">
                     {f.kind.replace(/_/g, ' ')}
                   </span>
                 )}
@@ -1524,7 +1524,7 @@ function DeviceCell({ surgery }) {
               className="text-plum-700 hover:underline text-sm font-medium">
           {active.device_type_name} #{active.device_our_id || '—'}
         </Link>
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
           active.status === 'inserted' ? 'bg-blue-100 text-blue-700'
             : 'bg-amber-100 text-amber-700'
         }`}>
@@ -1583,7 +1583,7 @@ function ConsentStatusCell({ surgery }) {
   return (
     <button onClick={() => jumpTo('consent')}
             className="flex items-center gap-1 text-left group">
-      <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+      <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
         {label}
       </span>
       <span className="text-[10px] text-plum-700 group-hover:underline">jump ↓</span>
@@ -1608,7 +1608,7 @@ function PathologyStatusCell({ surgery }) {
   return (
     <button onClick={() => jumpTo('path_report')}
             className="flex items-center gap-1 text-left group">
-      <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+      <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
         {PATHOLOGY_LABELS[status] || status}
       </span>
       <span className="text-[10px] text-plum-700 group-hover:underline">jump ↓</span>
@@ -1626,7 +1626,7 @@ function BilledStatusCell({ surgery }) {
   return (
     <button onClick={() => jumpTo('surgery_billed')}
             className="flex items-center gap-1 text-left group">
-      <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+      <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
         {label}
       </span>
       <span className="text-[10px] text-plum-700 group-hover:underline">jump ↓</span>
@@ -2557,13 +2557,13 @@ function FacilityCell({ s, onPatch }) {
 
   return (
     <div className="space-y-1">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500">Selected facility</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">Selected facility</div>
       <select className="input text-[12px] w-full" value={selected}
               onChange={e => setSelected(e.target.value)}>
         <option value="">(not yet selected)</option>
         {FACILITY_OPTIONS.map(f => <option key={f.v} value={f.v}>{f.l}</option>)}
       </select>
-      <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-1">Eligible facilities</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500 mt-1">Eligible facilities</div>
       <div className="flex flex-wrap gap-1">
         {FACILITY_OPTIONS.map(f => {
           const on = eligible.has(f.v)
@@ -3644,7 +3644,7 @@ function PostOpApptsCardBody({ surgery }) {
         </div>
         {ruleVisits.length > 0 ? (
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
               Practice rule for this procedure
             </div>
             <ul className="space-y-0.5">
@@ -3730,7 +3730,7 @@ function PostOpApptsCardBody({ surgery }) {
       {/* Saved summary */}
       {savedRows.length > 0 && (
         <div className="bg-gray-50 border border-gray-200 rounded p-2 space-y-1">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Scheduled</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Scheduled</div>
           {savedRows.map((r, i) => (
             <div key={i} className="flex items-center gap-2">
               <span className="text-[11px] text-gray-700 w-32 shrink-0">{r.label}:</span>
@@ -3846,7 +3846,7 @@ function ClearanceCardBody({ surgery }) {
           Cardiac / Anesthesia Clearance
         </h3>
         {required && (
-          <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
+          <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${tone}`}>
             {status.replace(/_/g, ' ')}
           </span>
         )}
@@ -3873,18 +3873,18 @@ function ClearanceCardBody({ surgery }) {
       {required && (
         <div className="grid grid-cols-3 gap-2">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">Cardiologist</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Cardiologist</div>
             <input className="input text-[12px] w-full" value={cardioName}
                    onChange={e => setCardioName(e.target.value)} />
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">Phone</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Phone</div>
             <input className="input text-[12px] w-full font-mono" value={cardioPhone}
                    onChange={e => setCardioPhone(e.target.value)}
                    placeholder="240-xxx-xxxx" />
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500">Fax</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">Fax</div>
             <input className="input text-[12px] w-full font-mono" value={cardioFax}
                    onChange={e => setCardioFax(e.target.value)}
                    placeholder="240-xxx-xxxx" />
@@ -4055,24 +4055,24 @@ function AssistantSurgeonCardBody({ surgery }) {
           <UserPlus size={14} className="text-plum-700" />
           Assistant Surgeon
         </h3>
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${headerTone}`}>
+        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${headerTone}`}>
           {headerLabel}
         </span>
       </div>
       {/* Assistant surgeon contact */}
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Assistant surgeon</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Assistant surgeon</div>
           <input className="input text-[12px] w-full" value={name}
                  onChange={e => setName(e.target.value)} />
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Office phone</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Office phone</div>
           <input className="input text-[12px] w-full font-mono" value={phone}
                  onChange={e => setPhone(e.target.value)} placeholder="240-xxx-xxxx" />
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Office fax</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Office fax</div>
           <input className="input text-[12px] w-full font-mono" value={fax}
                  onChange={e => setFax(e.target.value)} placeholder="240-xxx-xxxx" />
         </div>
@@ -4206,14 +4206,14 @@ function PriorAuthCardBody({ surgery }) {
           <ShieldCheck size={14} className="text-emerald-700" />
           Prior Auth
         </h3>
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_TONE[authStatus] || 'bg-gray-100 text-gray-600'}`}>
+        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_TONE[authStatus] || 'bg-gray-100 text-gray-600'}`}>
           {authStatus.replace(/_/g, ' ')}
         </span>
       </div>
 
       <div className="flex items-end gap-2 text-[11px]">
         <div className="flex-1 max-w-[260px]">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">Auth status</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">Auth status</div>
           <select className="input text-[12px] w-full"
                   value={authStatus}
                   onChange={e => setAuthStatus(e.target.value)}>
@@ -4238,7 +4238,7 @@ function PriorAuthCardBody({ surgery }) {
       <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior Auth Response" />
 
       <div className="border-t border-gray-200 pt-2 space-y-1">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">
           Prior Auth No. / Reference No.
         </div>
         <div className="flex items-center gap-2">
@@ -4294,7 +4294,7 @@ function LabsCardBody({ surgery }) {
           <FlaskConical size={14} className="text-amber-700" />
           Pre-Op Labs
         </h3>
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
           surgery.lab_appointment_date
             ? 'bg-green-100 text-green-700'
             : 'bg-amber-100 text-amber-700'
@@ -4315,7 +4315,7 @@ function LabsCardBody({ surgery }) {
       {!editing ? (
         <div className="flex items-baseline gap-3 flex-wrap">
           <div>
-            <span className="text-[10px] uppercase tracking-wide text-gray-500">Lab appointment:</span>{' '}
+            <span className="text-[11px] uppercase tracking-wide text-gray-500">Lab appointment:</span>{' '}
             {surgery.lab_appointment_date
               ? <span className="font-medium">{fmt.date(surgery.lab_appointment_date)}</span>
               : <span className="text-gray-400 italic">not yet reported</span>}
@@ -4432,7 +4432,7 @@ function PostOpCallCardBody({ surgery, milestone }) {
           Spoke to Patient Post-Op
         </h3>
         {isDone && (
-          <span className="text-[10px] uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
+          <span className="text-[11px] uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
             done
           </span>
         )}
@@ -4477,7 +4477,7 @@ function PostOpCallCardBody({ surgery, milestone }) {
         })}
       </div>
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Additional notes</div>
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">Additional notes</div>
         <textarea className="input text-[12px] w-full"
                   rows={2}
                   value={answers.__free_text}
@@ -4541,14 +4541,14 @@ function SurgeryBilledCardBody({ surgery }) {
           <DollarSign size={14} className="text-emerald-700" />
           Surgery Billed
         </h3>
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
           billed ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
         }`}>
           {billed ? 'billed' : 'not billed'}
         </span>
       </div>
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">ModMed claim #</div>
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">ModMed claim #</div>
         <div className="flex gap-1">
           <input className="input text-[12px] flex-1 font-mono"
                  value={claimNum}
@@ -4564,7 +4564,7 @@ function SurgeryBilledCardBody({ surgery }) {
 
       <div className="border border-gray-200 rounded p-2">
         <div className="flex items-center justify-between mb-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500">
             AI billing codes (from op + path reports)
           </div>
           <button className="btn-primary text-[11px] flex items-center gap-1"
@@ -4584,7 +4584,7 @@ function SurgeryBilledCardBody({ surgery }) {
         {(icd10.length > 0 || cpts.length > 0) && (
           <div className="grid grid-cols-2 gap-3 mt-1">
             <div>
-              <div className="text-[10px] uppercase text-gray-500 mb-1">ICD-10</div>
+              <div className="text-[11px] uppercase text-gray-500 mb-1">ICD-10</div>
               <ul className="text-[11px] space-y-0.5">
                 {icd10.map((c, i) => (
                   <li key={i} className="flex gap-2">
@@ -4596,7 +4596,7 @@ function SurgeryBilledCardBody({ surgery }) {
               </ul>
             </div>
             <div>
-              <div className="text-[10px] uppercase text-gray-500 mb-1">CPT (+ mod / POS)</div>
+              <div className="text-[11px] uppercase text-gray-500 mb-1">CPT (+ mod / POS)</div>
               <ul className="text-[11px] space-y-0.5">
                 {cpts.map((c, i) => (
                   <li key={i} className="flex gap-2">
@@ -4703,7 +4703,7 @@ function CancelDrawer({ surgery, onClose, onFreedBlockDay }) {
 
         <div className="p-5 space-y-4">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Reason</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Reason</div>
             <div className="space-y-1">
               {reasons.map(r => (
                 <label key={r.v} className="flex items-baseline gap-2 text-sm cursor-pointer hover:bg-gray-50 px-2 py-1 rounded">
@@ -4720,7 +4720,7 @@ function CancelDrawer({ surgery, onClose, onFreedBlockDay }) {
           </div>
 
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Notes</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Notes</div>
             <textarea className="input text-sm w-full" rows={3}
                       placeholder="What happened? (optional)"
                       value={notes} onChange={e => setNotes(e.target.value)} />
@@ -5036,7 +5036,7 @@ function ConsentPanel({ surgery }) {
                     <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SUPPL</span>
                   )}
                 </span>
-                <span className="text-[10px] uppercase tracking-wide font-medium">{e.status}</span>
+                <span className="text-[11px] uppercase tracking-wide font-medium">{e.status}</span>
                 {e.envelope_id && (
                   <span className="text-[10px] font-mono text-gray-500">{e.envelope_id.slice(0, 8)}…</span>
                 )}
@@ -5065,7 +5065,7 @@ function ConsentPanel({ surgery }) {
             </div>
           ) : (
             <>
-              <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
                 Will send {matchData.matches.length} envelope{matchData.matches.length === 1 ? '' : 's'}:
               </div>
               <div className="space-y-0.5">
@@ -5393,7 +5393,7 @@ function BenefitsPanel({ surgery }) {
           Patient has a card on file
         </label>
         <div>
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
             Record a payment already received (reduces the estimate)
           </div>
           <div className="grid grid-cols-1 md:grid-cols-[140px_120px_1fr_auto] gap-2 items-end">
@@ -5442,7 +5442,7 @@ function BenefitsPanel({ surgery }) {
 
       {/* Live breakdown — 'patient owes' subtracts amount already paid (manual + Stripe) */}
       <div className="bg-plum-50/40 border border-plum-100 rounded p-3 text-xs mb-3">
-        <div className="text-[10px] uppercase tracking-wide text-plum-700 font-semibold mb-1">
+        <div className="text-[11px] uppercase tracking-wide text-plum-700 font-semibold mb-1">
           Live preview
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -5499,7 +5499,7 @@ function BenefitsPanel({ surgery }) {
 function DollarInput({ label, value, onChange, hint }) {
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">
+      <label className="text-[11px] uppercase tracking-wide text-gray-500 block mb-1">
         {label}
       </label>
       <div className="relative">
@@ -5518,7 +5518,7 @@ function DollarInput({ label, value, onChange, hint }) {
 function PercentInput({ label, value, onChange }) {
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">
+      <label className="text-[11px] uppercase tracking-wide text-gray-500 block mb-1">
         {label}
       </label>
       <div className="relative">
@@ -5677,7 +5677,7 @@ function RequestDevicePanel({ surgery }) {
                   Pharmacy order · status: {a.status.replace(/_/g, ' ')}
                 </div>
               </div>
-              <span className="text-[10px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
+              <span className="text-[11px] uppercase tracking-wide bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">
                 pending
               </span>
             </div>
@@ -5694,7 +5694,7 @@ function RequestDevicePanel({ surgery }) {
       ) : (
         <div className="border border-teal-200 bg-white rounded p-2 space-y-2">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Device type</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Device type</div>
             <select className="input text-[12px] w-full"
                     value={typeId}
                     onChange={e => setTypeId(e.target.value)}>
@@ -5705,7 +5705,7 @@ function RequestDevicePanel({ surgery }) {
             </select>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Notes (optional)</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Notes (optional)</div>
             <textarea className="input text-[12px] w-full" rows={2}
                       value={notes}
                       onChange={e => setNotes(e.target.value)}
@@ -5754,7 +5754,7 @@ function LarcDevicePickerCard({ surgery, flat = false }) {
       <div className="flex items-center gap-2 mb-2">
         <Package size={14} className="text-teal-700" />
         <h3 className="text-sm font-semibold text-gray-800">Office-procedure device</h3>
-        <span className="text-[10px] uppercase tracking-wide bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
+        <span className="text-[11px] uppercase tracking-wide bg-teal-100 text-teal-700 px-2 py-0.5 rounded">
           LARC inventory
         </span>
       </div>
@@ -5784,7 +5784,7 @@ function LarcDevicePickerCard({ surgery, flat = false }) {
                   {a.claim_number && ` · claim #${a.claim_number}`}
                 </div>
               </div>
-              <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded ${
+              <span className={`text-[11px] uppercase tracking-wide px-2 py-0.5 rounded ${
                 a.status === 'billed' ? 'bg-green-100 text-green-700' :
                 a.status === 'inserted' ? 'bg-blue-100 text-blue-700' :
                 'bg-amber-100 text-amber-700'

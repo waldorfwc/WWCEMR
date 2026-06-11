@@ -137,7 +137,7 @@ function ConfirmModal({ day, onConfirm, onCancel, busy }) {
   return (
     <div className="fixed inset-0 bg-plum-900/40 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-plum-600/70 mb-1">
+        <div className="text-[11px] uppercase tracking-[0.2em] text-plum-600/70 mb-1">
           Confirm
         </div>
         <h3 className="font-serif text-[14px] text-plum-ink font-semibold tracking-tight">

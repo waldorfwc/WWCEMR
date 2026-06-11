@@ -198,7 +198,7 @@ function Stat({ label, value, tone }) {
   }
   return (
     <div className="card !p-3">
-      <div className="text-[10px] uppercase tracking-wide text-gray-500">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide text-gray-500">{label}</div>
       <div className={`text-2xl font-semibold ${tones[tone] || tones.gray}`}>{value}</div>
     </div>
   )
@@ -216,7 +216,7 @@ function RowTable({ title, rows, kind }) {
       <div className="max-h-96 overflow-y-auto">
         <table className="w-full text-[12px]">
           <thead className="bg-gray-50 sticky top-0">
-            <tr className="text-left text-[10px] uppercase text-gray-500">
+            <tr className="text-left text-[11px] uppercase text-gray-500">
               <th className="px-3 py-1.5">Chart</th>
               <th className="px-3 py-1.5">Patient</th>
               {kind !== 'errors' && <th className="px-3 py-1.5">DOB</th>}

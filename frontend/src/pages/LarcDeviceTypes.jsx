@@ -61,7 +61,7 @@ export default function LarcDeviceTypes() {
                 <td className="table-td font-medium">{t.name}</td>
                 <td className="table-td text-[12px]">{t.manufacturer || '—'}</td>
                 <td className="table-td text-[11px]">
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase ${
+                  <span className={`px-1.5 py-0.5 rounded text-[11px] uppercase ${
                     t.category === 'office_procedure'
                       ? 'bg-teal-100 text-teal-700'
                       : 'bg-plum-100 text-plum-700'
@@ -70,7 +70,7 @@ export default function LarcDeviceTypes() {
                   </span>
                 </td>
                 <td className="table-td text-[11px]">
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] uppercase ${
+                  <span className={`px-1.5 py-0.5 rounded text-[11px] uppercase ${
                     t.default_flow === 'in_stock' ? 'bg-green-100 text-green-700' :
                     t.default_flow === 'office_procedure' ? 'bg-teal-100 text-teal-700' :
                     'bg-blue-100 text-blue-700'
@@ -176,19 +176,19 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
         </div>
         <div className="p-5 space-y-3 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Name *</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Name *</label>
             <input className="input text-sm w-full" required
                    value={form.name} onChange={e => update('name', e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Manufacturer</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Manufacturer</label>
               <input className="input text-sm w-full"
                      value={form.manufacturer}
                      onChange={e => update('manufacturer', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Category</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Category</label>
               <select className="input text-sm w-full"
                       value={form.category}
                       onChange={e => update('category', e.target.value)}>
@@ -197,7 +197,7 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Default flow</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Default flow</label>
               <select className="input text-sm w-full"
                       value={form.default_flow}
                       onChange={e => update('default_flow', e.target.value)}>
@@ -207,13 +207,13 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Typical cost ($)</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Typical cost ($)</label>
               <input type="number" step="0.01" className="input text-sm w-full font-mono"
                      value={form.typical_cost}
                      onChange={e => update('typical_cost', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">
                 Reorder ≤ <span className="text-[11px] text-gray-400">(in-stock only)</span>
               </label>
               <input type="number" min="0" className="input text-sm w-full"
@@ -222,7 +222,7 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
                      disabled={form.default_flow === 'pharmacy_order'} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">
                 Reorder qty <span className="text-[11px] text-gray-400">(how many to order)</span>
               </label>
               <input type="number" min="0" className="input text-sm w-full"
@@ -232,7 +232,7 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">DocuSign enrollment template</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">DocuSign enrollment template</label>
             {dsTemplates && Array.isArray(dsTemplates) ? (
               <select className="input text-sm w-full mb-1"
                       value={form.enrollment_form_template}
@@ -258,7 +258,7 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-sm w-full" rows={2}
                       value={form.notes}
                       onChange={e => update('notes', e.target.value)} />

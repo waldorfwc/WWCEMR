@@ -99,7 +99,7 @@ export default function PelletAudit() {
       <div className="card mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Action</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Action</label>
             <select className="input text-sm w-full" aria-label="Action filter" value={filters.action}
                     onChange={e => set('action', e.target.value)}>
               <option value="">All actions</option>
@@ -109,7 +109,7 @@ export default function PelletAudit() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
             <select className="input text-sm w-full" aria-label="Location filter" value={filters.location}
                     onChange={e => set('location', e.target.value)}>
               <option value="">All locations</option>
@@ -119,7 +119,7 @@ export default function PelletAudit() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Actor</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Actor</label>
             <div className="relative">
               <Search size={11} className="absolute left-2 top-2 text-muted" />
               <input className="input text-sm pl-7 w-full" placeholder="email substring"
@@ -128,14 +128,14 @@ export default function PelletAudit() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Lot UUID</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Lot UUID</label>
             <input className="input text-sm w-full font-mono text-[11px]"
                    placeholder="full UUID"
                    value={filters.lot_id}
                    onChange={e => set('lot_id', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Window</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Window</label>
             <select className="input text-sm w-full" aria-label="Time window" value={filters.days}
                     onChange={e => set('days', Number(e.target.value))}>
               <option value="7">Last 7 days</option>
@@ -193,7 +193,7 @@ export default function PelletAudit() {
                     )}
                   </td>
                   <td className="table-td">
-                    <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${ACTION_TONES[e.action] || 'bg-gray-100 text-gray-700'}`}>
+                    <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${ACTION_TONES[e.action] || 'bg-gray-100 text-gray-700'}`}>
                       {ACTION_LABELS[e.action] || e.action}
                     </span>
                     {witnessed && (

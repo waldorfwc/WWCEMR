@@ -408,7 +408,7 @@ export default function ActiveAR() {
       {/* Saved filter presets — chip bar */}
       {(presets?.length ?? 0) > 0 && (
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
+          <span className="text-[11px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
           {presets.map(p => (
             <PresetChip key={p.id} preset={p}
                         onLoad={() => applyFilters(p.filters_json || {})}
@@ -519,7 +519,7 @@ export default function ActiveAR() {
       {savingPreset && (
         <div className="card flex items-end gap-2 py-2 px-3 bg-gray-50/50">
           <div className="flex-1 max-w-xs">
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
             <input className="input text-sm w-full py-1.5"
                    autoFocus
                    placeholder="e.g. My past-TF BCBS claims"
@@ -664,7 +664,7 @@ export default function ActiveAR() {
             {grouped?.groups?.map(g => (
               <div key={`${g.patient_external_id}-${g.dos}`} className="px-3 py-2 hover:bg-gray-50">
                 <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-[10px] uppercase text-gray-400">DOS</span>
+                  <span className="text-[11px] uppercase text-gray-400">DOS</span>
                   <span className="font-semibold text-gray-800 text-sm">{fmt.date(g.dos)}</span>
                   <span className="text-xs text-gray-500">·</span>
                   <span className="font-medium text-gray-700 text-sm">{g.patient_name}</span>
@@ -870,7 +870,7 @@ function SummaryChip({ label, value, sub, tone, onClick, active }) {
       disabled={!onClick}
       className={`text-left rounded-lg border p-2 ${tones[tone] || tones.gray} ${onClick ? 'hover:shadow' : 'cursor-default'} ${ringActive}`}
     >
-      <div className="text-[10px] uppercase tracking-wide opacity-75">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide opacity-75">{label}</div>
       <div className="text-xl font-bold leading-tight">{value}</div>
       <div className="text-[10px] opacity-65 mt-0.5 truncate">{sub}</div>
     </button>

@@ -59,7 +59,7 @@ export default function PortalVerify() {
         <div className="flex flex-col items-center">
           <img src={logoFull} alt="Waldorf Women's Care — Surgery Portal"
                className="h-20 w-auto" />
-          <div className="text-[10px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mt-3">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-plum-600/70 font-medium mt-3">
             Enter your code
           </div>
         </div>

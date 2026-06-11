@@ -247,17 +247,17 @@ export default function PelletCounts() {
                 </td>
                 <td className="table-td">
                   {c.status === 'in_progress' && (
-                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                    <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
                       <Clock size={10} className="inline mr-0.5" /> in progress
                     </span>
                   )}
                   {c.status === 'finished' && (
-                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+                    <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-green-100 text-green-700">
                       <CheckCircle2 size={10} className="inline mr-0.5" /> finished
                     </span>
                   )}
                   {c.status === 'cancelled' && (
-                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                    <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
                       cancelled
                     </span>
                   )}
@@ -335,7 +335,7 @@ export default function PelletCounts() {
                 Variances need notes.
               </div>
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
                 <select className="input text-sm w-full" value={location}
                         onChange={e => setLocation(e.target.value)}>
                   <option value="white_plains">White Plains</option>
@@ -346,7 +346,7 @@ export default function PelletCounts() {
               </div>
 
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Scope</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Scope</label>
                 <div className="flex gap-3 text-[12px]">
                   <label className="flex items-center gap-1 cursor-pointer">
                     <input type="radio" name="scope" checked={scope === 'all'}
@@ -368,7 +368,7 @@ export default function PelletCounts() {
               </div>
 
               <div className="border border-amber-200 bg-amber-50/40 rounded p-2">
-                <label className="text-[10px] uppercase text-amber-800 font-semibold flex items-center gap-1 mb-1">
+                <label className="text-[11px] uppercase text-amber-800 font-semibold flex items-center gap-1 mb-1">
                   <Shield size={11}/> Witness at start
                 </label>
                 <input className="input text-[12px] w-full"
@@ -383,7 +383,7 @@ export default function PelletCounts() {
               </div>
 
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes (optional)</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes (optional)</label>
                 <textarea className="input text-[12px] w-full" rows={2}
                           value={notes} onChange={e => setNotes(e.target.value)} />
               </div>

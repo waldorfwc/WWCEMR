@@ -164,7 +164,7 @@ export default function PelletPatientDetail() {
 function Field({ label, children }) {
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-500">{label}</div>
+      <div className="text-[11px] uppercase text-gray-500">{label}</div>
       <div>{children}</div>
     </div>
   )
@@ -242,7 +242,7 @@ function TypeBadge({ patient, qc }) {
   }
   return (
     <button onClick={() => setEditing(true)}
-             className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded hover:ring-2 hover:ring-plum-200 ${
+             className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded hover:ring-2 hover:ring-plum-200 ${
                patient.patient_type === 'new'
                  ? 'bg-blue-100 text-blue-700'
                  : 'bg-gray-100 text-gray-700'
@@ -278,7 +278,7 @@ function StatusBadge({ patient, qc }) {
   }
   return (
     <button onClick={() => setEditing(true)}
-             className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded hover:ring-2 hover:ring-plum-200 ${
+             className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded hover:ring-2 hover:ring-plum-200 ${
                patient.status === 'active' ? 'bg-green-100 text-green-700'
                  : patient.status === 'inactive' ? 'bg-gray-100 text-gray-700'
                  : 'bg-red-100 text-red-700'
@@ -392,7 +392,7 @@ function PreferredLabPicker({ patient, qc, onClose }) {
   return (
     <SimpleDrawer title="Preferred lab" onClose={onClose}>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Lab *</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Lab *</label>
         <select className="input text-sm w-full" value={name}
                 onChange={e => setName(e.target.value)}>
           <option value="">— pick a lab —</option>
@@ -406,13 +406,13 @@ function PreferredLabPicker({ patient, qc, onClose }) {
         </div>
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Phone (optional)</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Phone (optional)</label>
         <input className="input text-sm w-full font-mono"
                 placeholder="Branch contact, if needed"
                 value={phone} onChange={e => setPhone(e.target.value)} />
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Address (optional)</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Address (optional)</label>
         <textarea className="input text-[12px] w-full" rows={2}
                    value={address} onChange={e => setAddress(e.target.value)} />
       </div>
@@ -475,7 +475,7 @@ function MammoFacilityPicker({ patient, qc, onClose }) {
   return (
     <SimpleDrawer title="Preferred mammogram facility" onClose={onClose}>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">
           Pick from list (within ~15 miles of Waldorf)
         </label>
         <select className="input text-sm w-full" value={pickerVal}
@@ -493,7 +493,7 @@ function MammoFacilityPicker({ patient, qc, onClose }) {
 
       <div className="border-t border-gray-100 pt-2 mt-2">
         <div className="flex items-baseline justify-between mb-1">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
             Facility details
           </div>
           <button type="button" onClick={clearFields}
@@ -503,27 +503,27 @@ function MammoFacilityPicker({ patient, qc, onClose }) {
         </div>
         <div className="space-y-2">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Name</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Name</label>
             <input className="input text-sm w-full"
                     placeholder="e.g. Charles Regional Imaging"
                     value={name} onChange={e => setName(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Phone</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Phone</label>
               <input className="input text-sm w-full font-mono"
                       placeholder="(301) 555-1212"
                       value={phone} onChange={e => setPhone(e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Fax</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Fax</label>
               <input className="input text-sm w-full font-mono"
                       placeholder="(301) 555-1213"
                       value={fax} onChange={e => setFax(e.target.value)} />
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Address</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Address</label>
             <textarea className="input text-[12px] w-full" rows={2}
                        value={address}
                        onChange={e => setAddress(e.target.value)} />
@@ -816,12 +816,12 @@ function MammoDrawer({ patient, qc, onClose }) {
   return (
     <SimpleDrawer title="Add mammogram entry" onClose={onClose}>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Date *</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Date *</label>
         <input type="date" className="input text-sm w-full" required
                value={date} onChange={e => setDate(e.target.value)} />
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Result *</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Result *</label>
         <select className="input text-sm w-full" value={result}
                 onChange={e => setResult(e.target.value)}>
           <option value="BI-RADS 1">BI-RADS 1 (negative)</option>
@@ -834,26 +834,26 @@ function MammoDrawer({ patient, qc, onClose }) {
         </select>
       </div>
       <div className="border-t border-gray-100 pt-2">
-        <div className="text-[10px] uppercase text-gray-500 font-semibold mb-1">
+        <div className="text-[11px] uppercase text-gray-500 font-semibold mb-1">
           Imaging facility (where the mammo was done)
         </div>
         <div className="space-y-2">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Facility name</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Facility name</label>
             <input className="input text-sm w-full"
                    placeholder="e.g. Charles Regional Imaging"
                    value={facilityName}
                    onChange={e => setFacilityName(e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Phone</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Phone</label>
             <input className="input text-sm w-full font-mono"
                    placeholder="(301) 555-1212"
                    value={facilityPhone}
                    onChange={e => setFacilityPhone(e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Address</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Address</label>
             <textarea className="input text-[12px] w-full" rows={2}
                        value={facilityAddress}
                        onChange={e => setFacilityAddress(e.target.value)} />
@@ -861,7 +861,7 @@ function MammoDrawer({ patient, qc, onClose }) {
         </div>
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                   value={notes} onChange={e => setNotes(e.target.value)}
                   placeholder="Optional — lateralization, finding details, etc." />
@@ -894,13 +894,13 @@ function LabsDrawer({ patient, qc, onClose }) {
   return (
     <SimpleDrawer title="Add labs entry" onClose={onClose}>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Date *</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Date *</label>
         <input type="date" className="input text-sm w-full" required
                value={date} onChange={e => setDate(e.target.value)} />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">FSH</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">FSH</label>
           <div className="relative">
             <input className="input text-sm w-full pr-12" value={fsh}
                     onChange={e => setFsh(e.target.value)} placeholder="e.g. 45" />
@@ -908,7 +908,7 @@ function LabsDrawer({ patient, qc, onClose }) {
           </div>
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">TSH</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">TSH</label>
           <div className="relative">
             <input className="input text-sm w-full pr-14" value={tsh}
                     onChange={e => setTsh(e.target.value)} placeholder="e.g. 2.4" />
@@ -916,7 +916,7 @@ function LabsDrawer({ patient, qc, onClose }) {
           </div>
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Estradiol</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Estradiol</label>
           <div className="relative">
             <input className="input text-sm w-full pr-10" value={e2}
                     onChange={e => setE2(e.target.value)} placeholder="e.g. 35" />
@@ -925,7 +925,7 @@ function LabsDrawer({ patient, qc, onClose }) {
         </div>
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                   value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
@@ -961,7 +961,7 @@ function NewVisitDrawer({ patient, qc, onClose }) {
     <SimpleDrawer title="Start new pellet visit" onClose={onClose}>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Visit kind *</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Visit kind *</label>
           <select className="input text-sm w-full" value={visitKind}
                    onChange={e => setVisitKind(e.target.value)}>
             <option value="initial">Initial insertion</option>
@@ -970,7 +970,7 @@ function NewVisitDrawer({ patient, qc, onClose }) {
           </select>
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
           <select className="input text-sm w-full" value={location}
                    onChange={e => setLocation(e.target.value)}>
             {Object.entries(LOC_LABEL).map(([k, v]) => (
@@ -980,13 +980,13 @@ function NewVisitDrawer({ patient, qc, onClose }) {
         </div>
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Scheduled date (optional)</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Scheduled date (optional)</label>
         <input type="date" className="input text-sm w-full"
                value={scheduledDate}
                onChange={e => setScheduledDate(e.target.value)} />
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                   value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
@@ -1242,7 +1242,7 @@ function RescheduleVisitDrawer({ visit, qc, onClose }) {
     <DrawerShell title="Reschedule visit" onClose={onClose}>
       <div className="space-y-3 text-sm">
         <div>
-          <div className="text-[10px] uppercase text-gray-500 mb-1">New date</div>
+          <div className="text-[11px] uppercase text-gray-500 mb-1">New date</div>
           <input type="date" className="input text-sm w-full"
                   value={date} onChange={e => setDate(e.target.value)} />
           <div className="text-[10px] text-gray-500 mt-1">
@@ -1250,7 +1250,7 @@ function RescheduleVisitDrawer({ visit, qc, onClose }) {
           </div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500 mb-1">Reason (optional)</div>
+          <div className="text-[11px] uppercase text-gray-500 mb-1">Reason (optional)</div>
           <textarea className="input text-sm w-full" rows={2}
                     placeholder="e.g. patient requested later date, weather, etc."
                     value={reason} onChange={e => setReason(e.target.value)} />
@@ -1299,7 +1299,7 @@ function CancelVisitDrawer({ visit, qc, onClose }) {
           </div>
         )}
         <div>
-          <div className="text-[10px] uppercase text-gray-500 mb-1">Reason *</div>
+          <div className="text-[11px] uppercase text-gray-500 mb-1">Reason *</div>
           <textarea className="input text-sm w-full" rows={3}
                     placeholder="Why is this visit being cancelled?"
                     value={reason} onChange={e => setReason(e.target.value)}
@@ -1768,7 +1768,7 @@ function CorrectLotDrawer({ visit, dose, onClose }) {
             <h2 className="text-[15px] font-semibold text-gray-900">
               Correct lot · {dose.quantity}× {dose.dose_label}
             </h2>
-            <div className="text-[10px] text-amber-700 uppercase tracking-wide">
+            <div className="text-[11px] text-amber-700 uppercase tracking-wide">
               Manager-only · retroactive
             </div>
           </div>
@@ -2068,7 +2068,7 @@ function HistoricalVisitRow({ visit, patient, qc, onEdit }) {
           <strong>{v.visit_kind}</strong>
           {' · '}
           {v.scheduled_date ? fmt.date(v.scheduled_date) : '(no date)'}
-          <span className="ml-1 text-[10px] bg-gray-100 text-gray-600 px-1 rounded uppercase">
+          <span className="ml-1 text-[11px] bg-gray-100 text-gray-600 px-1 rounded uppercase">
             historical
           </span>
           {v.location && <span className="ml-1 text-[10px] text-gray-500">{LOC_LABEL[v.location] || v.location}</span>}
@@ -2143,12 +2143,12 @@ function HistoricalVisitDrawer({ patient, qc, onClose, editing }) {
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Appointment date *</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Appointment date *</label>
           <input type="date" className="input text-sm w-full" value={date}
                   onChange={e => setDate(e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Visit kind</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Visit kind</label>
           <select className="input text-sm w-full" value={kind}
                    onChange={e => setKind(e.target.value)}>
             <option value="initial">initial</option>
@@ -2160,7 +2160,7 @@ function HistoricalVisitDrawer({ patient, qc, onClose, editing }) {
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
           <select className="input text-sm w-full" value={location}
                    onChange={e => setLocation(e.target.value)}>
             <option value="">—</option>
@@ -2170,14 +2170,14 @@ function HistoricalVisitDrawer({ patient, qc, onClose, editing }) {
           </select>
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Provider</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Provider</label>
           <input className="input text-sm w-full" value={provider}
                   onChange={e => setProvider(e.target.value)} />
         </div>
       </div>
 
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Dose summary (optional)</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Dose summary (optional)</label>
         <textarea className="input text-[12px] w-full" rows={2}
                    placeholder="e.g. E 25mg + T 100mg (2× 12.5mg estradiol + 1× 100mg testosterone)"
                    value={doseSummary}
@@ -2188,7 +2188,7 @@ function HistoricalVisitDrawer({ patient, qc, onClose, editing }) {
       </div>
 
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                    value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
@@ -2498,14 +2498,14 @@ function SetDoseDrawer({ patient, visits, qc, onClose }) {
       {/* Target mg inputs */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Estradiol total (mg)</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Estradiol total (mg)</label>
           <input type="number" step="0.5" min="0"
                   className="input text-sm w-full font-mono"
                   value={estradiolMg}
                   onChange={e => setEstradiolMg(e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Testosterone total (mg)</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Testosterone total (mg)</label>
           <input type="number" step="0.5" min="0"
                   className="input text-sm w-full font-mono"
                   value={testosteroneMg}
@@ -2515,7 +2515,7 @@ function SetDoseDrawer({ patient, visits, qc, onClose }) {
 
       {/* Visit picker */}
       <div className="border-t border-gray-100 pt-2 mt-2">
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Linked appointment *</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Linked appointment *</label>
         <select className="input text-sm w-full" value={visitChoice}
                  onChange={e => setVisitChoice(e.target.value)}>
           {futureVisits.map(v => (
@@ -2528,13 +2528,13 @@ function SetDoseDrawer({ patient, visits, qc, onClose }) {
         {visitChoice === 'create' && (
           <div className="grid grid-cols-2 gap-2 mt-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">New appt date *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">New appt date *</label>
               <input type="date" className="input text-sm w-full"
                       value={newApptDate}
                       onChange={e => setNewApptDate(e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
               <select className="input text-sm w-full" value={newApptLocation}
                        onChange={e => setNewApptLocation(e.target.value)}>
                 <option value="white_plains">White Plains</option>
@@ -2562,7 +2562,7 @@ function SetDoseDrawer({ patient, visits, qc, onClose }) {
       {/* Suggestions per hormone */}
       {(targetEst > 0 || targetT > 0) && (
         <div className="border-t border-gray-100 pt-2 mt-2">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 font-semibold mb-1">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1">
             Suggested combinations at {LOC_LABEL[visitLocation]}
           </div>
           {suggest.isLoading && (
@@ -2657,11 +2657,11 @@ function HormoneAlternatives({ label, alts, picked, onPick }) {
                 )}
               </div>
               {inStock ? (
-                <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-green-100 text-green-700 shrink-0">
+                <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-green-100 text-green-700 shrink-0">
                   in stock
                 </span>
               ) : (
-                <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">
+                <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 shrink-0">
                   short
                 </span>
               )}
@@ -2855,7 +2855,7 @@ function BagFillDrawer({ visit, qc, onClose }) {
                         {' '}· exp {recommended.expiration_date}
                         {' '}· {recommended.balances?.[location] || 0} on hand
                       </span>
-                      <span className="ml-1 text-[10px] uppercase tracking-wide text-green-700">
+                      <span className="ml-1 text-[11px] uppercase tracking-wide text-green-700">
                         earliest expiry
                       </span>
                       {!isFifoPick && currentPick && (
@@ -3228,7 +3228,7 @@ function InsertionOutcomeDrawer({ visit, qc, onClose }) {
                         sub="Returns all pulled doses to stock; closes visit" />
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                   value={notes} onChange={e => setNotes(e.target.value)}
                   placeholder="Optional explanation (esp. for reschedule / cancel)" />
@@ -3308,7 +3308,7 @@ function MidProcedureAddDrawer({ visit, qc, onClose }) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Dose</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Dose</label>
           <select className="input text-sm w-full"
                    value={doseTypeId}
                    onChange={e => { setDoseTypeId(e.target.value); setLotId('') }}>
@@ -3321,14 +3321,14 @@ function MidProcedureAddDrawer({ visit, qc, onClose }) {
           </select>
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Quantity</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Quantity</label>
           <input type="number" min="1" className="input text-sm w-full font-mono"
                   value={quantity}
                   onChange={e => setQuantity(e.target.value)} />
         </div>
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Lot</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Lot</label>
         <select className="input text-sm w-full" value={lotId}
                  onChange={e => setLotId(e.target.value)} disabled={!doseTypeId}>
           <option value="">— choose lot —</option>
@@ -3340,7 +3340,7 @@ function MidProcedureAddDrawer({ visit, qc, onClose }) {
         </select>
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                   value={notes} onChange={e => setNotes(e.target.value)}
                   placeholder="Why was the dose increased?" />
@@ -3385,7 +3385,7 @@ function MidProcedureDisposeDrawer({ visit, dose, qc, onClose }) {
         practice eats the loss.
       </div>
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Reason</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Reason</label>
         <select className="input text-sm w-full" value={reason}
                  onChange={e => setReason(e.target.value)}>
           <option value="dropped">Dropped on floor</option>
@@ -3404,7 +3404,7 @@ function MidProcedureDisposeDrawer({ visit, dose, qc, onClose }) {
         </div>
       )}
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">
           Notes {reason === 'other' && <span className="text-red-600">*</span>}
         </label>
         <textarea className="input text-[12px] w-full" rows={2}

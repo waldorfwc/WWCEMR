@@ -126,7 +126,7 @@ export default function Pellets() {
                     <strong>{r.label}</strong>
                     {r.is_controlled && <span className="ml-1 text-[11px] bg-amber-100 text-amber-700 px-1 rounded">SCH III</span>}
                     {r.location && (
-                      <span className="ml-1 text-[10px] uppercase px-1 rounded bg-plum-100 text-plum-800">
+                      <span className="ml-1 text-[11px] uppercase px-1 rounded bg-plum-100 text-plum-800">
                         @ {LOC_LABEL[r.location] || r.location}
                       </span>
                     )}
@@ -184,7 +184,7 @@ export default function Pellets() {
               </div>
               {(dash?.transfers_awaiting_pickup?.length ?? 0) > 0 && (
                 <>
-                  <div className="text-[10px] uppercase text-amber-700 font-semibold mt-1 mb-1">
+                  <div className="text-[11px] uppercase text-amber-700 font-semibold mt-1 mb-1">
                     Awaiting courier pickup
                   </div>
                   <ul className="text-xs space-y-1 mb-2">
@@ -196,7 +196,7 @@ export default function Pellets() {
               )}
               {(dash?.transfers_in_transit?.length ?? 0) > 0 && (
                 <>
-                  <div className="text-[10px] uppercase text-blue-700 font-semibold mt-1 mb-1">
+                  <div className="text-[11px] uppercase text-blue-700 font-semibold mt-1 mb-1">
                     In transit (with courier)
                   </div>
                   <ul className="text-xs space-y-1">
@@ -359,7 +359,7 @@ function HormoneCard({ title, tone, counts }) {
       <div className="grid grid-cols-3 gap-2">
         {Object.entries(LOC_LABEL).map(([k, l]) => (
           <div key={k} className="bg-white border border-gray-200 rounded p-2">
-            <div className="text-[10px] uppercase text-gray-500">{l}</div>
+            <div className="text-[11px] uppercase text-gray-500">{l}</div>
             <div className="text-xl font-bold mt-0.5">{counts?.[k] ?? 0}</div>
             <div className="text-[10px] text-gray-400">doses</div>
           </div>
@@ -703,7 +703,7 @@ function LotsCard({ types = [], onQuickTransfer }) {
       {/* Matrix column header — sticky inside the card body */}
       {!isLoading && (activeGroups.length > 0 || expiredGroups.length > 0) && (
         <div className={`sticky top-0 z-10 grid ${colTemplate} gap-2 px-3 py-1
-                         bg-gray-100 text-[10px] uppercase text-gray-500 border-b border-gray-200 shadow-sm`}>
+                         bg-gray-100 text-[11px] uppercase text-gray-500 border-b border-gray-200 shadow-sm`}>
           <div>Dose / Lot</div>
           {LOCATION_COLS.map(loc => (
             <div key={loc} className="text-right">{LOC_SHORT[loc]}</div>
@@ -971,43 +971,43 @@ function EditLotDrawer({ lot, onClose, onSaved }) {
 
       <div className="grid grid-cols-2 gap-2 text-[12px]">
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Dose</div>
+          <div className="text-[11px] uppercase text-gray-500">Dose</div>
           <div>{lot.dose_type_label}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Pack size</div>
+          <div className="text-[11px] uppercase text-gray-500">Pack size</div>
           <div>{lot.pack_size ?? '—'}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Doses originally received</div>
+          <div className="text-[11px] uppercase text-gray-500">Doses originally received</div>
           <div>{lot.doses_originally_received}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Received</div>
+          <div className="text-[11px] uppercase text-gray-500">Received</div>
           <div>{lot.received_at ? fmt.date(lot.received_at.slice(0, 10)) : '—'}</div>
         </div>
       </div>
 
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Qualgen lot # *</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Qualgen lot # *</label>
         <input className="input text-sm w-full font-mono" value={qualgenLot}
                 onChange={e => setQualgenLot(e.target.value)} />
       </div>
 
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Expiration date *</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Expiration date *</label>
         <input type="date" className="input text-sm w-full" value={expDate}
                 onChange={e => setExpDate(e.target.value)} />
       </div>
 
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                    value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
 
       <div className="border border-amber-200 bg-amber-50/40 rounded p-2">
-        <label className="text-[10px] uppercase text-amber-800 font-semibold block mb-1">
+        <label className="text-[11px] uppercase text-amber-800 font-semibold block mb-1">
           Reason *
         </label>
         <input className="input text-sm w-full"
@@ -1133,7 +1133,7 @@ const ORDER_STATUS_TONE = {
 function OrderStatusBadge({ status }) {
   const cls = ORDER_STATUS_TONE[status] || 'bg-gray-100 text-gray-700'
   const label = (status || '').replace(/_/g, ' ')
-  return <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${cls}`}>{label}</span>
+  return <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${cls}`}>{label}</span>
 }
 
 
@@ -1187,12 +1187,12 @@ function OrdersCard({ orders, lateOrders, inTransitOrders, onPlace,
                     </button>
                     <OrderStatusBadge status={o.status} />
                     {o.is_replacement && (
-                      <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+                      <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
                         replacement
                       </span>
                     )}
                     {isLate && (
-                      <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+                      <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-700">
                         late
                       </span>
                     )}
@@ -1355,7 +1355,7 @@ function PlaceOrderDrawer({ types, onClose }) {
 
       {isReplacement && (
         <div className="border border-violet-200 bg-violet-50/40 rounded p-2 space-y-1">
-          <label className="text-[10px] uppercase text-violet-800 block">
+          <label className="text-[11px] uppercase text-violet-800 block">
             Replacing disposal *
           </label>
           <select className="input text-[12px] w-full"
@@ -1377,12 +1377,12 @@ function PlaceOrderDrawer({ types, onClose }) {
 
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Qualgen order #</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Qualgen order #</label>
           <input className="input text-sm w-full" value={orderNum}
                   onChange={e => setOrderNum(e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Order date *</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Order date *</label>
           <input type="date" className="input text-sm w-full" value={orderDate}
                   onChange={e => {
                     setOrderDate(e.target.value)
@@ -1390,7 +1390,7 @@ function PlaceOrderDrawer({ types, onClose }) {
                   }} />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Expected delivery</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Expected delivery</label>
           <input type="date" className="input text-sm w-full" value={expected}
                   onChange={e => setExpected(e.target.value)} />
           <div className="text-[10px] text-gray-400 mt-0.5">default = order + 4 business days</div>
@@ -1399,7 +1399,7 @@ function PlaceOrderDrawer({ types, onClose }) {
 
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Payment method</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Payment method</label>
           <select className="input text-sm w-full" value={paymentMethod}
                    onChange={e => setPaymentMethod(e.target.value)}>
             <option value="">—</option>
@@ -1411,13 +1411,13 @@ function PlaceOrderDrawer({ types, onClose }) {
           </select>
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Confirmation #</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Confirmation #</label>
           <input className="input text-sm w-full font-mono"
                   value={paymentConfirmation}
                   onChange={e => setPaymentConfirmation(e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">Shipping cost</label>
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">Shipping cost</label>
           <input type="number" step="0.01" className="input text-sm w-full font-mono"
                   value={shippingCost} onChange={e => setShippingCost(e.target.value)} />
         </div>
@@ -1448,7 +1448,7 @@ function PlaceOrderDrawer({ types, onClose }) {
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-[10px] uppercase text-gray-500 block mb-1">Dose *</label>
+                    <label className="text-[11px] uppercase text-gray-500 block mb-1">Dose *</label>
                     <select className="input text-[12px] w-full"
                              value={l.dose_type_id}
                              onChange={e => updLine(i, { dose_type_id: e.target.value })}>
@@ -1462,7 +1462,7 @@ function PlaceOrderDrawer({ types, onClose }) {
                   </div>
                   <div className="grid grid-cols-3 gap-1">
                     <div>
-                      <label className="text-[10px] uppercase text-gray-500 block mb-1">Pack</label>
+                      <label className="text-[11px] uppercase text-gray-500 block mb-1">Pack</label>
                       <select className="input text-[12px] w-full"
                                value={l.pack_size}
                                onChange={e => updLine(i, { pack_size: Number(e.target.value) })}>
@@ -1472,13 +1472,13 @@ function PlaceOrderDrawer({ types, onClose }) {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] uppercase text-gray-500 block mb-1">#packs</label>
+                      <label className="text-[11px] uppercase text-gray-500 block mb-1">#packs</label>
                       <input type="number" min="1" className="input text-[12px] w-full"
                               value={l.pack_count}
                               onChange={e => updLine(i, { pack_count: Number(e.target.value) || 0 })} />
                     </div>
                     <div>
-                      <label className="text-[10px] uppercase text-gray-500 block mb-1">Doses</label>
+                      <label className="text-[11px] uppercase text-gray-500 block mb-1">Doses</label>
                       <div className="input text-[12px] w-full font-mono bg-gray-50 text-gray-600">
                         {lineDoses}
                       </div>
@@ -1487,20 +1487,20 @@ function PlaceOrderDrawer({ types, onClose }) {
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="text-[10px] uppercase text-gray-500 block mb-1">Unit cost (per pack)</label>
+                    <label className="text-[11px] uppercase text-gray-500 block mb-1">Unit cost (per pack)</label>
                     <input type="number" step="0.01" min="0"
                             className="input text-[12px] w-full font-mono"
                             value={l.unit_cost}
                             onChange={e => updLine(i, { unit_cost: e.target.value })} />
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase text-gray-500 block mb-1">Cost / dose</label>
+                    <label className="text-[11px] uppercase text-gray-500 block mb-1">Cost / dose</label>
                     <div className="input text-[12px] w-full font-mono bg-gray-50 text-gray-600">
                       ${costPerDose.toFixed(2)}
                     </div>
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase text-gray-500 block mb-1">Line total</label>
+                    <label className="text-[11px] uppercase text-gray-500 block mb-1">Line total</label>
                     <div className="input text-[12px] w-full font-mono bg-gray-50 text-gray-600">
                       ${lineTotal.toFixed(2)}
                     </div>
@@ -1515,32 +1515,32 @@ function PlaceOrderDrawer({ types, onClose }) {
       {/* Totals */}
       <div className="grid grid-cols-4 gap-2 text-[11px]">
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Lines subtotal</div>
+          <div className="text-[11px] uppercase text-gray-500">Lines subtotal</div>
           <div className="font-mono">${linesSubtotal.toFixed(2)}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Shipping</div>
+          <div className="text-[11px] uppercase text-gray-500">Shipping</div>
           <div className="font-mono">${(Number(shippingCost) || 0).toFixed(2)}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Tax</div>
+          <div className="text-[11px] uppercase text-gray-500">Tax</div>
           <input type="number" step="0.01" className="input text-[12px] w-full font-mono"
                   value={tax} onChange={e => setTax(e.target.value)} />
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Grand total</div>
+          <div className="text-[11px] uppercase text-gray-500">Grand total</div>
           <div className="font-mono font-bold">${grandTotal.toFixed(2)}</div>
         </div>
       </div>
 
       <div>
-        <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
         <textarea className="input text-[12px] w-full" rows={2}
                    value={notes} onChange={e => setNotes(e.target.value)} />
       </div>
 
       <div className="border border-border-subtle rounded p-2">
-        <label className="text-[10px] uppercase text-gray-500 flex items-center gap-1 mb-1">
+        <label className="text-[11px] uppercase text-gray-500 flex items-center gap-1 mb-1">
           <Paperclip size={11}/> Invoice / receipt PDF (optional)
         </label>
         <input type="file" accept="application/pdf"
@@ -1628,12 +1628,12 @@ function OrderDetailDrawer({ orderId, types, onClose, onReceive }) {
         <div className="flex items-center gap-2 flex-wrap">
           <OrderStatusBadge status={o.status} />
           {o.is_replacement && (
-            <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+            <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
               replacement
             </span>
           )}
           {o.is_overdue && (
-            <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-700">
+            <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-red-100 text-red-700">
               late
             </span>
           )}
@@ -1648,19 +1648,19 @@ function OrderDetailDrawer({ orderId, types, onClose, onReceive }) {
 
       <div className="grid grid-cols-2 gap-2 text-[12px]">
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Order date</div>
+          <div className="text-[11px] uppercase text-gray-500">Order date</div>
           <div>{fmt.date(o.order_date)}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Expected delivery</div>
+          <div className="text-[11px] uppercase text-gray-500">Expected delivery</div>
           <div>{o.expected_delivery_date ? fmt.date(o.expected_delivery_date) : '—'}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Placed by</div>
+          <div className="text-[11px] uppercase text-gray-500">Placed by</div>
           <div>{o.placed_by}</div>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Payment</div>
+          <div className="text-[11px] uppercase text-gray-500">Payment</div>
           <div>
             {(o.payment_method || '—').replace(/_/g, ' ')}
             {o.payment_confirmation && <span className="text-gray-500"> · {o.payment_confirmation}</span>}
@@ -1670,7 +1670,7 @@ function OrderDetailDrawer({ orderId, types, onClose, onReceive }) {
 
       <div className="border border-border-subtle rounded overflow-hidden">
         <table className="w-full text-[12px]">
-          <thead className="bg-gray-50 text-[10px] uppercase text-gray-500">
+          <thead className="bg-gray-50 text-[11px] uppercase text-gray-500">
             <tr>
               <th className="px-2 py-1 text-left">Dose</th>
               <th className="px-2 py-1 text-right">Packs</th>
@@ -1724,7 +1724,7 @@ function OrderDetailDrawer({ orderId, types, onClose, onReceive }) {
 
       {o.notes && (
         <div className="text-[11px] bg-gray-50 border border-gray-200 rounded p-2">
-          <div className="text-[10px] uppercase text-gray-500 mb-0.5">Notes</div>
+          <div className="text-[11px] uppercase text-gray-500 mb-0.5">Notes</div>
           {o.notes}
         </div>
       )}
@@ -2038,7 +2038,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
             </div>
             {mode === 'order' ? (
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Open order *</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Open order *</label>
                 <select className="input text-sm w-full"
                          value={selectedOrderId}
                          onChange={e => setSelectedOrderId(e.target.value)}>
@@ -2062,7 +2062,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
               </div>
             ) : mode === 'replacement' ? (
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Replacing disposal *</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Replacing disposal *</label>
                 <select className="input text-sm w-full"
                          value={replacesDisposalId}
                          onChange={e => setReplacesDisposalId(e.target.value)}>
@@ -2092,18 +2092,18 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
 
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Qualgen order #</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Qualgen order #</label>
               <input className="input text-sm w-full" value={orderNum}
                      onChange={e => setOrderNum(e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Ordered date</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Ordered date</label>
               <input type="date" className="input text-sm w-full"
                      value={orderedDate}
                      onChange={e => setOrderedDate(e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Received date *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Received date *</label>
               <input type="date" className="input text-sm w-full"
                      value={receivedDate}
                      onChange={e => setReceivedDate(e.target.value)} />
@@ -2129,7 +2129,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="text-[10px] uppercase text-gray-500 block mb-1">Dose *</label>
+                      <label className="text-[11px] uppercase text-gray-500 block mb-1">Dose *</label>
                       <select className="input text-[12px] w-full"
                                value={l.dose_type_id}
                                onChange={e => updLot(i, { dose_type_id: e.target.value })}>
@@ -2142,20 +2142,20 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[10px] uppercase text-gray-500 block mb-1">Qualgen lot # *</label>
+                      <label className="text-[11px] uppercase text-gray-500 block mb-1">Qualgen lot # *</label>
                       <input className="input text-[12px] w-full font-mono"
                               value={l.qualgen_lot_number}
                               onChange={e => updLot(i, { qualgen_lot_number: e.target.value })} />
                     </div>
                     <div>
-                      <label className="text-[10px] uppercase text-gray-500 block mb-1">Expiration *</label>
+                      <label className="text-[11px] uppercase text-gray-500 block mb-1">Expiration *</label>
                       <input type="date" className="input text-[12px] w-full"
                               value={l.expiration_date}
                               onChange={e => updLot(i, { expiration_date: e.target.value })} />
                     </div>
                     <div className="grid grid-cols-3 gap-1">
                       <div>
-                        <label className="text-[10px] uppercase text-gray-500 block mb-1">Pack</label>
+                        <label className="text-[11px] uppercase text-gray-500 block mb-1">Pack</label>
                         <select className="input text-[12px] w-full"
                                  value={l.pack_size}
                                  onChange={e => {
@@ -2167,7 +2167,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                         </select>
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase text-gray-500 block mb-1">#packs</label>
+                        <label className="text-[11px] uppercase text-gray-500 block mb-1">#packs</label>
                         <input type="number" min="1" className="input text-[12px] w-full"
                                 value={l.packs_received}
                                 onChange={e => {
@@ -2177,7 +2177,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                                 }} />
                       </div>
                       <div>
-                        <label className="text-[10px] uppercase text-gray-500 block mb-1">Doses</label>
+                        <label className="text-[11px] uppercase text-gray-500 block mb-1">Doses</label>
                         <input type="number" className="input text-[12px] w-full font-mono"
                                 value={l.doses_received}
                                 onChange={e => updLot(i, { doses_received: Number(e.target.value) || 0 })} />
@@ -2190,13 +2190,13 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
           </div>
 
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-[12px] w-full" rows={2}
                        value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
 
           <div className="border border-border-subtle rounded p-2">
-            <label className="text-[10px] uppercase text-gray-500 flex items-center gap-1 mb-1">
+            <label className="text-[11px] uppercase text-gray-500 flex items-center gap-1 mb-1">
               <Paperclip size={11}/> Packing slip PDF (optional)
             </label>
             <input type="file" accept="application/pdf"
@@ -2298,7 +2298,7 @@ function TransferDrawer({ onClose, initial }) {
         <div className="p-5 space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">From</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">From</label>
               <select className="input text-sm w-full" value={fromLoc}
                        onChange={e => { setFromLoc(e.target.value); setLotId('') }}>
                 {Object.entries(LOC_LABEL).map(([k, v]) => (
@@ -2307,7 +2307,7 @@ function TransferDrawer({ onClose, initial }) {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">To</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">To</label>
               <select className="input text-sm w-full" value={toLoc}
                        onChange={e => setToLoc(e.target.value)}>
                 {Object.entries(LOC_LABEL).map(([k, v]) => (
@@ -2317,7 +2317,7 @@ function TransferDrawer({ onClose, initial }) {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Lot</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Lot</label>
             <select className="input text-sm w-full" value={lotId}
                      onChange={e => setLotId(e.target.value)}>
               <option value="">— choose lot —</option>
@@ -2329,7 +2329,7 @@ function TransferDrawer({ onClose, initial }) {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Doses to send</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Doses to send</label>
             <input type="number" min="1" max={selected?.balances?.[fromLoc] || undefined}
                     className="input text-sm w-full font-mono"
                     value={doses} onChange={e => setDoses(e.target.value)} />
@@ -2345,7 +2345,7 @@ function TransferDrawer({ onClose, initial }) {
             </div>
           )}
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-[12px] w-full" rows={2}
                        value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
@@ -2449,7 +2449,7 @@ function DisposeDrawer({ onClose }) {
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
               <select className="input text-sm w-full" value={location}
                        onChange={e => { setLocation(e.target.value); setLotId('') }}>
                 {Object.entries(LOC_LABEL).map(([k, v]) => (
@@ -2458,7 +2458,7 @@ function DisposeDrawer({ onClose }) {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Reason</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Reason</label>
               <select className="input text-sm w-full" value={reason}
                        onChange={e => setReason(e.target.value)}>
                 {(picks?.disposal_reasons || []).map(r => (
@@ -2468,7 +2468,7 @@ function DisposeDrawer({ onClose }) {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Lot</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Lot</label>
             <select className="input text-sm w-full" value={lotId}
                      onChange={e => setLotId(e.target.value)}>
               <option value="">— choose lot —</option>
@@ -2480,7 +2480,7 @@ function DisposeDrawer({ onClose }) {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Doses to dispose</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Doses to dispose</label>
             <input type="number" min="1" max={selected?.balances?.[location] || undefined}
                     className="input text-sm w-full font-mono"
                     value={doses} onChange={e => setDoses(e.target.value)} />
@@ -2496,7 +2496,7 @@ function DisposeDrawer({ onClose }) {
             </div>
           )}
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">
               Notes {reason === 'other' && <span className="text-red-600">*</span>}
             </label>
             <textarea className="input text-[12px] w-full" rows={2}

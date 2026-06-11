@@ -50,7 +50,7 @@ export default function PelletDoseTypes() {
                 <td className="table-td font-medium">{t.label}</td>
                 <td className="table-td">
                   {t.is_controlled ? (
-                    <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 flex items-center gap-1 w-fit">
+                    <span className="text-[11px] uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 flex items-center gap-1 w-fit">
                       <Shield size={9}/> Sch III
                     </span>
                   ) : (
@@ -162,14 +162,14 @@ function EditDrawer({ dose, onClose }) {
           )}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Reorder ≤ packs (global)</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Reorder ≤ packs (global)</label>
               <input type="number" min="0" className="input text-sm w-full"
                      value={form.reorder_threshold_packs}
                      disabled={form.use_per_location}
                      onChange={e => upd('reorder_threshold_packs', e.target.value)}/>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Order qty packs</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Order qty packs</label>
               <input type="number" min="0" className="input text-sm w-full"
                      value={form.reorder_qty_packs}
                      onChange={e => upd('reorder_qty_packs', e.target.value)}/>
@@ -190,19 +190,19 @@ function EditDrawer({ dose, onClose }) {
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <label className="text-[10px] uppercase text-gray-500 block mb-1">White Plains</label>
+                    <label className="text-[11px] uppercase text-gray-500 block mb-1">White Plains</label>
                     <input type="number" min="0" className="input text-sm w-full"
                             value={form.threshold_wp}
                             onChange={e => upd('threshold_wp', e.target.value)}/>
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase text-gray-500 block mb-1">Brandywine</label>
+                    <label className="text-[11px] uppercase text-gray-500 block mb-1">Brandywine</label>
                     <input type="number" min="0" className="input text-sm w-full"
                             value={form.threshold_br}
                             onChange={e => upd('threshold_br', e.target.value)}/>
                   </div>
                   <div>
-                    <label className="text-[10px] uppercase text-gray-500 block mb-1">Arlington</label>
+                    <label className="text-[11px] uppercase text-gray-500 block mb-1">Arlington</label>
                     <input type="number" min="0" className="input text-sm w-full"
                             value={form.threshold_ar}
                             onChange={e => upd('threshold_ar', e.target.value)}/>
@@ -212,20 +212,20 @@ function EditDrawer({ dose, onClose }) {
             )}
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Typical cost per dose ($)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Typical cost per dose ($)</label>
             <input type="number" step="0.01" className="input text-sm w-full font-mono"
                    value={form.typical_cost_per_dose}
                    onChange={e => upd('typical_cost_per_dose', e.target.value)}/>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Pack sizes (comma-separated)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Pack sizes (comma-separated)</label>
             <input className="input text-sm w-full"
                    placeholder="6, 12, 30"
                    value={form.pack_sizes}
                    onChange={e => upd('pack_sizes', e.target.value)}/>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-[12px] w-full" rows={2}
                       value={form.notes} onChange={e => upd('notes', e.target.value)}/>
           </div>

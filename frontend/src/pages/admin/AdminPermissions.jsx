@@ -322,7 +322,7 @@ export default function AdminPermissions() {
             {!isLoading && matchedGroups.length > 0 && (
               <tr className="bg-plum-50 border-t border-plum-100">
                 <td colSpan={tiers.length + 2}
-                    className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+                    className="px-3 py-1 text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
                   Groups ({matchedGroups.length})
                 </td>
               </tr>
@@ -347,7 +347,7 @@ export default function AdminPermissions() {
             {!isLoading && matchedUsers.length > 0 && (
               <tr className="bg-plum-50 border-t border-plum-100">
                 <td colSpan={tiers.length + 2}
-                    className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+                    className="px-3 py-1 text-[11px] uppercase tracking-wide text-gray-500 font-semibold">
                   Users ({matchedUsers.length})
                 </td>
               </tr>
@@ -424,7 +424,7 @@ function SubjectRow({ row, tiers, showDeniedCell, onCellClick, onOpen, disabled 
           )}
           <span className="font-medium">{row.name}</span>
           {isSA && (
-            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide
+            <span className="inline-flex items-center gap-1 text-[11px] uppercase tracking-wide
                              text-plum-700 bg-plum-100 px-1.5 py-0.5 rounded">
               <Shield size={9} /> Super Admin
             </span>
@@ -631,7 +631,7 @@ function UserDrawerBody({ email, onJumpToModule }) {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">Email</div>
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">Email</div>
         <div className="text-sm font-mono text-gray-800">{decoded}</div>
       </div>
 
@@ -833,11 +833,11 @@ function GroupDrawerBody({ groupId, onJumpToModule, onClose }) {
   return (
     <div className="p-6 space-y-5">
       <div>
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">Name</div>
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">Name</div>
         <input className="input text-sm w-full mt-1"
                value={hydratedName}
                onChange={e => setName(e.target.value)} />
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mt-3">Description</div>
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mt-3">Description</div>
         <input className="input text-sm w-full mt-1"
                value={hydratedDesc}
                onChange={e => setDescription(e.target.value)}

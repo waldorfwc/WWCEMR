@@ -543,7 +543,7 @@ function SettingsCard({ onClose }) {
     <div className="card">
       <h2 className="text-sm font-semibold text-gray-700 mb-3">Settings</h2>
       <div className="mb-3 p-2.5 bg-gray-50 border border-gray-100 rounded text-sm">
-        <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">Practice Role</div>
+        <div className="text-[11px] uppercase text-gray-500 tracking-wide mb-1">Practice Role</div>
         <div className="flex items-baseline gap-2">
           <span className={`font-medium ${roleLabel ? 'text-gray-900' : 'text-amber-700'}`}>
             {roleLabel || 'Not assigned'}
@@ -826,7 +826,7 @@ function PainPointOwnerRow({ pp, qc }) {
           <strong className="text-gray-900">{pp.user_email?.split('@')[0]}</strong>
           <span className="text-gray-500"> · {fmt.date(pp.occurred_on)}</span>
         </span>
-        <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_TONE[pp.status] || ''}`}>
+        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_TONE[pp.status] || ''}`}>
           {pp.status.replace('_', ' ')}
         </span>
       </div>
@@ -1311,19 +1311,19 @@ function TaskDrawer({ task, parent, onClose, qc }) {
         </div>
         <div className="p-4 space-y-3 text-sm">
           <div>
-            <div className="text-[10px] uppercase text-gray-500 mb-1">Title *</div>
+            <div className="text-[11px] uppercase text-gray-500 mb-1">Title *</div>
             <input className="input text-sm w-full" value={title}
                    onChange={e => setTitle(e.target.value)} autoFocus />
           </div>
           <div>
-            <div className="text-[10px] uppercase text-gray-500 mb-1">Description</div>
+            <div className="text-[11px] uppercase text-gray-500 mb-1">Description</div>
             <textarea className="input text-[12px] w-full" rows={3}
                       value={description}
                       onChange={e => setDescription(e.target.value)} />
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <div className="text-[10px] uppercase text-gray-500 mb-1">Priority</div>
+              <div className="text-[11px] uppercase text-gray-500 mb-1">Priority</div>
               <select className="input text-sm w-full" value={priority}
                       onChange={e => setPriority(e.target.value)}>
                 <option value="high">High</option>
@@ -1332,7 +1332,7 @@ function TaskDrawer({ task, parent, onClose, qc }) {
               </select>
             </div>
             <div>
-              <div className="text-[10px] uppercase text-gray-500 mb-1">Due date</div>
+              <div className="text-[11px] uppercase text-gray-500 mb-1">Due date</div>
               <input type="date" className="input text-sm w-full"
                      value={dueDate}
                      onChange={e => setDueDate(e.target.value)} />
@@ -1340,7 +1340,7 @@ function TaskDrawer({ task, parent, onClose, qc }) {
           </div>
           {!isNew && (
             <div>
-              <div className="text-[10px] uppercase text-gray-500 mb-1">Status</div>
+              <div className="text-[11px] uppercase text-gray-500 mb-1">Status</div>
               <select className="input text-sm w-full" value={status}
                       onChange={e => setStatus(e.target.value)}>
                 <option value="new">New</option>
@@ -1350,7 +1350,7 @@ function TaskDrawer({ task, parent, onClose, qc }) {
             </div>
           )}
           <div>
-            <div className="text-[10px] uppercase text-gray-500 mb-1">
+            <div className="text-[11px] uppercase text-gray-500 mb-1">
               Assign to (one or more users)
             </div>
             <SharedWithPicker
@@ -1365,7 +1365,7 @@ function TaskDrawer({ task, parent, onClose, qc }) {
             )}
           </div>
           <div>
-            <div className="text-[10px] uppercase text-gray-500 mb-1">
+            <div className="text-[11px] uppercase text-gray-500 mb-1">
               Share with (collaborators — can edit, can't reshare or delete)
             </div>
             <SharedWithPicker
@@ -1606,7 +1606,7 @@ function ResponsibilitiesDrawer({ onClose }) {
 function Labeled({ label, children }) {
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
+      <div className="text-[11px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
       {children}
     </div>
   )

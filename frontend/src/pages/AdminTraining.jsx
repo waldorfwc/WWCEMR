@@ -228,7 +228,7 @@ export default function AdminTraining() {
                   <tr>
                     <td
                       colSpan={users.length + 1}
-                      className={`px-3 py-1 text-[10px] uppercase tracking-wider font-semibold border-y ${CATEGORY_BADGE[group.category] || 'bg-gray-50 text-gray-600 border-gray-200'} sticky left-0`}
+                      className={`px-3 py-1 text-[11px] uppercase tracking-wider font-semibold border-y ${CATEGORY_BADGE[group.category] || 'bg-gray-50 text-gray-600 border-gray-200'} sticky left-0`}
                     >
                       {group.category} · {group.templates.length} task{group.templates.length === 1 ? '' : 's'}
                     </td>

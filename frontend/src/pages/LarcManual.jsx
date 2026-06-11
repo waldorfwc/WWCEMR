@@ -61,7 +61,7 @@ export default function LarcManual() {
       {/* TOC */}
       {toc.length > 0 && (
         <div className="card !p-3 mb-4 bg-plum-50/30">
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">Jump to</div>
+          <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2">Jump to</div>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-[12px]">
             {toc.map(s => (
               <a key={s.id} href={`#${s.slug}`}
@@ -164,18 +164,18 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
       <div className="space-y-2">
         <div className="grid grid-cols-3 gap-2">
           <div className="col-span-2">
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Title</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Title</label>
             <input className="input text-sm w-full" value={title}
                    onChange={e => setTitle(e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Sort order</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Sort order</label>
             <input type="number" className="input text-sm w-full" value={sortOrder}
                    onChange={e => setSortOrder(e.target.value)} />
           </div>
         </div>
         <div className="flex items-center justify-between">
-          <label className="text-[10px] uppercase text-gray-500">Body (Markdown)</label>
+          <label className="text-[11px] uppercase text-gray-500">Body (Markdown)</label>
           <button onClick={() => setPreviewing(p => !p)}
                   className="text-[10px] text-plum-700 hover:underline">
             {previewing ? 'Edit ✎' : 'Preview 👁'}
@@ -238,24 +238,24 @@ function AddSectionForm({ onClose, onSaved }) {
         <div className="p-5 space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Title *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Title *</label>
               <input className="input text-sm w-full" value={title} required
                      onChange={e => { setTitle(e.target.value)
                                        if (!slug) setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')) }} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Slug (URL anchor)</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Slug (URL anchor)</label>
               <input className="input text-sm w-full font-mono" value={slug} required
                      onChange={e => setSlug(e.target.value)} />
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Sort order</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Sort order</label>
             <input type="number" className="input text-sm w-full" value={sortOrder}
                    onChange={e => setSortOrder(e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Body (Markdown)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Body (Markdown)</label>
             <textarea className="input text-[12px] w-full font-mono" rows={12}
                       value={body} onChange={e => setBody(e.target.value)} />
           </div>

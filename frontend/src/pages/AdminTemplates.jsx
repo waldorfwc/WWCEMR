@@ -235,7 +235,7 @@ export default function AdminTemplates() {
       <div className="card mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-muted block mb-1">Title contains</label>
+            <label className="text-[11px] uppercase text-muted block mb-1">Title contains</label>
             <div className="relative">
               <Search size={11} className="absolute left-2 top-2 text-muted" />
               <input className="input text-sm pl-7 w-full"
@@ -245,7 +245,7 @@ export default function AdminTemplates() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-muted block mb-1">Category</label>
+            <label className="text-[11px] uppercase text-muted block mb-1">Category</label>
             <select className="input text-sm w-full" aria-label="Category filter"
                     value={filters.category}
                     onChange={e => setFilters({ ...filters, category: e.target.value })}>
@@ -254,14 +254,14 @@ export default function AdminTemplates() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-muted block mb-1">Assignee contains</label>
+            <label className="text-[11px] uppercase text-muted block mb-1">Assignee contains</label>
             <input className="input text-sm w-full"
                    placeholder="Email or group name"
                    value={filters.assignee}
                    onChange={e => setFilters({ ...filters, assignee: e.target.value })} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-muted block mb-1">Manager contains</label>
+            <label className="text-[11px] uppercase text-muted block mb-1">Manager contains</label>
             <input className="input text-sm w-full"
                    placeholder="Escalate-to email"
                    value={filters.manager}
@@ -1209,12 +1209,12 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
                   }`}>
                 <span className="font-mono">{c.user_email}</span>
                 {pending ? (
-                  <span className="text-[10px] uppercase tracking-wide bg-amber-200 text-amber-800 px-1 rounded"
+                  <span className="text-[11px] uppercase tracking-wide bg-amber-200 text-amber-800 px-1 rounded"
                         title="Trainer signed; waiting on the trainee to log in and acknowledge">
                     awaiting trainee
                   </span>
                 ) : (
-                  <span className="text-[10px] uppercase tracking-wide bg-green-200 text-green-800 px-1 rounded">
+                  <span className="text-[11px] uppercase tracking-wide bg-green-200 text-green-800 px-1 rounded">
                     active
                   </span>
                 )}
@@ -1303,7 +1303,7 @@ function TrainersAndTrainees({ templateId, users, groupsList }) {
 function Field({ label, children }) {
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 block">{label}</label>
+      <label className="text-[11px] uppercase tracking-wide text-gray-500 mb-1 block">{label}</label>
       {children}
     </div>
   )

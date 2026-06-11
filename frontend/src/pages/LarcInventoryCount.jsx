@@ -82,7 +82,7 @@ function StartCountForm({ onClose, onStarted, qc }) {
         </div>
         <div className="p-5 space-y-3 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Scope</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Scope</label>
             <select className="input text-sm w-full" value={scope} onChange={e => setScope(e.target.value)}>
               <option value="">All locations</option>
               <option value="white_plains">White Plains</option>
@@ -149,7 +149,7 @@ function ActiveCount({ countId, qc, onDone }) {
   return (
     <div className="space-y-3">
       <div className="card !p-3">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
           Active count · {c.scope_location ? c.scope_location.replace('_', ' ') : 'all locations'}
         </div>
         <div className="grid grid-cols-3 gap-2 text-center mb-3">
@@ -223,7 +223,7 @@ function ActiveCount({ countId, qc, onDone }) {
                 <span className="font-mono">{d.our_id}</span>
                 <span className="text-gray-600">— {d.device_type_name}</span>
                 <span className="text-[10px] text-gray-500">@ {d.location}</span>
-                <span className="text-[10px] uppercase ml-auto">{d.status}</span>
+                <span className="text-[11px] uppercase ml-auto">{d.status}</span>
               </li>
             ))}
           </ul>
@@ -239,7 +239,7 @@ function ActiveCount({ countId, qc, onDone }) {
                 <span className="font-mono">{d.our_id}</span>
                 <span className="text-gray-600">— {d.device_type_name}</span>
                 <span className="text-[10px] text-gray-500">@ {d.location}</span>
-                <span className="text-[10px] uppercase ml-auto">{d.status}</span>
+                <span className="text-[11px] uppercase ml-auto">{d.status}</span>
               </li>
             ))}
           </ul>
@@ -412,7 +412,7 @@ function HistoryTable({ history, onOpen }) {
                 {c.scanned_count} / {c.expected_count}
               </td>
               <td className="table-td">
-                <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${
+                <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${
                   c.status === 'reconciled' ? 'bg-green-100 text-green-700' :
                   c.status === 'in_progress' ? 'bg-amber-100 text-amber-700' :
                   'bg-gray-100 text-gray-700'

@@ -199,12 +199,12 @@ export default function BankRecon() {
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
                   <th className="px-2 py-1.5 w-8"></th>
-                  <th className="px-2 py-1.5 text-left text-[10px] uppercase text-gray-500">Date</th>
-                  <th className="px-2 py-1.5 text-left text-[10px] uppercase text-gray-500">Reformatted (BAI2 text)</th>
-                  <th className="px-2 py-1.5 text-right text-[10px] uppercase text-gray-500">Amount</th>
-                  <th className="px-2 py-1.5 text-left text-[10px] uppercase text-gray-500">Method</th>
-                  <th className="px-2 py-1.5 text-left text-[10px] uppercase text-gray-500">Status</th>
-                  <th className="px-2 py-1.5 text-left text-[10px] uppercase text-gray-500">Original</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Date</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Reformatted (BAI2 text)</th>
+                  <th className="px-2 py-1.5 text-right text-[11px] uppercase text-gray-500">Amount</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Method</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Status</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Original</th>
                 </tr>
               </thead>
               <tbody>
@@ -407,7 +407,7 @@ function ImportRow({ imp }) {
 function Labeled({ label, children }) {
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
+      <div className="text-[11px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
       {children}
     </div>
   )

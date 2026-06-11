@@ -127,28 +127,28 @@ function AddPharmacyForm({ onClose, qc }) {
         </div>
         <div className="p-5 space-y-3 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Name *</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Name *</label>
             <input className="input text-sm w-full" required
                    value={form.name} onChange={e => update('name', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Fax</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Fax</label>
             <input className="input text-sm w-full font-mono"
                    placeholder="240-555-1234"
                    value={form.fax} onChange={e => update('fax', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Phone</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Phone</label>
             <input className="input text-sm w-full font-mono"
                    value={form.phone} onChange={e => update('phone', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Address</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Address</label>
             <input className="input text-sm w-full"
                    value={form.address} onChange={e => update('address', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">
               Accepts insurance (comma-separated keywords)
             </label>
             <input className="input text-sm w-full"
@@ -157,7 +157,7 @@ function AddPharmacyForm({ onClose, qc }) {
                    onChange={e => update('accepts_insurance_text', e.target.value)} />
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-sm w-full" rows={2}
                       value={form.notes} onChange={e => update('notes', e.target.value)} />
           </div>

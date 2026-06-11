@@ -209,36 +209,36 @@ function PharmacyEditCard({ initial, onCancel, onSaved }) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] uppercase text-gray-500">Name *</label>
+          <label className="text-[11px] uppercase text-gray-500">Name *</label>
           <input className="input text-sm w-full" value={name}
                  onChange={e => setName(e.target.value)} autoFocus />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500">Fax</label>
+          <label className="text-[11px] uppercase text-gray-500">Fax</label>
           <input className="input text-sm w-full font-mono" value={fax}
                  placeholder="866-216-1681"
                  onChange={e => setFax(e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500">Phone</label>
+          <label className="text-[11px] uppercase text-gray-500">Phone</label>
           <input className="input text-sm w-full font-mono" value={phone}
                  placeholder="844-639-4321"
                  onChange={e => setPhone(e.target.value)} />
         </div>
         <div>
-          <label className="text-[10px] uppercase text-gray-500">Address</label>
+          <label className="text-[11px] uppercase text-gray-500">Address</label>
           <input className="input text-sm w-full" value={address}
                  onChange={e => setAddress(e.target.value)} />
         </div>
         <div className="sm:col-span-2">
-          <label className="text-[10px] uppercase text-gray-500">Notes</label>
+          <label className="text-[11px] uppercase text-gray-500">Notes</label>
           <input className="input text-sm w-full" value={notes}
                  onChange={e => setNotes(e.target.value)} />
         </div>
       </div>
 
       <div className="mt-3">
-        <label className="text-[10px] uppercase text-gray-500">Ships these devices</label>
+        <label className="text-[11px] uppercase text-gray-500">Ships these devices</label>
         <div className="flex flex-wrap gap-1.5 mt-1">
           {PHARMACY_ORDER_DEVICES.map(d => {
             const on = deviceNames.has(d)
@@ -259,7 +259,7 @@ function PharmacyEditCard({ initial, onCancel, onSaved }) {
       </div>
 
       <div className="mt-3">
-        <label className="text-[10px] uppercase text-gray-500 flex items-center gap-1">
+        <label className="text-[11px] uppercase text-gray-500 flex items-center gap-1">
           <Star size={10} /> Default for (auto-picked on new assignments)
         </label>
         <div className="flex flex-wrap gap-1.5 mt-1">

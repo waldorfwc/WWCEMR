@@ -114,7 +114,7 @@ export default function Dashboard() {
           W
         </div>
         <div className="relative flex flex-col justify-center px-6 md:px-10 py-4">
-          <div className="text-[10px] uppercase tracking-[0.22em] text-white/80 font-medium">
+          <div className="text-[11px] uppercase tracking-[0.22em] text-white/80 font-medium">
             {today}
           </div>
           <h1 className="font-serif text-white text-[18px] md:text-[22px] leading-tight font-semibold tracking-tight mt-0.5">
@@ -359,7 +359,7 @@ function FactCard({ icon: Icon, label, value }) {
         <Icon size={16} />
       </div>
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-[0.16em] text-plum-600/70">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-plum-600/70">
           {label}
         </div>
         {multi ? (

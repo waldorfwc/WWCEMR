@@ -79,7 +79,7 @@ function Sidebar() {
             <Sparkles size={20} />
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-[0.18em] text-plum-600/70 font-medium">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-plum-600/70 font-medium">
               Waldorf Women's Care
             </div>
             <div className="font-serif text-[18px] leading-tight text-plum-ink font-semibold tracking-tight mt-0.5">
@@ -93,7 +93,7 @@ function Sidebar() {
       </div>
 
       <div className="px-6 py-5 border-b border-plum-100">
-        <div className="text-[10px] uppercase tracking-[0.16em] text-plum-600/70 mb-1">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-plum-600/70 mb-1">
           Care plan for
         </div>
         <div className="font-serif text-[18px] text-plum-ink leading-tight font-semibold">
@@ -349,7 +349,7 @@ function FactCard({ icon: Icon, label, value }) {
         <Icon size={16} />
       </div>
       <div className="min-w-0">
-        <div className="text-[10px] uppercase tracking-[0.16em] text-plum-600/70">
+        <div className="text-[11px] uppercase tracking-[0.16em] text-plum-600/70">
           {label}
         </div>
         <div className="text-[13px] text-plum-ink font-medium truncate">

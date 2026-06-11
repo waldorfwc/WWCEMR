@@ -168,7 +168,7 @@ function FeeTable() {
         <div className="max-h-[60vh] overflow-y-auto">
           <table className="w-full text-[12px]">
             <thead className="bg-gray-50 sticky top-0">
-              <tr className="text-left text-[10px] uppercase text-gray-500">
+              <tr className="text-left text-[11px] uppercase text-gray-500">
                 <th className="px-3 py-1.5">Insurance</th>
                 <th className="px-3 py-1.5">CPT</th>
                 <th className="px-3 py-1.5 text-right">Allowed</th>
@@ -293,7 +293,7 @@ function CciTable() {
         <div className="max-h-[60vh] overflow-y-auto">
           <table className="w-full text-[12px]">
             <thead className="bg-gray-50 sticky top-0">
-              <tr className="text-left text-[10px] uppercase text-gray-500">
+              <tr className="text-left text-[11px] uppercase text-gray-500">
                 <th className="px-3 py-1.5">Primary CPT</th>
                 <th className="px-3 py-1.5">Secondary CPT</th>
                 <th className="px-3 py-1.5">Action</th>

@@ -255,7 +255,7 @@ function TaskCard({ task, allGroups, qc }) {
           <div className="flex items-baseline gap-2 flex-wrap">
             <h3 className="text-[15px] font-semibold text-ink truncate">{t.title}</h3>
             {t.category && (
-              <span className="text-[10px] uppercase text-plum-700 bg-plum-50 px-1.5 py-0.5 rounded">
+              <span className="text-[11px] uppercase text-plum-700 bg-plum-50 px-1.5 py-0.5 rounded">
                 {t.category}
               </span>
             )}

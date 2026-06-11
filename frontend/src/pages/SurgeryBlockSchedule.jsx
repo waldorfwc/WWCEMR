@@ -391,7 +391,7 @@ function ScheduleForm({ onClose, qc }) {
 
               {/* Or generate from a range */}
               <div className="border-t border-gray-100 pt-2">
-                <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
                   Or fill from a date range
                 </div>
                 <div className="flex items-center gap-1 flex-wrap">
@@ -750,7 +750,7 @@ function BlackoutForm({ onClose, qc }) {
             </div>
             {/* Or a date range (every day inclusive) */}
             <div className="border-t border-gray-100 pt-2">
-              <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
                 Or add a range (every day inclusive — useful for vacations)
               </div>
               <div className="flex items-center gap-1">
@@ -796,7 +796,7 @@ function BlackoutForm({ onClose, qc }) {
         {/* Whole-day vs partial-day window. Times snap to 30-min on the
             server; the inputs only let users pick HH:00 or HH:30. */}
         <div className="col-span-2">
-          <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">Time window</div>
+          <div className="text-[11px] uppercase text-gray-500 tracking-wide mb-1">Time window</div>
           <div className="flex items-center gap-3">
             <label className="text-xs flex items-center gap-1.5">
               <input type="radio" checked={wholeDay} onChange={() => setWholeDay(true)} />
@@ -885,7 +885,7 @@ function BlackoutForm({ onClose, qc }) {
 function Field({ label, children }) {
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
+      <div className="text-[11px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
       {children}
     </div>
   )

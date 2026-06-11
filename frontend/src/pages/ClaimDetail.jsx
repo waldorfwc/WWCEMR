@@ -62,7 +62,7 @@ export default function ClaimDetail() {
       {claim.patient && (
         <div className="card mb-6 flex items-center gap-6 py-3">
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-400">Patient</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-400">Patient</div>
             <a
               href={`/patients/${claim.patient.id}`}
               className="font-semibold text-gray-900 hover:text-plum-700"
@@ -73,11 +73,11 @@ export default function ClaimDetail() {
             </a>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-400">Chart #</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-400">Chart #</div>
             <div className="font-mono text-sm text-gray-800">#{claim.patient.chart_number || '—'}</div>
           </div>
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-400">DOB</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-400">DOB</div>
             <div className="text-sm text-gray-800">{claim.patient.date_of_birth ? fmt.date(claim.patient.date_of_birth) : '—'}</div>
           </div>
         </div>

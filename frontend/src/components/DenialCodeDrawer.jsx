@@ -53,7 +53,7 @@ function DrawerContent({ request, onJumpTo, onClose }) {
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500">
           {request.mode === 'combo' ? 'Combined denial codeset' : 'Denial code reference'}
         </div>
         <button
@@ -97,7 +97,7 @@ function GroupView({ request }) {
       </Section>
 
       <div className="mt-4 pt-3 border-t border-gray-100">
-        <div className="text-[10px] uppercase font-semibold text-gray-500 mb-2">All group codes</div>
+        <div className="text-[11px] uppercase font-semibold text-gray-500 mb-2">All group codes</div>
         <div className="space-y-2">
           {Object.entries(GROUP_CODES).map(([k, info]) => (
             <div key={k} className="flex items-start gap-2 text-xs">
@@ -184,7 +184,7 @@ function SingleCodeView({ request }) {
   return (
     <div>
       <div className="flex items-baseline gap-2">
-        <span className="text-[10px] uppercase font-semibold text-plum-600">{data.code_type}</span>
+        <span className="text-[11px] uppercase font-semibold text-plum-600">{data.code_type}</span>
         <span className="font-mono text-lg font-bold text-gray-900">{data.code}</span>
       </div>
       <p className="text-sm text-gray-800 mt-1">{data.official_verbiage}</p>
@@ -231,7 +231,7 @@ function ComboView({ request }) {
       </div>
 
       <div className="mt-3 border border-plum-100 bg-plum-50/40 rounded p-3">
-        <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-plum-700 mb-1">
+        <div className="flex items-center gap-1 text-[11px] uppercase font-semibold text-plum-700 mb-1">
           <Sparkles size={11} /> Combined meaning
         </div>
         {isLoading && <Loading />}
@@ -239,7 +239,7 @@ function ComboView({ request }) {
         {data && (
           <>
             <p className="text-xs text-gray-800 leading-relaxed">{data.plain_english}</p>
-            <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-plum-700 mt-3 mb-1">
+            <div className="flex items-center gap-1 text-[11px] uppercase font-semibold text-plum-700 mt-3 mb-1">
               <Wrench size={11} /> Combined fix plan
             </div>
             <pre className="whitespace-pre-wrap font-sans text-xs text-gray-800 leading-relaxed">{data.how_to_fix}</pre>
@@ -291,7 +291,7 @@ function WwcNotesSection({ row }) {
   return (
     <div className="mt-4 pt-3 border-t border-gray-200">
       <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-1 text-[10px] font-semibold uppercase text-gray-500">
+        <div className="flex items-center gap-1 text-[11px] font-semibold uppercase text-gray-500">
           <NotebookPen size={11} /> WWC Notes
           {row.wwc_notes_updated_by && (
             <span className="ml-2 font-normal normal-case text-gray-400">
@@ -400,7 +400,7 @@ function NotesHistory({ row }) {
 function Section({ label, icon: Icon, children }) {
   return (
     <div className="mt-3">
-      <div className="flex items-center gap-1 text-[10px] uppercase font-semibold text-gray-500 mb-1">
+      <div className="flex items-center gap-1 text-[11px] uppercase font-semibold text-gray-500 mb-1">
         {Icon && <Icon size={11} />} {label}
       </div>
       {children}

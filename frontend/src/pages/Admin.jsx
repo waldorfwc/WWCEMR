@@ -240,7 +240,7 @@ function UserGroupsCell({ user, allGroups, editing, onEdit, onCancel, onSave, sa
           }}
           onClick={e => e.stopPropagation()}
         >
-          <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">
+          <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2">
             Groups for {user.email.split('@')[0]}
           </div>
           {!perms && <div className="text-[12px] text-muted">Loading…</div>}

@@ -67,7 +67,7 @@ function MilestoneRulesTab() {
 
       {/* Table of contents */}
       <div className="card mb-6 !p-3 bg-plum-50/30">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">Jump to</div>
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2">Jump to</div>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-1 text-[12px]">
           {[
             ['#workflow',  'Workflow overview'],
@@ -1171,7 +1171,7 @@ function EmailTemplatesTab() {
               </div>
               {preview && (
                 <div className="bg-gray-50 border border-border-subtle rounded p-2">
-                  <div className="text-[10px] uppercase text-gray-500 mb-1">Preview</div>
+                  <div className="text-[11px] uppercase text-gray-500 mb-1">Preview</div>
                   <div className="text-[12px] font-semibold">{preview.subject}</div>
                   <div className="text-[12px] mt-1" dangerouslySetInnerHTML={{ __html: preview.html_body }} />
                 </div>
@@ -1357,7 +1357,7 @@ function SmsTemplatesTab() {
               </div>
               {preview && (
                 <div className="bg-gray-50 border border-border-subtle rounded p-2">
-                  <div className="text-[10px] uppercase text-gray-500 mb-1">
+                  <div className="text-[11px] uppercase text-gray-500 mb-1">
                     Preview ({preview.length} chars · {preview.segments} segment{preview.segments === 1 ? '' : 's'})
                   </div>
                   <div className="text-[12px] font-mono whitespace-pre-wrap">{preview.body}</div>

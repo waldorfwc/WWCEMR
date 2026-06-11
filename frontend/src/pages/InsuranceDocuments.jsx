@@ -143,7 +143,7 @@ export default function InsuranceDocuments() {
       <div className="card mb-3">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">
               Status <span className="text-gray-400 normal-case">(toggle to multi-select)</span>
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -176,7 +176,7 @@ export default function InsuranceDocuments() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Classification</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Classification</label>
             <select className="input text-sm w-full" aria-label="Classification" value={filters.classification}
                     onChange={e => setFilters({ ...filters, classification: e.target.value })}>
               <option value="">All</option>
@@ -271,7 +271,7 @@ export default function InsuranceDocuments() {
                   )}
                 </td>
                 <td className="table-td">
-                  <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${CLASSIFICATION_TONES[d.classification] || ''}`}>
+                  <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${CLASSIFICATION_TONES[d.classification] || ''}`}>
                     {classLabel(d.classification)}
                   </span>
                 </td>
@@ -286,7 +286,7 @@ export default function InsuranceDocuments() {
                     : <span className="text-gray-400 italic">unassigned</span>}
                 </td>
                 <td className="table-td">
-                  <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${STATUS_TONES[d.status] || 'bg-gray-100 text-gray-700'}`}>
+                  <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${STATUS_TONES[d.status] || 'bg-gray-100 text-gray-700'}`}>
                     {(picks?.statuses?.find(s => s.v === d.status)?.l) || d.status.replace(/_/g, ' ')}
                   </span>
                 </td>
@@ -373,7 +373,7 @@ function UploadDrawer({ picks, onClose }) {
         </div>
         <div className="p-5 space-y-3 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">File (PDF preferred)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">File (PDF preferred)</label>
             <input ref={fileRef} type="file" accept="application/pdf,image/*"
                    className="text-[12px] w-full"
                    onChange={e => setFile(e.target.files?.[0] || null)} />
@@ -384,7 +384,7 @@ function UploadDrawer({ picks, onClose }) {
             )}
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Classification</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Classification</label>
             <select className="input text-sm w-full" value={classification}
                     onChange={e => setClassification(e.target.value)}>
               {picks?.classifications?.map(c => (
@@ -405,7 +405,7 @@ function UploadDrawer({ picks, onClose }) {
             </div>
           )}
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">
               Assign to (optional — leave blank for everyone)
             </label>
             <div className="border border-border-subtle rounded p-2 max-h-48 overflow-y-auto space-y-1">
@@ -599,7 +599,7 @@ function DocumentDrawer({ docId, onClose, picks }) {
           <div className="col-span-1 overflow-y-auto p-4 space-y-4">
             {/* Classification */}
             <section>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Classification</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Classification</label>
               <select className="input text-sm w-full"
                       value={doc.classification}
                       onChange={e => patchMut.mutate({ classification: e.target.value })}>
@@ -699,9 +699,9 @@ function DocumentDrawer({ docId, onClose, picks }) {
 
             {/* Status */}
             <section>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Status</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Status</label>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${STATUS_TONES[doc.status] || 'bg-gray-100 text-gray-700'}`}>
+                <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${STATUS_TONES[doc.status] || 'bg-gray-100 text-gray-700'}`}>
                   {(picks?.statuses?.find(s => s.v === doc.status)?.l) || doc.status.replace(/_/g, ' ')}
                 </span>
                 {doc.status === 'worked' && doc.worked_by && (
@@ -1052,7 +1052,7 @@ function NotesSection({ docId, notes }) {
 
   return (
     <section>
-      <label className="text-[10px] uppercase text-gray-500 flex items-center gap-1 mb-1">
+      <label className="text-[11px] uppercase text-gray-500 flex items-center gap-1 mb-1">
         <MessageSquare size={11} /> Notes ({notes.length})
       </label>
       <div className="space-y-2 max-h-48 overflow-y-auto mb-2">
@@ -1089,7 +1089,7 @@ function AuditSection({ log }) {
   return (
     <section>
       <button type="button"
-              className="text-[10px] uppercase text-gray-500 flex items-center gap-1 hover:text-plum-700"
+              className="text-[11px] uppercase text-gray-500 flex items-center gap-1 hover:text-plum-700"
               onClick={() => setOpen(o => !o)}>
         <History size={11} /> Access log ({log.length}) {open ? '▾' : '▸'}
       </button>

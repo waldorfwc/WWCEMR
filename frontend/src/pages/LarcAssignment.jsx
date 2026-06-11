@@ -69,14 +69,14 @@ export default function LarcAssignment() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded ${
+            <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded ${
               a.source_flow === 'office_procedure'
                 ? 'bg-teal-100 text-teal-700'
                 : 'bg-plum-100 text-plum-700'
             }`}>
               {a.source_flow.replace('_', ' ')}
             </span>
-            <span className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded ${
+            <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded ${
               a.status === 'billed' ? 'bg-green-100 text-green-700' :
               a.status === 'inserted' ? 'bg-blue-100 text-blue-700' :
               a.status.startsWith('failed') ? 'bg-red-100 text-red-700' :
@@ -100,7 +100,7 @@ export default function LarcAssignment() {
           </Field>
           <Field label="Ownership">
             {a.device_ownership ? (
-              <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${OWNERSHIP_TONES[a.device_ownership] || 'bg-gray-100 text-gray-700'}`}
+              <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${OWNERSHIP_TONES[a.device_ownership] || 'bg-gray-100 text-gray-700'}`}
                     title={a.device_ownership === 'patient_owned'
                       ? 'Patient Owned — WWC does NOT bill insurance.'
                       : a.device_ownership === 'wwc_claimed'
@@ -322,7 +322,7 @@ function BenefitsBody({ a }) {
   return (
     <div className="space-y-3 text-[12px]">
       <div>
-        <div className="text-[10px] uppercase text-gray-500 mb-1">Primary insurance</div>
+        <div className="text-[11px] uppercase text-gray-500 mb-1">Primary insurance</div>
         <select className="input text-[12px] w-full" value={ins}
                 onChange={e => setIns(e.target.value)}>
           <option value="">— select insurance —</option>
@@ -357,7 +357,7 @@ function BenefitsBody({ a }) {
       </div>
 
       <div className="bg-plum-50/40 border border-plum-100 rounded p-3">
-        <div className="text-[10px] uppercase tracking-wide text-plum-700 font-semibold mb-1">
+        <div className="text-[11px] uppercase tracking-wide text-plum-700 font-semibold mb-1">
           Live preview
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -403,7 +403,7 @@ function BenefitsBody({ a }) {
 function DollarInput({ label, value, onChange, hint }) {
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">
+      <label className="text-[11px] uppercase tracking-wide text-gray-500 block mb-1">
         {label}
       </label>
       <div className="relative">
@@ -422,7 +422,7 @@ function DollarInput({ label, value, onChange, hint }) {
 function PercentInput({ label, value, onChange }) {
   return (
     <div>
-      <label className="text-[10px] uppercase tracking-wide text-gray-500 block mb-1">
+      <label className="text-[11px] uppercase tracking-wide text-gray-500 block mb-1">
         {label}
       </label>
       <div className="relative">
@@ -780,7 +780,7 @@ function FaxPharmacyBody({ a }) {
   return (
     <div className="space-y-2 text-[12px]">
       <div>
-        <div className="text-[10px] uppercase text-gray-500">Pharmacy</div>
+        <div className="text-[11px] uppercase text-gray-500">Pharmacy</div>
         <select className="input text-[12px] w-full"
                 value={pharmacyId}
                 onChange={e => setPharmacyId(e.target.value)}>
@@ -869,13 +869,13 @@ function ReceiveDeviceBody({ a }) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Our label ID *</div>
+          <div className="text-[11px] uppercase text-gray-500">Our label ID *</div>
           <input className="input text-[12px] w-full font-mono" required
                  placeholder="e.g. LARC-2026-0042"
                  value={ourId} onChange={e => setOurId(e.target.value)} />
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Device type</div>
+          <div className="text-[11px] uppercase text-gray-500">Device type</div>
           <select className="input text-[12px] w-full"
                   value={typeId} onChange={e => setTypeId(e.target.value)}>
             <option value="">— pick —</option>
@@ -883,22 +883,22 @@ function ReceiveDeviceBody({ a }) {
           </select>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Manufacturer lot</div>
+          <div className="text-[11px] uppercase text-gray-500">Manufacturer lot</div>
           <input className="input text-[12px] w-full font-mono"
                  value={lot} onChange={e => setLot(e.target.value)} />
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Manufacturer serial</div>
+          <div className="text-[11px] uppercase text-gray-500">Manufacturer serial</div>
           <input className="input text-[12px] w-full font-mono"
                  value={serial} onChange={e => setSerial(e.target.value)} />
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Expiration date</div>
+          <div className="text-[11px] uppercase text-gray-500">Expiration date</div>
           <input type="date" className="input text-[12px] w-full"
                  value={exp} onChange={e => setExp(e.target.value)} />
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Location</div>
+          <div className="text-[11px] uppercase text-gray-500">Location</div>
           <select className="input text-[12px] w-full"
                   value={location} onChange={e => setLocation(e.target.value)}>
             <option value="white_plains">White Plains</option>
@@ -907,7 +907,7 @@ function ReceiveDeviceBody({ a }) {
           </select>
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Purchase price ($)</div>
+          <div className="text-[11px] uppercase text-gray-500">Purchase price ($)</div>
           <input type="number" step="0.01" className="input text-[12px] w-full font-mono"
                  value={price} onChange={e => setPrice(e.target.value)} />
         </div>
@@ -1029,12 +1029,12 @@ function CheckoutPlaceholderBody({ a }) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Patient DOB (identity check)</div>
+          <div className="text-[11px] uppercase text-gray-500">Patient DOB (identity check)</div>
           <input type="date" className="input text-[12px] w-full" value={dob}
                  onChange={e => setDob(e.target.value)} />
         </div>
         <div>
-          <div className="text-[10px] uppercase text-gray-500">Given to (provider/MA)</div>
+          <div className="text-[11px] uppercase text-gray-500">Given to (provider/MA)</div>
           <input className="input text-[12px] w-full" value={givenTo}
                  onChange={e => setGivenTo(e.target.value)}
                  placeholder="e.g. Dr. Cooke" />
@@ -1328,7 +1328,7 @@ function AllocateInventoryCard({ a }) {
 
       {ready && (
         <div className="border-t border-amber-200 pt-2">
-          <label className="text-[10px] uppercase text-gray-500 block mb-1">
+          <label className="text-[11px] uppercase text-gray-500 block mb-1">
             Pick device from inventory
           </label>
           <div className="flex gap-2 items-center">
@@ -1542,7 +1542,7 @@ function ReplacementChainCard({ a }) {
 
       {/* Step 1: return */}
       <div className="border-l-2 border-red-300 pl-3 mb-3">
-        <div className="text-[10px] uppercase tracking-wide text-red-700 mb-1">
+        <div className="text-[11px] uppercase tracking-wide text-red-700 mb-1">
           1 · Return to manufacturer {isReturned && <span className="text-green-700 ml-1">✓ done</span>}
         </div>
         {isDefective && !isReturned && (
@@ -1581,7 +1581,7 @@ function ReplacementChainCard({ a }) {
       {/* Step 2: receive replacement */}
       {isReturned && (
         <div className="border-l-2 border-amber-300 pl-3">
-          <div className="text-[10px] uppercase tracking-wide text-amber-700 mb-1">
+          <div className="text-[11px] uppercase tracking-wide text-amber-700 mb-1">
             2 · Receive replacement from manufacturer
           </div>
           <div className="grid grid-cols-2 gap-2 text-[12px]">

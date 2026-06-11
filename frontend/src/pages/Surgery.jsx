@@ -260,7 +260,7 @@ export default function Surgery() {
 
       {/* Status row — Unresponsive + Needs Repeat Pre-op */}
       <div className="flex flex-wrap gap-1.5 mb-2">
-        <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-medium
+        <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500 font-medium
                           self-center mr-1">
           Status
         </div>
@@ -279,7 +279,7 @@ export default function Surgery() {
 
       {/* Step chips — numbered circle + title + count, ordered by step */}
       <div className="flex flex-wrap items-stretch gap-1.5 mb-4">
-        <div className="text-[10px] uppercase tracking-[0.18em] text-gray-500 font-medium
+        <div className="text-[11px] uppercase tracking-[0.18em] text-gray-500 font-medium
                           self-center mr-1">
           Steps
         </div>
@@ -332,7 +332,7 @@ export default function Surgery() {
       {/* Saved filter presets — chip bar */}
       {(presets?.length ?? 0) > 0 && (
         <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-          <span className="text-[10px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
+          <span className="text-[11px] uppercase tracking-wide text-gray-500 mr-1">Saved:</span>
           {presets.map(p => (
             <PresetChip key={p.id} preset={p}
                         onLoad={() => setFilters({ ...EMPTY_FILTERS, ...p.filters_json })}
@@ -348,7 +348,7 @@ export default function Surgery() {
       <div className="card mb-3">
         <div className="flex flex-wrap gap-2 items-end">
           <div className="flex-1 min-w-[260px]">
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Search</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Search</label>
             <div className="relative">
               <Search size={12} className="absolute left-2 top-2.5 text-muted" />
               <input
@@ -360,7 +360,7 @@ export default function Surgery() {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Status</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Status</label>
             <select className="input text-sm" aria-label="Status" value={filters.status}
                     onChange={e => setF({ status: e.target.value })}>
               <option value="">All</option>
@@ -375,7 +375,7 @@ export default function Surgery() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Facility</label>
+            <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Facility</label>
             <select className="input text-sm" aria-label="Facility" value={filters.facility}
                     onChange={e => setF({ facility: e.target.value })}>
               <option value="">All</option>
@@ -422,7 +422,7 @@ export default function Surgery() {
         {showAdvanced && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3 pt-3 border-t border-gray-100">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Procedure type</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Procedure type</label>
               <select className="input text-sm w-full" value={filters.procedure_classification}
                       onChange={e => setF({ procedure_classification: e.target.value })}>
                 <option value="">Any</option>
@@ -434,19 +434,19 @@ export default function Surgery() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Surgeon contains</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Surgeon contains</label>
               <input className="input text-sm w-full" value={filters.surgeon}
                      onChange={e => setF({ surgeon: e.target.value })}
                      placeholder="e.g. Cooke" />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Insurance contains</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Insurance contains</label>
               <input className="input text-sm w-full" value={filters.primary_insurance}
                      onChange={e => setF({ primary_insurance: e.target.value })}
                      placeholder="e.g. Priority Partners" />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Auth status</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Auth status</label>
               <select className="input text-sm w-full" value={filters.auth_status}
                       onChange={e => setF({ auth_status: e.target.value })}>
                 <option value="">Any</option>
@@ -461,7 +461,7 @@ export default function Surgery() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Date picked?</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Date picked?</label>
               <select className="input text-sm w-full" value={filters.has_date}
                       onChange={e => setF({ has_date: e.target.value })}>
                 <option value="">Any</option>
@@ -470,19 +470,19 @@ export default function Surgery() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Surgery date ≥</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Surgery date ≥</label>
               <input type="date" className="input text-sm w-full" aria-label="Surgery date from"
                      value={filters.date_from}
                      onChange={e => setF({ date_from: e.target.value })} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Surgery date ≤</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Surgery date ≤</label>
               <input type="date" className="input text-sm w-full" aria-label="Surgery date to"
                      value={filters.date_to}
                      onChange={e => setF({ date_to: e.target.value })} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Robotic?</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Robotic?</label>
               <select className="input text-sm w-full" value={filters.is_robotic}
                       onChange={e => setF({ is_robotic: e.target.value })}>
                 <option value="">Any</option>
@@ -491,7 +491,7 @@ export default function Surgery() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Clearance required?</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Clearance required?</label>
               <select className="input text-sm w-full" value={filters.clearance_required}
                       onChange={e => setF({ clearance_required: e.target.value })}>
                 <option value="">Any</option>
@@ -500,7 +500,7 @@ export default function Surgery() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Pre-op needs repeat?</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Pre-op needs repeat?</label>
               <select className="input text-sm w-full" value={filters.preop_needs_repeat}
                       onChange={e => setF({ preop_needs_repeat: e.target.value })}>
                 <option value="">Any</option>
@@ -509,19 +509,19 @@ export default function Surgery() {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Rescheduled ≥</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Rescheduled ≥</label>
               <input type="number" min="0" className="input text-sm w-full" value={filters.reschedule_count_min}
                      onChange={e => setF({ reschedule_count_min: e.target.value })}
                      placeholder="e.g. 2" />
             </div>
             <div className="grid grid-cols-2 gap-1">
               <div>
-                <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Age ≥</label>
+                <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Age ≥</label>
                 <input type="number" min="0" className="input text-sm w-full" value={filters.age_min}
                        onChange={e => setF({ age_min: e.target.value })} />
               </div>
               <div>
-                <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Age ≤</label>
+                <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Age ≤</label>
                 <input type="number" min="0" className="input text-sm w-full" value={filters.age_max}
                        onChange={e => setF({ age_max: e.target.value })} />
               </div>
@@ -532,7 +532,7 @@ export default function Surgery() {
         {savingPreset && (
           <div className="mt-3 pt-3 border-t border-gray-100 flex items-end gap-2">
             <div className="flex-1 max-w-xs">
-              <label className="text-[10px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
+              <label className="text-[11px] uppercase text-gray-500 tracking-wide block mb-1">Preset name</label>
               <input className="input text-sm w-full"
                      autoFocus
                      placeholder="e.g. Robotic at MedStar next 30d"
@@ -602,7 +602,7 @@ function NextAvailableBar({ next, horizon }) {
         if (!slot) {
           return (
             <div key={it.key} className={`card border ${it.tone} !p-2.5`}>
-              <div className="text-[10px] uppercase tracking-wide opacity-80">{it.label}</div>
+              <div className="text-[11px] uppercase tracking-wide opacity-80">{it.label}</div>
               <div className="text-sm mt-1 italic opacity-70">No openings in next 180 days</div>
               {fill && (
                 <div className="text-[10px] opacity-70 mt-0.5">
@@ -616,7 +616,7 @@ function NextAvailableBar({ next, horizon }) {
         const fillOut = fill ? daysOut(fill.block_date) : null
         return (
           <div key={it.key} className={`card border ${it.tone} !p-2.5`}>
-            <div className="text-[10px] uppercase tracking-wide opacity-80">{it.label}</div>
+            <div className="text-[11px] uppercase tracking-wide opacity-80">{it.label}</div>
             <div className="text-lg font-bold mt-0.5 leading-tight">
               {fmt.date(slot.block_date)}
               <span className="text-[11px] font-normal opacity-70 ml-2">
@@ -771,7 +771,7 @@ function BucketTile({ label, val, tone, descr, active, onClick }) {
       title={descr}
       className={`text-left rounded border p-2 transition ${tones[tone] || tones.gray} ${activeRing}`}
     >
-      <div className="text-[10px] uppercase tracking-wide opacity-80 truncate">{label}</div>
+      <div className="text-[11px] uppercase tracking-wide opacity-80 truncate">{label}</div>
       <div className="text-2xl font-bold mt-0.5 leading-tight">{val}</div>
     </button>
   )
@@ -790,7 +790,7 @@ function Tile({ label, val, icon, tone }) {
   return (
     <div className={`card border ${tones[tone] || tones.neutral} flex items-center justify-between !p-2.5`}>
       <div>
-        <div className="text-[10px] uppercase tracking-wide opacity-80">{label}</div>
+        <div className="text-[11px] uppercase tracking-wide opacity-80">{label}</div>
         <div className="text-2xl font-bold mt-0.5">{val ?? '—'}</div>
       </div>
       <div className="opacity-60">{icon}</div>
@@ -874,7 +874,7 @@ function ToDoPanel({ todos, hospitalUnbooked = [], officeUnderbooked = [],
             <li key={`hosp-${b.block_day_id}`}
                 className="flex items-baseline justify-between gap-2 px-1 py-0.5 rounded bg-red-50/40">
               <span>
-                <span className="text-[10px] uppercase tracking-wide bg-red-100 text-red-700 px-1 py-0.5 rounded mr-1">
+                <span className="text-[11px] uppercase tracking-wide bg-red-100 text-red-700 px-1 py-0.5 rounded mr-1">
                   Release
                 </span>
                 <strong>{fmt.date(b.block_date)}</strong>
@@ -888,7 +888,7 @@ function ToDoPanel({ todos, hospitalUnbooked = [], officeUnderbooked = [],
             <li key={`off-${b.block_day_id}`}
                 className="flex items-baseline justify-between gap-2 px-1 py-0.5 rounded bg-violet-50/40">
               <span>
-                <span className="text-[10px] uppercase tracking-wide bg-violet-100 text-violet-700 px-1 py-0.5 rounded mr-1">
+                <span className="text-[11px] uppercase tracking-wide bg-violet-100 text-violet-700 px-1 py-0.5 rounded mr-1">
                   Open clinic
                 </span>
                 <strong>{fmt.date(b.block_date)}</strong>
@@ -931,7 +931,7 @@ function MilestoneGroup({ group, onOpen }) {
       </button>
       {open && (
         <table className="w-full text-xs">
-          <thead className="bg-gray-50 text-gray-600 text-[10px] uppercase tracking-wide">
+          <thead className="bg-gray-50 text-gray-600 text-[11px] uppercase tracking-wide">
             <tr>
               <th className="text-left px-3 py-1">Patient</th>
               <th className="text-left px-2 py-1">Chart#</th>
@@ -1448,7 +1448,7 @@ function ManualCreateDrawer({ onClose }) {
             {/* Procedures (multi) */}
             <div className="col-span-2">
               <div className="flex items-baseline justify-between mb-1">
-                <label className="text-[10px] uppercase text-gray-500">Procedure CPT codes</label>
+                <label className="text-[11px] uppercase text-gray-500">Procedure CPT codes</label>
                 <button type="button"
                         className="text-[11px] text-plum-700 hover:underline"
                         onClick={() => setForm(f => ({
@@ -1493,7 +1493,7 @@ function ManualCreateDrawer({ onClose }) {
             {/* Diagnoses (multi) */}
             <div className="col-span-2">
               <div className="flex items-baseline justify-between mb-1">
-                <label className="text-[10px] uppercase text-gray-500">Diagnosis ICD-10 codes</label>
+                <label className="text-[11px] uppercase text-gray-500">Diagnosis ICD-10 codes</label>
                 <button type="button"
                         className="text-[11px] text-plum-700 hover:underline"
                         onClick={() => setForm(f => ({
@@ -1606,7 +1606,7 @@ function ManualCreateDrawer({ onClose }) {
 function Field({ label, children }) {
   return (
     <div>
-      <div className="text-[10px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
+      <div className="text-[11px] uppercase text-gray-500 tracking-wide mb-1">{label}</div>
       {children}
     </div>
   )
@@ -1693,7 +1693,7 @@ function BucketGroup({ group, onOpen }) {
       </button>
       {open && (
         <table className="w-full text-xs">
-          <thead className="bg-gray-50 text-gray-600 text-[10px] uppercase tracking-wide">
+          <thead className="bg-gray-50 text-gray-600 text-[11px] uppercase tracking-wide">
             <tr>
               <th className="text-left px-3 py-1">Patient</th>
               <th className="text-left px-2 py-1">Chart#</th>

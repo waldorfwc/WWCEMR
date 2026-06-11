@@ -103,7 +103,7 @@ export default function CodeHelper() {
         )}
 
         <div className="flex items-center gap-2 mt-3">
-          <label className="text-[10px] uppercase text-gray-500">Payer</label>
+          <label className="text-[11px] uppercase text-gray-500">Payer</label>
           <input className="input text-sm" placeholder="Cigna / Aetna / …"
                   value={payer} onChange={e => setPayer(e.target.value)} />
           <button
@@ -129,12 +129,12 @@ export default function CodeHelper() {
           {/* patient strip */}
           <div className="flex items-end gap-2 mb-3 text-sm">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block">Patient</label>
+              <label className="text-[11px] uppercase text-gray-500 block">Patient</label>
               <input className="input text-sm" value={editName}
                       onChange={e => setEditName(e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block">DOB</label>
+              <label className="text-[11px] uppercase text-gray-500 block">DOB</label>
               <input className="input text-sm" type="date" value={editDob}
                       onChange={e => setEditDob(e.target.value)} />
             </div>
@@ -230,7 +230,7 @@ function CPTCard({ entry }) {
           <code key={m} className="text-[10px] bg-gray-100 px-1 rounded">-{m}</code>
         ))}
         <span className="text-[10px] text-gray-500">Pos {entry.position}</span>
-        <span className="text-[10px] uppercase bg-plum-50 text-plum-700 px-1.5 py-0.5 rounded">
+        <span className="text-[11px] uppercase bg-plum-50 text-plum-700 px-1.5 py-0.5 rounded">
           {entry.justification_type.replace(/_/g, ' ')}
         </span>
         <button className="text-[11px] text-plum-700 hover:underline ml-auto"

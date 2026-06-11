@@ -105,7 +105,7 @@ export default function LarcDevices() {
       <div className="card mb-3">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Category</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Category</label>
             <select className="input text-sm w-full" aria-label="Category"
                     value={filters.category}
                     onChange={e => setFilters({ ...filters, category: e.target.value, device_type_id: '' })}>
@@ -115,7 +115,7 @@ export default function LarcDevices() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Device type</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Device type</label>
             <select className="input text-sm w-full" aria-label="Device type"
                     value={filters.device_type_id}
                     onChange={e => setFilters({ ...filters, device_type_id: e.target.value })}>
@@ -125,7 +125,7 @@ export default function LarcDevices() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Status</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Status</label>
             <select className="input text-sm w-full" aria-label="Status"
                     value={filters.status}
                     onChange={e => setFilters({ ...filters, status: e.target.value })}>
@@ -150,7 +150,7 @@ export default function LarcDevices() {
             </label>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
             <select className="input text-sm w-full" aria-label="Location"
                     value={filters.location}
                     onChange={e => setFilters({ ...filters, location: e.target.value })}>
@@ -161,7 +161,7 @@ export default function LarcDevices() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Ownership</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Ownership</label>
             <select className="input text-sm w-full" aria-label="Ownership"
                     value={filters.ownership}
                     onChange={e => setFilters({ ...filters, ownership: e.target.value })}>
@@ -172,7 +172,7 @@ export default function LarcDevices() {
             </select>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Search</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Search</label>
             <div className="relative">
               <Search size={12} className="absolute left-2 top-2.5 text-muted" />
               <input className="input text-sm pl-7 w-full"
@@ -247,7 +247,7 @@ export default function LarcDevices() {
                   </td>
                   <td className="table-td font-mono text-[11px]">{d.manufacturer_lot || '—'}</td>
                   <td className="table-td">
-                    <span className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded ${OWNERSHIP_TONES[d.ownership] || 'bg-gray-100 text-gray-700'}`}>
+                    <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${OWNERSHIP_TONES[d.ownership] || 'bg-gray-100 text-gray-700'}`}>
                       {OWNERSHIP_LABELS[d.ownership] || d.ownership_label || d.ownership}
                     </span>
                   </td>
@@ -256,7 +256,7 @@ export default function LarcDevices() {
                     {d.expiration_date ? fmt.date(d.expiration_date) : '—'}
                   </td>
                   <td className="table-td">
-                    <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded ${STATUS_TONES[d.status] || 'bg-gray-100 text-gray-700'}`}>
+                    <span className={`text-[11px] uppercase px-1.5 py-0.5 rounded ${STATUS_TONES[d.status] || 'bg-gray-100 text-gray-700'}`}>
                       {d.status.replace(/_/g, ' ')}
                     </span>
                   </td>
@@ -361,12 +361,12 @@ function BulkAddForm({ types, onClose }) {
         <div className="p-5 space-y-3 text-sm">
           {/* Shared fields */}
           <div className="bg-plum-50/30 border border-plum-100 rounded p-3">
-            <div className="text-[10px] uppercase tracking-wide text-plum-700 mb-2">
+            <div className="text-[11px] uppercase tracking-wide text-plum-700 mb-2">
               Shared (applies to all rows)
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Device type</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Device type</label>
                 <select className="input text-sm w-full"
                         value={shared.device_type_id}
                         onChange={e => setShared({ ...shared, device_type_id: e.target.value })}>
@@ -374,7 +374,7 @@ function BulkAddForm({ types, onClose }) {
                 </select>
               </div>
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
                 <select className="input text-sm w-full"
                         value={shared.location}
                         onChange={e => setShared({ ...shared, location: e.target.value })}>
@@ -384,7 +384,7 @@ function BulkAddForm({ types, onClose }) {
                 </select>
               </div>
               <div>
-                <label className="text-[10px] uppercase text-gray-500 block mb-1">Purchase date</label>
+                <label className="text-[11px] uppercase text-gray-500 block mb-1">Purchase date</label>
                 <input type="date" className="input text-sm w-full"
                        value={shared.purchase_date}
                        onChange={e => setShared({ ...shared, purchase_date: e.target.value })} />
@@ -394,12 +394,12 @@ function BulkAddForm({ types, onClose }) {
 
           {/* Per-row fields */}
           <div>
-            <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
               Devices ({filledCount} of {rows.length} filled)
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-[10px] uppercase text-gray-500 text-left">
+                <tr className="text-[11px] uppercase text-gray-500 text-left">
                   <th className="px-1">#</th>
                   <th className="px-1">Our ID *</th>
                   <th className="px-1">Lot #</th>
@@ -500,13 +500,13 @@ function AddDeviceForm({ types, onClose }) {
         <div className="p-5 space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Our ID *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Our ID *</label>
               <input className="input text-sm w-full font-mono" required
                      placeholder="WWC0700"
                      value={form.our_id} onChange={e => update('our_id', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Device type *</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Device type *</label>
               <select className="input text-sm w-full"
                       value={form.device_type_id}
                       onChange={e => update('device_type_id', e.target.value)}>
@@ -514,37 +514,37 @@ function AddDeviceForm({ types, onClose }) {
               </select>
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Manufacturer lot</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Manufacturer lot</label>
               <input className="input text-sm w-full font-mono"
                      value={form.manufacturer_lot}
                      onChange={e => update('manufacturer_lot', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Manufacturer serial</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Manufacturer serial</label>
               <input className="input text-sm w-full font-mono"
                      value={form.manufacturer_serial}
                      onChange={e => update('manufacturer_serial', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Expiration date</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Expiration date</label>
               <input type="date" className="input text-sm w-full"
                      value={form.expiration_date}
                      onChange={e => update('expiration_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Purchase date</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Purchase date</label>
               <input type="date" className="input text-sm w-full"
                      value={form.purchase_date}
                      onChange={e => update('purchase_date', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Purchase price ($)</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Purchase price ($)</label>
               <input type="number" step="0.01" className="input text-sm w-full font-mono"
                      value={form.purchase_price}
                      onChange={e => update('purchase_price', e.target.value)} />
             </div>
             <div>
-              <label className="text-[10px] uppercase text-gray-500 block mb-1">Location</label>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Location</label>
               <select className="input text-sm w-full"
                       value={form.location}
                       onChange={e => update('location', e.target.value)}>
@@ -555,7 +555,7 @@ function AddDeviceForm({ types, onClose }) {
             </div>
           </div>
           <div>
-            <label className="text-[10px] uppercase text-gray-500 block mb-1">Notes</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
             <textarea className="input text-sm w-full" rows={2}
                       value={form.notes}
                       onChange={e => update('notes', e.target.value)} />

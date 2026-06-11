@@ -109,7 +109,7 @@ export default function SurgeryWaitlist() {
 
       {/* Find-matches strip */}
       <div className="card mb-4 !p-3">
-        <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-2">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2">
           Find matches for an open block day
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -258,7 +258,7 @@ export function MatchesDrawer({ blockDayId, onClose }) {
             ) : (
               <>
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
                     Klara blast template
                   </div>
                   <pre className="text-xs text-gray-800 whitespace-pre-wrap bg-gray-50 border border-gray-200 rounded p-3 font-sans">
@@ -271,7 +271,7 @@ export function MatchesDrawer({ blockDayId, onClose }) {
                 </div>
 
                 <div>
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                  <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">
                     {data.matches.length} eligible patient{data.matches.length === 1 ? '' : 's'}
                     <span className="text-gray-400 ml-1">— ranked by waiting time</span>
                   </div>

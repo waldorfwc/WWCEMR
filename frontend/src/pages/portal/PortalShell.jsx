@@ -67,14 +67,14 @@ export default function PortalShell() {
       <div className="px-6 pt-7 pb-6 border-b border-plum-100">
         <img src={logoFull} alt="Waldorf Women's Care · WWC Gynecology &amp; Aesthetics"
              className="h-16 w-auto" />
-        <div className="text-[10px] uppercase tracking-[0.18em] text-plum-600/70 font-medium mt-3">
+        <div className="text-[11px] uppercase tracking-[0.18em] text-plum-600/70 font-medium mt-3">
           Surgery Portal
         </div>
       </div>
 
       {patient && (
         <div className="px-6 py-5 border-b border-plum-100">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-plum-600/70 mb-1">
+          <div className="text-[11px] uppercase tracking-[0.16em] text-plum-600/70 mb-1">
             Care plan for
           </div>
           <div className="font-serif text-[15px] text-plum-ink leading-tight font-semibold">
