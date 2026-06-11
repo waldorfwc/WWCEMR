@@ -1,50 +1,45 @@
 """
 RingCentral fax service — sends documents via fax using the RC API.
+
+Auth: reuses the shared RingCentralClient (services/ringcentral_client.py)
+which exchanges a long-lived JWT for a 1-hour access token, caches it in
+process memory, and refreshes ~5 min before expiry. Credentials live in
+env vars sourced from Secret Manager:
+
+    RC_CLIENT_ID
+    RC_CLIENT_SECRET
+    RC_JWT_TOKEN
+    RC_SERVER_URL (defaults to https://platform.ringcentral.com)
+
+Previously this module loaded credentials from a local
+`~/Documents/rc-credentials.json` file, which worked on the Mac dev
+workstation but always failed on Cloud Run (no such file) — every fax
+attempt came back "Failed to authenticate with RingCentral".
 """
 
+import logging
 import os
 import json
 import httpx
 from typing import Optional
-from app.config import settings
 
+from app.services.ringcentral_client import client as _rc_client
 
-_RC_CREDS = None
-
-def _load_creds():
-    global _RC_CREDS
-    if _RC_CREDS:
-        return _RC_CREDS
-    creds_path = os.path.expanduser("~/Documents/rc-credentials.json")
-    if os.path.isfile(creds_path):
-        with open(creds_path) as f:
-            _RC_CREDS = json.load(f)
-        return _RC_CREDS
-    return None
+log = logging.getLogger(__name__)
 
 
 def _get_access_token() -> Optional[str]:
-    creds = _load_creds()
-    if not creds:
+    """Return a fresh RC access token (cached + auto-refreshed) or None
+    if credentials aren't configured."""
+    try:
+        return _rc_client()._ensure_token()
+    except Exception as e:
+        log.error("RingCentral auth failed: %s", e)
         return None
 
-    jwt_creds = creds.get("jwt", {})
-    jwt_token = list(jwt_creds.values())[0] if jwt_creds else None
-    if not jwt_token:
-        return None
 
-    r = httpx.post(
-        f"{creds['server']}/restapi/oauth/token",
-        auth=(creds["clientId"], creds["clientSecret"]),
-        data={
-            "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-            "assertion": jwt_token,
-        },
-        timeout=10,
-    )
-    if r.status_code == 200:
-        return r.json()["access_token"]
-    return None
+def _rc_base_url() -> str:
+    return os.environ.get("RC_SERVER_URL", "https://platform.ringcentral.com").rstrip("/")
 
 
 def send_fax(
@@ -119,7 +114,7 @@ def send_fax(
     })
 
     r = httpx.post(
-        "https://platform.ringcentral.com/restapi/v1.0/account/~/extension/~/fax",
+        f"{_rc_base_url()}/restapi/v1.0/account/~/extension/~/fax",
         headers={"Authorization": f"Bearer {token}"},
         files=[
             ("json", (None, json_part, "application/json")),
@@ -151,7 +146,7 @@ def check_fax_status(message_id: str) -> dict:
         return {"error": "Auth failed"}
 
     r = httpx.get(
-        f"https://platform.ringcentral.com/restapi/v1.0/account/~/extension/~/message-store/{message_id}",
+        f"{_rc_base_url()}/restapi/v1.0/account/~/extension/~/message-store/{message_id}",
         headers={"Authorization": f"Bearer {token}"},
         timeout=10,
     )
