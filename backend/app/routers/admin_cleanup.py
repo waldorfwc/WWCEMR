@@ -24,6 +24,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.permissions.dependencies import requires_super_admin
 from app.models.larc import LarcAssignment, LarcDevice, LarcOwedPatient
+from app.models.surgery import Surgery
+from app.models.pellet import PelletPatient
 
 
 router = APIRouter(prefix="/admin/cleanup", tags=["admin-cleanup"])
@@ -89,6 +91,22 @@ def _scan(db: Session) -> dict[str, Any]:
               ))
               .all())
 
+    # Surgery + PelletPatient — scan only, no soft-delete column to use.
+    # We surface scope and let the operator decide whether to act manually.
+    surgeries = (db.query(Surgery)
+                   .filter(or_(
+                       _is_test_name(Surgery.patient_name),
+                       _is_test_chart(Surgery.chart_number),
+                   ))
+                   .order_by(Surgery.created_at.desc())
+                   .all())
+    pellet_patients = (db.query(PelletPatient)
+                         .filter(or_(
+                             _is_test_name(PelletPatient.patient_name),
+                             _is_test_chart(PelletPatient.chart_number),
+                         ))
+                         .all())
+
     return {
         "assignments": {
             "count": len(assignments),
@@ -127,6 +145,32 @@ def _scan(db: Session) -> dict[str, Any]:
                     "patient_name": o.patient_name,
                 }
                 for o in owed[:50]
+            ],
+        },
+        "surgeries": {
+            "count": len(surgeries),
+            "deletable_via_endpoint": False,  # no SoftDeleteMixin; manual decision required
+            "samples": [
+                {
+                    "id": str(s.id),
+                    "chart_number": s.chart_number,
+                    "patient_name": s.patient_name,
+                    "status": s.status,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                }
+                for s in surgeries[:50]
+            ],
+        },
+        "pellet_patients": {
+            "count": len(pellet_patients),
+            "deletable_via_endpoint": False,
+            "samples": [
+                {
+                    "id": str(p.id),
+                    "chart_number": p.chart_number,
+                    "patient_name": p.patient_name,
+                }
+                for p in pellet_patients[:50]
             ],
         },
     }
