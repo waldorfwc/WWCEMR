@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Building2, Plus, X } from 'lucide-react'
 import api from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 
 export default function LarcPharmacies() {
@@ -47,9 +48,16 @@ export default function LarcPharmacies() {
           </thead>
           <tbody className="divide-y divide-gray-100">
             {rows.length === 0 && (
-              <tr><td colSpan={5} className="table-td text-center text-gray-400 italic py-6">
-                No pharmacies configured.
-              </td></tr>
+              <tr>
+                <td colSpan={5} className="table-td">
+                  <EmptyState
+                    icon={Building2}
+                    title="No pharmacies configured"
+                    body={<>Click <strong>+ Add Pharmacy</strong> above to set up where LARC orders fax to.</>}
+                    compact
+                  />
+                </td>
+              </tr>
             )}
             {rows.map(p => (
               <tr key={p.id}>

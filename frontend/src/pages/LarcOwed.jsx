@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Users, Clock } from 'lucide-react'
+import { ArrowLeft, Users, Clock, CheckCircle2 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 
 export default function LarcOwed() {
@@ -37,8 +38,14 @@ export default function LarcOwed() {
       </p>
 
       {rows.length === 0 ? (
-        <div className="card text-xs text-gray-400 italic">
-          {includeResolved ? 'No owed patients on file.' : 'No active owed patients.'}
+        <div className="card">
+          <EmptyState
+            icon={CheckCircle2}
+            title={includeResolved ? 'No owed patients on file' : 'No active owed patients'}
+            body={includeResolved
+              ? 'Nothing in the system yet.'
+              : 'Everyone has been resolved — toggle "Include resolved" to see history.'}
+          />
         </div>
       ) : (
         <div className="card !p-0 overflow-hidden">

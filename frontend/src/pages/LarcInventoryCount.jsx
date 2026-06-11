@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, ClipboardCheck, Plus, Check, X, AlertTriangle, Camera } from 'lucide-react'
 import { Html5Qrcode } from 'html5-qrcode'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 
 export default function LarcInventoryCount() {
@@ -377,7 +378,16 @@ function beep(freq = 880, durationMs = 80) {
 
 function HistoryTable({ history, onOpen }) {
   if (history.length === 0) {
-    return <div className="card text-xs text-gray-400 italic">No counts yet.</div>
+    return (
+      <div className="card">
+        <EmptyState
+          icon={ClipboardCheck}
+          title="No counts yet"
+          body="Start a new inventory count above to verify on-hand devices against the system."
+          compact
+        />
+      </div>
+    )
   }
   return (
     <div className="card !p-0 overflow-hidden">

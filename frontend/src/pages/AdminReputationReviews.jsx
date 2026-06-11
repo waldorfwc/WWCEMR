@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import { Star } from 'lucide-react'
+import EmptyState from '../components/EmptyState'
 
 export default function AdminReputationReviews() {
   const qc = useQueryClient()
@@ -19,7 +20,11 @@ export default function AdminReputationReviews() {
     <div className="p-4 max-w-5xl">
       <h1 className="text-2xl font-semibold mb-4">Reviews</h1>
       {reviews.length === 0 ? (
-        <div className="text-sm text-muted">No reviews yet.</div>
+        <EmptyState
+          icon={Star}
+          title="No reviews yet"
+          body="Patient reviews submitted through the portal will appear here for moderation."
+        />
       ) : (
         <div className="space-y-3">
           {reviews.map(r => (

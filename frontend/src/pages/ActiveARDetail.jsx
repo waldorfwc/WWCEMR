@@ -5,8 +5,10 @@ import {
   ArrowLeft, Send, Upload, Download, Trash2, Save,
   RefreshCw, ExternalLink, Clock, AlertTriangle, ChevronDown, ChevronRight,
   FileText, Sparkles, X, Mail, Printer, IdCard,
+  MessageSquare, Paperclip,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 // ─────────────────────────────────────────────────────────────────────
 // Constants
@@ -489,7 +491,7 @@ function NotesCard({ claim, qc, claimId }) {
       </div>
 
       {userNotes.length === 0 ? (
-        <div className="text-xs text-gray-400 italic">No notes yet.</div>
+        <EmptyState icon={MessageSquare} title="No notes yet" compact />
       ) : (
         <div className="space-y-2 border-t border-gray-100 pt-2">
           {userNotes.map(n => (
@@ -1324,7 +1326,12 @@ function DocumentsCard({ claimId, docs, qc }) {
       </div>
       {error && <div className="text-red-600 text-xs mb-2">{error}</div>}
       {docs.length === 0 ? (
-        <div className="text-xs text-gray-400 italic">No documents yet.</div>
+        <EmptyState
+          icon={Paperclip}
+          title="No documents yet"
+          body={<>Click <strong>Upload</strong> to attach an EOB, denial letter, or correspondence.</>}
+          compact
+        />
       ) : (
         <ul className="divide-y divide-gray-100">
           {docs.map(d => (
@@ -1395,7 +1402,12 @@ function AppealLettersCard({ claimId, claim, qc }) {
       </div>
 
       {appeals.length === 0 ? (
-        <div className="text-xs text-gray-400 italic">No appeals drafted yet.</div>
+        <EmptyState
+          icon={FileText}
+          title="No appeals drafted yet"
+          body={<>Click <strong>New Appeal Letter</strong> to draft one.</>}
+          compact
+        />
       ) : (
         <ul className="divide-y divide-gray-100">
           {appeals.map(a => (

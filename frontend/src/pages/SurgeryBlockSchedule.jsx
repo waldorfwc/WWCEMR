@@ -3,9 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   ArrowLeft, Calendar, Plus, RefreshCw, Trash2, AlertTriangle, X,
+  CalendarRange,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useFacilities } from '../hooks/useFacilities'
+import EmptyState from '../components/EmptyState'
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -91,7 +93,15 @@ export default function SurgeryBlockSchedule() {
 
 function UpcomingTab({ days }) {
   if (days.length === 0) {
-    return <div className="card text-sm text-gray-500 italic">No upcoming block days. Add a recurring schedule first.</div>
+    return (
+      <div className="card">
+        <EmptyState
+          icon={CalendarRange}
+          title="No upcoming block days"
+          body="Add a recurring schedule first — block days will populate from that."
+        />
+      </div>
+    )
   }
   return (
     <div className="space-y-2">
@@ -164,7 +174,14 @@ function SchedulesTab({ schedules, qc }) {
       <div className="space-y-2 mb-3">
         {schedules.map(s => <ScheduleRow key={s.id} s={s} qc={qc} />)}
         {schedules.length === 0 && (
-          <div className="card text-sm text-gray-500 italic">No recurring schedules yet.</div>
+          <div className="card">
+            <EmptyState
+              icon={Calendar}
+              title="No recurring schedules yet"
+              body="Click the button below to set up which weekdays a facility has surgical blocks."
+              compact
+            />
+          </div>
         )}
       </div>
       {!adding && (

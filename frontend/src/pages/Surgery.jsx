@@ -5,9 +5,10 @@ import {
   Activity, AlertTriangle, BookOpen, Calendar, CheckCircle2, Clock, Hospital,
   Search, Stethoscope, TrendingUp, Users, Building2, Upload, X, FileText, Settings,
   Check, Phone, Save, Star, ChevronDown, ChevronUp, Trash2, MessageSquare,
-  DollarSign,
+  DollarSign, SearchX,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MODULE, TIER } from '../routes.jsx'
 import { WeeklyCalendar } from './SurgeryCalendar'
@@ -567,8 +568,12 @@ export default function Surgery() {
           <BucketGroup key={group.kind} group={group} onOpen={(id) => navigate(`/surgery/${id}`)} />
         ))}
         {grouped.length === 0 && (
-          <div className="card text-sm text-gray-500 italic">
-            No surgeries match your filters.
+          <div className="card">
+            <EmptyState
+              icon={SearchX}
+              title="No surgeries match your filters"
+              body="Try clearing a filter or widening the date range."
+            />
           </div>
         )}
       </div>

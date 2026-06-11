@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Plus, Search, Package, X, Printer, Layers } from 'lucide-react'
+import { ArrowLeft, Plus, Search, Package, X, Printer, Layers, SearchX } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import EmptyState from '../components/EmptyState'
 
 
 const STATUS_TONES = {
@@ -210,9 +211,16 @@ export default function LarcDevices() {
               <tr><td colSpan={8} className="table-td text-center py-6 text-gray-400">Loading…</td></tr>
             )}
             {!isLoading && devices.length === 0 && (
-              <tr><td colSpan={8} className="table-td text-center py-6 text-gray-400 italic">
-                No devices match.
-              </td></tr>
+              <tr>
+                <td colSpan={8} className="table-td">
+                  <EmptyState
+                    icon={SearchX}
+                    title="No devices match"
+                    body="Try clearing the search or status filter."
+                    compact
+                  />
+                </td>
+              </tr>
             )}
             {devices.map(d => {
               const checked = selected.has(d.id)
