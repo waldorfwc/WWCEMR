@@ -39,7 +39,12 @@ def _get_access_token() -> Optional[str]:
 
 
 def _rc_base_url() -> str:
-    return os.environ.get("RC_SERVER_URL", "https://platform.ringcentral.com").rstrip("/")
+    # .strip() before .rstrip("/") — the rc-server-url secret in Secret
+    # Manager has trailing whitespace that survives the env var, and
+    # httpx IDNA-encodes the spaces into the hostname label → UnicodeError
+    # "label too long". Same defensive strip ringcentral_client.py does.
+    raw = os.environ.get("RC_SERVER_URL", "https://platform.ringcentral.com").strip()
+    return raw.rstrip("/") or "https://platform.ringcentral.com"
 
 
 def send_fax(
