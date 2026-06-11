@@ -1094,8 +1094,7 @@ function TaskRow2({ task, qc, onEdit, onAddSubtask }) {
             {(task.assignees || []).filter(a => a !== me).length > 0 && (
               <span className="text-[10px] text-blue-700"
                     title={`Assigned to ${(task.assignees || []).join(', ')}`}>
-                → {(task.assignees || [])
-                    .map(a => a.split('@')[0])
+                → {[...new Set((task.assignees || []).map(a => a.split('@')[0]))]
                     .join(', ')}
               </span>
             )}
@@ -1212,8 +1211,7 @@ function SubtaskRow({ subtask, qc }) {
         {(subtask.assignees || []).filter(a => a !== me).length > 0 && (
           <span className="text-[11px] text-blue-700"
                 title={`Assigned to ${(subtask.assignees || []).join(', ')}`}>
-            → {(subtask.assignees || [])
-                .map(a => a.split('@')[0])
+            → {[...new Set((subtask.assignees || []).map(a => a.split('@')[0]))]
                 .join(', ')}
           </span>
         )}
