@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Activity, AlertTriangle, BookOpen, Calendar, CheckCircle2, Clock, Hospital,
@@ -190,6 +190,11 @@ export default function Surgery() {
     queryFn: () => api.get('/surgery', {
       params: { ...filtersToParams(filters), per_page: 200 },
     }).then(r => r.data),
+    // Keep showing the previous results while a new filter fetches. Without
+    // this, every keystroke in the search input changes the queryKey →
+    // data === undefined → isLoading && !data → the whole page swaps to
+    // <LoadingState />, killing the input mid-type.
+    placeholderData: keepPreviousData,
   })
 
   const surgeries = data?.surgeries || []
