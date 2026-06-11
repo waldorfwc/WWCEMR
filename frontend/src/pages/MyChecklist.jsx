@@ -827,7 +827,7 @@ function PainPointOwnerRow({ pp, qc }) {
           <strong className="text-gray-900">{pp.user_email?.split('@')[0]}</strong>
           <span className="text-gray-500"> · {fmt.date(pp.occurred_on)}</span>
         </span>
-        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${STATUS_TONE[pp.status] || ''}`}>
+        <span className={`text-[11px] px-1.5 py-0.5 rounded ${STATUS_TONE[pp.status] || ''}`}>
           {pp.status.replace('_', ' ')}
         </span>
       </div>
@@ -1080,10 +1080,10 @@ function TaskRow2({ task, qc, onEdit, onAddSubtask }) {
             <span className={`text-[13px] font-medium ${task.status === 'closed' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
               {task.title}
             </span>
-            <span className={`text-[11px] uppercase tracking-wide px-1 rounded border ${PRIORITY_TONES[task.priority] || ''}`}>
+            <span className={`text-[11px] px-1.5 py-0.5 rounded border ${PRIORITY_TONES[task.priority] || ''}`}>
               {task.priority}
             </span>
-            <span className={`text-[11px] uppercase tracking-wide px-1 rounded ${STATUS_TONES[task.status] || ''}`}>
+            <span className={`text-[11px] px-1.5 py-0.5 rounded ${STATUS_TONES[task.status] || ''}`}>
               {STATUS_LABEL[task.status]}
             </span>
             {task.due_date && (
