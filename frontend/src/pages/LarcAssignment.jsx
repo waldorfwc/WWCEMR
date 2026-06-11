@@ -6,6 +6,7 @@ import {
   ChevronDown, ChevronUp, Edit3, Package, RotateCcw, X, SkipForward, FileText,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import LoadingState from '../components/LoadingState'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
 
 
@@ -45,7 +46,7 @@ export default function LarcAssignment() {
     queryFn: () => api.get(`/larc/assignments/${id}`).then(r => r.data),
   })
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
   if (error) return <div className="p-6 text-red-600">{error?.response?.data?.detail || error.message}</div>
   if (!a) return null
 

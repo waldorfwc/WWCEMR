@@ -6,6 +6,7 @@ import {
   Save, Clock,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import LoadingState from '../components/LoadingState'
 
 
 const LOC_LABEL = {
@@ -52,7 +53,7 @@ export default function PelletCountDetail() {
     },
   })
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
   if (!count) return <div className="p-6 text-red-600">Count not found.</div>
 
   const lines = count.lines || []

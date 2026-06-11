@@ -5,6 +5,7 @@ import api, { fmt, statusColors } from '../utils/api'
 import { useState } from 'react'
 import EditClaimDrawer from '../components/EditClaimDrawer'
 import EditServiceLineDrawer from '../components/EditServiceLineDrawer'
+import LoadingState from '../components/LoadingState'
 
 export default function ClaimDetail() {
   const { id } = useParams()
@@ -34,7 +35,7 @@ export default function ClaimDetail() {
     setGenerating(false)
   }
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
   if (!claim) return <div className="p-6 text-gray-400">Claim not found</div>
 
   return (

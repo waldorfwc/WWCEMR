@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import api from '../utils/api'
 import { useConfirm } from '../components/ui/ConfirmDialog'
+import LoadingState from '../components/LoadingState'
 
 
 export default function AdminTrainingCards() {
@@ -98,7 +99,7 @@ export default function AdminTrainingCards() {
     }
   }, [cardsRaw])
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
 
   return (
     <div>

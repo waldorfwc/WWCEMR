@@ -13,6 +13,7 @@ import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MODULE, TIER } from '../routes.jsx'
 import { WeeklyCalendar } from './SurgeryCalendar'
 import { useFacilities } from '../hooks/useFacilities'
+import LoadingState from '../components/LoadingState'
 
 
 const STATUS_TONE = {
@@ -218,7 +219,7 @@ export default function Surgery() {
       }))
   }, [surgeries])
 
-  if (isLoading && !data) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading && !data) return <LoadingState />
 
   return (
     <div>

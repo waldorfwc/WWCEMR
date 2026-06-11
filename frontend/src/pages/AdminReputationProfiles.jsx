@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
+import LoadingState from '../components/LoadingState'
 import { QrCode, RotateCcw } from 'lucide-react'
 
 export default function AdminReputationProfiles() {
@@ -47,7 +48,7 @@ export default function AdminReputationProfiles() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reputation-profiles'] }),
   })
 
-  if (isLoading) return <div className="p-4 text-sm text-muted">Loading…</div>
+  if (isLoading) return <LoadingState />
   const profiles = data?.profiles || []
 
   return (

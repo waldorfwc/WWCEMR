@@ -5,6 +5,7 @@ import {
   Check, ShieldCheck, Clock,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import LoadingState from '../components/LoadingState'
 
 
 export default function MyProfile() {
@@ -13,7 +14,7 @@ export default function MyProfile() {
     queryFn: () => api.get('/auth/me/profile').then(r => r.data),
   })
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
   if (error) return <div className="p-6 text-red-600 text-sm">{error?.response?.data?.detail || error.message}</div>
   if (!data) return null
 

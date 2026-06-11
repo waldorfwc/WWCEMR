@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import EmptyState from '../components/EmptyState'
+import LoadingState from '../components/LoadingState'
 
 // ─────────────────────────────────────────────────────────────────────
 // Constants
@@ -88,7 +89,7 @@ export default function ActiveARDetail() {
     },
   })
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
   if (!claim) return <div className="p-6 text-gray-400">Claim not found</div>
 
   return (

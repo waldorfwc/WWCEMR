@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import { Star } from 'lucide-react'
 import EmptyState from '../components/EmptyState'
+import LoadingState from '../components/LoadingState'
 
 export default function AdminReputationReviews() {
   const qc = useQueryClient()
@@ -14,7 +15,7 @@ export default function AdminReputationReviews() {
       api.patch(`/admin/reputation/reviews/${id}`, { approved_for_embed }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['reputation-reviews'] }),
   })
-  if (isLoading) return <div className="p-4 text-sm text-muted">Loading…</div>
+  if (isLoading) return <LoadingState />
   const reviews = data?.reviews || []
   return (
     <div className="p-4 max-w-5xl">

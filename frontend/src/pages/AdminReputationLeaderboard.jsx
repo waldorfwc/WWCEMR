@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import api from '../utils/api'
+import LoadingState from '../components/LoadingState'
 import { Trophy } from 'lucide-react'
 
 export default function AdminReputationLeaderboard() {
@@ -8,7 +9,7 @@ export default function AdminReputationLeaderboard() {
     queryFn: () => api.get('/admin/reputation/leaderboard').then(r => r.data),
     refetchInterval: 60_000,
   })
-  if (isLoading) return <div className="p-4 text-sm text-muted">Loading…</div>
+  if (isLoading) return <LoadingState />
   const rows = data?.rows || []
   return (
     <div className="p-4 max-w-5xl">

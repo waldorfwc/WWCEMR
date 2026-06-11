@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import api from '../utils/api'
+import LoadingState from '../components/LoadingState'
 
 export default function StaffInbox() {
   const nav = useNavigate()
@@ -10,7 +11,7 @@ export default function StaffInbox() {
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
-  if (isLoading) return <div className="p-4 text-sm text-muted">Loading…</div>
+  if (isLoading) return <LoadingState />
   const rows = data?.rows || []
   return (
     <div className="p-4 max-w-4xl">

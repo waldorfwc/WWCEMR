@@ -10,6 +10,7 @@ import {
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MODULE, TIER } from '../routes.jsx'
+import LoadingState from '../components/LoadingState'
 
 
 const LOC_LABEL = {
@@ -47,7 +48,7 @@ export default function PelletPatientDetail() {
     queryFn: () => api.get(`/pellets/patients/${id}`).then(r => r.data),
   })
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
   if (!p) return <div className="p-6 text-red-600">Patient not found.</div>
 
   const visits = p.visits || []

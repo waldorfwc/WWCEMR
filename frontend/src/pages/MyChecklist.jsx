@@ -11,6 +11,7 @@ import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MODULE, TIER } from '../routes.jsx'
 import EmptyState from '../components/EmptyState'
+import LoadingState from '../components/LoadingState'
 
 
 const ROLE_LABELS = {
@@ -64,7 +65,7 @@ export default function MyChecklist() {
   const pct = total > 0 ? Math.round(((done + skipped) / total) * 100) : 0
   const allAnswered = total > 0 && remaining === 0
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
 
   return (
     <div className="space-y-4">

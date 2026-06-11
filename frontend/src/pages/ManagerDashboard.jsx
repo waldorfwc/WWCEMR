@@ -6,6 +6,7 @@ import {
   UserX, ExternalLink,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import LoadingState from '../components/LoadingState'
 
 
 export default function ManagerDashboard() {
@@ -28,7 +29,7 @@ export default function ManagerDashboard() {
   const reports = data?.direct_reports || []
   const unassigned = data?.unassigned_templates || []
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
 
   return (
     <div className="space-y-4">

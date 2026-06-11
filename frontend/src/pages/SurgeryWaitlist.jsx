@@ -7,6 +7,7 @@ import {
 import api, { fmt } from '../utils/api'
 import { useFacilities } from '../hooks/useFacilities'
 import EmptyState from '../components/EmptyState'
+import LoadingState from '../components/LoadingState'
 
 const URGENCY_TONE = {
   routine:   'bg-gray-100 text-gray-700',
@@ -84,7 +85,7 @@ export default function SurgeryWaitlist() {
     }
   }
 
-  if (isLoading) return <div className="p-6 text-gray-400">Loading…</div>
+  if (isLoading) return <LoadingState />
 
   return (
     <div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
+import LoadingState from '../components/LoadingState'
 
 export default function StaffMessageTemplates() {
   const qc = useQueryClient()
@@ -31,7 +32,7 @@ export default function StaffMessageTemplates() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['message-templates'] }),
   })
 
-  if (isLoading) return <div className="p-4 text-sm text-muted">Loading…</div>
+  if (isLoading) return <LoadingState />
   const rows = data?.templates || []
 
   return (
