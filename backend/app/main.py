@@ -16,7 +16,7 @@ from app.services.request_context import (
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, docusign as docusign_router, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts
+from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, docusign as docusign_router, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts, admin_cleanup
 from app.routers import google_sync as google_sync_router
 from app.routers import admin_tiers, admin_practice_settings
 from app.permissions.catalog import Module, Tier
@@ -252,6 +252,7 @@ app.include_router(dashboard.router, prefix="/api", dependencies=[Depends(requir
 app.include_router(fax_batch.router, prefix="/api", dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(fax_batch.log_router, prefix="/api", dependencies=[Depends(requires_tier(Module.CHART, Tier.VIEW))])
 app.include_router(admin_users.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
+app.include_router(admin_cleanup.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
 app.include_router(admin_groups.router, prefix="/api", dependencies=[Depends(requires_super_admin())])
 # admin_tiers does its own per-route auth (Super Admin / per-module Admin),
 # so it intentionally has no router-level dependency.
