@@ -249,7 +249,8 @@ def _rec_to_surgery_kwargs(rec: dict) -> dict:
 
 def import_rows(db: Session, rows: list[dict], *,
                 dry_run: bool, by_email: str,
-                auto_schedule: bool = False) -> dict:
+                auto_schedule: bool = False,
+                backfill_mode: bool = False) -> dict:
     """Create Surgery rows in 'incomplete' status. Skips a row when an
     open (non-cancelled, non-completed) Surgery already exists for the
     same chart_number — coordinators can clean up duplicates by hand.
@@ -258,14 +259,55 @@ def import_rows(db: Session, rows: list[dict], *,
     appointment_type + date + time is booked onto the matching BlockDay
     via book_slot — no patient email/SMS/calendar sync (the coordinator
     confirmed the dates externally).
+
+    When backfill_mode is True, the schedule write also bypasses
+    capacity / overlap / block-window / blackout guards. Intended for
+    one-time historical backfills where the dates in the file are
+    already real and the practice has lived with whatever overbooks
+    they imply. Existing incomplete + candidate_imported surgeries that
+    failed to auto-book on a prior run are re-attempted and force-
+    booked too.
     """
-    from app.models.surgery import BlockDay, SurgeryNote
+    from app.models.surgery import BlockDay, SurgeryNote, SurgerySlot
 
     created: list[dict] = []
     skipped: list[dict] = []
     errors:  list[dict] = []
     scheduled_summary: list[dict] = []
     schedule_errors: list[dict] = []
+
+    def _force_book(surgery, block_day, start_t, duration, proc_kind):
+        """Drop any prior slot for this surgery, create a new one on the
+        block day with the supplied window, and stamp the surgery's
+        scheduled_date / start_time / facility. Bypasses all guards —
+        only used in backfill_mode."""
+        # Drop prior slots
+        prior = db.query(SurgerySlot).filter(
+            SurgerySlot.surgery_id == surgery.id).all()
+        for old in prior:
+            db.delete(old)
+        slot = SurgerySlot(
+            block_day_id=block_day.id,
+            surgery_id=surgery.id,
+            start_time=start_t,
+            duration_minutes=duration,
+            procedure_kind=proc_kind,
+        )
+        db.add(slot)
+        surgery.scheduled_date = block_day.block_date
+        surgery.scheduled_start_time = start_t
+        surgery.selected_facility = block_day.facility
+        if surgery.status in ("new", "in_progress", "incomplete"):
+            surgery.status = "confirmed"
+        # Mirror book_slot's patient_picks_date advance
+        ppd = next((m for m in (surgery.milestones or [])
+                     if m.kind == "patient_picks_date"), None)
+        if ppd and ppd.status in ("pending", "in_progress", "locked"):
+            from app.utils.dt import now_utc_naive
+            ppd.status = "done"
+            ppd.completed_at = now_utc_naive()
+            ppd.completed_by = "system:bulk-import-backfill"
+        return slot
 
     for rec in rows:
         try:
@@ -276,16 +318,74 @@ def import_rows(db: Session, rows: list[dict], *,
             appt_time  = _as_time(rec.get("appt_time"))
             appt_info  = _resolve_appt_type(appt_label)
 
-            # Dedupe — any active surgery for this chart blocks creation
+            # Dedupe — any active surgery for this chart blocks creation,
+            # except in backfill_mode where an incomplete + candidate_
+            # imported row with no scheduled_date can be force-booked
+            # (it failed to auto-schedule on the first import).
             existing = (db.query(Surgery)
                           .filter(Surgery.chart_number == chart,
                                   Surgery.status.notin_(["cancelled", "completed"]))
                           .first())
             if existing:
-                skipped.append({
+                can_backfill = (
+                    backfill_mode
+                    and existing.sub_flag == "candidate_imported"
+                    and existing.status == "incomplete"
+                    and existing.scheduled_date is None
+                    and appt_info and appt_date and appt_time
+                )
+                if not can_backfill:
+                    skipped.append({
+                        "chart_number": chart,
+                        "patient_name": kwargs["patient_name"],
+                        "reason": f"already has an active surgery ({existing.status})",
+                    })
+                    continue
+                # Backfill path — find the BlockDay and force-book
+                facility, procedure_kind, default_duration = appt_info
+                bd = (db.query(BlockDay)
+                        .filter(BlockDay.block_date == appt_date,
+                                BlockDay.facility == facility)
+                        .first())
+                if not bd:
+                    schedule_errors.append({
+                        "chart_number": chart,
+                        "patient_name": kwargs["patient_name"],
+                        "reason": (f"No BlockDay for {appt_date} at "
+                                     f"{facility} — set up the block "
+                                     f"schedule first."),
+                    })
+                    continue
+                if dry_run:
+                    scheduled_summary.append({
+                        "chart_number": chart,
+                        "patient_name": kwargs["patient_name"],
+                        "would_backfill_book": True,
+                        "block_date": str(appt_date),
+                        "start_time": appt_time.strftime("%H:%M"),
+                        "facility":   facility,
+                    })
+                    continue
+                _force_book(existing, bd, appt_time, default_duration, procedure_kind)
+                db.add(SurgeryNote(
+                    surgery_id=existing.id,
+                    created_by=by_email,
+                    content=(f"Backfill-booked {appt_date} "
+                              f"{appt_time.strftime('%H:%M')} "
+                              f"({default_duration} min) at {facility}. "
+                              f"Capacity / overlap / blackout guards "
+                              f"bypassed — coordinator confirmed dates "
+                              f"externally. Procedure label: {appt_label}."),
+                ))
+                scheduled_summary.append({
                     "chart_number": chart,
                     "patient_name": kwargs["patient_name"],
-                    "reason": f"already has an active surgery ({existing.status})",
+                    "block_date":   str(appt_date),
+                    "start_time":   appt_time.strftime("%H:%M"),
+                    "duration":     default_duration,
+                    "facility":     facility,
+                    "procedure":    appt_label,
+                    "backfill":     True,
                 })
                 continue
 
@@ -332,15 +432,19 @@ def import_rows(db: Session, rows: list[dict], *,
                 })
                 continue
             try:
-                from app.services.surgery.block_schedule import (
-                    book_slot, CapacityViolation,
-                )
-                slot = book_slot(
-                    db, block_day_id=str(bd.id), surgery_id=str(s.id),
-                    start_time=appt_time,
-                    duration_minutes=default_duration,
-                    procedure_kind=procedure_kind,
-                )
+                if backfill_mode:
+                    _force_book(s, bd, appt_time, default_duration, procedure_kind)
+                    slot = None  # not needed below; force-book stamped surgery fields
+                else:
+                    from app.services.surgery.block_schedule import (
+                        book_slot, CapacityViolation,
+                    )
+                    slot = book_slot(
+                        db, block_day_id=str(bd.id), surgery_id=str(s.id),
+                        start_time=appt_time,
+                        duration_minutes=default_duration,
+                        procedure_kind=procedure_kind,
+                    )
             except CapacityViolation as exc:
                 schedule_errors.append({
                     "chart_number": chart,

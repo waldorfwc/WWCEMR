@@ -575,8 +575,12 @@ class SurgerySlot(Base):
     block_day_id = Column(GUID(),
                            ForeignKey("surgery_block_days.id", ondelete="CASCADE"),
                            nullable=False)
+    # Was ondelete="SET NULL", which produced orphan slots (rows with
+    # a NULL surgery_id that still ate BlockDay capacity in can_fit()).
+    # Cascade so deleting a Surgery also drops its slot — what every
+    # other surgery-child table does already.
     surgery_id = Column(GUID(),
-                         ForeignKey("surgeries.id", ondelete="SET NULL"),
+                         ForeignKey("surgeries.id", ondelete="CASCADE"),
                          nullable=True)
     start_time = Column(Time, nullable=False)
     duration_minutes = Column(Integer, nullable=False)

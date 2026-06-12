@@ -2584,6 +2584,13 @@ async def bulk_import_candidates(
                       "BlockDay — silent (no patient email/SMS, no "
                       "calendar sync). Use when the dates were already "
                       "confirmed with patients out-of-band.")),
+    backfill_mode: bool = Query(False,
+        description=("Backfill historical surgeries that already exist in "
+                      "the real world. Bypasses capacity / overlap / "
+                      "block-window / blackout guards on the booking "
+                      "write, and re-attempts any prior import row stuck "
+                      "in incomplete + candidate_imported. Implies "
+                      "auto_schedule.")),
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
@@ -2621,7 +2628,10 @@ async def bulk_import_candidates(
 
     result = import_rows(db, rows, dry_run=dry_run,
                           by_email=current_user.get("email") or "system",
-                          auto_schedule=auto_schedule)
+                          # backfill_mode implies auto_schedule (the whole
+                          # point is to land the date/time from the file)
+                          auto_schedule=auto_schedule or backfill_mode,
+                          backfill_mode=backfill_mode)
     result["filename"] = file.filename
     return result
 

@@ -392,6 +392,41 @@ def backfill_imported_procedure_classification(
     return {"fixed": len(out), "rows": out}
 
 
+@router.post("/delete-orphan-slots")
+def delete_orphan_slots(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_super_admin()),
+):
+    """Hard-delete any SurgerySlot with surgery_id IS NULL.
+
+    Background: SurgerySlot.surgery_id has ON DELETE SET NULL, so
+    deleting a Surgery row (raw SQL cleanup, legacy admin paths, etc.)
+    leaves the slot row in place with a NULL surgery_id — but the slot
+    keeps consuming BlockDay capacity in can_fit(). Result: a day
+    appears full but nobody can see what's on it. Caught during the
+    06/12 import audit (06/22 MedStar had 2 orphan robotic slots that
+    blocked Penn / Harris Wilson / Johnson).
+    """
+    from app.models.surgery import SurgerySlot
+    rows = (db.query(SurgerySlot)
+              .filter(SurgerySlot.surgery_id.is_(None))
+              .all())
+    out = [
+        {
+            "slot_id":          str(r.id),
+            "block_day_id":     str(r.block_day_id),
+            "start_time":       str(r.start_time)[:5],
+            "duration_minutes": r.duration_minutes,
+            "procedure_kind":   r.procedure_kind,
+        }
+        for r in rows
+    ]
+    for r in rows:
+        db.delete(r)
+    db.commit()
+    return {"deleted": len(out), "rows": out}
+
+
 @router.post("/silent-schedule")
 def silent_schedule(payload: _SilentScheduleIn,
                      db: Session = Depends(get_db),
