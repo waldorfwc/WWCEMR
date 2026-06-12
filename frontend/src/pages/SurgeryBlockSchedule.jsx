@@ -121,7 +121,7 @@ function BlockDayRow({ d }) {
         <div>
           <div className="text-sm font-medium text-gray-900">
             <Calendar size={12} className="inline mr-1 text-plum-600" />
-            {fmt.date(d.block_date)} ({new Date(d.block_date).toLocaleDateString('en-US', { weekday: 'short' })})
+            {fmt.date(d.block_date)} ({fmt.weekday(d.block_date)})
             <span className="text-gray-500 font-normal ml-2">{labelOf(d.facility)}</span>
           </div>
           <div className="text-[10px] text-gray-500">
@@ -596,8 +596,8 @@ function BlackoutRow({ b, qc }) {
   return (
     <div className={`flex items-baseline justify-between gap-2 ${tone} px-3 py-1.5 rounded text-xs`}>
       <div>
-        <span className="font-mono">{b.blackout_date}</span>
-        <span className="text-gray-500 ml-2">({new Date(b.blackout_date).toLocaleDateString('en-US', { weekday: 'short' })})</span>
+        <span>{fmt.date(b.blackout_date)}</span>
+        <span className="text-gray-500 ml-2">({fmt.weekday(b.blackout_date)})</span>
         {b.start_time && b.end_time && (
           <span className="font-mono text-amber-700 ml-2">{b.start_time}–{b.end_time}</span>
         )}
@@ -607,7 +607,7 @@ function BlackoutRow({ b, qc }) {
         {b.owner_email && <span className="text-gray-500 ml-1">· {b.owner_email.split('@')[0]}</span>}
       </div>
       <button className="text-gray-400 hover:text-red-700"
-              onClick={() => { if (confirm(`Remove blackout on ${b.blackout_date}?`)) remove.mutate() }}>
+              onClick={() => { if (confirm(`Remove blackout on ${fmt.date(b.blackout_date)}?`)) remove.mutate() }}>
         <Trash2 size={11} />
       </button>
     </div>

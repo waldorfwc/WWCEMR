@@ -6094,7 +6094,7 @@ function ScheduleForPatientModal({ surgery, templates, onClose, onSaved }) {
               <div key={bd.id}
                    className="border border-border-subtle rounded p-3">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <span className="text-sm font-medium">{bd.block_date}</span>
+                  <span className="text-sm font-medium">{fmt.date(bd.block_date)}</span>
                   <span className="text-[11px] text-gray-500">·</span>
                   <span className="text-[11px] text-gray-600">{bd.facility}</span>
                   <span className="text-[11px] text-gray-500">·</span>

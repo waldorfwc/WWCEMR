@@ -103,6 +103,16 @@ export const fmt = {
     const d = _parseDateTime(val)
     return d ? d.toLocaleTimeString('en-US', _HM) : ''
   },
+  // Short weekday label ("Mon", "Tue", ...) for a YYYY-MM-DD or ISO
+  // datetime. Uses _parseDate so date-only strings get parsed in local
+  // time and don't slip back a day in negative UTC offsets (the bug
+  // that made 11/26 Thanksgiving render as Wed everywhere it was
+  // hand-rolled with `new Date(yyyy-mm-dd).toLocaleDateString(...,
+  // {weekday})`).
+  weekday: (val) => {
+    const d = _parseDate(val)
+    return d ? d.toLocaleDateString('en-US', { weekday: 'short' }) : ''
+  },
   pct: (val) => `${_money(val).toFixed(1)}%`,
   faxStatus: (status) => {
     switch (status) {
