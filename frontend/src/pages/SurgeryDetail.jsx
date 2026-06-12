@@ -2394,7 +2394,7 @@ function SchedulerDatePicker({ surgery, onClose }) {
               {surgery.scheduled_date ? 'Reschedule' : 'Pick a date'} — {surgery.patient_name}
             </h2>
             <div className="text-muted text-[11px] mt-0.5">
-              {(surgery.procedures || []).map(p => p.description || p).join(', ')}
+              {(surgery.procedures || []).map(p => p.description || p.name || (typeof p === 'string' ? p : '')).filter(Boolean).join(', ')}
               {surgery.scheduled_date && (
                 <> · currently <strong>{fmt.date(surgery.scheduled_date)}</strong></>
               )}
@@ -5593,7 +5593,7 @@ const OP_PROCEDURE_HINTS = [
 
 function inferOpDeviceHint(surgery) {
   const procText = (surgery.procedures || [])
-    .map(p => `${p.cpt || ''} ${p.description || ''}`)
+    .map(p => `${p.cpt || ''} ${p.description || ''} ${p.name || ''}`)
     .join(' ')
     .toLowerCase()
   const dxText = (surgery.diagnoses || [])
@@ -6001,7 +6001,7 @@ function ScheduleForPatientModal({ surgery, templates, onClose, onSaved }) {
               Schedule for patient — {surgery.patient_name}
             </h2>
             <div className="text-muted text-[11px] mt-0.5">
-              {(surgery.procedures || []).map(p => p.description || p).join(', ')}
+              {(surgery.procedures || []).map(p => p.description || p.name || (typeof p === 'string' ? p : '')).filter(Boolean).join(', ')}
               {surgery.procedure_classification && ` · ${surgery.procedure_classification}`}
             </div>
           </div>
