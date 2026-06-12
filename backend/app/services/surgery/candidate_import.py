@@ -227,12 +227,21 @@ def _rec_to_surgery_kwargs(rec: dict) -> dict:
     # Keep the ModMed Appointment Type as the procedure name — the
     # coordinator will rename it to the real procedure later from the
     # SurgeryDetail screen. Also stamp the booking intent so the import
-    # can attempt to book the slot if auto_schedule is on.
+    # can attempt to book the slot if auto_schedule is on, AND so the
+    # date-picker modal works after the fact for rows that didn't
+    # auto-book (every booking flow gates on procedure_classification +
+    # eligible_facilities).
     if appt_label:
         out["procedures"] = [{"name": appt_label}]
     if appt_info:
-        out["selected_facility"]  = appt_info[0]
-        out["duration_minutes"]   = appt_info[2]
+        facility, procedure_kind, duration = appt_info
+        out["selected_facility"]         = facility
+        out["eligible_facilities"]       = [facility]
+        out["procedure_classification"]  = procedure_kind
+        out["duration_minutes"]          = duration
+        # Surface the robotic flag so dashboard / filters / capacity
+        # rules treat the row the same as a UI-entered robotic surgery.
+        out["is_robotic"] = procedure_kind in ("robotic_180", "robotic_240")
     return out
 
 

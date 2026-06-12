@@ -345,6 +345,53 @@ def fix_imported_confirmed_status(
     return {"fixed": len(out), "rows": out}
 
 
+@router.post("/backfill-imported-procedure-classification")
+def backfill_imported_procedure_classification(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_super_admin()),
+):
+    """One-shot: for every Surgery with sub_flag='candidate_imported' that
+    has selected_facility set but no procedure_classification / no
+    eligible_facilities, derive both from the procedure label (Modmed
+    Appointment Type) and stamp them so the SurgeryDetail date-picker
+    modal can list available slots. Mirrors the post-fix importer.
+    """
+    from app.services.surgery.candidate_import import APPT_TYPE_MAP
+
+    rows = (db.query(Surgery)
+              .filter(Surgery.sub_flag == "candidate_imported")
+              .all())
+    out: list[dict] = []
+    for s in rows:
+        if s.procedure_classification and s.eligible_facilities:
+            continue
+        label = ""
+        if s.procedures and isinstance(s.procedures, list) and s.procedures:
+            label = (s.procedures[0] or {}).get("name", "") or ""
+        info = APPT_TYPE_MAP.get(label.strip().lower())
+        if not info:
+            continue
+        facility, procedure_kind, duration = info
+        if not s.procedure_classification:
+            s.procedure_classification = procedure_kind
+        if not s.eligible_facilities:
+            s.eligible_facilities = [facility]
+        if not s.selected_facility:
+            s.selected_facility = facility
+        if not s.duration_minutes:
+            s.duration_minutes = duration
+        s.is_robotic = procedure_kind in ("robotic_180", "robotic_240")
+        out.append({
+            "chart_number": s.chart_number,
+            "patient_name": s.patient_name,
+            "set_procedure_classification": procedure_kind,
+            "set_eligible_facilities":       [facility],
+            "set_is_robotic":                s.is_robotic,
+        })
+    db.commit()
+    return {"fixed": len(out), "rows": out}
+
+
 @router.post("/silent-schedule")
 def silent_schedule(payload: _SilentScheduleIn,
                      db: Session = Depends(get_db),
