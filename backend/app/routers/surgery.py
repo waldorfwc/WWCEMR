@@ -379,6 +379,11 @@ def dashboard(db: Session = Depends(get_db),
         ok, _reason = can_fit(db, bd, probe_kind)
         if not ok:
             continue
+        # Skip blackouts — without this the "next available date" card
+        # would offer a date that's been marked unavailable (office-wide,
+        # facility-scoped, or provider-scoped).
+        if is_date_blacked_out(db, bd.block_date, bd.facility):
+            continue
         # Compute booked count for at-a-glance UX
         booked = len(bd.slots or [])
         next_slots[bd.facility] = {
@@ -1151,6 +1156,10 @@ def scheduler_alerts(db: Session = Depends(get_db),
     for bd in rows:
         booked = len(bd.slots or [])
         if booked >= threshold:
+            continue
+        # Skip blackouts — staff shouldn't be told to fill a day that's
+        # already marked unavailable.
+        if is_date_blacked_out(db, bd.block_date, bd.facility):
             continue
         underbooked.append({
             "block_day_id": str(bd.id),

@@ -129,7 +129,10 @@ def _hospital_release_recipients(db) -> list:
 # ─── Hospital release ────────────────────────────────────────────
 
 def find_hospital_release_candidates(db: Session) -> list[BlockDay]:
-    """Hospital block days in the next 14 days with 0 booked slots."""
+    """Hospital block days in the next 14 days with 0 booked slots.
+    Blacked-out dates are excluded so we don't call the hospital to
+    release a day that's already marked out internally."""
+    from app.services.surgery.blackout_conflict import is_date_blacked_out
     today = date.today()
     end = today + timedelta(days=_cfg(db, "hospital_lookahead_days"))
     candidates = (db.query(BlockDay)
@@ -140,7 +143,14 @@ def find_hospital_release_candidates(db: Session) -> list[BlockDay]:
                             BlockDay.release_alert_sent_at.is_(None))
                     .order_by(BlockDay.block_date)
                     .all())
-    return [bd for bd in candidates if not (bd.slots or [])]
+    out = []
+    for bd in candidates:
+        if bd.slots:
+            continue
+        if is_date_blacked_out(db, bd.block_date, bd.facility):
+            continue
+        out.append(bd)
+    return out
 
 
 def send_hospital_release_alert(recipients: list[User],
@@ -197,7 +207,11 @@ def send_hospital_release_alert(recipients: list[User],
 # ─── Office under-booked release ─────────────────────────────────
 
 def find_office_release_candidates(db: Session) -> list[BlockDay]:
-    """Office procedure days that are exactly 6 days out with <6 booked."""
+    """Office procedure days that are exactly 6 days out with <6 booked.
+    Blacked-out dates are excluded — we don't want to tell Dr. Cooke to
+    open more slots on a day he's already marked out (office-wide or
+    facility-scoped to office)."""
+    from app.services.surgery.blackout_conflict import is_date_blacked_out
     target = date.today() + timedelta(days=_cfg(db, "office_lookahead_days"))
     candidates = (db.query(BlockDay)
                     .options(joinedload(BlockDay.slots))
@@ -205,7 +219,15 @@ def find_office_release_candidates(db: Session) -> list[BlockDay]:
                             BlockDay.block_date == target,
                             BlockDay.release_alert_sent_at.is_(None))
                     .all())
-    return [bd for bd in candidates if len(bd.slots or []) < _cfg(db, "office_full_threshold")]
+    threshold = _cfg(db, "office_full_threshold")
+    out = []
+    for bd in candidates:
+        if len(bd.slots or []) >= threshold:
+            continue
+        if is_date_blacked_out(db, bd.block_date, bd.facility):
+            continue
+        out.append(bd)
+    return out
 
 
 def send_office_release_alert(scheduler_users: list[User],
