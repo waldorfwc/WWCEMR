@@ -1232,6 +1232,9 @@ class SurgeryPatch(BaseModel):
     """Fields a scheduler can edit on a surgery row directly."""
     chart_number: Optional[str] = None
     patient_name: Optional[str] = None
+    first_name: Optional[str] = None
+    middle_initial: Optional[str] = None
+    last_name: Optional[str] = None
     dob: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
@@ -1571,8 +1574,30 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     # fields the staff are about to change. Filtered to the keys actually
     # in the payload so we don't bloat audit rows with untouched columns.
     # (Fable surgery audit H2.)
+    # If the staff edited first_name / last_name / middle_initial without
+    # also setting patient_name explicitly, rebuild patient_name from the
+    # post-update first+last so the displayed name stays consistent with
+    # the structured fields. Format mirrors _format_patient_name in
+    # candidate_import.py — "Last, First" with title-case.
+    name_part_changed = any(
+        k in data for k in ("first_name", "middle_initial", "last_name"))
+    if name_part_changed and "patient_name" not in data:
+        next_first = (data.get("first_name") if "first_name" in data
+                       else s.first_name) or ""
+        next_last  = (data.get("last_name")  if "last_name"  in data
+                       else s.last_name)  or ""
+        next_first = next_first.strip()
+        next_last  = next_last.strip()
+        if next_last and next_first:
+            data["patient_name"] = f"{next_last.title()}, {next_first.title()}"
+        elif next_last:
+            data["patient_name"] = next_last.title()
+        elif next_first:
+            data["patient_name"] = next_first.title()
+
     _audit_field_set = {
-        "patient_name", "dob", "address", "city", "state", "zip_code",
+        "patient_name", "first_name", "middle_initial", "last_name",
+        "dob", "address", "city", "state", "zip_code",
         "cell_phone", "home_phone", "email",
         "primary_insurance", "insurance_member_id", "secondary_insurance",
         "diagnosis_primary", "diagnosis_secondary", "procedure_primary",

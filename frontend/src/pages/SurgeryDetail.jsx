@@ -118,7 +118,7 @@ export default function SurgeryDetail() {
         <div className="flex flex-wrap items-baseline justify-between gap-y-3 gap-x-3 mb-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-gray-900">{s.patient_name}</h1>
+              <PatientNameCell s={s} onPatch={patch.mutate} />
               {s.urgency === "urgent" && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">🚨 URGENT</span>}
               <span className={`text-[11px] px-2 py-0.5 rounded ${STATUS_TONE[s.status]}`}>{STATUS_LABEL[s.status] || s.status}</span>
               {s.sub_flag && <span className="text-[10px] text-gray-500">· {s.sub_flag.replace(/_/g, ' ')}</span>}
@@ -1685,6 +1685,76 @@ function usePicklists() {
 
 
 /* ───── Editable cells for the patient header ───── */
+
+function PatientNameCell({ s, onPatch }) {
+  const [editing, setEditing] = useState(false)
+  const [first, setFirst] = useState(s.first_name || '')
+  const [middle, setMiddle] = useState(s.middle_initial || '')
+  const [last, setLast]   = useState(s.last_name  || '')
+
+  // Reset draft state whenever the underlying surgery row changes (e.g.
+  // someone else saved, the patch round-tripped, etc.).
+  useEffect(() => {
+    if (!editing) {
+      setFirst(s.first_name || '')
+      setMiddle(s.middle_initial || '')
+      setLast(s.last_name || '')
+    }
+  }, [s.first_name, s.middle_initial, s.last_name, editing])
+
+  function save() {
+    onPatch({
+      first_name:      first.trim() || null,
+      middle_initial:  middle.trim() || null,
+      last_name:       last.trim()  || null,
+    })
+    setEditing(false)
+  }
+
+  if (!editing) {
+    return (
+      <h1 className="text-xl font-bold text-gray-900 flex items-baseline gap-2">
+        {s.patient_name || <span className="text-gray-400 italic">No name</span>}
+        <button
+          type="button"
+          className="text-[11px] text-plum-700 hover:underline font-normal"
+          onClick={() => setEditing(true)}>
+          edit
+        </button>
+      </h1>
+    )
+  }
+  return (
+    <div className="flex items-baseline gap-1.5 flex-wrap">
+      <input
+        className="input text-sm w-28"
+        placeholder="First"
+        value={first}
+        autoFocus
+        onChange={e => setFirst(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') setEditing(false); if (e.key === 'Enter') save() }}
+      />
+      <input
+        className="input text-sm w-10"
+        placeholder="MI"
+        maxLength={2}
+        value={middle}
+        onChange={e => setMiddle(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') setEditing(false); if (e.key === 'Enter') save() }}
+      />
+      <input
+        className="input text-sm w-44"
+        placeholder="Last"
+        value={last}
+        onChange={e => setLast(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Escape') setEditing(false); if (e.key === 'Enter') save() }}
+      />
+      <button className="btn-primary text-xs" onClick={save}>Save</button>
+      <button className="text-xs text-muted hover:underline" onClick={() => setEditing(false)}>Cancel</button>
+    </div>
+  )
+}
+
 
 function SurgeonCell({ s, onPatch }) {
   const picks = usePicklists()
