@@ -37,3 +37,8 @@ scratch/
 # Claude Code runtime artifacts
 .claude/scheduled_tasks.lock
 .playwright-mcp/
+# Playwright-MCP verification screenshots saved to the working tree
+/*.jpeg
+/*.png
+/frontend/*.jpeg
+/frontend/*.png
