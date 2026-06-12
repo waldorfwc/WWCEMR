@@ -279,9 +279,30 @@ def import_rows(db: Session, rows: list[dict], *,
     def _force_book(surgery, block_day, start_t, duration, proc_kind):
         """Drop any prior slot for this surgery, create a new one on the
         block day with the supplied window, and stamp the surgery's
-        scheduled_date / start_time / facility. Bypasses all guards —
-        only used in backfill_mode."""
-        # Drop prior slots
+        scheduled_date / start_time / facility. Bypasses capacity /
+        block-window / blackout guards — used only in backfill_mode.
+
+        Raises ValueError if another patient is already booked at the
+        exact same start_time on the same BlockDay. That's a real
+        patient-level conflict (not a policy violation), and silently
+        doublebooking on top of a real existing surgery would be the
+        kind of harm backfill_mode is NOT supposed to cause.
+        """
+        # Detect same-start-time conflict with a different surgery before
+        # we touch anything.
+        conflict = (db.query(SurgerySlot)
+                      .filter(SurgerySlot.block_day_id == block_day.id,
+                              SurgerySlot.start_time == start_t,
+                              SurgerySlot.surgery_id != surgery.id,
+                              SurgerySlot.surgery_id.isnot(None))
+                      .first())
+        if conflict:
+            other = db.query(Surgery).filter(Surgery.id == conflict.surgery_id).first()
+            raise ValueError(
+                f"start-time conflict with {other.patient_name} "
+                f"(chart {other.chart_number}) at {start_t.strftime('%H:%M')}"
+            )
+        # Drop prior slots for THIS surgery only
         prior = db.query(SurgerySlot).filter(
             SurgerySlot.surgery_id == surgery.id).all()
         for old in prior:

@@ -392,6 +392,46 @@ def backfill_imported_procedure_classification(
     return {"fixed": len(out), "rows": out}
 
 
+class _UnbookIn(BaseModel):
+    surgery_ids: list[str]
+
+
+@router.post("/unbook-surgeries")
+def unbook_surgeries(payload: _UnbookIn,
+                      db: Session = Depends(get_db),
+                      current_user: dict = Depends(requires_super_admin())):
+    """Drop the SurgerySlot and clear scheduled_date / start_time on each
+    surgery in the payload, returning it to a schedulable state. Used
+    to roll back backfill_mode runs that blindly doublebooked another
+    patient's slot."""
+    from app.models.surgery import SurgerySlot
+    out: list[dict] = []
+    for sid in payload.surgery_ids:
+        s = db.query(Surgery).filter(Surgery.id == sid).first()
+        if not s:
+            out.append({"surgery_id": sid, "result": "not_found"})
+            continue
+        slots = db.query(SurgerySlot).filter(SurgerySlot.surgery_id == sid).all()
+        for sl in slots:
+            db.delete(sl)
+        prior_date = str(s.scheduled_date) if s.scheduled_date else None
+        prior_time = (str(s.scheduled_start_time)[:5]
+                       if s.scheduled_start_time else None)
+        s.scheduled_date = None
+        s.scheduled_start_time = None
+        if s.status == "confirmed":
+            s.status = "incomplete"
+        out.append({
+            "surgery_id":   sid,
+            "patient_name": s.patient_name,
+            "rolled_back_from": f"{prior_date} {prior_time}".strip(),
+            "slots_deleted":    len(slots),
+        })
+    db.commit()
+    return {"unbooked": sum(1 for o in out if o.get("slots_deleted", 0) > 0),
+            "rows": out}
+
+
 @router.post("/delete-orphan-slots")
 def delete_orphan_slots(
     db: Session = Depends(get_db),
