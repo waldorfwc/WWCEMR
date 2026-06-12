@@ -73,6 +73,7 @@ APPT_TYPE_MAP: dict[str, tuple[str, str, int]] = {
     "medstar-robot-short":   ("medstar", "robotic_180", 180),
     "medstar-robot-long":    ("medstar", "robotic_240", 240),
     "medstar-minor":         ("medstar", "minor",        60),
+    "crmc-minor":            ("crmc",    "minor",        90),
     "crmc-major":            ("crmc",    "major",       120),
     "office-based surgery":  ("office",  "office",       30),
 }
