@@ -85,10 +85,24 @@ def _balance_gate(s: Surgery) -> Optional[str]:
             "or call our office for a payment plan.")
 
 
-def _proposed_start_minutes(bd: BlockDay) -> Optional[int]:
+def _proposed_start_minutes(bd: BlockDay,
+                              needed_minutes: Optional[int] = None) -> Optional[int]:
     """Return the start-time-in-minutes for the next available slot in this
-    block. For office blocks, slot times are a fixed list (with a lunch
-    break gap). For hospital blocks, we compute the next gap by clock."""
+    block.
+
+    For office blocks, slot times are a fixed list (with a lunch break
+    gap). For hospital blocks, we walk the day's slots and return the
+    FIRST gap big enough to fit `needed_minutes` — gap before the first
+    booking, between bookings, or after the last booking. Previously
+    only the post-last-slot gap was considered, which incorrectly
+    refused dates with usable space at the front of the day (e.g.
+    Linkins on 06/17: Andrews 10:30 + Bargas Funes 13:30 left a usable
+    07:30–10:30 window that the picker silently skipped).
+
+    `needed_minutes` defaults to a conservative 1 minute when not
+    supplied so callers that don't know the duration still get the
+    legacy behavior of "first cursor position past the existing slots."
+    """
     existing = sorted((sl for sl in (bd.slots or [])), key=lambda x: x.start_time)
 
     # Office: pick from the fixed slot list, return the first not already booked.
@@ -100,13 +114,21 @@ def _proposed_start_minutes(bd: BlockDay) -> Optional[int]:
                 return t
         return None  # all 7 office slots taken
 
-    # Hospital: walk clock-time from block start; cursor = end of last slot
     block_start_min = bd.start_time.hour * 60 + bd.start_time.minute
+    block_end_min   = bd.end_time.hour * 60 + bd.end_time.minute
+    need = needed_minutes or 1
+
+    # Walk gaps in clock order: before-first, between, after-last
     cursor = block_start_min
     for sl in existing:
         sl_start = sl.start_time.hour * 60 + sl.start_time.minute
+        gap = sl_start - cursor
+        if gap >= need:
+            return cursor
         cursor = max(cursor, sl_start + sl.duration_minutes)
-    return cursor
+    if block_end_min - cursor >= need:
+        return cursor
+    return None
 
 
 def available_slots_for_surgery(db: Session, s: Surgery, *,
@@ -150,7 +172,7 @@ def available_slots_for_surgery(db: Session, s: Surgery, *,
         ok, _ = can_fit(db, bd, proc_kind)
         if not ok:
             continue
-        cursor = _proposed_start_minutes(bd)
+        cursor = _proposed_start_minutes(bd, needed_minutes=duration)
         block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
         if cursor is None or cursor + duration > block_end_min:
             continue
@@ -227,7 +249,7 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
     # Recompute next-available start on the target block (fresh, after
     # the existing slot was deleted if it was on this same block).
     db.refresh(bd)
-    cursor = _proposed_start_minutes(bd)
+    cursor = _proposed_start_minutes(bd, needed_minutes=duration)
     block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
     if cursor is None or cursor + duration > block_end_min:
         raise DatePickerError("That date no longer has room — please pick another.")

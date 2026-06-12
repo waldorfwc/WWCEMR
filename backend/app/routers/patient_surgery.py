@@ -317,7 +317,7 @@ def patient_slots(surgery_id: str, days_ahead: int = 180,
         # Use the shared helper so office lunch-break logic stays consistent.
         from app.services.surgery.date_picker import _proposed_start_minutes
         existing = sorted((sl for sl in (bd.slots or [])), key=lambda x: x.start_time)
-        cursor = _proposed_start_minutes(bd)
+        cursor = _proposed_start_minutes(bd, needed_minutes=duration)
         block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
         if cursor is None or cursor + duration > block_end_min:
             continue
