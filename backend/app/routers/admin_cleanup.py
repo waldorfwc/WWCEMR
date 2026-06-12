@@ -26,8 +26,9 @@ from datetime import date as _date, datetime, time as _time
 from app.database import get_db
 from app.permissions.dependencies import requires_super_admin
 from app.models.larc import LarcAssignment, LarcDevice, LarcOwedPatient
-from app.models.surgery import Surgery, BlockDay
+from app.models.surgery import Surgery, BlockDay, SurgeryMilestone
 from app.models.pellet import PelletPatient
+from app.utils.dt import now_utc_naive
 
 
 router = APIRouter(prefix="/admin/cleanup", tags=["admin-cleanup"])
@@ -273,6 +274,48 @@ class _SilentScheduleIn(BaseModel):
 def _hhmm(s: str) -> _time:
     h, m = s.split(":")[:2]
     return _time(int(h), int(m))
+
+
+@router.post("/skip-retired-milestones")
+def skip_retired_milestones(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_super_admin()),
+):
+    """Sweep every SurgeryMilestone whose `kind` isn't in the current
+    catalog and mark it `skipped` with an audit note. Used when a
+    milestone step is retired from the workflow but old surgery rows
+    still carry the now-orphaned milestone row — those keep sitting in
+    `pending` forever and show up as Critical Alerts on the dashboard.
+
+    Today's exact trigger: klara_scheduling was removed from
+    HOSPITAL_MILESTONES + OFFICE_MILESTONES when the practice stopped
+    pasting drafts into Klara. 10+ surgeries had pending klara_scheduling
+    rows from before that change.
+    """
+    from app.services.surgery.smartsheet_seed import (
+        HOSPITAL_MILESTONES, OFFICE_MILESTONES,
+    )
+    valid_kinds = {kind for kind, _, _ in HOSPITAL_MILESTONES + OFFICE_MILESTONES}
+
+    rows = (db.query(SurgeryMilestone)
+              .filter(SurgeryMilestone.kind.notin_(valid_kinds),
+                      SurgeryMilestone.status.in_(("pending", "in_progress", "locked")))
+              .all())
+    actor = (current_user or {}).get("email") or "admin-cleanup"
+    by_kind: dict[str, int] = {}
+    note_suffix = f"[auto-skipped {_date.today()}] kind not in current catalog."
+    for m in rows:
+        by_kind[m.kind] = by_kind.get(m.kind, 0) + 1
+        m.status = "skipped"
+        m.completed_at = now_utc_naive()
+        m.completed_by = actor
+        m.notes = (m.notes + "\n" + note_suffix) if m.notes else note_suffix
+    db.commit()
+    return {
+        "skipped": len(rows),
+        "by_kind": by_kind,
+        "actor": actor,
+    }
 
 
 @router.post("/fix-imported-confirmed-status")

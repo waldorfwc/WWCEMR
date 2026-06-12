@@ -71,9 +71,23 @@ PercentAmount = Annotated[float, Field(ge=0, le=100)]
 # ─── Behind-schedule helper ──────────────────────────────────────────
 
 def _current_milestone(s: Surgery) -> Optional[SurgeryMilestone]:
-    """First non-done, non-skipped milestone, ordered by position."""
+    """First non-done, non-skipped milestone, ordered by position.
+
+    Also skips milestones whose `kind` is no longer in the active catalog
+    (e.g. klara_scheduling rows on surgeries created before that step was
+    retired). Without this guard the dashboard's behind-schedule check
+    sticks on a milestone that has no UI / no automation to advance it,
+    and Critical Alerts fills with stale rows forever. The admin/cleanup
+    endpoint normalizes the data; this filter makes the dashboard correct
+    immediately on deploy.
+    """
+    from app.services.surgery.smartsheet_seed import (
+        HOSPITAL_MILESTONES, OFFICE_MILESTONES,
+    )
+    valid_kinds = {k for k, _, _ in HOSPITAL_MILESTONES + OFFICE_MILESTONES}
     pending = [m for m in (s.milestones or [])
-               if m.status not in ("done", "skipped", "not_applicable")]
+               if m.status not in ("done", "skipped", "not_applicable")
+               and m.kind in valid_kinds]
     pending.sort(key=lambda m: m.position)
     return pending[0] if pending else None
 
