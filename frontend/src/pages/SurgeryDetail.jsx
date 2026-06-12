@@ -2385,6 +2385,12 @@ function SchedulerDatePicker({ surgery, onClose }) {
   const [selectedTime, setSelectedTime] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
+  // When the backend rejects with "override_reason required" (duration
+  // differs >10% from the template default) we surface a text input
+  // and let the coordinator type a reason and retry, instead of
+  // dumping the raw error and dead-ending the modal.
+  const [needsOverride, setNeedsOverride] = useState(false)
+  const [overrideReason, setOverrideReason] = useState('')
 
   const { data, isLoading } = useQuery({
     queryKey: ['surgery-available-slots', surgery.id],
@@ -2429,18 +2435,34 @@ function SchedulerDatePicker({ surgery, onClose }) {
     if (!selected || !selectedTime) return
     setSubmitting(true); setError(null)
     try {
-      await api.post(`/surgery/${surgery.id}/schedule`, {
+      const body = {
         block_day_id: selected.block_day_id,
         start_time:   selectedTime,
         duration_minutes: avail?.duration_minutes || selected.duration_minutes,
-      })
+      }
+      const reason = overrideReason.trim()
+      if (reason) body.override_reason = reason
+      await api.post(`/surgery/${surgery.id}/schedule`, body)
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
       qc.invalidateQueries({ queryKey: ['surgery-list'] })
       qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
       qc.invalidateQueries({ queryKey: ['surgery-available-slots', surgery.id] })
       onClose()
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Could not book that date.')
+      const detail = err?.response?.data?.detail || 'Could not book that date.'
+      const isOverrideRequired =
+        err?.response?.status === 422 &&
+        typeof detail === 'string' &&
+        detail.toLowerCase().includes('override_reason required')
+      if (isOverrideRequired) {
+        // First failure on this duration — flip into override-reason
+        // capture mode and let the coordinator retry with a note. Wipe
+        // the raw error since we're presenting it via the input prompt.
+        setNeedsOverride(true)
+        setError(null)
+      } else {
+        setError(detail)
+      }
       setSubmitting(false)
     }
   }
@@ -2550,6 +2572,24 @@ function SchedulerDatePicker({ surgery, onClose }) {
             </div>
           )}
 
+          {needsOverride && (
+            <div className="bg-amber-50 border border-amber-200 rounded p-3 mt-3 space-y-2">
+              <div className="text-sm font-medium text-amber-900">
+                Duration differs &gt;10% from the procedure template default — please document why.
+              </div>
+              <div className="text-[12px] text-amber-800">
+                Picked {avail?.duration_minutes || selected?.duration_minutes} min, template default usually applies.
+              </div>
+              <textarea
+                className="input text-sm w-full"
+                rows={2}
+                autoFocus
+                placeholder='e.g. "expected difficult anatomy", "co-surgery with Dr. X", "complex prior abdominal history"'
+                value={overrideReason}
+                onChange={e => setOverrideReason(e.target.value)}
+              />
+            </div>
+          )}
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-800 text-sm p-2 rounded mt-3">
               {error}
@@ -2565,14 +2605,17 @@ function SchedulerDatePicker({ surgery, onClose }) {
           </button>
           <button type="button"
                   onClick={pick}
-                  disabled={!selected || !selectedTime || submitting}
+                  disabled={!selected || !selectedTime || submitting
+                              || (needsOverride && !overrideReason.trim())}
                   className="btn-primary text-sm">
             {submitting ? 'Booking…' :
-              (selected && selectedTime)
-                ? `${surgery.scheduled_date ? 'Reschedule' : 'Book'} ${fmt.date(selected.block_date)} at ${selectedTime}`
-                : selected
-                  ? 'Pick a time'
-                  : 'Pick a date above'}
+              needsOverride
+                ? `${surgery.scheduled_date ? 'Reschedule' : 'Book'} with override`
+                : (selected && selectedTime)
+                  ? `${surgery.scheduled_date ? 'Reschedule' : 'Book'} ${fmt.date(selected.block_date)} at ${selectedTime}`
+                  : selected
+                    ? 'Pick a time'
+                    : 'Pick a date above'}
           </button>
         </div>
       </div>
