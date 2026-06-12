@@ -3537,11 +3537,16 @@ def coordinator_schedule(
     # scheduled_date/scheduled_start_time/selected_facility/status.
     # (Fable surgery audit C1.)
     from app.services.surgery.block_schedule import book_slot, CapacityViolation
+    # procedure_kind must be the *surgery's* classification (robotic_180,
+    # robotic_240, minor, major, office) — NOT the block day's kind
+    # ("robotic_only", "mixed", etc.). Passing bd.block_kind here caused
+    # can_fit() to fall through to the catchall "MedStar block doesn't
+    # accept robotic_only cases" error message.
     try:
         slot = book_slot(
             db, block_day_id=str(bd.id), surgery_id=str(s.id),
             start_time=start, duration_minutes=duration,
-            procedure_kind=bd.block_kind,
+            procedure_kind=s.procedure_classification or "minor",
         )
     except CapacityViolation as exc:
         raise HTTPException(status_code=409, detail=str(exc))

@@ -151,7 +151,12 @@ def claim_slot_for_patient(
     slot = SurgerySlot(
         block_day_id=bd.id, surgery_id=surgery.id,
         start_time=start, duration_minutes=duration,
-        procedure_kind=bd.block_kind,
+        # procedure_kind belongs to the surgery (robotic_180, minor, etc.)
+        # — bd.block_kind is the *block's* classification ("robotic_only",
+        # "mixed", ...) and writing it here both poisons can_fit and
+        # corrupts the SurgerySlot.procedure_kind column for downstream
+        # readers.
+        procedure_kind=surgery.procedure_classification or "minor",
     )
     db.add(slot)
     surgery.scheduled_date = bd.block_date
