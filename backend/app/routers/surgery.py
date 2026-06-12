@@ -3482,7 +3482,17 @@ def coordinator_schedule(
     default = _default_duration_for(db, s, bd)
     duration = payload.duration_minutes or default
 
-    blackout = is_date_blacked_out(db, bd.block_date, s.selected_facility or bd.facility, s.surgeon_email)
+    # Pass slot's window so a partial-day blackout only blocks if it
+    # actually overlaps this slot, not the whole day.
+    end_min = start.hour * 60 + start.minute + duration
+    from datetime import time as _t
+    end_t = _t(end_min // 60 % 24, end_min % 60)
+    blackout = is_date_blacked_out(
+        db, bd.block_date,
+        s.selected_facility or bd.facility,
+        s.surgeon_email,
+        start_time=start, end_time=end_t,
+    )
     if blackout:
         raise HTTPException(
             status_code=409,
@@ -4777,17 +4787,13 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
                     f"must be one of {sorted(DURATIONS.keys())}"))
     duration = DURATIONS[proc_kind]
 
-    # Blackout check on the target block day. Even coordinator_schedule
-    # ran this; the waitlist path was relying on book_slot's capacity
-    # check alone, which wouldn't catch a surgeon-specific blackout on
-    # the day. (Fable surgery audit M6.)
-    blackout = is_date_blacked_out(
-        db, bd.block_date, s.selected_facility or bd.facility, s.surgeon_email)
-    if blackout:
-        raise HTTPException(
-            status_code=409,
-            detail=f"that date is blocked: {blackout.label or blackout.reason} "
-                   f"({blackout.scope})")
+    # (Blackout pre-check removed — book_slot now runs the same check
+    # under the row lock, and crucially passes the slot's actual
+    # start/end so a partial-day blackout only blocks an overlapping
+    # window, not the whole day. The pre-check was a legacy any-time
+    # check that over-blocked for partial-day. Fable surgery audit M6
+    # was the reason this check originally existed; book_slot's
+    # built-in check is its successor.)
 
     # Determine start time as next gap
     existing = sorted(bd.slots or [], key=lambda x: x.start_time)

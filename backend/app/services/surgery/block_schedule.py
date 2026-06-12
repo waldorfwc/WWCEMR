@@ -102,15 +102,29 @@ def materialize_block_days(db: Session, *, days_ahead: int = 180) -> dict:
     today = date.today()
     end = today + timedelta(days=days_ahead)
 
-    # Build blackout sets so we can filter quickly
+    # Build blackout sets so we can filter quickly. Only WHOLE-DAY
+    # blackouts kill BlockDay creation — partial-day blackouts leave
+    # the BlockDay in place so the booking flow can offer slots outside
+    # the blacked-out window (book_slot does an overlap-aware check at
+    # booking time). Provider-scope whole-day blackouts also skip
+    # (single-surgeon practice — provider unavailable = day unavailable).
     blackouts = db.query(SurgeryBlackoutDay).filter(
         SurgeryBlackoutDay.blackout_date >= today,
         SurgeryBlackoutDay.blackout_date <= end,
     ).all()
-    office_blackouts = {b.blackout_date for b in blackouts if b.scope == "office"}
+    def _is_whole_day(b):
+        return b.start_time is None and b.end_time is None
+    office_blackouts: set[date] = set()
+    provider_blackouts: set[date] = set()
     facility_blackouts: dict[str, set[date]] = {}
     for b in blackouts:
-        if b.scope == "facility" and b.facility:
+        if not _is_whole_day(b):
+            continue
+        if b.scope == "office":
+            office_blackouts.add(b.blackout_date)
+        elif b.scope == "provider":
+            provider_blackouts.add(b.blackout_date)
+        elif b.scope == "facility" and b.facility:
             facility_blackouts.setdefault(b.facility, set()).add(b.blackout_date)
 
     schedules = (db.query(BlockSchedule)
@@ -135,8 +149,11 @@ def materialize_block_days(db: Session, *, days_ahead: int = 180) -> dict:
 
     for sched in schedules:
         for d in _dates_for_schedule(sched, today, end):
-            # Office-wide holiday → skip everywhere
-            if d in office_blackouts:
+            # Office-wide or provider-wide holiday → skip everywhere.
+            # (Single-surgeon practice: provider unavailable closes the
+            # whole day; multi-surgeon migration will need surgeon_email
+            # context to narrow this scope.)
+            if d in office_blackouts or d in provider_blackouts:
                 blocked += 1
                 continue
             # Facility-scoped closure → skip just this facility
@@ -313,6 +330,28 @@ def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
                      .filter(SurgerySlot.surgery_id == surgery.id).all())
     for old in prior_slots:
         db.delete(old)
+
+    # Blackout check — defense in depth. coordinator_schedule,
+    # claim_slot_for_patient, and the waitlist book path all check
+    # before calling book_slot, but the bulk-import + silent-schedule
+    # admin paths bypass those callers. Re-running the check here under
+    # the row lock means no booking path can ever land on a blacked-out
+    # date/window. Partial-day blackouts only block when the proposed
+    # slot's window overlaps the blackout window.
+    from app.services.surgery.blackout_conflict import is_date_blacked_out
+    slot_end_min = (start_time.hour * 60 + start_time.minute + duration_minutes)
+    slot_end_time = time(slot_end_min // 60 % 24, slot_end_min % 60)
+    blackout = is_date_blacked_out(
+        db, block_day.block_date,
+        block_day.facility,
+        surgeon_email=surgery.surgeon_email,
+        start_time=start_time, end_time=slot_end_time,
+    )
+    if blackout:
+        raise CapacityViolation(
+            f"That date/time is blocked: "
+            f"{blackout.label or blackout.reason} ({blackout.scope})"
+        )
 
     ok, reason = can_fit(db, block_day, procedure_kind)
     if not ok:

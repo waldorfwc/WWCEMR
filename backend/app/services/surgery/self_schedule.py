@@ -108,17 +108,26 @@ def claim_slot_for_patient(
     if not bd:
         raise SelfScheduleError("Block day not found", status_code=404)
 
-    blackout = is_date_blacked_out(db, bd.block_date, bd.facility,
-                                      surgery.surgeon_email)
+    start = _parse_hhmm(start_time_str)
+    duration = _default_duration_for(db, surgery, bd)
+
+    # Pass slot window so partial-day blackouts only block when actually
+    # overlapping. Whole-day blackouts still block any picked slot since
+    # is_date_blacked_out short-circuits to True on whole-day.
+    from datetime import time as _t
+    _end_min = start.hour * 60 + start.minute + duration
+    _end_t = _t(_end_min // 60 % 24, _end_min % 60)
+    blackout = is_date_blacked_out(
+        db, bd.block_date, bd.facility,
+        surgery.surgeon_email,
+        start_time=start, end_time=_end_t,
+    )
     if blackout:
         raise SelfScheduleError(
-            f"That date is blocked: {blackout.label or blackout.reason} "
+            f"That date/time is blocked: {blackout.label or blackout.reason} "
             f"({blackout.scope})",
             status_code=409,
         )
-
-    start = _parse_hhmm(start_time_str)
-    duration = _default_duration_for(db, surgery, bd)
 
     conflict = overlapping_slot(db, bd.id, start, duration)
     if conflict:
