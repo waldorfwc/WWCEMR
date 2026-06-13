@@ -208,6 +208,33 @@ def put_config(payload: ConfigPayload,
     return _read_config(db)
 
 
+@router.get("/config/step-catalog")
+def step_catalog(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
+    from app.services.surgery.step_engine import (
+        HOSPITAL_STEPS, OFFICE_STEPS,
+        DEFAULT_EXPECTED_DAYS_HOSPITAL, DEFAULT_EXPECTED_DAYS_OFFICE,
+    )
+
+    def ser(steps, days):
+        return [{"n": st.n, "key": st.key, "title": st.title,
+                 "optional": st.optional, "default_days": days[st.key]}
+                for st in steps]
+
+    return {"hospital": ser(HOSPITAL_STEPS, DEFAULT_EXPECTED_DAYS_HOSPITAL),
+            "office":   ser(OFFICE_STEPS,   DEFAULT_EXPECTED_DAYS_OFFICE)}
+
+
+@router.get("/config/post-op-defaults")
+def post_op_defaults(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
+    from app.services.post_op_schedule import DEFAULT_PROCEDURE_RULES
+    return {"rules": [
+        {"match": kws, "visits": [
+            {"label": v.label, "offset_days": v.days_post_op,
+             "mode": v.suggested_location, "location_locked": v.location_locked}
+            for v in visits]}
+        for kws, visits in DEFAULT_PROCEDURE_RULES]}
+
+
 # ─── Alert recipients ───────────────────────────────────────────────
 
 @router.get("/admin/alert-recipients")

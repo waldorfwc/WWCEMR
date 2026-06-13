@@ -228,7 +228,85 @@ function ReminderLeadDaysSection() {
   )
 }
 
-function StepsTab()     { return <Placeholder name="Workflow Steps" /> }
+// ─── Workflow Steps tab ─────────────────────────────────────────────
+
+function StepsTab() {
+  const qc = useQueryClient()
+  const { data: catalog } = useQuery({
+    queryKey: ['step-catalog'],
+    queryFn: () => api.get('/surgery/config/step-catalog').then(r => r.data),
+  })
+  const { data: config } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState({})
+  const save = useMutation({
+    mutationFn: (body) => api.put('/surgery/config', body).then(r => r.data),
+    onSuccess: () => { setDraft({}); qc.invalidateQueries({ queryKey: ['surgery-config'] }) },
+  })
+  if (!catalog || !config) return <LoadingState />
+
+  const pathway = (id, label, cfgDaysKey, cfgTitlesKey) => {
+    const days = { ...(config[cfgDaysKey] || {}), ...(draft[cfgDaysKey] || {}) }
+    const titles = { ...(config[cfgTitlesKey] || {}), ...(draft[cfgTitlesKey] || {}) }
+    return (
+      <section className="card p-4">
+        <h2 className="font-medium mb-1">{label}</h2>
+        <p className="text-[11px] text-muted mb-3">
+          Expected Days drives the behind-schedule and Critical Alerts logic —
+          a surgery is flagged when its current step is older than this.
+        </p>
+        <table className="w-full text-[13px]">
+          <thead><tr className="text-left text-muted">
+            <th className="py-1 w-8">#</th><th>Step</th>
+            <th className="w-32">Expected Days</th></tr></thead>
+          <tbody>
+            {catalog[id].map(st => (
+              <tr key={st.key} className="border-t border-border-subtle">
+                <td className="py-1.5 align-top">{st.n}</td>
+                <td className="py-1.5">
+                  <div className="flex items-center gap-2">
+                    <input className="input w-full" value={titles[st.key] ?? st.title}
+                           onChange={e => setDraft(d => ({ ...d,
+                             [cfgTitlesKey]: { ...(d[cfgTitlesKey] || {}), [st.key]: e.target.value } }))} />
+                    {st.optional && <span className="chip-neutral">optional</span>}
+                  </div>
+                </td>
+                <td className="py-1.5 align-top">
+                  <input type="number" min={1} max={90} className="input w-20"
+                         value={days[st.key] ?? st.default_days}
+                         onChange={e => setDraft(d => ({ ...d,
+                           [cfgDaysKey]: { ...(d[cfgDaysKey] || {}), [st.key]: Number(e.target.value) } }))} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {pathway('hospital', 'Hospital Pathway (15 Steps)',
+               'step_expected_days_hospital', 'step_titles_hospital')}
+      {pathway('office', 'Office Pathway (12 Steps)',
+               'step_expected_days_office', 'step_titles_office')}
+      <div>
+        <button className="btn-primary text-xs"
+                disabled={!Object.keys(draft).length || save.isPending}
+                onClick={() => save.mutate(draft)}>
+          {save.isPending ? 'Saving…' : 'Save Changes'}
+        </button>
+        {save.isError && (
+          <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function PostOpTab()    { return <Placeholder name="Post-Op Schedules" /> }
 function CapacityTab()  { return <Placeholder name="Facilities & Capacity" /> }
 function TemplatesTab() { return <Placeholder name="Templates" /> }
