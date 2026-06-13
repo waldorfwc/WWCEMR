@@ -50,8 +50,7 @@ _PUBLIC_ALLOWLIST = {
     "/api/missing-charges/portal/{token}/submit",
     "/api/billing/missing-charges/provider/{token}",
     "/api/billing/missing-charges/provider/{token}/{charge_id}",
-    # DocuSign + Calendly webhooks — HMAC-signed payloads
-    "/api/docusign/webhook",
+    # Calendly webhook — HMAC-signed payload
     "/api/calendly/webhook",
     # Stripe + BoldSign webhooks — HMAC-signed payloads (signature
     # check is inside the handler; token IS the gate)

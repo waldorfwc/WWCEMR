@@ -4160,86 +4160,13 @@ def consent_template_matches(surgery_id: str,
     }
 
 
-class DocuSignSendPayload(BaseModel):
-    ignore_warnings: bool = False
-
-
-@router.post("/{surgery_id}/consent/docusign-send")
-def consent_docusign_send(surgery_id: str,
-                          payload: DocuSignSendPayload = DocuSignSendPayload(),
-                          db: Session = Depends(get_db),
-                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
-    """Send all matched consent envelopes for this surgery (one per template).
-
-    The matcher resolves: one primary template per procedure, plus any
-    supplemental templates (Medicaid sterilization, etc.) whose insurance
-    + procedure + facility match. If any matched template fails its
-    min_days_before_surgery rule, the send is blocked unless
-    `ignore_warnings=true` is passed.
-    """
-    from app.services.docusign_envelopes import (
-        send_consent_envelopes, DocuSignEnvelopeError,
-    )
-
-    s = (db.query(Surgery)
-           .options(joinedload(Surgery.consent_envelopes))
-           .filter(Surgery.id == surgery_id).first())
-    if not s:
-        raise HTTPException(status_code=404, detail="surgery not found")
-
-    try:
-        result = send_consent_envelopes(
-            db, s,
-            sent_by=current_user.get("email") or "system",
-            ignore_warnings=payload.ignore_warnings,
-        )
-    except DocuSignEnvelopeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    return {
-        **result,
-        "surgery": _surgery_dict(db, s),
-    }
-
-
-@router.post("/{surgery_id}/consent/docusign-sync")
-def consent_docusign_sync(surgery_id: str,
-                          db: Session = Depends(get_db),
-                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
-    """Pull the latest status for every envelope on this surgery and
-    reconcile Surgery.consent_status. Manual fallback when Connect
-    webhooks aren't wired up."""
-    from app.services.docusign_envelopes import (
-        sync_surgery_envelopes, DocuSignEnvelopeError,
-    )
-
-    s = (db.query(Surgery)
-           .options(joinedload(Surgery.consent_envelopes))
-           .filter(Surgery.id == surgery_id).first())
-    if not s:
-        raise HTTPException(status_code=404, detail="surgery not found")
-    if not s.consent_envelopes:
-        raise HTTPException(status_code=400, detail="no envelopes on file for this surgery")
-
-    try:
-        result = sync_surgery_envelopes(db, s)
-    except DocuSignEnvelopeError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-    return {
-        **result,
-        "surgery": _surgery_dict(db, s),
-    }
-
-
 @router.post("/{surgery_id}/consent/boldsign-send")
 def send_consent_via_boldsign(
     surgery_id: str,
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
-    """Send all matching BoldSign consent envelopes for this surgery.
-    Mirrors the DocuSign endpoint but uses the BoldSign service. Both
-    endpoints can coexist while the practice migrates templates."""
+    """Send all matching BoldSign consent envelopes for this surgery."""
     from app.services import boldsign_envelopes as bs
     from app.models.surgery import SurgeryConsentEnvelope
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()

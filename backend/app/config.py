@@ -27,19 +27,6 @@ class Settings(BaseSettings):
     waystar_sftp_username: str = ""
     waystar_sftp_password: str = ""
 
-    docusign_integration_key: str = ""
-    docusign_user_id: str = ""
-    docusign_account_id: str = ""
-    docusign_base_uri: str = "https://demo.docusign.net"
-    docusign_auth_uri: str = "account-d.docusign.com"
-    docusign_private_key: str = ""
-    docusign_template_id_dc: str = ""
-    docusign_provider_name: str = ""
-    docusign_provider_email: str = ""
-    docusign_witness_name: str = ""
-    docusign_witness_email: str = ""
-    docusign_webhook_secret: str = ""
-
     # Storage backend selection — previously read directly via
     # os.environ.get(...) in storage.py, billing_doc_storage.py,
     # surgery_uploads.py, intake.py, larc.py. Folded in so we have one

@@ -9,8 +9,7 @@ Signature verification: BoldSign signs each webhook with HMAC-SHA256
 keyed on BOLDSIGN_WEBHOOK_SECRET. The signature comes in the
 `X-Boldsign-Signature` header as a hex digest. We verify before parsing.
 
-This lives alongside the existing DocuSign webhook at /api/docusign/webhook
-— both providers can be active simultaneously while we migrate templates.
+BoldSign is the sole e-signature provider for surgery consent.
 """
 from __future__ import annotations
 

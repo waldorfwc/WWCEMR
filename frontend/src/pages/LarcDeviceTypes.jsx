@@ -13,9 +13,9 @@ export default function LarcDeviceTypes() {
     queryKey: ['larc-device-types'],
     queryFn: () => api.get('/larc/device-types').then(r => r.data),
   })
-  const { data: dsTemplates } = useQuery({
-    queryKey: ['larc-docusign-templates'],
-    queryFn: () => api.get('/larc/docusign-templates').then(r => r.data),
+  const { data: bsTemplates } = useQuery({
+    queryKey: ['larc-boldsign-templates'],
+    queryFn: () => api.get('/larc/boldsign-templates').then(r => r.data),
     retry: false,
     staleTime: 60_000,
   })
@@ -36,7 +36,7 @@ export default function LarcDeviceTypes() {
         </button>
       </div>
       <p className="text-sm text-gray-500 mb-4">
-        Configure LARC device types — typical cost, reorder thresholds, and the DocuSign
+        Configure LARC device types — typical cost, reorder thresholds, and the BoldSign
         enrollment form template per device. Bayer devices (Mirena/Skyla/Kyleena) can share
         a template ID; the patient picks the specific device inside the form.
       </p>
@@ -232,27 +232,27 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
             </div>
           </div>
           <div>
-            <label className="text-[11px] uppercase text-gray-500 block mb-1">DocuSign enrollment template</label>
-            {dsTemplates && Array.isArray(dsTemplates) ? (
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">BoldSign Enrollment Template</label>
+            {bsTemplates && Array.isArray(bsTemplates.templates) ? (
               <select className="input text-sm w-full mb-1"
                       value={form.enrollment_form_template}
                       onChange={e => update('enrollment_form_template', e.target.value)}>
                 <option value="">— none —</option>
-                {dsTemplates.map(t => (
-                  <option key={t.template_id} value={t.template_id}>
-                    {t.name} ({t.template_id?.slice(0, 8)}…)
+                {bsTemplates.templates.map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.id?.slice(0, 8)}…)
                   </option>
                 ))}
               </select>
             ) : (
               <div className="text-[10px] text-amber-700 mb-1">
-                Couldn't list DocuSign templates — type the GUID manually below.
+                Couldn't list BoldSign templates — type the ID manually below.
               </div>
             )}
             <input className="input text-[11px] w-full font-mono"
                    value={form.enrollment_form_template}
                    onChange={e => update('enrollment_form_template', e.target.value)}
-                   placeholder="DocuSign template ID (GUID)" />
+                   placeholder="BoldSign template ID" />
             <div className="text-[10px] text-gray-500 mt-0.5">
               Bayer-shared form? Use the same template GUID on Mirena, Skyla, and Kyleena.
             </div>

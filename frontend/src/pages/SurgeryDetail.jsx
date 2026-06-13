@@ -4502,29 +4502,6 @@ function ConsentPanel({ surgery }) {
     staleTime: 30_000,
   })
 
-  const docusignSend = useMutation({
-    mutationFn: (ignoreWarnings) =>
-      api.post(`/surgery/${surgery.id}/consent/docusign-send`,
-              { ignore_warnings: !!ignoreWarnings }).then(r => r.data),
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-      qc.invalidateQueries({ queryKey: ['surgery-list'] })
-      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
-      if (data?.skipped?.length) {
-        alert(`Sent ${data.sent.length}; skipped ${data.skipped.length} (already in flight).`)
-      }
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'DocuSign send failed'),
-  })
-  const docusignSync = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/docusign-sync`).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-      qc.invalidateQueries({ queryKey: ['surgery-list'] })
-      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'DocuSign sync failed'),
-  })
   const boldsignSend = useMutation({
     mutationFn: (ignoreWarnings) =>
       api.post(`/surgery/${surgery.id}/consent/boldsign-send`,
@@ -4587,8 +4564,8 @@ function ConsentPanel({ surgery }) {
   const unmatched = matchData?.unmatched_procedures || []
   const canSend = matchData && matchData.matches.length > 0 && unmatched.length === 0
 
-  function handleSend(provider) {
-    const send = provider === 'boldsign' ? boldsignSend : docusignSend
+  function handleSend() {
+    const send = boldsignSend
     if (blockingWarnings.length > 0) {
       const ok = confirm(
         'Warnings:\n\n' + blockingWarnings.map(m => '• ' + m.warning).join('\n')
@@ -4712,7 +4689,7 @@ function ConsentPanel({ surgery }) {
         {!isSigned && envelopes.length === 0 && (
           <>
             <button className="btn-primary text-xs flex items-center gap-1"
-                    onClick={() => handleSend('boldsign')}
+                    onClick={() => handleSend()}
                     disabled={!canSend || boldsignSend.isPending}
                     title={!canSend ? 'Resolve unmatched procedures first' : ''}>
               <Send size={11} /> {boldsignSend.isPending ? 'Sending…' : 'Send via BoldSign'}
@@ -4725,23 +4702,14 @@ function ConsentPanel({ surgery }) {
             </button>
           </>
         )}
-        {!isSigned && envelopes.length > 0 && (
-          <>
-            <button className="btn-secondary text-xs flex items-center gap-1"
-                    onClick={() => boldsignSync.mutate()}
-                    disabled={boldsignSync.isPending}
-                    title="Pull latest status from BoldSign">
-              <RefreshCw size={11} className={boldsignSync.isPending ? 'animate-spin' : ''} />
-              {boldsignSync.isPending ? 'Checking…' : 'Refresh from BoldSign'}
-            </button>
-            <button className="btn-secondary text-xs flex items-center gap-1"
-                    onClick={() => docusignSync.mutate()}
-                    disabled={docusignSync.isPending}
-                    title="Pull latest status from DocuSign (legacy envelopes)">
-              <RefreshCw size={11} className={docusignSync.isPending ? 'animate-spin' : ''} />
-              {docusignSync.isPending ? 'Checking…' : 'Refresh from DocuSign'}
-            </button>
-          </>
+        {!isSigned && envelopes.some(e => (e.provider || 'boldsign') !== 'docusign') && (
+          <button className="btn-secondary text-xs flex items-center gap-1"
+                  onClick={() => boldsignSync.mutate()}
+                  disabled={boldsignSync.isPending}
+                  title="Pull latest status from BoldSign">
+            <RefreshCw size={11} className={boldsignSync.isPending ? 'animate-spin' : ''} />
+            {boldsignSync.isPending ? 'Checking…' : 'Refresh from BoldSign'}
+          </button>
         )}
         {!isSigned && (
           <button className="btn-secondary text-xs flex items-center gap-1"

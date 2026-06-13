@@ -1,7 +1,6 @@
 """BoldSign envelope service.
 
-Replaces the DocuSign service that previously lived in
-docusign_envelopes.py. Public interface preserved — callers don't change.
+Sole e-signature provider for surgery consent.
 
 Configuration (env, both required for live API calls):
   BOLDSIGN_API_KEY        — X-API-KEY header value

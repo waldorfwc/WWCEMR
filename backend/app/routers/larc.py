@@ -493,30 +493,37 @@ def patch_device_type(type_id: str, payload: DeviceTypePatch,
     return _device_type_dict(t)
 
 
-@router.get("/docusign-templates")
-def list_docusign_templates(current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
-    """Pull the live DocuSign template list so admins pick from a dropdown
-    instead of hand-typing template GUIDs. Re-uses the same JWT client as
-    the surgery-consent feature."""
+@router.get("/boldsign-templates")
+def list_boldsign_templates(current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
+    """Pull the live BoldSign template list so admins pick from a dropdown
+    instead of hand-typing template IDs."""
+    import os
     import httpx
-    from app.services.docusign_client import auth_headers, envelopes_base_url
+    api_key = os.environ.get("BOLDSIGN_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(status_code=503, detail="BoldSign not configured")
     try:
-        r = httpx.get(f"{envelopes_base_url()}/templates", headers=auth_headers(),
-                       timeout=30, params={"count": 200})
+        r = httpx.get(
+            "https://api.boldsign.com/v1/template/list",
+            headers={"X-API-KEY": api_key},
+            timeout=30,
+            params={"PageSize": 50, "Page": 1},
+        )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"DocuSign unreachable: {exc}")
+        raise HTTPException(status_code=502, detail=f"BoldSign unreachable: {exc}")
     if r.status_code != 200:
         raise HTTPException(status_code=502,
-                             detail=f"DocuSign returned {r.status_code}: {r.text[:200]}")
+                             detail=f"BoldSign returned {r.status_code}: {r.text[:200]}")
     data = r.json()
-    return [
-        {
-            "template_id": t.get("templateId"),
-            "name": t.get("name"),
-            "last_modified": t.get("lastModified"),
-        }
-        for t in data.get("envelopeTemplates", [])
-    ]
+    return {
+        "templates": [
+            {
+                "id": t.get("documentId"),
+                "name": t.get("messageTitle") or t.get("templateName"),
+            }
+            for t in data.get("result", [])
+        ]
+    }
 
 
 # ─── Pharmacies ─────────────────────────────────────────────────────

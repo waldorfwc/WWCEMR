@@ -633,7 +633,23 @@
       "Bash(kill 59864)",
       "Bash(node *)",
       "Bash(grep -nA2 \"except.*:\" /Users/wwcclaudecode/Documents/wwc-era-project/backend/app/routers/recalls.py)",
-      "Bash(./venv/bin/python -c \"from app.routers import bank_recon\")"
+      "Bash(./venv/bin/python -c \"from app.routers import bank_recon\")",
+      "Bash(xargs sed -i '' -E -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-500/\\\\1-plum-700/g' -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-600/\\\\1-plum-600/g' -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-700/\\\\1-plum-700/g' -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-400/\\\\1-plum-400/g' -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-300/\\\\1-plum-300/g' -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-200/\\\\1-plum-200/g' -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-100/\\\\1-plum-100/g' -e 's/\\(text|bg|border|hover:text|hover:bg|hover:border|focus:ring|focus:border|ring|from|to|via\\)-primary-50\\([^0-9]\\)/\\\\1-plum-50\\\\2/g')",
+      "Bash(grep -v ':0$')",
+      "Bash(sips -g pixelHeight -g pixelWidth /Users/wwcclaudecode/Documents/wwc-era-project/frontend/src/assets/wwc-logo.png)",
+      "Bash(sips -g pixelHeight -g pixelWidth /Users/wwcclaudecode/Documents/wwc-era-project/frontend/src/assets/wwc-logo-full.png)",
+      "Bash(python -c \"from app.routers.personal_tasks import router; from app.routers.surgery import router as srouter; print\\('imports OK'\\)\")",
+      "Bash(rm -v *.jpeg)",
+      "Bash(rm -v frontend/*.jpeg)",
+      "Bash(psql -h localhost -U postgres -d wwc_app -tc \"SELECT count\\(*\\) FROM surgery_consent_envelopes WHERE docusign_envelope_id IS NOT NULL\")",
+      "Bash(pip3 list *)",
+      "Bash(venv/bin/python *)",
+      "Bash(cloud-sql-proxy *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(echo \"exit=$?\")",
+      "Bash(break)",
+      "Bash(echo \"exit $?\")",
+      "Bash(backend/venv/bin/python /tmp/parity_probe.py)"
     ]
   }
 }

@@ -16,7 +16,7 @@ from app.services.request_context import (
 
 from app.database import init_db
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, docusign as docusign_router, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts, admin_cleanup
+from app.routers import waystar, ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts, admin_cleanup
 from app.routers import google_sync as google_sync_router
 from app.routers import admin_tiers, admin_practice_settings
 from app.permissions.catalog import Module, Tier
@@ -295,10 +295,8 @@ app.include_router(patient_surgery.router, prefix="/api")
 app.include_router(patient_portal.router, prefix="/api")
 # Staff portal-preview token — issues a short-lived read-only portal JWT for coordinators
 app.include_router(portal_preview.router)
-# DocuSign Connect webhook — no auth (DocuSign POSTs from outside; verified via HMAC)
-app.include_router(docusign_router.router, prefix="/api")
 # BoldSign Connect webhook — no auth (BoldSign POSTs from outside;
-# verified via HMAC). Lives alongside DocuSign during the provider migration.
+# verified via HMAC).
 app.include_router(boldsign.router, prefix="/api")
 # Consent template admin — gated by per-endpoint Surgery:Manage
 app.include_router(consent_templates.router, prefix="/api",

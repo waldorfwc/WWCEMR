@@ -42,7 +42,6 @@ def init_db():
     # Default groups already exist in production; the legacy seed code is
     # retained at _seed_default_groups for traceability but no longer called.
     _migrate_template_targeting()
-    _seed_consent_template_from_env()
     _migrate_billing_doc_status_open_to_new()
     _backfill_larc_assignment_device_type()
     from app.services.larc.seed import seed_larc_device_types
@@ -102,38 +101,6 @@ def _migrate_billing_doc_status_open_to_new():
         conn.execute(text(
             "UPDATE billing_documents SET status = 'new' WHERE status = 'open'"
         ))
-
-
-def _seed_consent_template_from_env():
-    """One-time: if a legacy D&C template ID env var is set, register it
-    in consent_templates so the matcher can use it. Idempotent.
-
-    Seeded from DOCUSIGN_TEMPLATE_ID_DC into the docusign_template_id column.
-    BoldSign templates are admin-added via the Consent Templates UI.
-    """
-    if not settings.docusign_template_id_dc:
-        return
-    from app.models.surgery import ConsentTemplate
-    db = SessionLocal()
-    try:
-        existing = (db.query(ConsentTemplate)
-                    .filter(ConsentTemplate.docusign_template_id == settings.docusign_template_id_dc)
-                    .first())
-        if existing:
-            return
-        db.add(ConsentTemplate(
-            name="D&C (legacy seed)",
-            docusign_template_id=settings.docusign_template_id_dc,
-            procedure_match=["d&c", "dilation", "dilatation"],
-            facility_match=None,
-            insurance_match=[],
-            is_supplemental=False,
-            notes="Seeded from DOCUSIGN_TEMPLATE_ID_DC env var. Edit name / "
-                  "procedure / facility match in the Consent Templates admin.",
-        ))
-        db.commit()
-    finally:
-        db.close()
 
 
 def _adapt_coltype_for_dialect(coltype: str, dialect: str) -> str:
