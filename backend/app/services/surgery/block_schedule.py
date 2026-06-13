@@ -224,6 +224,56 @@ OFFICE_SLOT_TIMES_MIN = [
 ]
 
 
+# Default capacity rules — mirror of the previously hardcoded logic.
+# Overridable via SurgeryConfig key "capacity_rules" (validated shape in
+# surgery_config.FacilityCapacity).
+DEFAULT_CAPACITY_RULES = {
+    "medstar": {
+        "kind": "robotic",
+        "options": [{"case_kind": "robotic_180", "max": 3},
+                     {"case_kind": "robotic_240", "max": 2}],
+        "exclusive": True,
+        "minor_addon": {"after_count": 2, "blocked_at": 3},
+    },
+    "crmc": {
+        "kind": "mix_exclusive",
+        "options": [{"case_kind": "minor", "max": 6},
+                     {"case_kind": "major", "max": 2}],
+    },
+    "office": {
+        "kind": "fixed_slots",
+        "slot_times": ["07:30", "08:30", "09:30", "10:30", "11:30",
+                        "14:30", "15:30"],
+        "case_minutes": 60,
+    },
+}
+
+
+def capacity_rules(db: Session) -> dict:
+    """Merged capacity rules: config override per facility, else defaults."""
+    rules = {k: dict(v) for k, v in DEFAULT_CAPACITY_RULES.items()}
+    if db is not None:
+        try:
+            from app.services.surgery.settings import cfg
+            override = cfg(db, "capacity_rules") or {}
+            for fac, r in override.items():
+                rules[fac] = r
+        except Exception:
+            log.warning("bad capacity_rules config; using defaults", exc_info=True)
+    return rules
+
+
+def office_slot_times_min(db: Session) -> list:
+    """Office slot start times as minutes-from-midnight (config-driven)."""
+    r = capacity_rules(db).get("office") or {}
+    times = r.get("slot_times") or DEFAULT_CAPACITY_RULES["office"]["slot_times"]
+    out = []
+    for t in times:
+        h, m = t.split(":")
+        out.append(int(h) * 60 + int(m))
+    return sorted(out)
+
+
 class CapacityViolation(Exception):
     """Raised when a slot can't fit on a block day per the rules."""
 
@@ -236,10 +286,9 @@ def can_fit(db: Session, block_day: BlockDay, procedure_kind: str) -> tuple[bool
     (e.g. CRMC W1 Mon 9-2 = 300 min) doesn't accept more than fits.
     """
     existing = list(block_day.slots or [])
-    counts = {"robotic_180": 0, "robotic_240": 0, "minor": 0, "major": 0, "office": 0}
+    counts = {}
     for sl in existing:
-        if sl.procedure_kind in counts:
-            counts[sl.procedure_kind] += 1
+        counts[sl.procedure_kind] = counts.get(sl.procedure_kind, 0) + 1
 
     # Time-window check first — no slot can push us past end_time
     block_minutes = (
@@ -252,56 +301,58 @@ def can_fit(db: Session, block_day: BlockDay, procedure_kind: str) -> tuple[bool
         return False, (f"Day only has {block_minutes} minutes ({used_minutes} used); "
                         f"a {incoming}-minute case won't fit.")
 
-    if block_day.facility == "medstar":
-        if procedure_kind in ("robotic_180", "robotic_240"):
-            # Don't mix 180 and 240 on the same day
-            if procedure_kind == "robotic_180" and counts["robotic_240"] > 0:
-                return False, "Day already has a 240-min robotic; can't add 180-min."
-            if procedure_kind == "robotic_240" and counts["robotic_180"] > 0:
-                return False, "Day already has a 180-min robotic; can't add 240-min."
-            if procedure_kind == "robotic_180" and counts["robotic_180"] >= 3:
-                return False, "Day already has 3 × 180-min robotics (max)."
-            if procedure_kind == "robotic_240" and counts["robotic_240"] >= 2:
-                return False, "Day already has 2 × 240-min robotics (max)."
+    rule = capacity_rules(db).get(block_day.facility)
+    if rule is None:
+        return False, f"Unknown facility: {block_day.facility}"
+
+    kind = rule.get("kind")
+    options = {o["case_kind"]: o["max"] for o in rule.get("options", [])}
+
+    if kind == "robotic":
+        if procedure_kind in options:
+            if rule.get("exclusive", True):
+                for other in options:
+                    if other != procedure_kind and counts.get(other, 0) > 0:
+                        return False, (f"Day already has a {DURATIONS.get(other)}-min "
+                                        f"robotic; can't add {DURATIONS.get(procedure_kind)}-min.")
+            if counts.get(procedure_kind, 0) >= options[procedure_kind]:
+                return False, (f"Day already has {options[procedure_kind]} × "
+                                f"{DURATIONS.get(procedure_kind)}-min robotics (max).")
             return True, ""
-        if procedure_kind == "minor":
-            # Allowed only after 2 robotics, and never if 3 robotics already booked
-            if counts["robotic_180"] >= 3:
-                return False, "Day full with 3 × 180-min robotics — no minor add-ons."
-            if counts["robotic_180"] == 2 and counts["robotic_240"] == 0:
+        if procedure_kind == "minor" and rule.get("minor_addon"):
+            addon = rule["minor_addon"]
+            total = sum(counts.get(k, 0) for k in options)
+            if total >= addon["blocked_at"]:
+                return False, f"Day full with {total} robotics — no minor add-ons."
+            if total == addon["after_count"]:
                 return True, ""
-            if counts["robotic_240"] == 2:
-                return False, "Day full with 2 × 240-min robotics — no minor add-ons."
-            return False, ("Minors at MedStar require 2 robotics already booked; "
-                            f"currently {counts['robotic_180'] + counts['robotic_240']}.")
-        return False, f"MedStar block doesn't accept {procedure_kind} cases."
+            return False, (f"Minors at {block_day.facility} require "
+                            f"{addon['after_count']} robotics already booked; "
+                            f"currently {total}.")
+        return False, f"{block_day.facility} block doesn't accept {procedure_kind} cases."
 
-    if block_day.facility == "crmc":
-        if procedure_kind == "minor":
-            if counts["major"] > 0:
-                return False, "Day already has a major case; can't mix minors."
-            if counts["minor"] >= 6:
-                return False, "Day already has 6 minors (max)."
-            return True, ""
-        if procedure_kind == "major":
-            if counts["minor"] > 0:
-                return False, "Day already has a minor case; can't mix majors."
-            if counts["major"] >= 2:
-                return False, "Day already has 2 majors (max)."
-            return True, ""
-        return False, f"CRMC block doesn't accept {procedure_kind} cases."
-
-    if block_day.facility == "office":
-        # Office Thursdays use a fixed 7-slot schedule (7:30, 8:30, 9:30,
-        # 10:30, 11:30, 2:30, 3:30 — lunch break 12:30–2:30).
-        if not procedure_kind.startswith("office"):
-            return False, f"Office block doesn't accept {procedure_kind} cases."
-        booked = len(block_day.slots or [])
-        if booked >= len(OFFICE_SLOT_TIMES_MIN):
-            return False, "Day already has 7 office cases (max)."
+    if kind == "mix_exclusive":
+        if procedure_kind not in options:
+            return False, f"{block_day.facility} block doesn't accept {procedure_kind} cases."
+        for other in options:
+            if other != procedure_kind and counts.get(other, 0) > 0:
+                return False, (f"Day already has a {other} case; "
+                                f"can't mix {procedure_kind}s.")
+        if counts.get(procedure_kind, 0) >= options[procedure_kind]:
+            return False, (f"Day already has {options[procedure_kind]} "
+                            f"{procedure_kind}s (max).")
         return True, ""
 
-    return False, f"Unknown facility: {block_day.facility}"
+    if kind == "fixed_slots":
+        if not procedure_kind.startswith("office"):
+            return False, f"Office block doesn't accept {procedure_kind} cases."
+        max_slots = len(rule.get("slot_times")
+                         or DEFAULT_CAPACITY_RULES["office"]["slot_times"])
+        if len(existing) >= max_slots:
+            return False, f"Day already has {max_slots} office cases (max)."
+        return True, ""
+
+    return False, f"Unknown capacity kind for {block_day.facility}: {kind}"
 
 
 def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
