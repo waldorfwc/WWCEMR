@@ -390,28 +390,13 @@ class Surgery(Base):
 # ─── Milestones ──────────────────────────────────────────────────────
 
 class SurgeryMilestone(Base):
-    """One row per workflow step on a surgery. The full set is created
-    when the surgery transitions out of `incomplete` to `new`.
+    """One row per workflow step on a surgery (legacy milestone system).
 
     RETIRED 2026-06: the steps engine (step_engine.py) replaced milestones;
     this table is kept as dormant audit history — no reads or writes remain
-    in app code.
-
-    Hospital-based path (12 steps):
-      1. benefits_determined
-      2. prior_auth
-      3. klara_scheduling
-      4. patient_picks_date
-      5. device_assigned        (optional, only if device_required)
-      6. consent
-      7. surgery_confirmed_hospital  (boarding slip)
-      8. labs_to_hospital
-      9. post_op_call
-      10. op_notes
-      11. path_report
-      12. surgery_billed
-
-    Office-based path (8 steps): same minus #7, #8, #10.
+    in app code. The catalog of milestone kinds it once held lives on only
+    in smartsheet_seed.HOSPITAL_MILESTONES/OFFICE_MILESTONES, which the
+    admin/cleanup skip-retired-milestones endpoint still references.
     """
     __tablename__ = "surgery_milestones"
     __table_args__ = (

@@ -2504,8 +2504,8 @@ def log_klara_sent(surgery_id: str, payload: KlaraSendNote,
                     db: Session = Depends(get_db),
                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
     """Record that staff copied the draft into Klara and sent it. Keeps the
-    SurgeryNotification audit row; the klara_scheduling milestone was
-    retired so there's nothing to auto-advance."""
+    SurgeryNotification audit row (Klara has no API — messages are drafted
+    for manual copy-paste)."""
     from app.models.surgery import SurgeryNotification
 
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
