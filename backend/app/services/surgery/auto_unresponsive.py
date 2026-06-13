@@ -39,8 +39,9 @@ from app.models import stripe_payment as _stripe_payment_models  # noqa: F401
 
 log = logging.getLogger(__name__)
 
-# Has to match UNRESPONSIVE_AFTER_DAYS in routers/surgery.py — the
-# bucket rule and the transition rule must agree.
+# Fallback only — the live value comes from the surgery settings registry
+# (cfg(db, "unresponsive_after_days")) so the sweep's transition rule and
+# the dashboard bucket rule always agree.
 UNRESPONSIVE_AFTER_DAYS = 30
 
 
@@ -70,7 +71,8 @@ def find_candidates(db: Session, *, today: Optional[_date] = None) -> list[Surge
         last_patient_activity_at) is >= UNRESPONSIVE_AFTER_DAYS old
     """
     today = today or _date.today()
-    cutoff = today - timedelta(days=UNRESPONSIVE_AFTER_DAYS)
+    from app.services.surgery.settings import cfg
+    cutoff = today - timedelta(days=cfg(db, "unresponsive_after_days"))
     candidates = (db.query(Surgery)
                     .filter(Surgery.preop_date.isnot(None),
                             Surgery.preop_date <= cutoff,
