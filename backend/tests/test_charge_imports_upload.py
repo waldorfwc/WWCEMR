@@ -35,6 +35,23 @@ def test_upload_returns_preview(client, db):
     assert "session_id" in body
 
 
+def test_upload_well_formed_file_bypasses_fixer(client, db):
+    """Regression (audit 8b): a well-formed export (all required columns
+    present by name) must NOT be run through the positional column-shift
+    fixer. The fixer assumes a 69-col canonical layout and, on a normal
+    45-col file, scatters the data into wrong slots — leaving VisitID/Void
+    empty so every row is dropped and 0 claims are committed.
+    The upload must report the fixer as a transparent pass-through."""
+    r = _upload(client)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # Fixer reported as not applied (pass-through) ...
+    assert body["autofix"]["applied"] is False
+    # ... and the real claims still come through.
+    assert body["parsed_claims"] == 758
+    assert body["skipped_voids"] == 104
+
+
 def test_upload_detects_existing_claim_by_visit_id(client, db):
     db.add(Claim(claim_number="263259", status=ClaimStatus.PENDING, balance=Decimal("0")))
     db.commit()

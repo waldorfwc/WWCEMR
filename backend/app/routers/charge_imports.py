@@ -19,7 +19,7 @@ from app.services.audit_service import log_action
 from app.services import import_sessions
 from app.services.charge_analysis_fixer import fix_file as fix_charge_analysis
 from app.services.charge_analysis_importer import (
-    ChargeAnalysisImport, ParsedClaim, parse,
+    REQUIRED_COLUMNS, ChargeAnalysisImport, ParsedClaim, parse,
 )
 from app.services.import_drift import (
     KEYS_AND_VALUES, check_drift, compute_fingerprints, write_audit_log,
@@ -103,25 +103,49 @@ async def upload_charge_analysis(
         fh.write(content)
 
     # Optional pre-processor: realign PrimeSuite-style column shifts.
+    #
+    # The fixer is a *positional* realigner tuned to a 69-column canonical
+    # PrimeSuite layout. A well-formed export (every required column present
+    # by name) must NOT be sent through it: the positional validators would
+    # mis-detect shifts on the file's blank cells, scatter the data into the
+    # wrong slots, and overwrite the headers with the canonical names —
+    # leaving the real VisitID/Void columns empty so parse() drops every row
+    # (commits 0 claims). The flag/docstring already promise a "transparent
+    # pass-through when the file has no shifts", so only run the fixer when
+    # the file actually needs it (a required column can't be found by name).
     autofix_report = None
     parse_path = save_path
+    needs_fix = False
     if autofix_shifts:
+        try:
+            import pandas as _pd_hdr
+            _hdr_cols = set(_pd_hdr.read_excel(save_path, sheet_name=0, nrows=0).columns)
+            needs_fix = any(c not in _hdr_cols for c in REQUIRED_COLUMNS)
+        except Exception:
+            # If we can't even read the header, let parse() raise the
+            # canonical error below rather than feeding a positional fixer.
+            needs_fix = False
+    if autofix_shifts and not needs_fix:
+        autofix_report = {"applied": False, "reason": "file already well-formed"}
+    if autofix_shifts and needs_fix:
         fixed_path = os.path.join(subdir, f"{session_id}.fixed.xlsx")
         try:
             report = fix_charge_analysis(save_path, fixed_path)
         except Exception as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"autofix-shifts failed: {exc}",
-            )
-        if report.shifts_detected:
+            # The positional fixer can choke on a genuinely malformed file
+            # (e.g. one with too few columns). Don't surface its internal
+            # error — fall through and let parse() raise the canonical
+            # "missing required columns" message against the original file.
+            report = None
+            autofix_report = {"applied": False, "reason": f"autofix skipped: {exc}"}
+        if report is not None and report.shifts_detected:
             parse_path = fixed_path
             autofix_report = {
                 "applied": True,
                 "unresolved_rows": report.unresolved_rows,
                 "unresolved_samples": report.unresolved_samples,
             }
-        else:
+        elif report is not None:
             # No shifts in the file — parse the original, discard the copy
             try:
                 os.remove(fixed_path)
