@@ -2,7 +2,7 @@
 from datetime import date, time, timedelta
 
 from app.models.surgery import Surgery, BlockDay, SurgerySlot
-from app.services.surgery_slot_conflict import overlapping_slot
+from app.services.surgery.slot_conflict import overlapping_slot
 
 
 def _seed(db, occupy=None):

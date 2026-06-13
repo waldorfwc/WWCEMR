@@ -2,7 +2,7 @@
 from datetime import date, timedelta
 
 from app.models.surgery import Surgery, SurgeryBlackoutDay
-from app.services.surgery_blackout_conflict import find_blocked_conflicts
+from app.services.surgery.blackout_conflict import find_blocked_conflicts
 
 
 def _surgery(db, days_out: int, facility="medstar", status="confirmed"):
@@ -139,7 +139,7 @@ def test_resolve_endpoint_marks_notified(client, db):
 def test_is_date_blacked_out_office_scope(db):
     from datetime import date as _d, timedelta
     from app.models.surgery import SurgeryBlackoutDay
-    from app.services.surgery_blackout_conflict import is_date_blacked_out
+    from app.services.surgery.blackout_conflict import is_date_blacked_out
     target = _d.today() + timedelta(days=3)
     db.add(SurgeryBlackoutDay(blackout_date=target, scope="office",
                                 reason="holiday", label="Memorial Day"))
@@ -152,7 +152,7 @@ def test_is_date_blacked_out_office_scope(db):
 def test_is_date_blacked_out_facility_scope_only_matches_same_facility(db):
     from datetime import date as _d, timedelta
     from app.models.surgery import SurgeryBlackoutDay
-    from app.services.surgery_blackout_conflict import is_date_blacked_out
+    from app.services.surgery.blackout_conflict import is_date_blacked_out
     target = _d.today() + timedelta(days=3)
     db.add(SurgeryBlackoutDay(blackout_date=target, scope="facility",
                                 facility="medstar", reason="facility_closed",
@@ -164,6 +164,6 @@ def test_is_date_blacked_out_facility_scope_only_matches_same_facility(db):
 
 def test_is_date_blacked_out_clear_date(db):
     from datetime import date as _d, timedelta
-    from app.services.surgery_blackout_conflict import is_date_blacked_out
+    from app.services.surgery.blackout_conflict import is_date_blacked_out
     target = _d.today() + timedelta(days=3)
     assert is_date_blacked_out(db, target, "medstar") is None

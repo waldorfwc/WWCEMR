@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from app.models.surgery import Surgery, SurgeryDocument
-from app.services.surgery_uploads import (
+from app.services.surgery.uploads import (
     ALLOWED_MIME, MAX_BYTES,
     UploadError,
     store_upload,
@@ -20,7 +20,7 @@ JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIFfake-jpeg-data"
 def test_store_upload_writes_to_gcs_and_creates_row(db):
     s = Surgery(chart_number="1", patient_name="Pat", status="new")
     db.add(s); db.commit(); db.refresh(s)
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient:
         blob = MagicMock()
         MockClient.return_value.bucket.return_value.blob.return_value = blob
 
@@ -95,7 +95,7 @@ def test_signed_download_url_calls_blob_v4(db):
     fake_creds.service_account_email = "backend@wwc-solutions.iam.gserviceaccount.com"
     fake_creds.token = "fake-access-token"
 
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient, \
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient, \
          patch("google.auth.default",
                 return_value=(fake_creds, "wwc-solutions")):
         blob = MagicMock()
@@ -112,7 +112,7 @@ def test_signed_download_url_calls_blob_v4(db):
 
 
 def test_stream_static_pdf_returns_bytes():
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient:
         blob = MagicMock()
         blob.exists.return_value = True
         blob.download_as_bytes.return_value = b"%PDF-blank"
@@ -123,7 +123,7 @@ def test_stream_static_pdf_returns_bytes():
 
 
 def test_stream_static_pdf_returns_none_when_missing():
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient:
         blob = MagicMock()
         blob.exists.return_value = False
         MockClient.return_value.bucket.return_value.blob.return_value = blob

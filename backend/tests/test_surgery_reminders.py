@@ -5,7 +5,7 @@ from unittest.mock import patch
 from app.models.surgery import Surgery, BlockDay, SurgerySlot
 from app.models.patient_email import EmailTemplate, PatientEmail
 from app.models.surgery_config import SurgeryConfig
-from app.services.surgery_reminders import run_reminder_sweep
+from app.services.surgery.reminders import run_reminder_sweep
 
 
 def _seed_template(db):

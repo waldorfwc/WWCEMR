@@ -1,14 +1,14 @@
 """Surgery documents service — GCS instructions library."""
 from unittest.mock import patch, MagicMock
 
-from app.services.surgery_documents import (
+from app.services.surgery.documents import (
     fetch_instructions_pdf,
     INSTRUCTIONS_BUCKET,
 )
 
 
 def test_returns_pdf_bytes_when_object_exists():
-    with patch("app.services.surgery_documents.storage.Client") as MockClient:
+    with patch("app.services.surgery.documents.storage.Client") as MockClient:
         blob = MagicMock()
         blob.exists.return_value = True
         blob.download_as_bytes.return_value = b"%PDF-test"
@@ -24,7 +24,7 @@ def test_returns_pdf_bytes_when_object_exists():
 
 
 def test_returns_none_when_object_missing():
-    with patch("app.services.surgery_documents.storage.Client") as MockClient:
+    with patch("app.services.surgery.documents.storage.Client") as MockClient:
         blob = MagicMock()
         blob.exists.return_value = False
         bucket = MagicMock()

@@ -2,7 +2,7 @@
 from datetime import date, time, timedelta
 from unittest.mock import patch
 from app.models.surgery import Surgery, BlockDay
-from app.services.surgery_self_schedule import (
+from app.services.surgery.self_schedule import (
     claim_slot_for_patient, SelfScheduleError,
 )
 
@@ -31,8 +31,8 @@ def _seed_s(db):
 
 def test_claim_books_the_slot_and_stamps_surgery(db):
     s = _seed_s(db); bd = _seed_bd(db)
-    with patch("app.services.surgery_self_schedule.upsert_event_for_surgery"):
-        with patch("app.services.surgery_self_schedule._send_surgery_confirmation_email"):
+    with patch("app.services.surgery.self_schedule.upsert_event_for_surgery"):
+        with patch("app.services.surgery.self_schedule._send_surgery_confirmation_email"):
             result = claim_slot_for_patient(
                 db, s, block_day_id=str(bd.id),
                 start_time_str="08:00",
@@ -52,8 +52,8 @@ def test_claim_raises_on_blackout(db, monkeypatch):
     from collections import namedtuple
     BO = namedtuple("BO", "label reason scope")
     monkeypatch.setattr(
-        "app.services.surgery_self_schedule.is_date_blacked_out",
-        lambda db, d, fac, surg_email: BO("Doctor away", None, "surgeon"),
+        "app.services.surgery.self_schedule.is_date_blacked_out",
+        lambda db, d, fac, surg_email, **kwargs: BO("Doctor away", None, "surgeon"),
     )
     try:
         claim_slot_for_patient(db, s, block_day_id=str(bd.id),
@@ -65,14 +65,14 @@ def test_claim_raises_on_blackout(db, monkeypatch):
 
 
 def test_gate_passes_when_pt_resp_is_zero(db):
-    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    from app.services.surgery.self_schedule import schedule_gate_for_surgery
     s = _seed_s(db); s.patient_responsibility = 0; db.commit()
     allowed, reason = schedule_gate_for_surgery(s)
     assert allowed is True and reason is None
 
 
 def test_gate_blocks_when_unpaid(db):
-    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    from app.services.surgery.self_schedule import schedule_gate_for_surgery
     s = _seed_s(db); s.patient_responsibility = 250; s.amount_paid = 0
     db.commit()
     allowed, reason = schedule_gate_for_surgery(s)
@@ -81,7 +81,7 @@ def test_gate_blocks_when_unpaid(db):
 
 
 def test_gate_passes_when_fully_paid(db):
-    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    from app.services.surgery.self_schedule import schedule_gate_for_surgery
     s = _seed_s(db); s.patient_responsibility = 250; s.amount_paid = 250
     db.commit()
     allowed, reason = schedule_gate_for_surgery(s)
@@ -89,7 +89,7 @@ def test_gate_passes_when_fully_paid(db):
 
 
 def test_gate_passes_when_coordinator_overrides(db):
-    from app.services.surgery_self_schedule import schedule_gate_for_surgery
+    from app.services.surgery.self_schedule import schedule_gate_for_surgery
     s = _seed_s(db); s.patient_responsibility = 250; s.amount_paid = 0
     s.schedule_gate_override = True; db.commit()
     allowed, reason = schedule_gate_for_surgery(s)
@@ -99,8 +99,8 @@ def test_gate_passes_when_coordinator_overrides(db):
 def test_claim_triggers_boldsign_send(db):
     from unittest.mock import patch
     s = _seed_s(db); bd = _seed_bd(db)
-    with patch("app.services.surgery_self_schedule.upsert_event_for_surgery"), \
-         patch("app.services.surgery_self_schedule._send_surgery_confirmation_email"), \
+    with patch("app.services.surgery.self_schedule.upsert_event_for_surgery"), \
+         patch("app.services.surgery.self_schedule._send_surgery_confirmation_email"), \
          patch("app.services.boldsign_envelopes.send_consent_envelopes") as mock_send:
         claim_slot_for_patient(
             db, s, block_day_id=str(bd.id),
@@ -116,8 +116,8 @@ def test_claim_succeeds_when_boldsign_send_fails(db):
     """BoldSign outage must not block the booking."""
     from unittest.mock import patch
     s = _seed_s(db); bd = _seed_bd(db)
-    with patch("app.services.surgery_self_schedule.upsert_event_for_surgery"), \
-         patch("app.services.surgery_self_schedule._send_surgery_confirmation_email"), \
+    with patch("app.services.surgery.self_schedule.upsert_event_for_surgery"), \
+         patch("app.services.surgery.self_schedule._send_surgery_confirmation_email"), \
          patch("app.services.boldsign_envelopes.send_consent_envelopes",
                 side_effect=Exception("BoldSign 503")):
         result = claim_slot_for_patient(
