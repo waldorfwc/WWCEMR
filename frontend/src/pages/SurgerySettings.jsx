@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Settings } from 'lucide-react'
+import { ArrowLeft, Settings, Plus, Trash2, Save, Edit3, Search } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import LoadingState from '../components/LoadingState'
@@ -400,5 +400,348 @@ function PostOpTab() {
   )
 }
 
-function CapacityTab()  { return <Placeholder name="Facilities & Capacity" /> }
+// ─── Facilities & Capacity tab ──────────────────────────────────────
+
+const NEW_FACILITY = {
+  id:         '__new',
+  code:       '',
+  label:      '',
+  address:    '',
+  is_active:  true,
+  sort_order: 100,
+}
+
+function FacilitiesSection() {
+  const qc = useQueryClient()
+  const [editingId, setEditingId] = useState(null)
+  const [draft, setDraft]         = useState(null)
+  const [filter, setFilter]       = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['surgery-facilities'],
+    queryFn:  () => api.get('/surgery/admin/facilities').then(r => r.data.facilities),
+  })
+
+  const facilities = useMemo(() => {
+    const rows = data || []
+    const q = filter.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter(f =>
+      (f.code    || '').toLowerCase().includes(q) ||
+      (f.label   || '').toLowerCase().includes(q) ||
+      (f.address || '').toLowerCase().includes(q)
+    )
+  }, [data, filter])
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/surgery/admin/facilities', body).then(r => r.data),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['surgery-facilities'] }); setEditingId(null); setDraft(null) },
+    onError:    (e) => alert(saveErrorMessage(e)),
+  })
+
+  const patchMut = useMutation({
+    mutationFn: ({ id, body }) => api.patch(`/surgery/admin/facilities/${id}`, body).then(r => r.data),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['surgery-facilities'] }); setEditingId(null); setDraft(null) },
+    onError:    (e) => alert(saveErrorMessage(e)),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/surgery/admin/facilities/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['surgery-facilities'] }),
+    onError:    (e) => alert(saveErrorMessage(e)),
+  })
+
+  function startEdit(row) {
+    setEditingId(row.id)
+    setDraft({
+      code:       row.code       || '',
+      label:      row.label      || '',
+      address:    row.address    || '',
+      is_active:  row.is_active  ?? true,
+      sort_order: row.sort_order ?? 100,
+    })
+  }
+
+  function cancelEdit() { setEditingId(null); setDraft(null) }
+
+  function startNewRow() {
+    setEditingId('__new')
+    setDraft({ code: '', label: '', address: '', is_active: true, sort_order: 100 })
+  }
+
+  function save() {
+    if (!draft?.code?.trim())  { alert('Code is required.');  return }
+    if (!draft?.label?.trim()) { alert('Label is required.'); return }
+    const body = {
+      code:       draft.code.trim(),
+      label:      draft.label.trim(),
+      address:    draft.address.trim() || null,
+      is_active:  draft.is_active,
+      sort_order: Number(draft.sort_order) || 100,
+    }
+    if (editingId === '__new') createMut.mutate(body)
+    else                       patchMut.mutate({ id: editingId, body })
+  }
+
+  function confirmDelete(row) {
+    if (!window.confirm(`Delete "${row.label}"?`)) return
+    deleteMut.mutate(row.id)
+  }
+
+  const showNewRow = editingId === '__new'
+  const rows = showNewRow ? [NEW_FACILITY, ...facilities] : facilities
+  const isSaving = createMut.isPending || patchMut.isPending
+
+  return (
+    <div>
+      <div className="bg-white rounded-lg border border-border-subtle">
+        <div className="px-5 py-4 border-b border-border-subtle flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900">Facilities</h2>
+            <p className="text-[12px] text-gray-500 mt-0.5">
+              Surgical facilities available for scheduling. Inactive facilities are hidden from the scheduler.
+            </p>
+          </div>
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input text-sm pl-7 pr-2 py-1 w-48"
+                   placeholder="Filter…"
+                   value={filter}
+                   onChange={e => setFilter(e.target.value)} />
+          </div>
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  onClick={startNewRow}
+                  disabled={!!editingId}>
+            <Plus size={12} /> Add Row
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-[11px] uppercase text-gray-500">
+              <tr>
+                <th className="text-left px-5 py-2 w-[10%]">Code</th>
+                <th className="text-left px-3 py-2 w-[28%]">Label</th>
+                <th className="text-left px-3 py-2 w-[28%]">Address</th>
+                <th className="text-center px-3 py-2 w-[8%]">Active</th>
+                <th className="text-center px-3 py-2 w-[8%]">Sort</th>
+                <th className="text-right px-5 py-2 w-[120px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={6} className="px-5 py-6 text-gray-400 text-[12px]">Loading…</td></tr>
+              )}
+              {!isLoading && rows.length === 0 && (
+                <tr><td colSpan={6} className="px-5 py-6 text-gray-400 text-[12px] italic">
+                  No facilities yet — click <strong>Add Row</strong> to start.
+                </td></tr>
+              )}
+              {rows.map(row => {
+                const isEditing = editingId === row.id
+                const dimmed    = !isEditing && !row.is_active
+                return (
+                  <tr key={row.id}
+                      className={`border-t border-border-subtle ${
+                        isEditing ? 'bg-plum-50/40'
+                        : dimmed  ? 'opacity-60 hover:bg-gray-50'
+                        :           'hover:bg-gray-50'
+                      }`}>
+                    {isEditing ? (
+                      <FacilityEditRow
+                        draft={draft}
+                        setDraft={setDraft}
+                        save={save}
+                        cancel={cancelEdit}
+                        isSaving={isSaving}
+                      />
+                    ) : (
+                      <FacilityDisplayRow
+                        row={row}
+                        startEdit={() => startEdit(row)}
+                        onDelete={() => confirmDelete(row)}
+                        disabled={!!editingId}
+                      />
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FacilityDisplayRow({ row, startEdit, onDelete, disabled }) {
+  return (
+    <>
+      <td className="px-5 py-3 align-middle">
+        <code className="text-[12px] bg-gray-100 px-1 py-0.5 rounded">{row.code}</code>
+      </td>
+      <td className="px-3 py-3 align-middle font-medium text-gray-900">{row.label}</td>
+      <td className="px-3 py-3 align-middle text-[12px] text-gray-600">{row.address || <span className="italic text-gray-400">—</span>}</td>
+      <td className="px-3 py-3 align-middle text-center">
+        <span className={`inline-block w-2 h-2 rounded-full ${row.is_active ? 'bg-green-500' : 'bg-gray-300'}`} title={row.is_active ? 'Active' : 'Inactive'} />
+      </td>
+      <td className="px-3 py-3 align-middle text-center text-[12px] text-gray-500">{row.sort_order}</td>
+      <td className="px-5 py-3 align-middle text-right">
+        <div className="inline-flex items-center gap-1">
+          <button className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1 disabled:opacity-30"
+                  onClick={startEdit}
+                  disabled={disabled}
+                  title="Edit row">
+            <Edit3 size={11} /> Edit
+          </button>
+          <button className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1 disabled:opacity-30"
+                  onClick={onDelete}
+                  disabled={disabled}
+                  title="Delete">
+            <Trash2 size={11} />
+          </button>
+        </div>
+      </td>
+    </>
+  )
+}
+
+function FacilityEditRow({ draft, setDraft, save, cancel, isSaving }) {
+  return (
+    <>
+      <td className="px-5 py-3 align-top">
+        <input className="input text-sm w-24"
+               placeholder="office"
+               value={draft.code}
+               onChange={e => setDraft({ ...draft, code: e.target.value })}
+               autoFocus />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input className="input text-sm w-full"
+               placeholder="Facility label"
+               value={draft.label}
+               onChange={e => setDraft({ ...draft, label: e.target.value })} />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input className="input text-sm w-full"
+               placeholder="City, ST  or full address"
+               value={draft.address}
+               onChange={e => setDraft({ ...draft, address: e.target.value })} />
+      </td>
+      <td className="px-3 py-3 align-top text-center">
+        <input type="checkbox"
+               className="h-4 w-4 rounded border-gray-300 text-plum-600 focus:ring-plum-500"
+               checked={draft.is_active}
+               onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input type="number" min="1"
+               className="input text-sm w-16 text-center"
+               value={draft.sort_order}
+               onChange={e => setDraft({ ...draft, sort_order: e.target.value })} />
+      </td>
+      <td className="px-5 py-3 align-top text-right">
+        <div className="inline-flex items-center gap-1">
+          <button className="text-[11px] px-2 py-1 rounded bg-plum-600 text-white hover:bg-plum-700 flex items-center gap-1 disabled:opacity-50"
+                  onClick={save}
+                  disabled={isSaving}>
+            <Save size={11} /> {isSaving ? 'Saving…' : 'Save'}
+          </button>
+          <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50"
+                  onClick={cancel}
+                  disabled={isSaving}>
+            Cancel
+          </button>
+        </div>
+      </td>
+    </>
+  )
+}
+
+function CapacityRulesSection() {
+  const qc = useQueryClient()
+  const { data: config } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+  })
+  const { data: defaults } = useQuery({
+    queryKey: ['capacity-defaults'],
+    queryFn: () => api.get('/surgery/config/capacity-defaults').then(r => r.data),
+  })
+  const [draft, setDraft] = useState(null)
+  const save = useMutation({
+    mutationFn: (body) => api.put('/surgery/config', { capacity_rules: body }).then(r => r.data),
+    onSuccess: () => { setDraft(null); qc.invalidateQueries({ queryKey: ['surgery-config'] }) },
+  })
+  if (!config || !defaults) return <LoadingState />
+  const rules = draft ?? config.capacity_rules ?? defaults.defaults
+  const upd = (fac, fn) => setDraft({ ...rules, [fac]: fn(rules[fac]) })
+
+  return (
+    <section className="card p-4">
+      <h2 className="font-medium mb-1">Daily Capacity Rules</h2>
+      <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 mb-3">
+        Changing these affects what the booking system accepts. Values are
+        validated against each block day's real time window — a case mix
+        that exceeds the day's minutes is still rejected at booking time.
+      </p>
+      {Object.entries(rules).map(([fac, r]) => (
+        <div key={fac} className="border-t border-border-subtle py-3">
+          <div className="font-medium text-[13px] uppercase mb-2">{fac}</div>
+          {(r.options || []).map((o, i) => (
+            <div key={o.case_kind} className="flex items-center gap-2 text-[13px] py-0.5">
+              <span className="w-28">{o.case_kind}</span>
+              <span className="text-muted">max</span>
+              <input type="number" min={1} max={20} className="input w-16" value={o.max}
+                     onChange={e => upd(fac, x => ({ ...x, options: x.options.map((y, j) =>
+                       j === i ? { ...y, max: Number(e.target.value) } : y) }))} />
+              <span className="text-muted">cases/day
+                ({defaults.durations[o.case_kind] || 60} min each)</span>
+            </div>
+          ))}
+          {r.kind === 'fixed_slots' && (
+            <div className="text-[13px]">
+              <span className="text-muted">Slot start times (HH:MM, comma-separated):</span>
+              <input className="input w-full mt-1"
+                     value={(r.slot_times || []).join(', ')}
+                     onChange={e => upd(fac, x => ({ ...x,
+                       slot_times: e.target.value.split(',').map(s => s.trim()).filter(Boolean) }))} />
+            </div>
+          )}
+          {r.minor_addon && (
+            <div className="flex items-center gap-2 text-[13px] py-0.5">
+              <span className="text-muted">Minor add-on allowed after</span>
+              <input type="number" min={0} max={20} className="input w-16"
+                     value={r.minor_addon.after_count}
+                     onChange={e => upd(fac, x => ({ ...x, minor_addon:
+                       { ...x.minor_addon, after_count: Number(e.target.value) } }))} />
+              <span className="text-muted">robotics; blocked at</span>
+              <input type="number" min={1} max={20} className="input w-16"
+                     value={r.minor_addon.blocked_at}
+                     onChange={e => upd(fac, x => ({ ...x, minor_addon:
+                       { ...x.minor_addon, blocked_at: Number(e.target.value) } }))} />
+            </div>
+          )}
+        </div>
+      ))}
+      <button className="btn-primary text-xs mt-3" disabled={!draft || save.isPending}
+              onClick={() => save.mutate(rules)}>
+        {save.isPending ? 'Saving…' : 'Save Capacity Rules'}
+      </button>
+      {save.isError && (
+        <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
+      )}
+    </section>
+  )
+}
+
+function CapacityTab() {
+  return (
+    <div className="space-y-6">
+      <FacilitiesSection />
+      <CapacityRulesSection />
+    </div>
+  )
+}
+
 function TemplatesTab() { return <Placeholder name="Templates" /> }

@@ -235,6 +235,12 @@ def post_op_defaults(current_user: dict = Depends(requires_tier(Module.SURGERY, 
         for kws, visits in DEFAULT_PROCEDURE_RULES]}
 
 
+@router.get("/config/capacity-defaults")
+def capacity_defaults(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
+    from app.services.surgery.block_schedule import DEFAULT_CAPACITY_RULES, DURATIONS
+    return {"defaults": DEFAULT_CAPACITY_RULES, "durations": DURATIONS}
+
+
 # ─── Alert recipients ───────────────────────────────────────────────
 
 @router.get("/admin/alert-recipients")
