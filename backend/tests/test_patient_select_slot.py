@@ -11,6 +11,7 @@ def _seed(db):
         chart_number="1", patient_name="Pat",
         eligible_facilities=["medstar"], selected_facility="medstar",
         status="in_progress",
+        procedure_classification="robotic_180",
         procedures=[{"name": "Hysterectomy", "kind": "robotic_180"}],
     )
     db.add(s); db.flush()

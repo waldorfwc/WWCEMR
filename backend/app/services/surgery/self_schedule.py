@@ -66,7 +66,14 @@ def _default_duration_for(db: Session, surgery: Surgery, block_day: BlockDay) ->
     if surgery and surgery.duration_minutes:
         return surgery.duration_minutes
 
-    kind = block_day.block_kind
+    # Key duration off the SURGERY's own procedure_classification, NOT
+    # block_day.block_kind. block_kind values (robotic_only|minor_only|
+    # major_only|mixed|office) live in a different namespace than
+    # procedure_kind (minor|major|office|robotic_180|robotic_240), so
+    # using block_kind missed every non-office lookup and silently
+    # returned the generic 60 — storing a 240-min robotic as a 60-min
+    # slot and corrupting capacity accounting. (audit #2)
+    kind = (surgery.procedure_classification if surgery else None) or "minor"
     templates = (db.query(SurgeryProcedureTemplate)
                    .filter(SurgeryProcedureTemplate.procedure_kind == kind,
                             SurgeryProcedureTemplate.is_active.is_(True))
@@ -138,6 +145,25 @@ def claim_slot_for_patient(
             status_code=409,
         )
 
+    # Eligible-facility gate — mirror date_picker.pick_or_reschedule so a
+    # patient can't book a wrong-facility slot (e.g. robotic onto an
+    # office day). (audit #1)
+    proc_kind = surgery.procedure_classification or "minor"
+    if bd.facility not in (surgery.eligible_facilities or []):
+        raise SelfScheduleError(
+            "This facility isn't available for your procedure.",
+            status_code=409,
+        )
+
+    # Capacity gate — claim_slot_for_patient previously inserted the slot
+    # directly, never calling can_fit, so a patient could overbook a
+    # block past capacity. Run can_fit under the row lock we already
+    # hold, keyed off the surgery's real procedure_classification. (audit #1)
+    from app.services.surgery.block_schedule import can_fit
+    ok, reason = can_fit(db, bd, proc_kind)
+    if not ok:
+        raise SelfScheduleError(reason, status_code=409)
+
     # Release any prior slot for this surgery so a rebook doesn't leave
     # orphan rows. The surgery row's scheduled_date is overwritten below;
     # without this the old slot keeps inflating cases_already_booked on
@@ -156,7 +182,7 @@ def claim_slot_for_patient(
         # "mixed", ...) and writing it here both poisons can_fit and
         # corrupts the SurgerySlot.procedure_kind column for downstream
         # readers.
-        procedure_kind=surgery.procedure_classification or "minor",
+        procedure_kind=proc_kind,
     )
     db.add(slot)
     surgery.scheduled_date = bd.block_date
