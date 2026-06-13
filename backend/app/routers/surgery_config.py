@@ -6,10 +6,11 @@ Permissions:
 """
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -25,15 +26,9 @@ router = APIRouter(prefix="/surgery", tags=["surgery-config"])
 
 
 # ─── Defaults (used when a config key has no row yet) ───────────────
-
-CONFIG_DEFAULTS = {
-    "office_full_threshold":     6,
-    "office_lookahead_days":     6,
-    "hospital_lookahead_days":  14,
-    # Phase I — surgery reminder lead-days. Cron iterates these and emails
-    # patients whose surgery is exactly N days away (per entry).
-    "reminder_lead_days":        [3, 1],
-}
+# Source of truth lives in the registry; import it here so _read_config
+# and put_config keep working unchanged.
+from app.services.surgery.settings import SETTINGS_DEFAULTS as CONFIG_DEFAULTS  # noqa: E402
 
 ALERT_KINDS = ("office_release", "hospital_release")
 PROCEDURE_KINDS = ("minor", "major", "office", "robotic_180", "robotic_240")
@@ -41,11 +36,102 @@ PROCEDURE_KINDS = ("minor", "major", "office", "robotic_180", "robotic_240")
 
 # ─── Pydantic shapes ────────────────────────────────────────────────
 
+class CapacityOption(BaseModel):
+    case_kind: str
+    max: int = Field(ge=1, le=20)
+
+    @field_validator("case_kind")
+    @classmethod
+    def known_kind(cls, v):
+        if v not in PROCEDURE_KINDS:
+            raise ValueError(f"unknown case_kind {v}")
+        return v
+
+
+class MinorAddon(BaseModel):
+    after_count: int = Field(ge=0, le=20)
+    blocked_at: int = Field(ge=1, le=20)
+
+
+class FacilityCapacity(BaseModel):
+    kind: str                                  # robotic | mix_exclusive | fixed_slots
+    options: list[CapacityOption] = []
+    exclusive: bool = True
+    minor_addon: Optional[MinorAddon] = None
+    slot_times: Optional[list[str]] = None     # fixed_slots only, "HH:MM"
+    case_minutes: Optional[int] = Field(default=None, ge=15, le=480)
+
+    @field_validator("kind")
+    @classmethod
+    def known_capacity_kind(cls, v):
+        if v not in ("robotic", "mix_exclusive", "fixed_slots"):
+            raise ValueError(f"unknown capacity kind {v}")
+        return v
+
+    @field_validator("slot_times")
+    @classmethod
+    def valid_slot_times(cls, v):
+        if v is None:
+            return v
+        if len(set(v)) != len(v):
+            raise ValueError("slot times must be distinct")
+        for t in v:
+            if not re.fullmatch(r"\d{2}:\d{2}", t):
+                raise ValueError(f"slot time {t!r} must be HH:MM")
+        return sorted(v)
+
+
+class PostOpVisitIn(BaseModel):
+    label: str
+    offset_days: int = Field(ge=1, le=365)
+    mode: str = "office"                       # office | telehealth
+    location_locked: bool = False
+
+    @field_validator("mode")
+    @classmethod
+    def known_mode(cls, v):
+        if v not in ("office", "telehealth"):
+            raise ValueError("mode must be office or telehealth")
+        return v
+
+
+class PostOpRuleIn(BaseModel):
+    match: list[str] = Field(min_length=1)     # keywords, lowercase
+    visits: list[PostOpVisitIn] = Field(min_length=1)
+
+
 class ConfigPayload(BaseModel):
-    office_full_threshold:     Optional[int]       = None
-    office_lookahead_days:     Optional[int]       = None
-    hospital_lookahead_days:   Optional[int]       = None
+    # pre-existing
+    office_full_threshold:     Optional[int] = Field(default=None, ge=1, le=20)
+    office_lookahead_days:     Optional[int] = Field(default=None, ge=1, le=60)
+    hospital_lookahead_days:   Optional[int] = Field(default=None, ge=1, le=90)
     reminder_lead_days:        Optional[list[int]] = None
+    # alerts & windows
+    critical_overdue_hours:    Optional[int] = Field(default=None, ge=1, le=720)
+    labs_alert_window_days:    Optional[int] = Field(default=None, ge=1, le=60)
+    post_op_docs_alert_days:   Optional[int] = Field(default=None, ge=1, le=60)
+    unresponsive_after_days:   Optional[int] = Field(default=None, ge=1, le=365)
+    preop_valid_days:          Optional[int] = Field(default=None, ge=30, le=730)
+    schedule_horizon_days:     Optional[int] = Field(default=None, ge=30, le=730)
+    completed_window_days:     Optional[int] = Field(default=None, ge=1, le=365)
+    # steps engine
+    step_expected_days_hospital: Optional[dict[str, int]] = None
+    step_expected_days_office:   Optional[dict[str, int]] = None
+    step_titles_hospital:        Optional[dict[str, str]] = None
+    step_titles_office:          Optional[dict[str, str]] = None
+    # structured
+    post_op_schedules:         Optional[list[PostOpRuleIn]] = None
+    capacity_rules:            Optional[dict[str, FacilityCapacity]] = None
+
+    @field_validator("step_expected_days_hospital", "step_expected_days_office")
+    @classmethod
+    def days_in_range(cls, v):
+        if v is None:
+            return v
+        for k, d in v.items():
+            if not (1 <= int(d) <= 90):
+                raise ValueError(f"expected days for {k} must be 1-90")
+        return v
 
 
 class RecipientIn(BaseModel):
@@ -108,7 +194,7 @@ def put_config(payload: ConfigPayload,
                db: Session = Depends(get_db),
                current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     actor = current_user.get("email") or "system"
-    data = payload.model_dump(exclude_unset=True)
+    data = payload.model_dump(exclude_unset=True, mode="json")
     for k, v in data.items():
         if k not in CONFIG_DEFAULTS:
             continue
@@ -120,6 +206,39 @@ def put_config(payload: ConfigPayload,
             row.updated_by = actor
     db.commit()
     return _read_config(db)
+
+
+@router.get("/config/step-catalog")
+def step_catalog(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
+    from app.services.surgery.step_engine import (
+        HOSPITAL_STEPS, OFFICE_STEPS,
+        DEFAULT_EXPECTED_DAYS_HOSPITAL, DEFAULT_EXPECTED_DAYS_OFFICE,
+    )
+
+    def ser(steps, days):
+        return [{"n": st.n, "key": st.key, "title": st.title,
+                 "optional": st.optional, "default_days": days[st.key]}
+                for st in steps]
+
+    return {"hospital": ser(HOSPITAL_STEPS, DEFAULT_EXPECTED_DAYS_HOSPITAL),
+            "office":   ser(OFFICE_STEPS,   DEFAULT_EXPECTED_DAYS_OFFICE)}
+
+
+@router.get("/config/post-op-defaults")
+def post_op_defaults(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
+    from app.services.post_op_schedule import DEFAULT_PROCEDURE_RULES
+    return {"rules": [
+        {"match": kws, "visits": [
+            {"label": v.label, "offset_days": v.days_post_op,
+             "mode": v.suggested_location, "location_locked": v.location_locked}
+            for v in visits]}
+        for kws, visits in DEFAULT_PROCEDURE_RULES]}
+
+
+@router.get("/config/capacity-defaults")
+def capacity_defaults(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
+    from app.services.surgery.block_schedule import DEFAULT_CAPACITY_RULES, DURATIONS
+    return {"defaults": DEFAULT_CAPACITY_RULES, "durations": DURATIONS}
 
 
 # ─── Alert recipients ───────────────────────────────────────────────

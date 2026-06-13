@@ -321,14 +321,6 @@ def import_rows(db: Session, rows: list[dict], *,
         surgery.selected_facility = block_day.facility
         if surgery.status in ("new", "in_progress", "incomplete"):
             surgery.status = "confirmed"
-        # Mirror book_slot's patient_picks_date advance
-        ppd = next((m for m in (surgery.milestones or [])
-                     if m.kind == "patient_picks_date"), None)
-        if ppd and ppd.status in ("pending", "in_progress", "locked"):
-            from app.utils.dt import now_utc_naive
-            ppd.status = "done"
-            ppd.completed_at = now_utc_naive()
-            ppd.completed_by = "system:bulk-import-backfill"
         return slot
 
     for rec in rows:

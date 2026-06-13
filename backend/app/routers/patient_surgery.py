@@ -30,7 +30,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.config import settings
 from app.database import get_db
 from app.models.surgery import (
-    BlockDay, PatientAuthAttempt, Surgery, SurgeryFile, SurgeryMilestone, SurgerySlot,
+    BlockDay, PatientAuthAttempt, Surgery, SurgeryFile, SurgerySlot,
     SurgeryNote,
 )
 from app.services.surgery.block_schedule import (
@@ -317,7 +317,7 @@ def patient_slots(surgery_id: str, days_ahead: int = 180,
         # Use the shared helper so office lunch-break logic stays consistent.
         from app.services.surgery.date_picker import _proposed_start_minutes
         existing = sorted((sl for sl in (bd.slots or [])), key=lambda x: x.start_time)
-        cursor = _proposed_start_minutes(bd, needed_minutes=duration)
+        cursor = _proposed_start_minutes(bd, needed_minutes=duration, db=db)
         block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
         if cursor is None or cursor + duration > block_end_min:
             continue
@@ -402,7 +402,6 @@ def patient_pick(surgery_id: str, payload: PickPayload,
     from app.services.surgery.self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
            .first())
     if not s:
@@ -479,7 +478,6 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
     from app.services.surgery.self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
            .first())
     if not s:
@@ -634,7 +632,6 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
     from app.models.surgery import SurgeryCancellation, SurgerySlot
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
            .first())
     if not s:

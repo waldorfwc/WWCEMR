@@ -2,8 +2,8 @@ import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 import {
-  ArrowLeft, AlertTriangle, CheckCircle2, Circle, Clock, Hospital, FileText,
-  Check, SkipForward, RotateCcw, X, Flag, Pause, Save, Edit3,
+  ArrowLeft, AlertTriangle, CheckCircle2, Hospital, FileText,
+  Check, RotateCcw, X, Flag, Save, Edit3,
   MessageSquare, Download, Upload, Copy, ListPlus, Send, RefreshCw,
   ChevronDown, ChevronUp, Package, Eye,
   DollarSign, HeartPulse, UserPlus, FlaskConical, Mail, Phone, Calculator,
@@ -39,16 +39,6 @@ const STATUS_LABEL = {
   cancelled:     'Canceled',
   unresponsive:  'Unresponsive',
 }
-
-const MILESTONE_ICON = {
-  done:           <CheckCircle2 size={16} className="text-green-600" />,
-  in_progress:    <Clock size={16} className="text-amber-600" />,
-  pending:        <Circle size={16} className="text-gray-300" />,
-  locked:         <Circle size={16} className="text-gray-200" />,
-  skipped:        <Circle size={16} className="text-gray-400" />,
-  not_applicable: <Circle size={16} className="text-gray-300" />,
-}
-
 
 export default function SurgeryDetail() {
   const { id } = useParams()
@@ -103,7 +93,6 @@ export default function SurgeryDetail() {
   const s = data
   const procs = s.procedures || []
   const dxs = s.diagnoses || []
-  const milestones = s.milestones || []
   const isCancelable = !['cancelled', 'completed'].includes(s.status)
 
   return (
@@ -356,7 +345,7 @@ export default function SurgeryDetail() {
       </div>
 
       {/* Grouped surgery sections (Phase L1) */}
-      <GroupedSurgeryBody surgery={s} milestones={milestones} />
+      <GroupedSurgeryBody surgery={s} />
 
       <NotesPanel surgery={s} />
 
@@ -2727,186 +2716,6 @@ function Tip({ text, children }) {
 }
 
 
-const MILESTONE_TITLE_OVERRIDE = {
-  consent: 'Consent',
-  benefits_determined: 'Benefits Determination',
-}
-
-
-function MilestoneRow({ m, surgery }) {
-  const qc = useQueryClient()
-  const [showNotes, setShowNotes] = useState(false)
-  const [notes, setNotes] = useState(m.notes || '')
-
-  const action = useMutation({
-    mutationFn: ({ act, body }) =>
-      api.post(`/surgery/${surgery.id}/milestones/${m.kind}/${act}`, body || {}).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-      qc.invalidateQueries({ queryKey: ['surgery-list'] })
-      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
-      setShowNotes(false)
-    },
-  })
-
-  const isDone = m.status === 'done'
-  const isInProgress = m.status === 'in_progress'
-  const isOpen = !['done', 'skipped', 'not_applicable'].includes(m.status)
-
-  return (
-    <li className={`p-2 rounded border ${
-      isDone ? 'bg-green-50/40 border-green-100'
-      : isInProgress ? 'bg-amber-50/30 border-amber-100'
-      : m.status === 'not_applicable' ? 'bg-gray-50 border-gray-100 opacity-60'
-      : 'bg-white border-border-subtle'
-    }`}>
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 shrink-0">{MILESTONE_ICON[m.status] || MILESTONE_ICON.pending}</div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 flex-wrap">
-            <span className={`text-sm font-medium ${m.status === 'not_applicable' ? 'line-through' : ''}`}>
-              {MILESTONE_TITLE_OVERRIDE[m.kind] || m.title}
-            </span>
-            <span className="text-[10px] text-gray-500 capitalize">{m.status.replace(/_/g, ' ')}</span>
-            {m.expected_duration_days && (
-              <span className="text-[10px] text-gray-400">expected within {m.expected_duration_days}d</span>
-            )}
-          </div>
-          {m.completed_at && (
-            <div className="text-[10px] text-gray-500 mt-0.5">
-              {isDone ? '✓ Completed' : 'Updated'} {fmt.date(m.completed_at)}
-              {m.completed_by && ` by ${m.completed_by.replace('system:', '')}`}
-            </div>
-          )}
-          {m.notes && !showNotes && (
-            <div className="text-[11px] text-gray-700 bg-amber-50/50 px-2 py-1 rounded mt-1">{m.notes}</div>
-          )}
-
-          {showNotes && (
-            <div className="mt-2 space-y-1">
-              <textarea
-                className="input text-xs w-full"
-                rows={2}
-                placeholder="Notes for this milestone (optional)"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-              />
-              <div className="flex gap-1">
-                <button className="btn-primary text-[11px]"
-                        onClick={() => action.mutate({ act: 'done', body: { notes } })}
-                        disabled={action.isPending}>
-                  Save & mark done
-                </button>
-                <button className="btn-secondary text-[11px]"
-                        onClick={() => setShowNotes(false)}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {!showNotes && (
-          <div className="shrink-0 flex items-center gap-1">
-            {isOpen && !isInProgress && (
-              <Tip text="Start working on this — mark in progress">
-                <button aria-label="Mark in progress"
-                        className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:border-amber-300 text-gray-600"
-                        onClick={() => action.mutate({ act: 'start' })}
-                        disabled={action.isPending}>
-                  <Clock size={11} />
-                </button>
-              </Tip>
-            )}
-            {isOpen && (
-              <>
-                <Tip text="Mark this milestone complete">
-                  <button aria-label="Mark done"
-                          className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:border-green-300 hover:bg-green-50 text-green-700 flex items-center gap-1"
-                          onClick={() => action.mutate({ act: 'done' })}
-                          disabled={action.isPending}>
-                    <Check size={11} /> Done
-                  </button>
-                </Tip>
-                <Tip text="Add a note, then mark this milestone done">
-                  <button aria-label="Add notes & mark done"
-                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-600"
-                          onClick={() => setShowNotes(true)}>
-                    <Edit3 size={11} />
-                  </button>
-                </Tip>
-                <Tip text="Skip this step — won't be done (provide reason in notes)">
-                  <button aria-label="Skip"
-                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
-                          onClick={() => action.mutate({ act: 'skip' })}
-                          disabled={action.isPending}>
-                    <SkipForward size={11} />
-                  </button>
-                </Tip>
-                <Tip text="Not applicable for this patient (e.g. no clearance needed, no device)">
-                  <button aria-label="Not applicable"
-                          className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500"
-                          onClick={() => action.mutate({ act: 'not_applicable' })}
-                          disabled={action.isPending}>
-                    N/A
-                  </button>
-                </Tip>
-              </>
-            )}
-            {!isOpen && (
-              <Tip text="Reopen this milestone — moves it back to in-progress">
-                <button aria-label="Reopen"
-                        className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50 text-gray-500 flex items-center gap-1"
-                        onClick={() => action.mutate({ act: 'reopen' })}
-                        disabled={action.isPending}>
-                  <RotateCcw size={11} /> Reopen
-                </button>
-              </Tip>
-            )}
-          </div>
-        )}
-      </div>
-    </li>
-  )
-}
-
-
-/* MilestoneCard wraps the per-milestone status row in its own card and
-   renders the milestone-specific tool inline (calculator, drafter,
-   uploader, etc.). Returns null content for milestones that need no tool. */
-function MilestoneCard({ m, surgery, flat = false }) {
-  const body = milestoneInlineContent(m, surgery)
-  // Completed (done / skipped / not_applicable) milestones collapse by default;
-  // open milestones stay expanded. User can override with the chevron.
-  const isResolved = ['done', 'skipped', 'not_applicable'].includes(m.status)
-  const [open, setOpen] = useState(!isResolved)
-  const wrapClass = flat
-    ? 'scroll-mt-16'
-    : 'card !p-3 scroll-mt-16'
-  return (
-    <div id={`milestone-${m.kind}`} className={wrapClass}>
-      <div className="flex items-start gap-2">
-        <div className="flex-1 min-w-0">
-          {/* Header (status icon, title, action buttons) — reuses MilestoneRow */}
-          <ol className="space-y-2"><MilestoneRow m={m} surgery={surgery} /></ol>
-        </div>
-        {body && (
-          <button type="button"
-                  onClick={() => setOpen(v => !v)}
-                  className="shrink-0 text-gray-400 hover:text-plum-700 p-1 -mt-1"
-                  title={open ? 'Collapse' : 'Expand'}>
-            {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-          </button>
-        )}
-      </div>
-      {body && open && (
-        <div className="mt-3 border-t border-border-subtle pt-3">{body}</div>
-      )}
-    </div>
-  )
-}
-
-
 // Group color palette. Each group gets a faint tinted bg + matching left
 // accent border so cards are visually distinct without compromising
 // readability. Divider lines between sub-items use a darker shade of the
@@ -2942,43 +2751,19 @@ function SurgerySection({ title, anchor, tone = 'slate', headerRight, children }
 
 // ─── Step-based layout (numbered workflow) ──────────────────────────
 
-const MILESTONE_DONE_STATES = new Set(['done', 'skipped', 'not_applicable'])
-
-const STEP_CFG_HOSPITAL = [
-  { n: 1,  title: 'Surgery Info',                      tone: 'slate'   },
-  { n: 2,  title: 'Surgery Benefits',                  tone: 'emerald' },
-  { n: 3,  title: 'Payment',                           tone: 'emerald' },
-  { n: 4,  title: 'Consents',                          tone: 'amber'   },
-  { n: 5,  title: 'Select Surgery Date & Post-Op Dates', tone: 'sky'   },
-  { n: 6,  title: 'Allocate Device',                   tone: 'teal',   optional: true },
-  { n: 7,  title: 'Prior Auth',                        tone: 'amber',  optional: true },
-  { n: 8,  title: 'Clearance / EKG',                   tone: 'amber',  optional: true },
-  { n: 9,  title: 'Asst Surgeon / Device Rep',         tone: 'amber',  optional: true },
-  { n: 10, title: 'Post Surgery to Hospital',          tone: 'sky'     },
-  { n: 11, title: 'Add Surgery Appointment to ModMed', tone: 'sky'     },
-  { n: 12, title: 'Labs',                              tone: 'amber'   },
-  { n: 13, title: 'Post Surgery Welfare F/U',          tone: 'slate'   },
-  { n: 14, title: 'Surgery Notes & Reports',           tone: 'slate'   },
-  { n: 15, title: 'Bill Surgery',                      tone: 'slate'   },
-]
-
-const STEP_CFG_OFFICE = [
-  { n: 1,  title: 'Add Surgery',                       tone: 'slate'   },
-  { n: 2,  title: 'Procedure Benefits',                tone: 'emerald' },
-  { n: 3,  title: 'Payment',                           tone: 'emerald' },
-  { n: 4,  title: 'Consents',                          tone: 'amber'   },
-  { n: 5,  title: 'Select Procedure Date & Post-Op Dates', tone: 'sky' },
-  { n: 6,  title: 'Allocate Device',                   tone: 'teal',   optional: true },
-  { n: 7,  title: 'Prior Auth',                        tone: 'amber',  optional: true },
-  { n: 8,  title: 'Device Rep',                        tone: 'amber',  optional: true },
-  { n: 9,  title: 'Add Procedure Appointment to ModMed', tone: 'sky'   },
-  { n: 10, title: 'Post Surgery Welfare F/U',          tone: 'slate'   },
-  { n: 11, title: 'Procedure Pathology Report',        tone: 'slate',  optional: true },
-  { n: 12, title: 'Bill Surgery',                      tone: 'slate'   },
-]
+// Step state + titles are computed server-side (surgery.steps). Tones are a
+// purely-visual concern that stays on the client, keyed by the step's stable
+// `key` so configurable server titles don't break theming.
+const TONE_BY_KEY = {
+  surgery_info: 'slate', benefits: 'emerald', payment: 'emerald',
+  consents: 'amber', select_dates: 'sky', device: 'teal',
+  prior_auth: 'amber', clearance: 'amber', asst_surgeon: 'amber',
+  device_rep: 'amber', post_to_hospital: 'sky', modmed_appt: 'sky',
+  labs: 'amber', welfare_fu: 'slate', notes_reports: 'slate',
+  path_report: 'slate', bill: 'slate',
+}
 
 function isOffice(s) { return s.selected_facility === 'office' }
-function stepsFor(s) { return isOffice(s) ? STEP_CFG_OFFICE : STEP_CFG_HOSPITAL }
 
 function checkSurgeryInfoMissing(s) {
   const missing = []
@@ -3017,140 +2802,6 @@ function checkSurgeryInfoMissing(s) {
 }
 
 
-function stepCompletion(n, s, _byKind) {
-  // Milestones are retired — every step derives completion from surgery
-  // fields directly. Office procedures get a 12-step flow that differs
-  // from the 14-step hospital flow at steps 8, 9, 10, 11, 13.
-  if (isOffice(s)) return stepCompletionOffice(n, s)
-  switch (n) {
-    case 1: return { state: checkSurgeryInfoMissing(s).length === 0 ? 'done' : 'todo' }
-    case 2: return { state: s.benefits_verified_at ? 'done' : 'todo' }
-    case 3: {
-      const resp = Number(s.patient_responsibility || 0)
-      const paid = Number(s.amount_paid || 0)
-      if (resp <= 0) return { state: 'done' }
-      return { state: paid >= resp ? 'done' : 'todo' }
-    }
-    case 4: {
-      const cs = (s.consent_status || '').toLowerCase()
-      return { state: (cs === 'signed' || cs === 'not_required') ? 'done' : 'todo' }
-    }
-    case 5: {
-      const datePicked = !!s.scheduled_date
-      const postOpsDone = !!s.post_op_appt_date
-      if (datePicked && postOpsDone) return { state: 'done' }
-      if (datePicked || postOpsDone) return { state: 'in_progress' }
-      return { state: 'todo' }
-    }
-    case 6: {
-      // Only office procedures (LARC, etc.) require an allocated device.
-      if (s.selected_facility !== 'office') return { state: 'n/a' }
-      return { state: 'todo' }   // device-assigned signal lives on a separate table
-    }
-    case 7: {
-      const status = (s.auth_status || '').toLowerCase()
-      if (status === 'not_required') return { state: 'n/a' }
-      if (['approved', 'completed'].includes(status)) return { state: 'done' }
-      return { state: 'todo' }
-    }
-    case 8: {
-      const cs = (s.clearance_status || '').toLowerCase()
-      if (cs === 'not_required' || !s.clearance_required) return { state: 'n/a' }
-      if (['received', 'sent_to_hospital', 'completed'].includes(cs)) return { state: 'done' }
-      return { state: 'todo' }
-    }
-    case 9: {
-      if (!s.assistant_surgeon_required) return { state: 'n/a' }
-      if (s.assistant_surgeon_office_notified_at && s.assistant_surgeon_appt_confirmed_at) {
-        return { state: 'done' }
-      }
-      return { state: 'todo' }
-    }
-    case 10: {
-      if (s.calendar_invite_sent_at) return { state: 'done' }
-      return { state: 'todo' }
-    }
-    case 11: return { state: s.scheduled_in_modmed_at ? 'done' : 'todo' }
-    case 12: {
-      if (s.labs_sent_to_hospital) return { state: 'done' }
-      return { state: 'todo' }
-    }
-    case 13: {
-      const pocs = (s.post_op_call_status || '').toLowerCase()
-      if (pocs === 'spoke to pt.') return { state: 'done' }
-      return { state: 'todo' }
-    }
-    case 14: {
-      const opDone = ['completed', 'received'].includes((s.operative_report_status || '').toLowerCase())
-      return { state: opDone ? 'done' : 'todo' }
-    }
-    case 15: {
-      if (s.payment_posted_to_billing) return { state: 'done' }
-      return { state: 'todo' }
-    }
-    default: return { state: 'todo' }
-  }
-}
-
-
-function stepCompletionOffice(n, s) {
-  switch (n) {
-    case 1: return { state: checkSurgeryInfoMissing(s).length === 0 ? 'done' : 'todo' }
-    case 2: return { state: s.benefits_verified_at ? 'done' : 'todo' }
-    case 3: {
-      const resp = Number(s.patient_responsibility || 0)
-      const paid = Number(s.amount_paid || 0)
-      if (resp <= 0) return { state: 'done' }
-      return { state: paid >= resp ? 'done' : 'todo' }
-    }
-    case 4: {
-      const cs = (s.consent_status || '').toLowerCase()
-      return { state: (cs === 'signed' || cs === 'not_required') ? 'done' : 'todo' }
-    }
-    case 5: {
-      const datePicked = !!s.scheduled_date
-      const postOpsDone = !!s.post_op_appt_date
-      if (datePicked && postOpsDone) return { state: 'done' }
-      if (datePicked || postOpsDone) return { state: 'in_progress' }
-      return { state: 'todo' }
-    }
-    case 6: {
-      // Office procedures usually need an allocated device (LARC etc.)
-      return { state: 'todo' }   // device-assigned signal lives on a separate table
-    }
-    case 7: {
-      const status = (s.auth_status || '').toLowerCase()
-      if (status === 'not_required') return { state: 'n/a' }
-      if (['approved', 'completed'].includes(status)) return { state: 'done' }
-      return { state: 'todo' }
-    }
-    case 8: {
-      // Device Rep — reuses the assistant_surgeon_required + notification fields
-      if (!s.assistant_surgeon_required) return { state: 'n/a' }
-      if (s.assistant_surgeon_office_notified_at && s.assistant_surgeon_appt_confirmed_at) {
-        return { state: 'done' }
-      }
-      return { state: 'todo' }
-    }
-    case 9: return { state: s.scheduled_in_modmed_at ? 'done' : 'todo' }
-    case 10: {
-      const pocs = (s.post_op_call_status || '').toLowerCase()
-      return { state: pocs === 'spoke to pt.' ? 'done' : 'todo' }
-    }
-    case 11: {
-      // Pathology report optional — done when the operative_report_status is
-      // marked completed/received OR there's a pathology file uploaded.
-      const ors = (s.operative_report_status || '').toLowerCase()
-      if (ors === 'not_required') return { state: 'n/a' }
-      if (['completed', 'received'].includes(ors)) return { state: 'done' }
-      return { state: 'todo' }
-    }
-    case 12: return { state: s.payment_posted_to_billing ? 'done' : 'todo' }
-    default: return { state: 'todo' }
-  }
-}
-
-
 function SurgeryInfoChecklist({ surgery }) {
   const missing = checkSurgeryInfoMissing(surgery)
   if (missing.length === 0) {
@@ -3183,7 +2834,7 @@ function SurgeryInfoChecklist({ surgery }) {
 }
 
 
-function SurgeryStepTimeline({ surgery, byKind, steps }) {
+function SurgeryStepTimeline({ surgery, steps }) {
   const journeyLabel = isOffice(surgery) ? 'Your procedure journey' : 'Your surgery journey'
   const minWidth = steps.length * 84
   return (
@@ -3191,13 +2842,13 @@ function SurgeryStepTimeline({ surgery, byKind, steps }) {
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-800">{journeyLabel}</h2>
         <div className="text-[11px] uppercase tracking-wide text-plum-600/70">
-          {steps.filter(st => stepCompletion(st.n, surgery, byKind).state === 'done').length}
+          {steps.filter(st => st.state === 'done').length}
           {' '}of {steps.length} complete
         </div>
       </div>
       <div className="flex items-center justify-between gap-1" style={{ minWidth: `${minWidth}px` }}>
         {steps.map((step, i) => {
-          const { state } = stepCompletion(step.n, surgery, byKind)
+          const state      = step.state
           const isDone     = state === 'done'
           const isCurrent  = state === 'in_progress'
           const isNA       = state === 'n/a'
@@ -3236,13 +2887,19 @@ function SurgeryStepTimeline({ surgery, byKind, steps }) {
 }
 
 
-function StepCard({ n, title, tone, optional, surgery, byKind, headerRight, children }) {
+function StepCard({ n, title, tone, optional, steps, headerRight, children }) {
   const kids = (Array.isArray(children) ? children : [children]).filter(Boolean)
   if (kids.length === 0) return null
-  const { state } = stepCompletion(n, surgery, byKind)
+  // Server (surgery.steps) is the source of truth for state, title, and the
+  // optional flag. The hardcoded props remain as fallbacks for safety.
+  const step = (steps || []).find(st => st.n === n)
+  const state = step?.state
+  const resolvedTitle = step?.title ?? title
+  const resolvedOptional = step?.optional ?? optional
+  const resolvedTone = TONE_BY_KEY[step?.key] ?? tone
   const isNA = state === 'n/a'
   const isDone = state === 'done'
-  const t = SECTION_TONES[tone] || SECTION_TONES.slate
+  const t = SECTION_TONES[resolvedTone] || SECTION_TONES.slate
   return (
     <section id={`step-${n}`} className={`card mb-4 scroll-mt-16 ${t.bg} ${t.accent}`}>
       <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${t.divide}`}>
@@ -3256,7 +2913,7 @@ function StepCard({ n, title, tone, optional, surgery, byKind, headerRight, chil
           Step {n}
         </div>
         <h2 className="text-base font-semibold text-gray-800 flex-1">
-          {title}{optional && <span className="text-[11px] text-gray-500 font-normal ml-1">(if required)</span>}
+          {resolvedTitle}{resolvedOptional && <span className="text-[11px] text-gray-500 font-normal ml-1">(if required)</span>}
         </h2>
         {isDone && <span className="text-[11px] text-emerald-700 font-medium">✓ Complete</span>}
         {headerRight}
@@ -3271,30 +2928,27 @@ function StepCard({ n, title, tone, optional, surgery, byKind, headerRight, chil
 }
 
 
-function GroupedSurgeryBody({ surgery, milestones }) {
-  const byKind = Object.fromEntries(milestones.map(m => [m.kind, m]))
-  const ms = (kind) => byKind[kind]
-    ? <MilestoneCard m={byKind[kind]} surgery={surgery} flat />
-    : null
-  const steps = stepsFor(surgery)
+function GroupedSurgeryBody({ surgery }) {
+  // Server-computed step catalog + state is the single source of truth.
+  const steps = surgery.steps || []
 
   if (isOffice(surgery)) {
-    return <OfficeProcedureBody surgery={surgery} byKind={byKind} steps={steps} />
+    return <OfficeProcedureBody surgery={surgery} steps={steps} />
   }
 
   return (
     <>
-      <SurgeryStepTimeline surgery={surgery} byKind={byKind} steps={steps} />
+      <SurgeryStepTimeline surgery={surgery} steps={steps} />
 
       {/* Step 1 — Surgery Info validator */}
       <StepCard n={1} title="Surgery Info" tone="slate"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <SurgeryInfoChecklist surgery={surgery} />
       </StepCard>
 
       {/* Step 2 — Surgery Benefits */}
       <StepCard n={2} title="Surgery Benefits" tone="emerald"
-                surgery={surgery} byKind={byKind}
+                steps={steps}
                 headerRight={
                   <FeeScheduleButton
                     surgeryId={surgery.id}
@@ -3305,51 +2959,51 @@ function GroupedSurgeryBody({ surgery, milestones }) {
 
       {/* Step 3 — Payment */}
       <StepCard n={3} title="Payment" tone="emerald"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <PaymentsSection surgery={surgery} flat />
       </StepCard>
 
       {/* Step 4 — Consents */}
       <StepCard n={4} title="Consents" tone="amber"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <ConsentPanel surgery={surgery} />
       </StepCard>
 
       {/* Step 5 — Select Surgery Date & Post-Op Dates */}
       <StepCard n={5} title="Select Surgery Date & Post-Op Dates" tone="sky"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <PatientPicksDateBody surgery={surgery} />
         <PostOpApptsCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 6 — Allocate Device (if required) */}
       <StepCard n={6} title="Allocate Device" tone="teal" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <RequestDevicePanel surgery={surgery} />
         <LarcDevicePickerCard surgery={surgery} flat />
       </StepCard>
 
       {/* Step 7 — Prior Auth (if required) */}
       <StepCard n={7} title="Prior Auth" tone="amber" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <PriorAuthCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 8 — Clearance / EKG (if required) */}
       <StepCard n={8} title="Clearance / EKG" tone="amber" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <ClearanceCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 9 — Asst Surgeon / Device Rep (if required) */}
       <StepCard n={9} title="Asst Surgeon / Device Rep" tone="amber" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <AssistantSurgeonCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 10 — Post Surgery to Hospital */}
       <StepCard n={10} title="Post Surgery to Hospital" tone="sky"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <ErrorBoundary label="Hospital Posting">
           <SurgeryConfirmedBody surgery={surgery} />
         </ErrorBoundary>
@@ -3357,32 +3011,32 @@ function GroupedSurgeryBody({ surgery, milestones }) {
 
       {/* Step 11 — Add Surgery Appointment to ModMed */}
       <StepCard n={11} title="Add Surgery Appointment to ModMed" tone="sky"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <ModMedScheduledPanel surgery={surgery} />
       </StepCard>
 
       {/* Step 12 — Labs */}
       <StepCard n={12} title="Labs" tone="amber"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <LabsCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 13 — Post Surgery Welfare F/U */}
       <StepCard n={13} title="Post Surgery Welfare F/U" tone="slate"
-                surgery={surgery} byKind={byKind}>
-        <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
+                steps={steps}>
+        <PostOpCallCardBody surgery={surgery} milestone={null} />
       </StepCard>
 
       {/* Step 14 — Surgery Notes & Reports */}
       <StepCard n={14} title="Surgery Notes & Reports" tone="slate"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <FilesPanel surgery={surgery} kindFilter="op_notes" label="Operative Report" />
         <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
       </StepCard>
 
       {/* Step 15 — Bill Surgery */}
       <StepCard n={15} title="Bill Surgery" tone="slate"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <SurgeryBilledCardBody surgery={surgery} />
       </StepCard>
 
@@ -3392,20 +3046,20 @@ function GroupedSurgeryBody({ surgery, milestones }) {
 }
 
 
-function OfficeProcedureBody({ surgery, byKind, steps }) {
+function OfficeProcedureBody({ surgery, steps }) {
   return (
     <>
-      <SurgeryStepTimeline surgery={surgery} byKind={byKind} steps={steps} />
+      <SurgeryStepTimeline surgery={surgery} steps={steps} />
 
       {/* Step 1 — Add Surgery (Surgery Info validator) */}
       <StepCard n={1} title="Add Surgery" tone="slate"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <SurgeryInfoChecklist surgery={surgery} />
       </StepCard>
 
       {/* Step 2 — Procedure Benefits */}
       <StepCard n={2} title="Procedure Benefits" tone="emerald"
-                surgery={surgery} byKind={byKind}
+                steps={steps}
                 headerRight={
                   <FeeScheduleButton
                     surgeryId={surgery.id}
@@ -3416,63 +3070,63 @@ function OfficeProcedureBody({ surgery, byKind, steps }) {
 
       {/* Step 3 — Payment */}
       <StepCard n={3} title="Payment" tone="emerald"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <PaymentsSection surgery={surgery} flat />
       </StepCard>
 
       {/* Step 4 — Consents */}
       <StepCard n={4} title="Consents" tone="amber"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <ConsentPanel surgery={surgery} />
       </StepCard>
 
       {/* Step 5 — Select Procedure Date & Post-Op Dates */}
       <StepCard n={5} title="Select Procedure Date & Post-Op Dates" tone="sky"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <PatientPicksDateBody surgery={surgery} />
         <PostOpApptsCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 6 — Allocate Device (if required) */}
       <StepCard n={6} title="Allocate Device" tone="teal" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <RequestDevicePanel surgery={surgery} />
         <LarcDevicePickerCard surgery={surgery} flat />
       </StepCard>
 
       {/* Step 7 — Prior Auth */}
       <StepCard n={7} title="Prior Auth" tone="amber" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <PriorAuthCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 8 — Device Rep (if required) */}
       <StepCard n={8} title="Device Rep" tone="amber" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <AssistantSurgeonCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 9 — Add Procedure Appointment to ModMed */}
       <StepCard n={9} title="Add Procedure Appointment to ModMed" tone="sky"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <ModMedScheduledPanel surgery={surgery} />
       </StepCard>
 
       {/* Step 10 — Post Surgery Welfare F/U */}
       <StepCard n={10} title="Post Surgery Welfare F/U" tone="slate"
-                surgery={surgery} byKind={byKind}>
-        <PostOpCallCardBody surgery={surgery} milestone={byKind['post_op_call']} />
+                steps={steps}>
+        <PostOpCallCardBody surgery={surgery} milestone={null} />
       </StepCard>
 
       {/* Step 11 — Procedure Pathology Report (if required) */}
       <StepCard n={11} title="Procedure Pathology Report" tone="slate" optional
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
       </StepCard>
 
       {/* Step 12 — Bill Surgery */}
       <StepCard n={12} title="Bill Surgery" tone="slate"
-                surgery={surgery} byKind={byKind}>
+                steps={steps}>
         <SurgeryBilledCardBody surgery={surgery} />
       </StepCard>
     </>
@@ -3530,28 +3184,6 @@ function ModMedScheduledPanel({ surgery }) {
       </div>
     </div>
   )
-}
-
-
-function milestoneInlineContent(m, surgery) {
-  switch (m.kind) {
-    case 'benefits_determined':         return <BenefitsPanel surgery={surgery} />
-    case 'prior_auth':                  return <PriorAuthCardBody surgery={surgery} />
-    case 'klara_scheduling':            return null   // milestone retired
-    case 'patient_picks_date':          return <PatientPicksDateBody surgery={surgery} />
-    case 'post_op_appts_scheduled':     return <PostOpApptsCardBody surgery={surgery} />
-    case 'assistant_surgeon':           return <AssistantSurgeonCardBody surgery={surgery} />
-    case 'consent':                     return <ConsentPanel surgery={surgery} />
-    case 'surgery_confirmed_hospital':  return <SurgeryConfirmedBody surgery={surgery} />
-    case 'labs_to_hospital':            return <LabsCardBody surgery={surgery} />
-    case 'op_notes':                    return <FilesPanel surgery={surgery} kindFilter="op_notes"
-                                                            label="Operative Report" />
-    case 'path_report':                 return <FilesPanel surgery={surgery} kindFilter="path_report"
-                                                            label="Pathology Report" />
-    case 'post_op_call':                return <PostOpCallCardBody surgery={surgery} milestone={m} />
-    case 'surgery_billed':              return <SurgeryBilledCardBody surgery={surgery} />
-    default:                            return null
-  }
 }
 
 
@@ -4476,58 +4108,13 @@ function LabsCardBody({ surgery }) {
 
 // ─── Post-op call script ──────────────────────────────────────────
 
-const POST_OP_QUESTIONS = [
-  { key: 'pain',         label: 'Pain — controlled with prescribed meds?' },
-  { key: 'bleeding',     label: 'Any heavy bleeding or large clots?' },
-  { key: 'fever',        label: 'Fever ≥ 100.4 °F, chills, or shaking?' },
-  { key: 'incision',     label: 'Incision sites — redness, drainage, warmth, opening?' },
-  { key: 'voiding',      label: 'Urinating normally? Any burning?' },
-  { key: 'bowel',        label: 'Bowel movement / passing gas?' },
-  { key: 'nausea',       label: 'Nausea or vomiting?' },
-  { key: 'leg',          label: 'Leg pain/swelling/calf tenderness (DVT)?' },
-  { key: 'breathing',    label: 'Shortness of breath or chest pain?' },
-  { key: 'meds',         label: 'All prescribed meds being taken? Any side effects?' },
-  { key: 'activity',     label: 'Following activity / lifting restrictions?' },
-  { key: 'followup',     label: 'Follow-up appointment scheduled?' },
-  { key: 'questions',    label: 'Any questions or concerns?' },
-]
-
-
 function PostOpCallCardBody({ surgery, milestone }) {
-  const qc = useQueryClient()
-  const initial = (() => {
-    try { return JSON.parse(milestone?.notes || '{}') } catch { return {} }
-  })()
-  const [answers, setAnswers] = useState(() => {
-    const out = {}
-    for (const q of POST_OP_QUESTIONS) {
-      out[q.key] = initial[q.key] || { value: '', note: '' }
-    }
-    out.__free_text = initial.__free_text || ''
-    return out
-  })
-
-  function setAnswer(key, patch) {
-    setAnswers(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }))
-  }
-
-  const save = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone?.kind}/done`,
-                                { notes: JSON.stringify(answers) }).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-    },
-  })
-  const saveDraft = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/milestones/${milestone?.kind}/start`,
-                                { notes: JSON.stringify(answers) }).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-    },
-  })
-
-  // Milestones are retired for new surgeries. When the post_op_call row
-  // doesn't exist yet, the buttons can't fire so the panel is a stub.
+  void surgery
+  // The post-op welfare call was previously driven by a milestone row + a
+  // milestone-action POST that has since been removed server-side. With
+  // milestones retired there is no longer a backing record to read/write,
+  // so this step renders an informational stub. (The save UI it used to
+  // host hit the now-deleted /surgery/{id}/milestones/{kind}/{action} route.)
   if (!milestone) {
     return (
       <div className="text-xs text-gray-500 italic">
@@ -4535,90 +4122,7 @@ function PostOpCallCardBody({ surgery, milestone }) {
       </div>
     )
   }
-  const isDone = milestone.status === 'done'
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
-          <Phone size={14} className="text-plum-700" />
-          Spoke to Patient Post-Op
-        </h3>
-        {isDone && (
-          <span className="text-[11px] uppercase tracking-wide bg-green-100 text-green-700 px-1.5 py-0.5 rounded">
-            done
-          </span>
-        )}
-      </div>
-      <div className="text-[11px] text-gray-600">
-        Ask each question and record the answer. Save → marks the milestone done with
-        all answers captured.
-      </div>
-      <div className="space-y-1.5">
-        {POST_OP_QUESTIONS.map(q => {
-          const a = answers[q.key] || { value: '', note: '' }
-          return (
-            <div key={q.key}
-                 className="flex items-start gap-2 text-[12px] py-1 border-b border-gray-50 last:border-0">
-              <div className="flex-1">
-                <div className="text-gray-800">{q.label}</div>
-                {a.value === 'concern' && (
-                  <input className="input text-[11px] w-full mt-1"
-                         placeholder="Details (required when concern)"
-                         value={a.note}
-                         onChange={e => setAnswer(q.key, { note: e.target.value })} />
-                )}
-              </div>
-              <div className="flex gap-1 shrink-0">
-                {['ok', 'concern', 'na'].map(v => (
-                  <button key={v}
-                          type="button"
-                          onClick={() => setAnswer(q.key, { value: v })}
-                          className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                            a.value === v
-                              ? (v === 'ok'      ? 'bg-green-100 border-green-300 text-green-800'
-                                : v === 'concern' ? 'bg-red-100 border-red-300 text-red-800'
-                                : 'bg-gray-100 border-gray-300 text-gray-700')
-                              : 'border-gray-200 text-gray-500 hover:bg-gray-50'
-                          }`}>
-                    {v === 'ok' ? '✓ OK' : v === 'concern' ? '⚠ Concern' : 'N/A'}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-      <div>
-        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">Additional notes</div>
-        <textarea className="input text-[12px] w-full"
-                  rows={2}
-                  value={answers.__free_text}
-                  onChange={e => setAnswers(prev => ({ ...prev, __free_text: e.target.value }))} />
-      </div>
-      <div className="flex gap-2">
-        {!isDone && (
-          <>
-            <button className="btn-secondary text-[11px]"
-                    onClick={() => saveDraft.mutate()}
-                    disabled={saveDraft.isPending}>
-              {saveDraft.isPending ? 'Saving…' : 'Save draft'}
-            </button>
-            <button className="btn-primary text-[11px]"
-                    onClick={() => save.mutate()}
-                    disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save & mark done'}
-            </button>
-          </>
-        )}
-        {isDone && (
-          <span className="text-[11px] text-green-700 italic">
-            ✓ Post-op call recorded — milestone done
-          </span>
-        )}
-      </div>
-    </div>
-  )
+  return null
 }
 
 
@@ -4998,29 +4502,6 @@ function ConsentPanel({ surgery }) {
     staleTime: 30_000,
   })
 
-  const docusignSend = useMutation({
-    mutationFn: (ignoreWarnings) =>
-      api.post(`/surgery/${surgery.id}/consent/docusign-send`,
-              { ignore_warnings: !!ignoreWarnings }).then(r => r.data),
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-      qc.invalidateQueries({ queryKey: ['surgery-list'] })
-      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
-      if (data?.skipped?.length) {
-        alert(`Sent ${data.sent.length}; skipped ${data.skipped.length} (already in flight).`)
-      }
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'DocuSign send failed'),
-  })
-  const docusignSync = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/docusign-sync`).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
-      qc.invalidateQueries({ queryKey: ['surgery-list'] })
-      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'DocuSign sync failed'),
-  })
   const boldsignSend = useMutation({
     mutationFn: (ignoreWarnings) =>
       api.post(`/surgery/${surgery.id}/consent/boldsign-send`,
@@ -5083,8 +4564,8 @@ function ConsentPanel({ surgery }) {
   const unmatched = matchData?.unmatched_procedures || []
   const canSend = matchData && matchData.matches.length > 0 && unmatched.length === 0
 
-  function handleSend(provider) {
-    const send = provider === 'boldsign' ? boldsignSend : docusignSend
+  function handleSend() {
+    const send = boldsignSend
     if (blockingWarnings.length > 0) {
       const ok = confirm(
         'Warnings:\n\n' + blockingWarnings.map(m => '• ' + m.warning).join('\n')
@@ -5208,7 +4689,7 @@ function ConsentPanel({ surgery }) {
         {!isSigned && envelopes.length === 0 && (
           <>
             <button className="btn-primary text-xs flex items-center gap-1"
-                    onClick={() => handleSend('boldsign')}
+                    onClick={() => handleSend()}
                     disabled={!canSend || boldsignSend.isPending}
                     title={!canSend ? 'Resolve unmatched procedures first' : ''}>
               <Send size={11} /> {boldsignSend.isPending ? 'Sending…' : 'Send via BoldSign'}
@@ -5221,23 +4702,14 @@ function ConsentPanel({ surgery }) {
             </button>
           </>
         )}
-        {!isSigned && envelopes.length > 0 && (
-          <>
-            <button className="btn-secondary text-xs flex items-center gap-1"
-                    onClick={() => boldsignSync.mutate()}
-                    disabled={boldsignSync.isPending}
-                    title="Pull latest status from BoldSign">
-              <RefreshCw size={11} className={boldsignSync.isPending ? 'animate-spin' : ''} />
-              {boldsignSync.isPending ? 'Checking…' : 'Refresh from BoldSign'}
-            </button>
-            <button className="btn-secondary text-xs flex items-center gap-1"
-                    onClick={() => docusignSync.mutate()}
-                    disabled={docusignSync.isPending}
-                    title="Pull latest status from DocuSign (legacy envelopes)">
-              <RefreshCw size={11} className={docusignSync.isPending ? 'animate-spin' : ''} />
-              {docusignSync.isPending ? 'Checking…' : 'Refresh from DocuSign'}
-            </button>
-          </>
+        {!isSigned && envelopes.some(e => (e.provider || 'boldsign') !== 'docusign') && (
+          <button className="btn-secondary text-xs flex items-center gap-1"
+                  onClick={() => boldsignSync.mutate()}
+                  disabled={boldsignSync.isPending}
+                  title="Pull latest status from BoldSign">
+            <RefreshCw size={11} className={boldsignSync.isPending ? 'animate-spin' : ''} />
+            {boldsignSync.isPending ? 'Checking…' : 'Refresh from BoldSign'}
+          </button>
         )}
         {!isSigned && (
           <button className="btn-secondary text-xs flex items-center gap-1"

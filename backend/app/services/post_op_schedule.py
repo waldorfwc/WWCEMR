@@ -46,7 +46,7 @@ class PostOpVisit:
 # A few visits are CLINICALLY REQUIRED to be in person — flagged with
 # location_locked=True so the coordinator can't accidentally book them
 # as telehealth.
-PROCEDURE_RULES: list[tuple[list[str], list[PostOpVisit]]] = [
+DEFAULT_PROCEDURE_RULES: list[tuple[list[str], list[PostOpVisit]]] = [
     # Hysterectomy variants (TAH, TLH, LAVH, robotic, supracervical, etc.)
     (["hysterectomy"], [
         PostOpVisit("1 week post-op", 7, "office"),
@@ -95,7 +95,34 @@ def _procs_list(s: Surgery) -> list[str]:
     return out
 
 
-def determine_post_op_schedule(s: Surgery) -> list[PostOpVisit]:
+def rules_from_config(db):
+    """Config-driven rules; falls back to DEFAULT_PROCEDURE_RULES when the
+    key is unset, db is None, or the stored JSON is malformed."""
+    if db is None:
+        return DEFAULT_PROCEDURE_RULES
+    try:
+        from app.services.surgery.settings import cfg
+        raw = cfg(db, "post_op_schedules")
+        if not raw:
+            return DEFAULT_PROCEDURE_RULES
+        out = []
+        for rule in raw:
+            visits = [PostOpVisit(
+                label=v["label"],
+                days_post_op=int(v["offset_days"]),
+                suggested_location=v.get("mode", "office"),
+                location_locked=bool(v.get("location_locked", False)),
+            ) for v in rule["visits"]]
+            out.append(([k.lower() for k in rule["match"]], visits))
+        return out
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "bad post_op_schedules config; using defaults", exc_info=True)
+        return DEFAULT_PROCEDURE_RULES
+
+
+def determine_post_op_schedule(s: Surgery, db=None) -> list[PostOpVisit]:
     """Return the set of post-op visits needed for this surgery.
     Empty list = no procedure recognized; staff can manually pick a
     schedule by entering a single appt date."""
@@ -105,7 +132,7 @@ def determine_post_op_schedule(s: Surgery) -> list[PostOpVisit]:
         return []
     proc_text = " ".join(procs).lower()
 
-    for keywords, vlist in PROCEDURE_RULES:
+    for keywords, vlist in rules_from_config(db):
         # Skip the bare "laparoscopy" rule if a more-specific match already fired.
         # We do this by checking whether 'hysterectomy' or 'myomectomy' is in the
         # same procedure text — those rules already added 1-week + further visits.
@@ -126,9 +153,9 @@ def determine_post_op_schedule(s: Surgery) -> list[PostOpVisit]:
     return sorted(visits.values(), key=lambda v: v.days_post_op)
 
 
-def all_required_appts_filled(s: Surgery) -> bool:
+def all_required_appts_filled(s: Surgery, db=None) -> bool:
     """True when every required post-op visit date is set on the surgery."""
-    visits = determine_post_op_schedule(s)
+    visits = determine_post_op_schedule(s, db=db)
     if len(visits) == 0:
         # Fallback: at least the first appt date must be set (matches legacy
         # needs_followup_appt logic).

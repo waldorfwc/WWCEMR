@@ -37,11 +37,16 @@ def _seed_test_user(db):
     """Insert (or upsert) the TEST_USER row so require_permission lookups pass."""
     existing = db.query(User).filter(User.email == TEST_USER["email"]).first()
     if existing is None:
+        # The legacy per-permission list model was replaced by the per-module
+        # tier model (see docs/superpowers/plans/2026-06-06-permissions-redesign.md);
+        # User no longer has a `permissions_extra` column. Seed a super-admin so
+        # the broad-permission TEST_USER resolves to SUPER_ADMIN on every module
+        # (effective_tier short-circuits on is_super_admin).
         db.add(User(
             email=TEST_USER["email"],
             display_name=TEST_USER["name"],
             group=UserGroup.ADMIN,
-            permissions_extra=_TEST_USER_PERMS,
+            is_super_admin=True,
         ))
         db.commit()
 

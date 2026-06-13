@@ -86,7 +86,8 @@ def _balance_gate(s: Surgery) -> Optional[str]:
 
 
 def _proposed_start_minutes(bd: BlockDay,
-                              needed_minutes: Optional[int] = None) -> Optional[int]:
+                              needed_minutes: Optional[int] = None,
+                              db: Optional[Session] = None) -> Optional[int]:
     """Return the start-time-in-minutes for the next available slot in this
     block.
 
@@ -107,12 +108,12 @@ def _proposed_start_minutes(bd: BlockDay,
 
     # Office: pick from the fixed slot list, return the first not already booked.
     if bd.facility == "office":
-        from app.services.surgery.block_schedule import OFFICE_SLOT_TIMES_MIN
+        from app.services.surgery.block_schedule import office_slot_times_min
         taken = {sl.start_time.hour * 60 + sl.start_time.minute for sl in existing}
-        for t in OFFICE_SLOT_TIMES_MIN:
+        for t in office_slot_times_min(db):
             if t not in taken:
                 return t
-        return None  # all 7 office slots taken
+        return None  # all office slots taken
 
     block_start_min = bd.start_time.hour * 60 + bd.start_time.minute
     block_end_min   = bd.end_time.hour * 60 + bd.end_time.minute
@@ -172,7 +173,7 @@ def available_slots_for_surgery(db: Session, s: Surgery, *,
         ok, _ = can_fit(db, bd, proc_kind)
         if not ok:
             continue
-        cursor = _proposed_start_minutes(bd, needed_minutes=duration)
+        cursor = _proposed_start_minutes(bd, needed_minutes=duration, db=db)
         block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
         if cursor is None or cursor + duration > block_end_min:
             continue
@@ -249,7 +250,7 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
     # Recompute next-available start on the target block (fresh, after
     # the existing slot was deleted if it was on this same block).
     db.refresh(bd)
-    cursor = _proposed_start_minutes(bd, needed_minutes=duration)
+    cursor = _proposed_start_minutes(bd, needed_minutes=duration, db=db)
     block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
     if cursor is None or cursor + duration > block_end_min:
         raise DatePickerError("That date no longer has room — please pick another.")
@@ -282,15 +283,6 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
         # Clear hospital-posting state since the new date needs a fresh
         # boarding slip / fax.
         s.calendar_invite_sent_at = None
-
-    # Advance the patient_picks_date milestone on initial pick (don't
-    # re-advance on reschedule)
-    if not is_reschedule:
-        m_row = next((m for m in s.milestones if m.kind == "patient_picks_date"), None)
-        if m_row and m_row.status not in ("done", "skipped"):
-            m_row.status = "done"
-            m_row.completed_at = now_utc_naive()
-            m_row.completed_by = picked_by
 
     db.commit()
     db.refresh(s)

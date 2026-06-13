@@ -14,14 +14,13 @@ import logging
 import os
 import re
 from datetime import datetime, date
-from app.utils.dt import now_utc_naive
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
 import httpx
 from sqlalchemy.orm import Session
 
-from app.models.surgery import Surgery, SurgeryMilestone
+from app.models.surgery import Surgery
 
 log = logging.getLogger(__name__)
 
@@ -240,145 +239,6 @@ OFFICE_MILESTONES = [
 ]
 
 
-def _derive_status_from_milestones(milestones, scheduled_date) -> tuple[str, Optional[str]]:
-    """Determine (status, sub_flag) from the milestone state + surgery
-    date. The Smartsheet's manually-set Status column is ignored — the
-    *stage* drives status automatically.
-
-    Rules (highest-furthest-completed wins):
-      completed   — all post-op milestones done/skipped/N-A
-      confirmed   — consent OR hospital-posting milestone done; ready sub-flag if surgery ≤ 1 day away
-      in_progress — anything pre-confirm with at least benefits/prior_auth started
-      new         — milestones spawned but nothing started yet
-    """
-    if not milestones:
-        return "new", None
-
-    by_kind = {m.kind: m for m in milestones}
-    today = date.today()
-
-    def is_done(kind: str) -> bool:
-        m = by_kind.get(kind)
-        return m is not None and m.status in ("done", "skipped", "not_applicable")
-
-    def is_started(kind: str) -> bool:
-        m = by_kind.get(kind)
-        return m is not None and m.status in ("done", "in_progress",
-                                                "skipped", "not_applicable")
-
-    # Completed — post-op + billing all wrapped
-    if (is_done("post_op_call") and is_done("op_notes")
-            and is_done("path_report") and is_done("surgery_billed")):
-        return "completed", None
-
-    # Confirmed — surgery has a scheduled date (the patient picked one or
-    # the scheduler placed them on the calendar). Sub-flags surface what's
-    # still missing for the day-of.
-    if scheduled_date:
-        sub = None
-        if (scheduled_date - today).days <= 1:
-            sub = "ready"
-        elif not is_done("consent"):
-            sub = "awaiting_consent"
-        elif not is_done("surgery_confirmed_hospital"):
-            sub = "awaiting_hospital"
-        return "confirmed", sub
-
-    # In progress — anything beyond fresh-spawn
-    if (is_started("benefits_determined") or is_started("prior_auth")
-            or is_started("klara_scheduling") or is_started("patient_picks_date")):
-        sub = None
-        if is_done("patient_picks_date") and not is_done("consent"):
-            sub = "awaiting_consent"
-        elif is_done("klara_scheduling") and not is_done("patient_picks_date"):
-            sub = "klara_sent"
-        return "in_progress", sub
-
-    return "new", None
-
-
-def _milestone_status_from_columns(kind: str, row: dict) -> tuple[str, Optional[datetime]]:
-    """Derive a milestone's status (locked/pending/done/skipped) from
-    the row's column values, plus an effective completed_at when known.
-    """
-    def nonempty(*keys):
-        for k in keys:
-            v = row.get(k)
-            if v not in (None, "", "TBD"):
-                return v
-        return None
-
-    if kind == "benefits_determined":
-        if nonempty("Patient Resp.", "Benefits Exp", "Benefits"):
-            return "done", None
-
-    elif kind == "prior_auth":
-        auth = row.get("Auth")
-        if auth in ("Approved", "Not Required", "Completed"):
-            return "done", None
-        if auth in ("Sent Request", "Sent Medical Records", "Peer-to-Peer Review",
-                    "Required", "TBD", "Denied"):
-            return "in_progress", None
-
-    elif kind == "klara_scheduling":
-        if row.get("EmailSentDate") or row.get("Status") == "Email Sent":
-            return "done", None
-
-    elif kind == "patient_picks_date":
-        if row.get("Surgery Date"):
-            return "done", None
-
-    elif kind == "device_assigned":
-        if row.get("Device Assigned") in (True, "true"):
-            return "done", None
-        if str(row.get("Device Needed") or "") in ("Not Required", "None", ""):
-            return "not_applicable", None
-
-    elif kind == "consent":
-        if row.get("Consent Signed Date") or row.get("Consented") in (True, "true"):
-            return "done", None
-        if row.get("Consent Sent Date"):
-            return "in_progress", None
-
-    elif kind == "surgery_confirmed_hospital":
-        hp = row.get("Hosp Posted?")
-        if hp in ("Confirmation Received", "Completed"):
-            return "done", None
-        if hp == "Sent to hospital":
-            return "in_progress", None
-        if hp in ("Not Needed (Office)", "Not Required"):
-            return "not_applicable", None
-
-    elif kind == "labs_to_hospital":
-        if row.get("Labs Sent?") == "Completed":
-            return "done", None
-
-    elif kind == "post_op_call":
-        if row.get("Post-Op Call") == "Spoke to Pt.":
-            return "done", None
-        if row.get("Post-Op Call"):
-            return "in_progress", None
-
-    elif kind == "op_notes":
-        if row.get("Operative Report") == "Completed":
-            return "done", None
-        if row.get("Operative Report") == "Not Required":
-            return "not_applicable", None
-
-    elif kind == "path_report":
-        v = row.get("Pathology Rec'd")
-        if v in ("Yes", "Completed"):
-            return "done", None
-        if v in ("None expected", "Not Required"):
-            return "not_applicable", None
-
-    elif kind == "surgery_billed":
-        if row.get("Payment Posted-Billing") in (True, "true"):
-            return "done", None
-
-    return "pending", None
-
-
 # ─── Smartsheet API ─────────────────────────────────────────────────
 
 def _fetch_sheet(sheet_id: str = SHEET_ID) -> dict:
@@ -480,7 +340,7 @@ def seed_from_smartsheet(
                 skipped_old += 1
                 continue
 
-        # Status is derived AFTER milestones are applied — placeholder for now.
+        # Status is set below from the Smartsheet "Status" column — placeholder for now.
         status = "new"
         sub_flag = None
 
@@ -622,21 +482,19 @@ def seed_from_smartsheet(
             for k, v in fields.items():
                 setattr(s, k, v)
             db.flush()
-            _ensure_milestones(db, s, row)
             updated += 1
         else:
             s = Surgery(**fields)
             db.add(s)
             db.flush()
-            _ensure_milestones(db, s, row)
             inserted += 1
         db.flush()
-        # Re-query milestones so freshly-added rows are visible (the
-        # relationship cache is stale after bulk-add).
-        fresh_ms = (db.query(SurgeryMilestone)
-                      .filter(SurgeryMilestone.surgery_id == s.id).all())
-        derived_status, derived_sub = _derive_status_from_milestones(
-            fresh_ms, s.scheduled_date)
+        # Status now comes straight from the Smartsheet "Status" column via
+        # STATUS_MAP. (Milestones were retired 2026-06 — the step engine
+        # drives live status; this disabled-by-default seed path no longer
+        # reads/writes SurgeryMilestone.)
+        derived_status, derived_sub = STATUS_MAP.get(
+            row.get("Status") or "New", ("new", None))
         s.status = derived_status
         s.sub_flag = derived_sub
 
@@ -659,36 +517,3 @@ def seed_from_completed_sheet(db: Session, *, weeks_back: int = 6) -> dict:
     cutoff = date.today() - timedelta(weeks=weeks_back)
     return seed_from_smartsheet(db, sheet_id=COMPLETED_SHEET_ID,
                                  surgery_date_min=cutoff)
-
-
-def _ensure_milestones(db: Session, s: Surgery, row: dict) -> None:
-    """Create or sync milestone rows for this surgery based on its
-    selected_facility and the column-derived statuses."""
-    catalog = OFFICE_MILESTONES if s.selected_facility == "office" else HOSPITAL_MILESTONES
-
-    existing = {m.kind: m for m in s.milestones}
-    now = now_utc_naive()
-    for pos, (kind, title, expected_days) in enumerate(catalog, 1):
-        m_status, m_completed_at = _milestone_status_from_columns(kind, row)
-        if kind in existing:
-            m = existing[kind]
-            m.title = title
-            m.position = pos
-            m.expected_duration_days = expected_days
-            # Don't downgrade an admin-edited milestone: only update if
-            # the seed says "done" and we have nothing recorded yet.
-            if m.status in ("locked", "pending") and m_status in ("done", "in_progress",
-                                                                    "not_applicable"):
-                m.status = m_status
-                if m_status == "done" and m.completed_at is None:
-                    m.completed_at = m_completed_at or now
-                    m.completed_by = "system:smartsheet-seed"
-        else:
-            db.add(SurgeryMilestone(
-                surgery_id=s.id,
-                kind=kind, title=title, position=pos,
-                status=m_status,
-                expected_duration_days=expected_days,
-                completed_at=(m_completed_at or now) if m_status == "done" else None,
-                completed_by="system:smartsheet-seed" if m_status == "done" else None,
-            ))

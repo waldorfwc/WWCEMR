@@ -1,6 +1,83 @@
 # Implementation Plan — Session Resumption Notes
 
-Updated 2026-06-12. Pick up here next time.
+Updated 2026-06-13. Pick up here next time.
+
+---
+
+## 🟣 Surgery Settings + Steps Engine + DocuSign Removal (branch `feat/surgery-settings`)
+
+Status: **DEPLOYED to Cloud Run 2026-06-13** from `feat/surgery-settings`
+(NOT yet merged to `main`; PR pending). Live revisions:
+**backend-00303-qwj**, **frontend-00233-wf5**. Automated smoke passed
+(health 200; all new settings/step/capacity/boldsign endpoints 401-gated =
+live; removed docusign webhook + larc/docusign-templates → 404). UI smoke
+(below) still needs a human pass. 21+ commits on `feat/surgery-settings`
+(off `main`). Backend imports clean, frontend builds clean, test suite at
+its pre-existing baseline (87 failed / 7 errors — all pre-existing
+missing-module/collection failures unrelated to this work; was 90 before,
+−3 from deleting test_docusign_email.py). Spec: `docs/superpowers/specs/2026-06-12-surgery-settings-design.md`.
+Plan: `docs/superpowers/plans/2026-06-12-surgery-settings.md`.
+
+### What shipped (all committed)
+- **Surgery Settings page** at `/surgery/settings` (gear button on dashboard,
+  MANAGE tier). 5 tabs: Alerts & Windows, Workflow Steps, Post-Op Schedules,
+  Facilities & Capacity, Templates. `/surgery/rules` now redirects there;
+  `SurgeryRules.jsx` deleted.
+- **Everything config-driven** via `SurgeryConfig` + `app/services/surgery/settings.py`
+  registry (defaults = old hardcoded values, so behavior is identical until
+  edited): alert thresholds/windows, milestone→step expected-days, post-op
+  schedules, facility capacity rules + office slot times. All PUT-validated.
+- **Milestone → Steps cutover (full):** new `step_engine.py` is the single
+  source of truth; dashboard Critical Alerts / behind-schedule / readiness /
+  buckets all run on steps. **Fixes the bug where newly-created surgeries were
+  invisible to alerts** (milestone spawn had been a no-op). Milestone writes
+  retired; `surgery_milestones` table kept as dormant history. Frontend
+  consumes `surgery.steps`.
+- **DocuSign fully removed** (BoldSign-only): router/webhook, services, client,
+  send/sync endpoints, config, tests deleted; LARC template picker repointed to
+  `/larc/boldsign-templates`; legacy `docusign_envelope_id`/`docusign_template_id`
+  columns retained for read-only historical display. Pre-flight endpoint
+  `GET /api/admin/cleanup/docusign-open-count` added.
+- **klara_scheduling** comment remnants cleaned (Klara stays manual-paste).
+
+### Before you DEPLOY (decisions/notes)
+1. **Review/merge first** — user is holding deploy to review the branch. Merge
+   to `main` (or deploy the branch) when ready.
+2. **Witness env (corrected):** consent-envelope witness reads
+   `CONSENT_WITNESS_EMAIL`/`CONSENT_WITNESS_NAME` (provider-neutral), falling
+   back to `DOCUSIGN_WITNESS_*`. NEITHER is set on the backend Cloud Run
+   service today, so consent envelopes currently have **no witness** — the
+   DocuSign removal does NOT change this. If a witness IS wanted, set
+   `CONSENT_WITNESS_NAME` + `CONSENT_WITNESS_EMAIL` (need the values) at deploy.
+   No DOCUSIGN_* secret dependency for witness after all.
+3. **Secret Manager docusign-* secrets:** can be deleted in a later cleanup;
+   no code references them after this branch (only the moot witness fallback).
+
+### Deploy runbook (T18 — not yet run)
+```
+# confirm current image paths first:
+gcloud run services describe backend  --region=us-east4 --project=wwc-solutions \
+  --format="value(spec.template.spec.containers[0].image)"
+# backend:
+cd backend
+gcloud builds submit --tag=us-east4-docker.pkg.dev/wwc-solutions/<repo>/backend:latest --project=wwc-solutions
+gcloud run deploy backend  --image=us-east4-docker.pkg.dev/wwc-solutions/<repo>/backend:latest \
+  --region=us-east4 --project=wwc-solutions   # keep STORAGE_BACKEND=gcs
+# frontend: same pattern for the frontend service.
+```
+Post-deploy smoke (8 pts): dashboard Critical Alerts populated (step-based);
+a freshly-created surgery is now alertable; SurgeryDetail timeline renders
+from API steps (office=12, hospital=15); /surgery/settings 5 tabs load;
+change Critical Overdue 48→72 shrinks red set; MedStar 4th 180-min case still
+rejected; BoldSign consent send works + legacy DocuSign envelope read-only;
+LARC device-type page lists BoldSign templates. Then update the live-revision
+note below.
+
+### Follow-ups (non-blocking)
+- UI control to record post-op call (welfare_fu step reads
+  `post_op_call_status`; old milestone card that set it is retired — staff
+  currently have no control to mark "Spoke to Pt."). See task list.
+- Delete docusign-* Secret Manager secrets after a clean deploy cycle.
 
 ---
 
