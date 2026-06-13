@@ -35,6 +35,7 @@ from app.services.audit_service import log_action
 from app.services.surgery.slot_conflict import overlapping_slot
 from app.services.surgery.blackout_conflict import is_date_blacked_out
 from app.services.surgery.settings import cfg
+from app.services.surgery import step_engine
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
@@ -71,50 +72,14 @@ PercentAmount = Annotated[float, Field(ge=0, le=100)]
 
 # ─── Behind-schedule helper ──────────────────────────────────────────
 
-def _current_milestone(s: Surgery) -> Optional[SurgeryMilestone]:
-    """First non-done, non-skipped milestone, ordered by position.
-
-    Also skips milestones whose `kind` is no longer in the active catalog
-    (e.g. klara_scheduling rows on surgeries created before that step was
-    retired). Without this guard the dashboard's behind-schedule check
-    sticks on a milestone that has no UI / no automation to advance it,
-    and Critical Alerts fills with stale rows forever. The admin/cleanup
-    endpoint normalizes the data; this filter makes the dashboard correct
-    immediately on deploy.
-    """
-    from app.services.surgery.smartsheet_seed import (
-        HOSPITAL_MILESTONES, OFFICE_MILESTONES,
+def _is_behind_steps(db: Session, s: Surgery) -> tuple[bool, int]:
+    """Returns (is_behind, hours_overdue) for a surgery's current step,
+    using the steps engine (config-driven expected days + grace)."""
+    return step_engine.is_behind(
+        s,
+        expected_days=step_engine.expected_days_map(db, s),
+        grace_hours=cfg(db, "critical_overdue_hours"),
     )
-    valid_kinds = {k for k, _, _ in HOSPITAL_MILESTONES + OFFICE_MILESTONES}
-    pending = [m for m in (s.milestones or [])
-               if m.status not in ("done", "skipped", "not_applicable")
-               and m.kind in valid_kinds]
-    pending.sort(key=lambda m: m.position)
-    return pending[0] if pending else None
-
-
-def _milestone_age_days(m: SurgeryMilestone, ref: Optional[_date] = None) -> int:
-    """Days since this milestone became eligible (started, or surgery's
-    last update if not started)."""
-    ref = ref or _date.today()
-    base = m.started_at or m.surgery.updated_at or m.surgery.created_at
-    if not base:
-        return 0
-    base_date = base.date() if hasattr(base, 'date') else base
-    return max(0, (ref - base_date).days)
-
-
-def _is_behind(s: Surgery, hours: int = 0) -> tuple[bool, int]:
-    """Returns (is_behind, hours_overdue) for a surgery's current milestone."""
-    m = _current_milestone(s)
-    if not m or not m.expected_duration_days:
-        return False, 0
-    age_days = _milestone_age_days(m)
-    overdue_days = age_days - m.expected_duration_days
-    if overdue_days <= 0:
-        return False, 0
-    overdue_hours = overdue_days * 24
-    return overdue_hours > hours, overdue_hours
 
 
 # ─── Serializer ─────────────────────────────────────────────────────
@@ -138,8 +103,8 @@ def _latest_file(s: Surgery, *, kind: str) -> Optional[dict]:
 
 def _surgery_dict(db: Session, s: Surgery, *, include_milestones: bool = False,
                    today: Optional[_date] = None) -> dict:
-    behind, hours_overdue = _is_behind(s)
-    cur_m = _current_milestone(s)
+    behind, hours_overdue = _is_behind_steps(db, s)
+    cur_step = step_engine.current_step(s)
     out = {
         "id": str(s.id),
         "surgery_number": s.surgery_number,
@@ -291,8 +256,12 @@ def _surgery_dict(db: Session, s: Surgery, *, include_milestones: bool = False,
         "sms_consent":      bool(s.sms_consent),
         "sms_consented_at": s.sms_consented_at.isoformat() if s.sms_consented_at else None,
         "cell_phone":       s.cell_phone,
-        "current_milestone": cur_m.kind if cur_m else None,
-        "current_milestone_title": cur_m.title if cur_m else None,
+        "current_step": cur_step["key"] if cur_step else None,
+        "current_step_title": cur_step["title"] if cur_step else None,
+        # kept for one release so older frontend code doesn't break:
+        "current_milestone": cur_step["key"] if cur_step else None,
+        "current_milestone_title": cur_step["title"] if cur_step else None,
+        "steps": step_engine.compute_steps(s, titles=step_engine.titles_map(db, s)),
         "behind_schedule": behind,
         "hours_overdue": hours_overdue,
         "stuck": s.status == "in_progress" and behind,
@@ -303,23 +272,10 @@ def _surgery_dict(db: Session, s: Surgery, *, include_milestones: bool = False,
         "created_at": s.created_at.isoformat() if s.created_at else None,
         "updated_at": s.updated_at.isoformat() if s.updated_at else None,
     }
-    if include_milestones:
-        out["milestones"] = [
-            {
-                "id": str(m.id),
-                "kind": m.kind,
-                "title": m.title,
-                "position": m.position,
-                "status": m.status,
-                "started_at": m.started_at.isoformat() if m.started_at else None,
-                "completed_at": m.completed_at.isoformat() if m.completed_at else None,
-                "completed_by": m.completed_by,
-                "notes": m.notes,
-                "expected_duration_days": m.expected_duration_days,
-                "data": m.data_json,
-            }
-            for m in (s.milestones or [])
-        ]
+    # `include_milestones` is retained on the signature so existing callers
+    # don't break, but the milestone system is retired — the `steps` array
+    # above is now the single source of workflow progress. This block is a
+    # no-op; remove the param once no caller passes it.
     return out
 
 
@@ -351,15 +307,15 @@ def dashboard(db: Session = Depends(get_db),
         for b in _surgery_buckets(db, s, today):
             bucket_counts[b] = bucket_counts.get(b, 0) + 1
 
-        behind, hrs = _is_behind(s)
+        behind, hrs = _is_behind_steps(db, s)
         if behind:
             stuck_count += 1
-            cur_m = _current_milestone(s)
+            cur_step = step_engine.current_step(s)
             item = {
                 "surgery_id": str(s.id),
                 "patient_name": s.patient_name,
                 "chart_number": s.chart_number,
-                "milestone": cur_m.title if cur_m else None,
+                "milestone": cur_step["title"] if cur_step else None,
                 "hours_overdue": hrs,
             }
             if hrs > cfg(db, "critical_overdue_hours"):
@@ -622,30 +578,23 @@ PRE_OP_MILESTONES = {
 
 
 def _readiness_indicator(db: Session, s: Surgery) -> tuple[str, list[str], int]:
-    """Returns (color, open_milestone_titles, critical_count).
+    """Returns (color, open_step_titles, critical_count).
 
     color is 'green' | 'yellow' | 'red':
-      green   — every pre-op milestone is done / N-A / skipped
-      yellow  — at least one pre-op milestone is still open (pending or in_progress)
-      red     — at least one pre-op milestone is overdue by >48h
+      green   — every pre-op step is done / n/a
+      yellow  — at least one pre-op step is still open (todo / in_progress)
+      red     — the current step is overdue past the configured grace
     """
-    open_titles: list[str] = []
-    critical = 0
-    for m in (s.milestones or []):
-        if m.kind not in PRE_OP_MILESTONES:
-            continue
-        if m.status in ("done", "skipped", "not_applicable"):
-            continue
-        open_titles.append(m.title)
-        if m.expected_duration_days:
-            age = _milestone_age_days(m)
-            if age - m.expected_duration_days > cfg(db, "critical_overdue_hours") / 24:    # >48h late
-                critical += 1
+    pre_keys = (step_engine.PRE_OP_STEP_KEYS_OFFICE
+                if s.selected_facility == "office"
+                else step_engine.PRE_OP_STEP_KEYS_HOSPITAL)
+    open_titles = [st["title"] for st in step_engine.compute_steps(s)
+                   if st["key"] in pre_keys
+                   and st["state"] in ("todo", "in_progress")]
     if not open_titles:
         return "green", [], 0
-    if critical > 0:
-        return "red", open_titles, critical
-    return "yellow", open_titles, 0
+    behind, _hrs = _is_behind_steps(db, s)
+    return ("red", open_titles, 1) if behind else ("yellow", open_titles, 0)
 
 
 @router.get("/calendar")
@@ -796,14 +745,14 @@ def list_surgeries(
     # Post-fetch filters (depend on computed values)
     if milestone:
         rows = [s for s in rows
-                if _current_milestone(s) and _current_milestone(s).kind == milestone]
+                if (step_engine.current_step(s) or {}).get("key") == milestone]
     if bucket:
         if bucket not in ALL_BUCKETS:
             raise HTTPException(status_code=422, detail=f"unknown bucket: {bucket}")
         today = _date.today()
         rows = [s for s in rows if bucket in _surgery_buckets(db, s, today)]
     if behind_only:
-        rows = [s for s in rows if _is_behind(s)[0]]
+        rows = [s for s in rows if _is_behind_steps(db, s)[0]]
     if preop_needs_repeat is not None:
         rows = [s for s in rows if _preop_needs_repeat(db, s) == preop_needs_repeat]
     if age_min is not None:
@@ -816,7 +765,7 @@ def list_surgeries(
     # Sort: urgent first, then most behind, then by created_at desc
     rows.sort(key=lambda s: (
         0 if s.urgency == "urgent" else 1,
-        -_is_behind(s)[1],
+        -_is_behind_steps(db, s)[1],
         -(s.created_at.timestamp() if s.created_at else 0),
     ))
 
