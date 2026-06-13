@@ -188,6 +188,8 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "benefits_verified_at":      (str(s.benefits_verified_at)
                                         if s.benefits_verified_at else None),
         "labs_sent_to_hospital":     bool(s.labs_sent_to_hospital),
+        "device_required":           bool(s.device_required),
+        "device_assigned":           bool(s.device_assigned),
         "payment_posted_to_billing": bool(s.payment_posted_to_billing),
         "calendar_invite_sent_at":   (s.calendar_invite_sent_at.isoformat()
                                         if s.calendar_invite_sent_at else None),
@@ -1232,6 +1234,14 @@ class SurgeryPatch(BaseModel):
     lab_appointment_date: Optional[str] = None
     # Pre-op visit with the surgeon (anchors the Unresponsive 30-day clock)
     preop_date: Optional[str] = None
+    # Step-completion columns the milestone→steps cutover orphaned. These
+    # feed step_engine._state() so staff can complete the step directly.
+    # (Fable surgery audit #4, #13, #14, #16.)
+    labs_sent_to_hospital:   Optional[bool] = None   # labs step
+    post_op_call_status:     Optional[str]  = None    # welfare_fu step ("Spoke to Pt.")
+    operative_report_status: Optional[str]  = None    # notes_reports step
+    device_required:         Optional[bool] = None    # device step
+    device_assigned:         Optional[bool] = None    # device step
 
 
 # ─── Slot duration patch (Phase D3) ────────────────────────────────
@@ -1388,6 +1398,19 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     if "surgeon_email" in data:
         em = (data["surgeon_email"] or "").strip().lower() or None
         data["surgeon_email"] = em
+
+    # operative_report_status is a NOT NULL enum-ish column. Accept only the
+    # canonical values the importer + step engine use; reject NULL so we never
+    # violate the column constraint. (Fable surgery audit #14.)
+    if "operative_report_status" in data:
+        ors = data["operative_report_status"]
+        if ors is None or str(ors).lower() not in (
+                "not_received", "not_required", "received", "completed"):
+            raise HTTPException(
+                status_code=422,
+                detail=("operative_report_status must be one of "
+                        "not_received / not_required / received / completed"))
+        data["operative_report_status"] = str(ors).lower()
 
     # Auto-attribute duration_source when only duration_minutes is patched
     if "duration_minutes" in data and "duration_source" not in data:
@@ -2340,6 +2363,10 @@ def send_boarding_slip(surgery_id: str,
             content=f"Faxed boarding slip to {payload.to.strip()} "
                     f"(msg id {result.get('message_id') or '—'}).",
         ))
+        # Mark the post_to_hospital step done — sending the boarding slip IS
+        # the act of posting the surgery to the hospital. The milestone→steps
+        # cutover orphaned this column (only ever cleared). (Fable audit #5.)
+        s.calendar_invite_sent_at = now_utc_naive()
         db.commit()
         return {
             "ok": True, "kind": "fax",
@@ -2410,6 +2437,8 @@ def send_boarding_slip(surgery_id: str,
         surgery_id=s.id, created_by=actor,
         content=f"Emailed boarding slip to {payload.to.strip()}.",
     ))
+    # Mark the post_to_hospital step done (see fax path above). (Fable audit #5.)
+    s.calendar_invite_sent_at = now_utc_naive()
     db.commit()
     return {"ok": True, "kind": "email", "to": payload.to.strip(),
             "send_history": f.send_history or []}

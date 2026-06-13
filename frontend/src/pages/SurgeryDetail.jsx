@@ -2979,6 +2979,7 @@ function GroupedSurgeryBody({ surgery }) {
       {/* Step 6 — Allocate Device (if required) */}
       <StepCard n={6} title="Allocate Device" tone="teal" optional
                 steps={steps}>
+        <DeviceStepControl surgery={surgery} />
         <RequestDevicePanel surgery={surgery} />
         <LarcDevicePickerCard surgery={surgery} flat />
       </StepCard>
@@ -3024,12 +3025,13 @@ function GroupedSurgeryBody({ surgery }) {
       {/* Step 13 — Post Surgery Welfare F/U */}
       <StepCard n={13} title="Post Surgery Welfare F/U" tone="slate"
                 steps={steps}>
-        <PostOpCallCardBody surgery={surgery} milestone={null} />
+        <PostOpCallCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 14 — Surgery Notes & Reports */}
       <StepCard n={14} title="Surgery Notes & Reports" tone="slate"
                 steps={steps}>
+        <OpReportStatusControl surgery={surgery} />
         <FilesPanel surgery={surgery} kindFilter="op_notes" label="Operative Report" />
         <FilesPanel surgery={surgery} kindFilter="path_report" label="Pathology Report" />
       </StepCard>
@@ -3090,6 +3092,7 @@ function OfficeProcedureBody({ surgery, steps }) {
       {/* Step 6 — Allocate Device (if required) */}
       <StepCard n={6} title="Allocate Device" tone="teal" optional
                 steps={steps}>
+        <DeviceStepControl surgery={surgery} />
         <RequestDevicePanel surgery={surgery} />
         <LarcDevicePickerCard surgery={surgery} flat />
       </StepCard>
@@ -3115,7 +3118,7 @@ function OfficeProcedureBody({ surgery, steps }) {
       {/* Step 10 — Post Surgery Welfare F/U */}
       <StepCard n={10} title="Post Surgery Welfare F/U" tone="slate"
                 steps={steps}>
-        <PostOpCallCardBody surgery={surgery} milestone={null} />
+        <PostOpCallCardBody surgery={surgery} />
       </StepCard>
 
       {/* Step 11 — Procedure Pathology Report (if required) */}
@@ -4101,6 +4104,14 @@ function LabsCardBody({ surgery }) {
       <div className="text-[10px] text-gray-500 italic">
         Patient normally reports this date on their portal. Use the editor above to backfill if they called in.
       </div>
+
+      <label className="flex items-center gap-2 pt-1 border-t border-border-subtle mt-2 cursor-pointer">
+        <input type="checkbox"
+               checked={!!surgery.labs_sent_to_hospital}
+               disabled={patch.isPending}
+               onChange={e => patch.mutate({ labs_sent_to_hospital: e.target.checked })} />
+        <span className="text-[12px] text-gray-700">Labs Sent To Hospital</span>
+      </label>
     </div>
   )
 }
@@ -4108,21 +4119,108 @@ function LabsCardBody({ surgery }) {
 
 // ─── Post-op call script ──────────────────────────────────────────
 
-function PostOpCallCardBody({ surgery, milestone }) {
-  void surgery
+function PostOpCallCardBody({ surgery }) {
   // The post-op welfare call was previously driven by a milestone row + a
   // milestone-action POST that has since been removed server-side. With
-  // milestones retired there is no longer a backing record to read/write,
-  // so this step renders an informational stub. (The save UI it used to
-  // host hit the now-deleted /surgery/{id}/milestones/{kind}/{action} route.)
-  if (!milestone) {
-    return (
-      <div className="text-xs text-gray-500 italic">
-        Available after surgery completion.
+  // milestones retired, post_op_call_status is now PATCHed directly; the
+  // welfare_fu step is done when it reads "Spoke to Pt." (Fable audit #13.)
+  const qc = useQueryClient()
+  const spoke = (surgery.post_op_call_status || '').toLowerCase() === 'spoke to pt.'
+
+  const patch = useMutation({
+    mutationFn: (body) => api.patch(`/surgery/${surgery.id}`, body).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  return (
+    <div className="space-y-2 text-[12px]">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold text-gray-800">Post-Op Welfare Call</h3>
+        <span className={`text-[11px] uppercase tracking-wide px-1.5 py-0.5 rounded ${
+          spoke ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+        }`}>
+          {spoke ? 'spoke to pt.' : 'not yet'}
+        </span>
       </div>
-    )
-  }
-  return null
+      {spoke ? (
+        <button className="text-[11px] text-muted hover:underline"
+                disabled={patch.isPending}
+                onClick={() => patch.mutate({ post_op_call_status: null })}>
+          Mark not yet contacted
+        </button>
+      ) : (
+        <button className="btn-primary text-[11px]"
+                disabled={patch.isPending}
+                onClick={() => patch.mutate({ post_op_call_status: 'Spoke to Pt.' })}>
+          {patch.isPending ? 'Saving…' : 'Mark "Spoke to Pt."'}
+        </button>
+      )}
+    </div>
+  )
+}
+
+
+// Device step — done when device_required && device_assigned. n/a when not
+// required. The milestone→steps cutover orphaned these columns. (Fable audit #16.)
+function DeviceStepControl({ surgery }) {
+  const qc = useQueryClient()
+  const patch = useMutation({
+    mutationFn: (body) => api.patch(`/surgery/${surgery.id}`, body).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  return (
+    <div className="flex flex-col gap-1.5 mb-2 text-[12px]">
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox"
+               checked={!!surgery.device_required}
+               disabled={patch.isPending}
+               onChange={e => patch.mutate({ device_required: e.target.checked })} />
+        <span className="text-gray-700">Device Required</span>
+      </label>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox"
+               checked={!!surgery.device_assigned}
+               disabled={patch.isPending || !surgery.device_required}
+               onChange={e => patch.mutate({ device_assigned: e.target.checked })} />
+        <span className={surgery.device_required ? 'text-gray-700' : 'text-gray-400'}>
+          Device Assigned
+        </span>
+      </label>
+    </div>
+  )
+}
+
+
+// Operative-report status — drives the notes_reports step. Done when the
+// status is "received" or "completed". (Fable audit #14.)
+function OpReportStatusControl({ surgery }) {
+  const qc = useQueryClient()
+  const value = surgery.operative_report_status || 'not_received'
+
+  const patch = useMutation({
+    mutationFn: (status) =>
+      api.patch(`/surgery/${surgery.id}`, { operative_report_status: status }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <span className="text-[11px] uppercase tracking-wide text-gray-500">Operative report:</span>
+      <select className="input text-[12px]"
+              value={value}
+              disabled={patch.isPending}
+              onChange={e => patch.mutate(e.target.value)}>
+        <option value="not_received">Not Received</option>
+        <option value="received">Received</option>
+        <option value="completed">Completed</option>
+        <option value="not_required">Not Required</option>
+      </select>
+    </div>
+  )
 }
 
 
