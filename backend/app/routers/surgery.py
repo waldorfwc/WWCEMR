@@ -2475,6 +2475,17 @@ async def bulk_import_candidates(
     BlockDay silently. Rows without a recognized Appointment Type or
     without a BlockDay for the day are reported in `schedule_error_rows`.
     """
+    # backfill_mode mass force-books, bypassing capacity COUNT / blackout
+    # guards — too blunt for a WORK-tier coordinator. Allow normal import
+    # at WORK, but require MANAGE+ for backfill_mode=true. (audit #28)
+    if backfill_mode:
+        has_manage = (current_user.get("module_tier") or {}).get(
+            "surgery", 0) >= int(Tier.MANAGE)
+        if not has_manage:
+            raise HTTPException(
+                status_code=403,
+                detail="backfill_mode=true requires Tier.MANAGE or higher.")
+
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=422, detail="empty file")
