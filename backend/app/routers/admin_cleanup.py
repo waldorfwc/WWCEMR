@@ -567,3 +567,46 @@ def docusign_open_count(db: Session = Depends(get_db),
                .filter(~SurgeryConsentEnvelope.status.in_(_TERMINAL))
                .scalar())
     return {"open_docusign_envelopes": int(count or 0)}
+
+
+@router.get("/billing-doc-duplicate-hashes")
+def billing_doc_duplicate_hashes(db: Session = Depends(get_db),
+                                 current_user: dict = Depends(requires_super_admin)):
+    """Read-only diagnostic: find LIVE (non-deleted) billing_documents that
+    share a content_hash. These are the genuine duplicates that block the
+    partial unique index ix_billing_documents_content_hash_unique even after
+    it was scoped to live rows (they come from `force=true` 'upload anyway').
+    Returns the duplicate groups so an operator can decide what to merge/delete.
+    Nothing is mutated."""
+    from app.models.billing_document import BillingDocument
+    dup_hashes = (db.query(BillingDocument.content_hash,
+                           func.count(BillingDocument.id).label("n"))
+                    .filter(BillingDocument.content_hash.isnot(None))
+                    .filter(BillingDocument.deleted_at.is_(None))
+                    .group_by(BillingDocument.content_hash)
+                    .having(func.count(BillingDocument.id) > 1)
+                    .all())
+    groups = []
+    for content_hash, n in dup_hashes:
+        rows = (db.query(BillingDocument)
+                  .filter(BillingDocument.content_hash == content_hash)
+                  .filter(BillingDocument.deleted_at.is_(None))
+                  .order_by(BillingDocument.uploaded_at.asc())
+                  .all())
+        groups.append({
+            "content_hash": content_hash,
+            "count": int(n),
+            "documents": [{
+                "id": str(d.id),
+                "original_filename": d.original_filename,
+                "classification": d.classification,
+                "status": d.status,
+                "uploaded_by": d.uploaded_by,
+                "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None,
+            } for d in rows],
+        })
+    return {
+        "live_duplicate_hash_groups": len(groups),
+        "total_redundant_docs": sum(g["count"] - 1 for g in groups),
+        "groups": groups,
+    }
