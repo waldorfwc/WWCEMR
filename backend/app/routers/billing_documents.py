@@ -202,6 +202,7 @@ async def upload_document(
     if not force:
         existing = (db.query(BillingDocument)
                       .filter(BillingDocument.content_hash == content_hash)
+                      .filter(BillingDocument.deleted_at.is_(None))
                       .order_by(BillingDocument.uploaded_at.desc())
                       .first())
         if existing:
@@ -273,6 +274,7 @@ async def upload_document(
             raise
         existing = (db.query(BillingDocument)
                       .filter(BillingDocument.content_hash == content_hash)
+                      .filter(BillingDocument.deleted_at.is_(None))
                       .order_by(BillingDocument.uploaded_at.desc())
                       .first())
         if not existing:
