@@ -216,7 +216,7 @@ export default function ClaimDetail() {
                     <div className="space-y-2">
                       <textarea
                         className="input text-xs h-16 resize-none"
-                        placeholder="Optional notes for the AI (e.g. 'claim was originally submitted 01/15/2025 via Waystar, tracking #12345')"
+                        placeholder="Optional notes for the AI (e.g. 'claim was originally submitted 01/15/2025')"
                         value={appealNotes}
                         onChange={e => setAppealNotes(e.target.value)}
                       />

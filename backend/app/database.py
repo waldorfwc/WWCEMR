@@ -471,6 +471,33 @@ def _apply_lightweight_migrations():
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"))
 
+    # Dropped columns. SQLAlchemy never drops columns on create_all(), so
+    # retired fields linger. ALTER TABLE ... DROP COLUMN is supported by
+    # Postgres and SQLite >= 3.35; we probe the live schema with the
+    # inspector and only issue the DROP when the column actually exists, so
+    # this is idempotent on both dialects and safe to re-run every boot.
+    dropped = [
+        # Retired Waystar status-sync columns (Waystar integration removed).
+        ("active_claims", "last_status_check_at"),
+        ("active_claims", "last_status_response"),
+    ]
+    for table, column in dropped:
+        if table not in existing_tables:
+            continue
+        cols = {c["name"] for c in insp.get_columns(table)}
+        if column not in cols:
+            continue
+        try:
+            with engine.begin() as conn:
+                conn.execute(text(f"ALTER TABLE {table} DROP COLUMN {column}"))
+        except Exception as exc:
+            # Old SQLite (< 3.35) can't drop columns. Leaving the physical
+            # column in place is harmless — the model no longer maps it.
+            import logging
+            logging.getLogger(__name__).warning(
+                "Could not drop column %s.%s (likely SQLite < 3.35): %s",
+                table, column, exc)
+
     # Composite indexes (CREATE INDEX IF NOT EXISTS — safe to re-run on every
     # boot). Add new entries here when a query starts showing up hot.
     indexes = [

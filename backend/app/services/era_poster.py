@@ -409,9 +409,9 @@ def process_era_file(
 ) -> ProcessResult:
     """Parse + match + post one ERA file end-to-end.
 
-    Callers: era_posting.commit (per EraFilePreview), waystar.sync_eras_sftp
-    (per downloaded file). Creates an EraFile DB row, posts each matched
-    claim in its own transaction, returns structured counts + errors.
+    Callers: era_posting.commit (per EraFilePreview). Creates an EraFile DB
+    row, posts each matched claim in its own transaction, returns structured
+    counts + errors.
     """
     from app.parsers.era_835 import Era835Parser
     from app.models.claim import EraFile as EraFileModel

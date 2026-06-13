@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import {
   DollarSign, AlertTriangle, TrendingDown, Upload,
-  RefreshCw, CheckCircle, XCircle, Wifi, WifiOff,
+  RefreshCw, CheckCircle, XCircle,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import EmptyState from '../components/EmptyState'
@@ -66,7 +66,6 @@ export default function ARDashboard() {
   const [uploadResult, setUploadResult] = useState(null)
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef()
-  const qc = useQueryClient()
 
   const { data: arData, isLoading: arLoading, refetch: refetchAR } = useQuery({
     queryKey: ['ar-summary'],
@@ -74,26 +73,9 @@ export default function ARDashboard() {
     refetchInterval: 60000,
   })
 
-  const { data: waystarStatus } = useQuery({
-    queryKey: ['waystar-status'],
-    queryFn: () => api.get('/waystar/status').then(r => r.data),
-  })
-
   const { data: payerPerf, isLoading: payerLoading } = useQuery({
     queryKey: ['payer-performance'],
     queryFn: () => api.get('/ar/payer-performance').then(r => r.data),
-  })
-
-  const testConnection = useMutation({
-    mutationFn: () => api.post('/waystar/test-connection').then(r => r.data),
-  })
-
-  const syncEras = useMutation({
-    mutationFn: () => api.post('/waystar/sync-eras').then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries(['ar-summary'])
-      qc.invalidateQueries(['claim-summary'])
-    },
   })
 
   async function handleUpload(e) {
@@ -148,7 +130,7 @@ export default function ARDashboard() {
         <div>
           <h1 className="page-title">A/R Dashboard</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Accounts Receivable — ERA Database + Waystar + PrimeSuite
+            Accounts Receivable — ERA Database + PrimeSuite
           </p>
         </div>
         <button
@@ -158,78 +140,6 @@ export default function ARDashboard() {
           <RefreshCw size={14} />
           Refresh
         </button>
-      </div>
-
-      {/* Waystar Status Bar */}
-      <div className="card mb-5 flex flex-wrap items-center gap-4">
-        <div className="flex items-center gap-2 text-sm">
-          {waystarStatus?.configured ? (
-            <Wifi size={16} className="text-green-600" />
-          ) : (
-            <WifiOff size={16} className="text-gray-400" />
-          )}
-          <span className="font-medium text-gray-700">Waystar:</span>
-          {waystarStatus?.configured ? (
-            <span className="text-green-700">Credentials configured</span>
-          ) : (
-            <span className="text-gray-400">Not configured</span>
-          )}
-          {waystarStatus?.configured && (
-            <span className="text-gray-400 text-xs ml-1">
-              (key: {waystarStatus.api_key_hint})
-            </span>
-          )}
-        </div>
-
-        {waystarStatus?.configured && (
-          <>
-            <button
-              onClick={() => testConnection.mutate()}
-              disabled={testConnection.isPending}
-              className="btn-secondary text-xs flex items-center gap-1"
-            >
-              {testConnection.isPending ? (
-                <RefreshCw size={12} className="animate-spin" />
-              ) : (
-                <CheckCircle size={12} />
-              )}
-              Test Connection
-            </button>
-
-            {testConnection.data && (
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                testConnection.data.status === 'connected'
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-red-100 text-red-700'
-              }`}>
-                {testConnection.data.status === 'connected'
-                  ? `Connected via ${testConnection.data.mode}`
-                  : 'Connection failed — see details below'}
-              </span>
-            )}
-
-            {waystarStatus?.has_sftp && (
-              <button
-                onClick={() => syncEras.mutate()}
-                disabled={syncEras.isPending}
-                className="btn-primary text-xs flex items-center gap-1 ml-auto"
-              >
-                {syncEras.isPending ? (
-                  <RefreshCw size={12} className="animate-spin" />
-                ) : (
-                  <Upload size={12} />
-                )}
-                Sync ERAs via SFTP
-              </button>
-            )}
-          </>
-        )}
-
-        {testConnection.data?.status !== 'connected' && testConnection.data?.help && (
-          <div className="w-full mt-2 text-xs text-amber-700 bg-amber-50 rounded p-2">
-            {testConnection.data.help}
-          </div>
-        )}
       </div>
 
       {/* Stat Row */}

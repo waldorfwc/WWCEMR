@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Send, Upload, Download, Trash2, Save,
-  RefreshCw, ExternalLink, Clock, AlertTriangle, ChevronDown, ChevronRight,
+  ExternalLink, Clock, AlertTriangle, ChevronDown, ChevronRight,
   FileText, Sparkles, X, Mail, Printer, IdCard,
   MessageSquare, Paperclip,
 } from 'lucide-react'
@@ -81,14 +81,6 @@ export default function ActiveARDetail() {
     },
   })
 
-  const syncMutation = useMutation({
-    mutationFn: () => api.post(`/active-ar/claims/${id}/sync-status`),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['active-ar-claim', id] })
-      qc.invalidateQueries({ queryKey: ['active-ar-claim-docs', id] })
-    },
-  })
-
   if (isLoading) return <LoadingState />
   if (!claim) return <div className="p-6 text-gray-400">Claim not found</div>
 
@@ -97,10 +89,6 @@ export default function ActiveARDetail() {
       <ClaimHeader
         claim={claim}
         onBack={() => navigate('/active-ar')}
-        onSync={() => syncMutation.mutate()}
-        syncing={syncMutation.isPending}
-        syncResult={syncMutation.isSuccess ? syncMutation.data?.data : null}
-        syncError={syncMutation.isError ? (syncMutation.error?.response?.data?.detail || syncMutation.error?.message) : null}
       />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4 px-1">
@@ -141,7 +129,7 @@ export default function ActiveARDetail() {
 // ─────────────────────────────────────────────────────────────────────
 // Header (sticky-ish, prominent)
 
-function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) {
+function ClaimHeader({ claim, onBack }) {
   const pri = PRIORITY_BADGE[claim.insurance_priority] || PRIORITY_BADGE.Primary
   const tf = claim.tf_status
   const tfDays = claim.days_until_tf_deadline
@@ -176,22 +164,7 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
             <div className="text-xs text-gray-500 mt-1">
               DOS {fmt.date(claim.dos)} · Age {claim.age_days != null ? `${claim.age_days}d` : '—'} ·
               {' '}{claim.insurance_company}
-              {claim.last_status_check_at && (
-                <span className="ml-2 text-gray-400">
-                  Last Waystar check: {fmt.date(claim.last_status_check_at)} {fmt.time(claim.last_status_check_at)}
-                </span>
-              )}
             </div>
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <button
-              className="btn-secondary flex items-center gap-1 text-sm"
-              onClick={onSync} disabled={syncing}
-              title="Query Waystar for current claim status"
-            >
-              <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Syncing…' : 'Sync Waystar'}
-            </button>
           </div>
         </div>
 
@@ -205,19 +178,6 @@ function ClaimHeader({ claim, onBack, onSync, syncing, syncResult, syncError }) 
           </div>
         )}
 
-        {syncResult?.summary && (
-          <div className="text-xs bg-green-50 border border-green-200 rounded p-2 mt-2">
-            <span className="font-medium">Sync result:</span> {syncResult.summary}
-            {syncResult.era_attached && (
-              <span className="ml-2 text-green-700">· ERA auto-attached: {syncResult.era_attached}</span>
-            )}
-          </div>
-        )}
-        {syncError && (
-          <div className="text-xs text-red-600 bg-red-50 rounded p-2 mt-2">
-            Sync failed: {syncError}
-          </div>
-        )}
       </div>
     </div>
   )
