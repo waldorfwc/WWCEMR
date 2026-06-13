@@ -26,6 +26,7 @@ export default function SurgerySettings() {
           Surgery Settings
         </h1>
       </div>
+      <HowThisWorks />
       <div className="flex gap-1 border-b border-border-subtle mb-6">
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
@@ -48,6 +49,98 @@ export default function SurgerySettings() {
 
 function Placeholder({ name }) {
   return <div className="text-muted text-sm">{name} — coming in this release.</div>
+}
+
+function HowThisWorks() {
+  const [open, setOpen] = useState(false)
+  return (
+    <section className="card p-4 mb-6">
+      <button onClick={() => setOpen(o => !o)}
+              className="font-medium text-[13px] w-full text-left flex items-center justify-between">
+        <span>How Surgery Scheduling Works</span>
+        <span className="text-muted">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div className="mt-3 text-[13px] leading-relaxed text-gray-800 space-y-4">
+          <div>
+            <div className="font-medium mb-1">Workflow Overview</div>
+            <p className="text-muted">
+              Each surgery moves through a fixed sequence of <strong>steps</strong>. The
+              dashboard surfaces each case into workload buckets based on which steps are
+              still open. Expected days per step are configurable on the Workflow Steps
+              tab — when a case sits past its current step's expected window, it shows as
+              behind schedule.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">Facilities & Block Schedule</div>
+            <p className="text-muted">
+              Three facilities: MedStar SMHC (robotic + major minimally-invasive),
+              UM Charles Regional (minor outpatient or major open), and the WWC Office
+              Procedure Suite (in-office procedures, Thursdays). Block days repeat on a
+              5-week pattern and are materialized ahead by the Schedule Horizon. Federal
+              holidays roll the affected block off; the cycle continues on the next
+              eligible weekday.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">Capacity Rules</div>
+            <ul className="list-disc pl-5 space-y-1 text-muted">
+              <li><strong>MedStar:</strong> 3 × 180-min robotic OR 2 × 240-min robotic per day
+                (mutually exclusive; 180 and 240 can't be mixed). Minor add-ons may follow
+                once the robotic threshold is met and time remains.</li>
+              <li><strong>CRMC:</strong> 6 minor OR 2 major per day (mutually exclusive).</li>
+              <li><strong>Office:</strong> a fixed set of Thursday slot start times.</li>
+            </ul>
+            <p className="text-muted mt-1">
+              The booking system always re-checks the day's real time window, so a case mix
+              exceeding the available minutes is rejected even if the per-kind counts allow it.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">Pre-Op Validity</div>
+            <p className="text-muted">
+              The pre-op H&P must be dated within the Pre-Op Validity window of the surgery
+              date. Older pre-ops are flagged for a repeat visit and surface in the dashboard.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">Consents & E-Signatures</div>
+            <p className="text-muted">
+              Each procedure is matched to one primary consent template (keyword match),
+              plus any supplemental templates (e.g. Medicaid sterilization) whose
+              procedure + insurance + facility conditions are met. Consents are sent for
+              signature through <strong>BoldSign</strong>. Medicaid sterilization consent
+              must be signed at least 30 and no more than 180 days before the procedure.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">Patient Messaging</div>
+            <p className="text-muted">
+              Klara messages are <strong>drafted by the system for staff to copy and paste
+              into Klara manually</strong> — there is no automated Klara send. Patient SMS
+              reminders go out automatically through the SMS templates as the surgery date
+              approaches.
+            </p>
+          </div>
+
+          <div>
+            <div className="font-medium mb-1">Patient Date Picker</div>
+            <p className="text-muted">
+              Patients self-schedule via a soft-auth picker (date of birth + last 4 digits
+              of phone). They see only days where their procedure fits the capacity rules.
+              Picking a date records the scheduled date and start time.
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }
 
 // ─── Alerts & Windows tab ───────────────────────────────────────────
@@ -744,4 +837,568 @@ function CapacityTab() {
   )
 }
 
-function TemplatesTab() { return <Placeholder name="Templates" /> }
+// ─── Templates tab ──────────────────────────────────────────────────
+
+const PROCEDURE_KINDS = ['minor', 'major', 'office', 'robotic_180', 'robotic_240']
+
+const NEW_TEMPLATE = {
+  id:                       '__new',
+  code:                     '',
+  name:                     '',
+  procedure_kind:           'minor',
+  default_duration_minutes: 60,
+  default_cpt_code:         '',
+  is_active:                true,
+}
+
+function ProcedureTemplatesSection() {
+  const qc = useQueryClient()
+  const [editingId, setEditingId] = useState(null)
+  const [draft, setDraft]         = useState(null)
+  const [filter, setFilter]       = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['surgery-templates-admin'],
+    queryFn:  () => api.get('/surgery/admin/procedure-templates').then(r => r.data.templates),
+  })
+
+  const templates = useMemo(() => {
+    const rows = data || []
+    const q = filter.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter(t =>
+      (t.code           || '').toLowerCase().includes(q) ||
+      (t.name           || '').toLowerCase().includes(q) ||
+      (t.procedure_kind || '').toLowerCase().includes(q)
+    )
+  }, [data, filter])
+
+  const createMut = useMutation({
+    mutationFn: (body) => api.post('/surgery/admin/procedure-templates', body).then(r => r.data),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['surgery-templates-admin'] }); setEditingId(null); setDraft(null) },
+    onError:    (e) => alert(saveErrorMessage(e)),
+  })
+
+  const patchMut = useMutation({
+    mutationFn: ({ id, body }) => api.patch(`/surgery/admin/procedure-templates/${id}`, body).then(r => r.data),
+    onSuccess:  () => { qc.invalidateQueries({ queryKey: ['surgery-templates-admin'] }); setEditingId(null); setDraft(null) },
+    onError:    (e) => alert(saveErrorMessage(e)),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/surgery/admin/procedure-templates/${id}`),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['surgery-templates-admin'] }),
+    onError:    (e) => alert(saveErrorMessage(e)),
+  })
+
+  function startEdit(row) {
+    setEditingId(row.id)
+    setDraft({
+      code:                     row.code                     || '',
+      name:                     row.name                     || '',
+      procedure_kind:           row.procedure_kind           || 'minor',
+      default_duration_minutes: row.default_duration_minutes ?? 60,
+      default_cpt_code:         row.default_cpt_code         || '',
+      is_active:                row.is_active                ?? true,
+    })
+  }
+
+  function cancelEdit() { setEditingId(null); setDraft(null) }
+
+  function startNewRow() {
+    setEditingId('__new')
+    setDraft({ code: '', name: '', procedure_kind: 'minor', default_duration_minutes: 60, default_cpt_code: '', is_active: true })
+  }
+
+  function save() {
+    if (!draft?.code?.trim()) { alert('Code is required.');  return }
+    if (!draft?.name?.trim()) { alert('Name is required.'); return }
+    const body = {
+      code:                     draft.code.trim(),
+      name:                     draft.name.trim(),
+      procedure_kind:           draft.procedure_kind,
+      default_duration_minutes: Number(draft.default_duration_minutes) || 60,
+      default_cpt_code:         draft.default_cpt_code.trim() || null,
+      is_active:                draft.is_active,
+    }
+    if (editingId === '__new') createMut.mutate(body)
+    else                       patchMut.mutate({ id: editingId, body })
+  }
+
+  function confirmDelete(row) {
+    if (!window.confirm(`Delete "${row.name}"?`)) return
+    deleteMut.mutate(row.id)
+  }
+
+  const showNewRow = editingId === '__new'
+  const rows = showNewRow ? [NEW_TEMPLATE, ...templates] : templates
+  const isSaving = createMut.isPending || patchMut.isPending
+
+  return (
+    <div>
+      <div className="bg-white rounded-lg border border-border-subtle">
+        <div className="px-5 py-4 border-b border-border-subtle flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900">Procedure Templates</h2>
+            <p className="text-[12px] text-gray-500 mt-0.5">
+              Default procedure templates used when scheduling a surgery. Inactive templates are hidden from the scheduler.
+            </p>
+          </div>
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input text-sm pl-7 pr-2 py-1 w-48"
+                   placeholder="Filter…"
+                   value={filter}
+                   onChange={e => setFilter(e.target.value)} />
+          </div>
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  onClick={startNewRow}
+                  disabled={!!editingId}>
+            <Plus size={12} /> Add Row
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-[11px] uppercase text-gray-500">
+              <tr>
+                <th className="text-left px-5 py-2 w-[10%]">Code</th>
+                <th className="text-left px-3 py-2 w-[24%]">Name</th>
+                <th className="text-left px-3 py-2 w-[16%]">Procedure Kind</th>
+                <th className="text-center px-3 py-2 w-[10%]">Default Min</th>
+                <th className="text-left px-3 py-2 w-[10%]">Default CPT</th>
+                <th className="text-center px-3 py-2 w-[8%]">Active</th>
+                <th className="text-right px-5 py-2 w-[120px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoading && (
+                <tr><td colSpan={7} className="px-5 py-6 text-gray-400 text-[12px]">Loading…</td></tr>
+              )}
+              {!isLoading && rows.length === 0 && (
+                <tr><td colSpan={7} className="px-5 py-6 text-gray-400 text-[12px] italic">
+                  No templates yet — click <strong>Add Row</strong> to start.
+                </td></tr>
+              )}
+              {rows.map(row => {
+                const isEditing = editingId === row.id
+                const dimmed    = !isEditing && !row.is_active
+                return (
+                  <tr key={row.id}
+                      className={`border-t border-border-subtle ${
+                        isEditing ? 'bg-plum-50/40'
+                        : dimmed  ? 'opacity-60 hover:bg-gray-50'
+                        :           'hover:bg-gray-50'
+                      }`}>
+                    {isEditing ? (
+                      <TemplateEditRow
+                        draft={draft}
+                        setDraft={setDraft}
+                        save={save}
+                        cancel={cancelEdit}
+                        isSaving={isSaving}
+                      />
+                    ) : (
+                      <TemplateDisplayRow
+                        row={row}
+                        startEdit={() => startEdit(row)}
+                        onDelete={() => confirmDelete(row)}
+                        disabled={!!editingId}
+                      />
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TemplateDisplayRow({ row, startEdit, onDelete, disabled }) {
+  return (
+    <>
+      <td className="px-5 py-3 align-middle">
+        <code className="text-[12px] bg-gray-100 px-1 py-0.5 rounded">{row.code}</code>
+      </td>
+      <td className="px-3 py-3 align-middle font-medium text-gray-900">{row.name}</td>
+      <td className="px-3 py-3 align-middle text-[12px] text-gray-600">{row.procedure_kind || <span className="italic text-gray-400">—</span>}</td>
+      <td className="px-3 py-3 align-middle text-center text-[12px] text-gray-600">{row.default_duration_minutes ?? <span className="italic text-gray-400">—</span>}</td>
+      <td className="px-3 py-3 align-middle text-[12px] text-gray-600">
+        {row.default_cpt_code
+          ? <code className="bg-gray-100 px-1 py-0.5 rounded">{row.default_cpt_code}</code>
+          : <span className="italic text-gray-400">—</span>}
+      </td>
+      <td className="px-3 py-3 align-middle text-center">
+        <span className={`inline-block w-2 h-2 rounded-full ${row.is_active ? 'bg-green-500' : 'bg-gray-300'}`} title={row.is_active ? 'Active' : 'Inactive'} />
+      </td>
+      <td className="px-5 py-3 align-middle text-right">
+        <div className="inline-flex items-center gap-1">
+          <button className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1 disabled:opacity-30"
+                  onClick={startEdit}
+                  disabled={disabled}
+                  title="Edit row">
+            <Edit3 size={11} /> Edit
+          </button>
+          <button className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1 disabled:opacity-30"
+                  onClick={onDelete}
+                  disabled={disabled}
+                  title="Delete">
+            <Trash2 size={11} />
+          </button>
+        </div>
+      </td>
+    </>
+  )
+}
+
+function TemplateEditRow({ draft, setDraft, save, cancel, isSaving }) {
+  return (
+    <>
+      <td className="px-5 py-3 align-top">
+        <input className="input text-sm w-24"
+               placeholder="office_30"
+               value={draft.code}
+               onChange={e => setDraft({ ...draft, code: e.target.value })}
+               autoFocus />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input className="input text-sm w-full"
+               placeholder="Template name"
+               value={draft.name}
+               onChange={e => setDraft({ ...draft, name: e.target.value })} />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <select className="input text-sm w-full"
+                value={draft.procedure_kind}
+                onChange={e => setDraft({ ...draft, procedure_kind: e.target.value })}>
+          {PROCEDURE_KINDS.map(k => <option key={k} value={k}>{k}</option>)}
+        </select>
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input type="number" min="1"
+               className="input text-sm w-20 text-center"
+               value={draft.default_duration_minutes}
+               onChange={e => setDraft({ ...draft, default_duration_minutes: e.target.value })} />
+      </td>
+      <td className="px-3 py-3 align-top">
+        <input className="input text-sm w-24"
+               placeholder="58571"
+               value={draft.default_cpt_code}
+               onChange={e => setDraft({ ...draft, default_cpt_code: e.target.value })} />
+      </td>
+      <td className="px-3 py-3 align-top text-center">
+        <input type="checkbox"
+               className="h-4 w-4 rounded border-gray-300 text-plum-600 focus:ring-plum-500"
+               checked={draft.is_active}
+               onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
+      </td>
+      <td className="px-5 py-3 align-top text-right">
+        <div className="inline-flex items-center gap-1">
+          <button className="text-[11px] px-2 py-1 rounded bg-plum-600 text-white hover:bg-plum-700 flex items-center gap-1 disabled:opacity-50"
+                  onClick={save}
+                  disabled={isSaving}>
+            <Save size={11} /> {isSaving ? 'Saving…' : 'Save'}
+          </button>
+          <button className="text-[11px] px-2 py-1 rounded border border-gray-200 hover:bg-gray-50"
+                  onClick={cancel}
+                  disabled={isSaving}>
+            Cancel
+          </button>
+        </div>
+      </td>
+    </>
+  )
+}
+
+function EmailTemplatesSection() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['email-templates'],
+    queryFn: () => api.get('/surgery/admin/email-templates').then(r => r.data),
+  })
+
+  const [editingId, setEditingId] = useState(null)
+  const [draft, setDraft] = useState(null)
+  const [previewVars, setPreviewVars] = useState('{\n  "patient_name": "Pat",\n  "surgery_date": "06/15/2026"\n}')
+  const [preview, setPreview] = useState(null)
+
+  const patch = useMutation({
+    mutationFn: ({ id, body }) =>
+      api.patch(`/surgery/admin/email-templates/${id}`, body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['email-templates'] })
+      setEditingId(null); setDraft(null); setPreview(null)
+    },
+    onError: (e) => alert(saveErrorMessage(e)),
+  })
+
+  const previewMut = useMutation({
+    mutationFn: (body) =>
+      api.post('/surgery/admin/email-templates/preview', body).then(r => r.data),
+    onSuccess: (data) => setPreview(data),
+    onError: (e) => alert(saveErrorMessage(e)),
+  })
+
+  function startEdit(t) {
+    setEditingId(t.id)
+    setDraft({
+      label:     t.label,
+      subject:   t.subject,
+      html_body: t.html_body,
+      is_active: t.is_active,
+    })
+    setPreview(null)
+  }
+
+  function runPreview() {
+    let ctx
+    try { ctx = JSON.parse(previewVars) }
+    catch { return alert('Preview vars JSON is invalid') }
+    previewMut.mutate({
+      subject:   draft?.subject || '',
+      html_body: draft?.html_body || '',
+      context:   ctx,
+    })
+  }
+
+  const list = data?.templates || []
+
+  return (
+    <section className="card p-4">
+      <h2 className="font-medium mb-3">Email Templates</h2>
+      <div className="space-y-3">
+        {list.map(t => (
+          <div key={t.id}
+               className={`bg-white border rounded-lg p-4 ${
+                 editingId === t.id ? 'border-plum-400' : 'border-border-subtle'
+               }`}>
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <div className="text-sm font-semibold">{t.label}</div>
+                <div className="text-[11px] text-gray-500 font-mono">{t.kind}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] px-2 py-0.5 rounded ${
+                  t.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                }`}>{t.is_active ? 'active' : 'inactive'}</span>
+                {editingId !== t.id && (
+                  <button className="btn-secondary text-[11px]" onClick={() => startEdit(t)}>
+                    Edit
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {editingId === t.id ? (
+              <div className="mt-2 space-y-2">
+                <div>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-0.5">Subject</label>
+                  <input className="input text-sm w-full"
+                         value={draft.subject}
+                         onChange={e => setDraft({ ...draft, subject: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-0.5">HTML Body</label>
+                  <textarea className="input text-sm w-full font-mono" rows={8}
+                            value={draft.html_body}
+                            onChange={e => setDraft({ ...draft, html_body: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-0.5">
+                    Preview Vars (JSON)
+                  </label>
+                  <textarea className="input text-[11px] w-full font-mono" rows={4}
+                            value={previewVars}
+                            onChange={e => setPreviewVars(e.target.value)} />
+                </div>
+                {preview && (
+                  <div className="bg-gray-50 border border-border-subtle rounded p-2">
+                    <div className="text-[11px] uppercase text-gray-500 mb-1">Preview</div>
+                    <div className="text-[12px] font-semibold">{preview.subject}</div>
+                    <div className="text-[12px] mt-1" dangerouslySetInnerHTML={{ __html: preview.html_body }} />
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button className="btn-primary text-sm"
+                          onClick={() => patch.mutate({ id: t.id, body: draft })}
+                          disabled={patch.isPending}>
+                    {patch.isPending ? 'Saving…' : 'Save'}
+                  </button>
+                  <button className="btn-secondary text-sm" onClick={runPreview}
+                          disabled={previewMut.isPending}>
+                    {previewMut.isPending ? 'Rendering…' : 'Preview'}
+                  </button>
+                  <label className="text-[11px] flex items-center gap-1 ml-2">
+                    <input type="checkbox"
+                           checked={draft.is_active}
+                           onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
+                    Active
+                  </label>
+                  <button className="btn-secondary text-sm ml-auto"
+                          onClick={() => { setEditingId(null); setDraft(null); setPreview(null) }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[12px] text-gray-700 mt-2 font-mono whitespace-pre-wrap line-clamp-3">
+                {t.subject}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function SmsTemplatesSection() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['sms-templates'],
+    queryFn: () => api.get('/surgery/admin/sms-templates').then(r => r.data),
+  })
+
+  const [editingId, setEditingId] = useState(null)
+  const [draft, setDraft] = useState(null)
+  const [previewVars, setPreviewVars] = useState('{\n  "patient_name": "Pat",\n  "surgery_date": "06/15/2026",\n  "start_time": "07:30",\n  "facility": "MedStar",\n  "days_until": "3"\n}')
+  const [preview, setPreview] = useState(null)
+
+  const patch = useMutation({
+    mutationFn: ({ id, body }) =>
+      api.patch(`/surgery/admin/sms-templates/${id}`, body).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['sms-templates'] })
+      setEditingId(null); setDraft(null); setPreview(null)
+    },
+    onError: (e) => alert(saveErrorMessage(e)),
+  })
+
+  const previewMut = useMutation({
+    mutationFn: (body) =>
+      api.post('/surgery/admin/sms-templates/preview', body).then(r => r.data),
+    onSuccess: (data) => setPreview(data),
+    onError: (e) => alert(saveErrorMessage(e)),
+  })
+
+  function startEdit(t) {
+    setEditingId(t.id)
+    setDraft({ label: t.label, body: t.body, is_active: t.is_active })
+    setPreview(null)
+  }
+
+  function runPreview() {
+    let ctx
+    try { ctx = JSON.parse(previewVars) }
+    catch { return alert('Preview vars JSON is invalid') }
+    previewMut.mutate({ body: draft?.body || '', context: ctx })
+  }
+
+  const list = data?.templates || []
+
+  return (
+    <section className="card p-4">
+      <h2 className="font-medium mb-3">SMS Templates</h2>
+      <div className="space-y-3">
+        {list.map(t => (
+          <div key={t.id}
+               className={`bg-white border rounded-lg p-4 ${
+                 editingId === t.id ? 'border-plum-400' : 'border-border-subtle'
+               }`}>
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <div className="text-sm font-semibold">{t.label}</div>
+                <div className="text-[11px] text-gray-500 font-mono">{t.kind}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] px-2 py-0.5 rounded ${
+                  t.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                }`}>{t.is_active ? 'active' : 'inactive'}</span>
+                {editingId !== t.id && (
+                  <button className="btn-secondary text-[11px]" onClick={() => startEdit(t)}>
+                    Edit
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {editingId === t.id ? (
+              <div className="mt-2 space-y-2">
+                <div>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-0.5">
+                    {'Body (plain text — {{var}} for substitution)'}
+                  </label>
+                  <textarea className="input text-sm w-full font-mono" rows={4}
+                            value={draft.body}
+                            onChange={e => setDraft({ ...draft, body: e.target.value })} />
+                  <div className="text-[10px] text-gray-400 mt-0.5">
+                    {draft.body.length} chars
+                    {draft.body.length > 160 && (
+                      <span className="text-amber-700 ml-2">
+                        (will send as multiple segments)
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] uppercase text-gray-500 block mb-0.5">
+                    Preview Vars (JSON)
+                  </label>
+                  <textarea className="input text-[11px] w-full font-mono" rows={4}
+                            value={previewVars}
+                            onChange={e => setPreviewVars(e.target.value)} />
+                </div>
+                {preview && (
+                  <div className="bg-gray-50 border border-border-subtle rounded p-2">
+                    <div className="text-[11px] uppercase text-gray-500 mb-1">
+                      Preview ({preview.length} chars · {preview.segments} segment{preview.segments === 1 ? '' : 's'})
+                    </div>
+                    <div className="text-[12px] font-mono whitespace-pre-wrap">{preview.body}</div>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-1">
+                  <button className="btn-primary text-sm"
+                          onClick={() => patch.mutate({ id: t.id, body: draft })}
+                          disabled={patch.isPending}>
+                    {patch.isPending ? 'Saving…' : 'Save'}
+                  </button>
+                  <button className="btn-secondary text-sm" onClick={runPreview}
+                          disabled={previewMut.isPending}>
+                    {previewMut.isPending ? 'Rendering…' : 'Preview'}
+                  </button>
+                  <label className="text-[11px] flex items-center gap-1 ml-2">
+                    <input type="checkbox"
+                           checked={draft.is_active}
+                           onChange={e => setDraft({ ...draft, is_active: e.target.checked })} />
+                    Active
+                  </label>
+                  <button className="btn-secondary text-sm ml-auto"
+                          onClick={() => { setEditingId(null); setDraft(null); setPreview(null) }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[12px] text-gray-700 mt-2 font-mono whitespace-pre-wrap line-clamp-3">
+                {t.body}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function TemplatesTab() {
+  return (
+    <div className="space-y-6">
+      <ProcedureTemplatesSection />
+      <EmailTemplatesSection />
+      <SmsTemplatesSection />
+    </div>
+  )
+}
