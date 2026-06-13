@@ -4517,7 +4517,7 @@ function ConsentPanel({ surgery }) {
     onError: (e) => alert(e?.response?.data?.detail || 'BoldSign send failed'),
   })
   const boldsignSync = useMutation({
-    mutationFn: () => api.post(`/surgery/${surgery.id}/consent/boldsign-sync`).then(r => r.data),
+    mutationFn: () => api.post(`/surgery/admin/consent/boldsign-sync/${surgery.id}`).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['surgery', surgery.id] })
       qc.invalidateQueries({ queryKey: ['surgery-list'] })
