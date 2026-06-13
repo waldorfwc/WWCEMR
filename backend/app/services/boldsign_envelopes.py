@@ -22,7 +22,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from app.models.surgery import (
-    Surgery, ConsentTemplate, SurgeryConsentEnvelope, SurgeryMilestone,
+    Surgery, ConsentTemplate, SurgeryConsentEnvelope,
 )
 from app.services.consent_template_matcher import (
     TemplateMatch, match_templates_for_surgery, unmatched_procedures,
@@ -426,16 +426,6 @@ def send_consent_envelopes(
         if s.consent_status not in ("signed",):
             s.consent_status = "sent"
 
-    # Move the milestone to in_progress (any sent envelopes count)
-    m = next((mm for mm in (s.milestones or []) if mm.kind == "consent"), None)
-    if m and m.status not in ("done", "skipped") and (sent or skipped):
-        m.status = "in_progress"
-        m.started_at = m.started_at or now
-        appended = "\nBoldSign envelopes sent: " + ", ".join(
-            f"{x['template_name']} ({x['envelope_id'][:8]}…)" for x in sent
-        ) if sent else ""
-        m.notes = (m.notes or "") + appended
-
     db.commit()
     db.refresh(s)
 
@@ -602,13 +592,6 @@ def reconcile_surgery_consent(db: Session, s: Surgery) -> None:
         s.consent_status = "signed"
         latest = max((e.signed_at for e in envs if e.signed_at), default=None)
         s.consent_signed_at = latest or now_utc_naive()
-        m = next(
-            (mm for mm in (s.milestones or []) if mm.kind == "consent"), None
-        )
-        if m and m.status != "done":
-            m.status = "done"
-            m.completed_at = s.consent_signed_at
-            m.completed_by = "boldsign:reconcile"
         return
     if any(e.status in ("sent", "delivered", "signed") for e in envs):
         if s.consent_status != "signed":

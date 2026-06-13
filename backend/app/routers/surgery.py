@@ -23,7 +23,7 @@ from sqlalchemy.orm.exc import StaleDataError
 
 from app.database import get_db
 from app.models.surgery import (
-    Surgery, SurgeryMilestone, BlockSchedule, BlockDay, SurgerySlot,
+    Surgery, BlockSchedule, BlockDay, SurgerySlot,
     SurgeryBlackoutDay, SurgeryWaitlist, SURGERY_URGENCY_VALUES,
     SURGERY_COMPLEXITY_VALUES, SURGERY_DURATION_SOURCES,
     SURGERY_STATUS_VALUES, SURGERY_FACILITY_VALUES, SURGERY_MAX_MINUTES,
@@ -101,7 +101,7 @@ def _latest_file(s: Surgery, *, kind: str) -> Optional[dict]:
     }
 
 
-def _surgery_dict(db: Session, s: Surgery, *, include_milestones: bool = False,
+def _surgery_dict(db: Session, s: Surgery, *,
                    today: Optional[_date] = None) -> dict:
     behind, hours_overdue = _is_behind_steps(db, s)
     cur_step = step_engine.current_step(s)
@@ -265,17 +265,13 @@ def _surgery_dict(db: Session, s: Surgery, *, include_milestones: bool = False,
         "behind_schedule": behind,
         "hours_overdue": hours_overdue,
         "stuck": s.status == "in_progress" and behind,
-        "buckets": sorted(_surgery_buckets(db, s, today)) if s.milestones is not None else [],
+        "buckets": sorted(_surgery_buckets(db, s, today)),
         "google_calendar_event_id":    s.google_calendar_event_id,
         "google_calendar_sync_status": s.google_calendar_sync_status,
         "google_calendar_sync_error":  s.google_calendar_sync_error,
         "created_at": s.created_at.isoformat() if s.created_at else None,
         "updated_at": s.updated_at.isoformat() if s.updated_at else None,
     }
-    # `include_milestones` is retained on the signature so existing callers
-    # don't break, but the milestone system is retired — the `steps` array
-    # above is now the single source of workflow progress. This block is a
-    # no-op; remove the param once no caller passes it.
     return out
 
 
@@ -294,7 +290,6 @@ def dashboard(db: Session = Depends(get_db),
 
     # Walk all non-terminal surgeries once, compute buckets in Python
     rows = (db.query(Surgery)
-              .options(joinedload(Surgery.milestones))
               .filter(Surgery.status.in_(["new", "in_progress", "hold",
                                             "confirmed", "incomplete"]))
               .all())
@@ -614,7 +609,6 @@ def calendar(
         start = _date.today()
     end = start + timedelta(days=days - 1)   # inclusive end
     rows = (db.query(Surgery)
-              .options(joinedload(Surgery.milestones))
               .filter(Surgery.scheduled_date >= start,
                       Surgery.scheduled_date <= end,
                       # 'incomplete' included so Calendly-imported stubs and
@@ -693,7 +687,7 @@ def list_surgeries(
     page: int = 1,
     per_page: int = 100,
 ):
-    q = db.query(Surgery).options(joinedload(Surgery.milestones))
+    q = db.query(Surgery)
     if status and status != "all":
         q = q.filter(Surgery.status == status)
     if facility:
@@ -1066,7 +1060,7 @@ def create_manual(payload: ManualSurgeryIn,
     maybe_assign_surgery_number(db, s)
     upsert_patient_directory(db, s)
     db.commit(); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 # ─── Picklists (must be declared BEFORE /{surgery_id} so it isn't eaten as a path-param) ─
@@ -1136,7 +1130,6 @@ def scheduler_alerts(db: Session = Depends(get_db),
 def get_surgery(surgery_id: str, db: Session = Depends(get_db),
                  current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
            .first())
     if not s:
@@ -1154,7 +1147,7 @@ def get_surgery(surgery_id: str, db: Session = Depends(get_db),
         user_name=current_user.get("name") or current_user.get("email"),
         description=f"Viewed surgery chart {s.surgery_number or s.id} ({s.patient_name})",
     )
-    out = _surgery_dict(db, s, include_milestones=True)
+    out = _surgery_dict(db, s)
     # Expose the booked slot so the frontend can offer duration inline edit (Phase D6)
     slot = (db.query(SurgerySlot)
               .filter(SurgerySlot.surgery_id == s.id)
@@ -1553,39 +1546,11 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                 "after":  (str(new_val) if new_val is not None else None),
             }
 
-    # Apply
+    # Apply (the generic patch loop sets auth_status, assistant_surgeon_required,
+    # status, etc. directly on the Surgery row; the steps engine derives workflow
+    # progress from those columns — milestones are retired).
     for k, v in data.items():
         setattr(s, k, v)
-
-    # Auto-derive: when transitioning incomplete → new, ensure milestones exist
-    if data.get("status") == "new" and not s.milestones:
-        _spawn_milestones(db, s)
-
-    # Auto-mark prior_auth done if auth_status moves to a terminal value AND
-    # the corresponding milestone exists
-    if "auth_status" in data and data["auth_status"] in ("approved", "not_required", "completed"):
-        m = next((m for m in s.milestones if m.kind == "prior_auth"), None)
-        if m and m.status not in ("done", "skipped"):
-            m.status = "done"
-            m.completed_at = now_utc_naive()
-            m.completed_by = current_user.get("email") or "system"
-
-    # Assistant-surgeon milestone auto-transition based on the flag and
-    # whether both office-notified + appt-confirmed are filled.
-    if "assistant_surgeon_required" in data:
-        m = next((mm for mm in s.milestones if mm.kind == "assistant_surgeon"), None)
-        if m:
-            if not s.assistant_surgeon_required:
-                # Not required → mark not_applicable
-                if m.status not in ("done", "not_applicable", "skipped"):
-                    m.status = "not_applicable"
-                    m.completed_at = now_utc_naive()
-                    m.completed_by = current_user.get("email") or "system"
-            else:
-                # Newly required (or re-required) → reopen if it was N/A
-                if m.status == "not_applicable":
-                    m.status = "pending"
-                    m.completed_at = None
 
     _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
 
@@ -1626,88 +1591,7 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
             logging.getLogger(__name__).warning(
                 "calendar resync after PATCH failed for %s: %s", s.id, e)
 
-    return _surgery_dict(db, s, include_milestones=True)
-
-
-class MilestoneAction(BaseModel):
-    notes: Optional[str] = None
-    data: Optional[dict] = None
-
-
-@router.post("/{surgery_id}/milestones/{kind}/{action}")
-def milestone_action(
-    surgery_id: str, kind: str, action: str,
-    payload: MilestoneAction = MilestoneAction(),
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
-):
-    """action ∈ {start, done, skip, reopen, not_applicable}.
-    `start` flips locked/pending → in_progress and stamps started_at.
-    `done` flips → done and stamps completed_at + completed_by.
-    `skip` flips → skipped (with notes).
-    `reopen` flips back to pending and clears completion stamps.
-    `not_applicable` flips → not_applicable (e.g. labs not needed for this case).
-    """
-    if action not in ("start", "done", "skip", "reopen", "not_applicable"):
-        raise HTTPException(status_code=422, detail=f"unknown action: {action}")
-
-    s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
-           .filter(Surgery.id == surgery_id)
-           .first())
-    if not s:
-        raise HTTPException(status_code=404, detail="surgery not found")
-    m = next((m for m in s.milestones if m.kind == kind), None)
-    if not m:
-        raise HTTPException(status_code=404,
-                            detail=f"surgery doesn't have milestone {kind}")
-
-    me = current_user.get("email") or "system"
-    now = now_utc_naive()
-    prev_status = m.status
-
-    if action == "start":
-        m.status = "in_progress"
-        m.started_at = m.started_at or now
-    elif action == "done":
-        m.status = "done"
-        m.completed_at = now
-        m.completed_by = me
-        # benefits_determined is the canonical gate from New → Benefits Check
-        if s.status == "new" and m.kind == "benefits_determined":
-            s.status = "in_progress"
-    elif action == "skip":
-        m.status = "skipped"
-        m.completed_at = now
-        m.completed_by = me
-    elif action == "reopen":
-        m.status = "pending"
-        m.completed_at = None
-        m.completed_by = None
-        m.started_at = None   # reset timing so age-since-eligible re-clocks
-    elif action == "not_applicable":
-        m.status = "not_applicable"
-
-    if payload.notes is not None:
-        m.notes = payload.notes
-    if payload.data is not None:
-        m.data_json = payload.data
-
-    # Cross-module state-transition audit (compliance/forensics).
-    from app.services.state_audit import log_state_transition
-    log_state_transition(db,
-        entity_type="surgery_milestone",
-        entity_id=m.id,
-        action=f"milestone_{action}",
-        actor=me,
-        before=prev_status,
-        after=m.status,
-        summary=f"{m.kind}: {prev_status} → {m.status}",
-        detail={"surgery_id": str(s.id), "milestone_kind": m.kind, "action": action})
-
-    _commit_or_409(db, surgery_id=surgery_id)
-    db.refresh(m); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 # ─── Status transitions (cancel / hold / unresponsive) ──────────────
@@ -1887,12 +1771,6 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
 
 
 # ─── Milestone helper ───────────────────────────────────────────────
-
-def _spawn_milestones(db: Session, s: Surgery) -> None:
-    """Milestones are retired — the numbered Steps on the detail page have
-    replaced them. Kept as a no-op so callers don't need to change."""
-    return None
-
 
 # ─── Block schedule admin (Phase 1.7) ───────────────────────────────
 
@@ -2750,20 +2628,6 @@ async def upload_file(
     )
     db.add(f_row)
 
-    # Auto-complete the obvious milestone
-    milestone_kind_map = {
-        "prior_auth":  "prior_auth",
-        "op_notes":    "op_notes",
-        "path_report": "path_report",
-    }
-    target = milestone_kind_map.get(kind)
-    if target:
-        m = next((m for m in s.milestones if m.kind == target), None)
-        if m and m.status not in ("done", "skipped"):
-            m.status = "done"
-            m.completed_at = now_utc_naive()
-            m.completed_by = current_user.get("email")
-
     # Auto-advance auth_status only on the happy path — i.e. when we
     # were waiting on the payer (sent_request / sent_records). Without
     # this guard, uploading the DENIAL letter (naturally filed as kind
@@ -3370,7 +3234,6 @@ def scheduler_pick_date(surgery_id: str, payload: SchedulerPickIn,
     from app.services.surgery.date_picker import pick_or_reschedule, DatePickerError
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -3385,7 +3248,7 @@ def scheduler_pick_date(surgery_id: str, payload: SchedulerPickIn,
     return {
         "ok": True,
         **result,
-        "surgery": _surgery_dict(db, s, include_milestones=True),
+        "surgery": _surgery_dict(db, s),
     }
 
 
@@ -3413,7 +3276,7 @@ def toggle_modmed_scheduled(
         s.scheduled_in_modmed_at = None
         s.scheduled_in_modmed_by = None
     db.commit(); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 @router.post("/{surgery_id}/office-meds-pickup")
@@ -3437,7 +3300,7 @@ def toggle_office_meds_pickup(
         s.office_meds_pickup_confirmed_at = None
         s.office_meds_pickup_confirmed_by = None
     db.commit(); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 # ─── Coordinator schedule endpoint (Phase D2) ───────────────────────
@@ -3698,7 +3561,6 @@ def save_post_op_appts(
     from app.services.post_op_schedule import all_required_appts_filled
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -3741,41 +3603,11 @@ def save_post_op_appts(
     s.post_op_appt_location     = first_loc
     s.post_op_appt_2nd_location = second_loc
 
-    # Auto-close the milestone when all required appts are filled
-    m = next((mm for mm in s.milestones if mm.kind == "post_op_appts_scheduled"), None)
-    if m:
-        if all_required_appts_filled(s, db=db):
-            if m.status != "done":
-                m.status = "done"
-                m.completed_at = now_utc_naive()
-                m.completed_by = current_user.get("email") or "system"
-        else:
-            # If dates were cleared, reopen the milestone
-            if m.status == "done":
-                m.status = "in_progress"
-                m.completed_at = None
-                m.completed_by = None
-
     db.commit(); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 # ─── Assistant surgeon coordination ────────────────────────────────
-
-def _maybe_complete_assistant_milestone(db: Session, s: Surgery, by: str) -> None:
-    """Close the assistant_surgeon milestone when both office notified AND
-    patient appt confirmed."""
-    if not s.assistant_surgeon_required:
-        return
-    if (s.assistant_surgeon_office_notified_at is None
-            or s.assistant_surgeon_appt_confirmed_at is None):
-        return
-    m = next((mm for mm in s.milestones if mm.kind == "assistant_surgeon"), None)
-    if m and m.status not in ("done", "skipped"):
-        m.status = "done"
-        m.completed_at = now_utc_naive()
-        m.completed_by = by
-
 
 @router.post("/{surgery_id}/assistant-surgeon/notify-office")
 def assistant_surgeon_notify_office(
@@ -3786,7 +3618,6 @@ def assistant_surgeon_notify_office(
     """Mark the assistant surgeon's office as notified.
     Closes the assistant_surgeon milestone if the appt is also confirmed."""
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -3796,9 +3627,8 @@ def assistant_surgeon_notify_office(
     by = current_user.get("email") or "system"
     s.assistant_surgeon_office_notified_at = now_utc_naive()
     s.assistant_surgeon_office_notified_by = by
-    _maybe_complete_assistant_milestone(db, s, by)
     db.commit(); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 class AssistantApptConfirm(BaseModel):
@@ -3816,7 +3646,6 @@ def assistant_surgeon_confirm_appt(
     surgeon. Optional appt_date records the date; absence still counts as
     confirmed (some practices just want a yes/no)."""
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -3832,9 +3661,8 @@ def assistant_surgeon_confirm_appt(
             raise HTTPException(status_code=422, detail="appt_date must be YYYY-MM-DD")
     s.assistant_surgeon_appt_confirmed_at = now_utc_naive()
     s.assistant_surgeon_appt_confirmed_by = by
-    _maybe_complete_assistant_milestone(db, s, by)
     db.commit(); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 @router.post("/{surgery_id}/assistant-surgeon/reset")
@@ -3846,7 +3674,6 @@ def assistant_surgeon_reset(
     """Clear notified / appt confirmation (e.g. patient missed the appt and
     needs to reschedule). Reopens the milestone if it was done."""
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -3855,13 +3682,8 @@ def assistant_surgeon_reset(
     s.assistant_surgeon_appt_confirmed_at = None
     s.assistant_surgeon_appt_confirmed_by = None
     s.assistant_surgeon_appt_date = None
-    m = next((mm for mm in s.milestones if mm.kind == "assistant_surgeon"), None)
-    if m and m.status == "done":
-        m.status = "in_progress"
-        m.completed_at = None
-        m.completed_by = None
     db.commit(); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 # ─── AI billing-code suggestion (Phase 3) ───────────────────────────
@@ -3879,7 +3701,7 @@ def suggest_billing_codes(surgery_id: str,
     )
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.files), joinedload(Surgery.milestones))
+           .options(joinedload(Surgery.files))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -3891,7 +3713,7 @@ def suggest_billing_codes(surgery_id: str,
         raise HTTPException(status_code=400, detail=str(e))
     return {
         **result,
-        "surgery": _surgery_dict(db, s, include_milestones=True),
+        "surgery": _surgery_dict(db, s),
     }
 
 
@@ -4028,7 +3850,6 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
     from insurance benefit inputs. When save=True, also marks the
     benefits_determined milestone as done."""
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -4076,12 +3897,6 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
         s.patient_responsibility = breakdown["patient_responsibility"]
         s.benefits_verified_at = _date.today()
 
-        # Auto-advance the benefits milestone
-        m = next((m for m in s.milestones if m.kind == "benefits_determined"), None)
-        if m and m.status not in ("done", "skipped"):
-            m.status = "done"
-            m.completed_at = now_utc_naive()
-            m.completed_by = current_user.get("email") or "system"
         _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
 
         # Generate the patient-facing PDF estimate and attach it
@@ -4305,21 +4120,14 @@ def consent_mark_sent(surgery_id: str, payload: ConsentTransitionPayload = Conse
     Sets consent_status='sent', stamps consent_sent_at, moves the consent
     milestone to 'in_progress' (still pending the signature)."""
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
 
     s.consent_status = "sent"
     s.consent_sent_at = now_utc_naive()
-    m = next((m for m in s.milestones if m.kind == "consent"), None)
-    if m and m.status not in ("done", "skipped"):
-        m.status = "in_progress"
-        m.started_at = m.started_at or now_utc_naive()
-        if payload.notes:
-            m.notes = payload.notes
     _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 @router.get("/{surgery_id}/consent/template-matches")
@@ -4374,8 +4182,7 @@ def consent_docusign_send(surgery_id: str,
     )
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones),
-                     joinedload(Surgery.consent_envelopes))
+           .options(joinedload(Surgery.consent_envelopes))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -4391,7 +4198,7 @@ def consent_docusign_send(surgery_id: str,
 
     return {
         **result,
-        "surgery": _surgery_dict(db, s, include_milestones=True),
+        "surgery": _surgery_dict(db, s),
     }
 
 
@@ -4407,8 +4214,7 @@ def consent_docusign_sync(surgery_id: str,
     )
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones),
-                     joinedload(Surgery.consent_envelopes))
+           .options(joinedload(Surgery.consent_envelopes))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -4421,7 +4227,7 @@ def consent_docusign_sync(surgery_id: str,
         raise HTTPException(status_code=502, detail=str(e))
     return {
         **result,
-        "surgery": _surgery_dict(db, s, include_milestones=True),
+        "surgery": _surgery_dict(db, s),
     }
 
 
@@ -4498,7 +4304,6 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
     'signed' on any chart with no audit trail. (Fable surgery audit M3.)
     """
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -4517,13 +4322,6 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
 
     s.consent_status = "signed"
     s.consent_signed_at = now_utc_naive()
-    m = next((m for m in s.milestones if m.kind == "consent"), None)
-    if m and m.status not in ("done", "skipped"):
-        m.status = "done"
-        m.completed_at = now_utc_naive()
-        m.completed_by = current_user.get("email") or "system"
-        if payload.notes:
-            m.notes = payload.notes
     _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
     # Central audit so a misuse query can find who flipped consent on
     # which chart and tie it back to the SurgeryFile that justified it.
@@ -4539,7 +4337,7 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
                      f"{s.surgery_number or s.id} (evidence file "
                      f"{has_consent_file.id})"),
     )
-    return _surgery_dict(db, s, include_milestones=True)
+    return _surgery_dict(db, s)
 
 
 @router.post("/{surgery_id}/consent/reset")
@@ -4556,7 +4354,6 @@ def consent_reset(surgery_id: str,
         void_envelope_row, BoldSignEnvelopeError,
     )
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id).first())
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
@@ -4593,18 +4390,6 @@ def consent_reset(surgery_id: str,
     # audit H5-auth.)
     from app.services.patient_portal_auth import bump_portal_token_version
     bump_portal_token_version(db, s)
-
-    m = next((mm for mm in s.milestones if mm.kind == "consent"), None)
-    if m:
-        # Valid milestone statuses per the model header are
-        # locked | pending | in_progress | done | skipped | not_applicable.
-        # The prior value "todo" wasn't in that set and silently broke
-        # dashboard buckets that filter on the enum.
-        m.status        = "pending"
-        m.started_at    = None
-        m.completed_at  = None
-        m.completed_by  = None
-        m.notes         = None
 
     db.commit(); db.refresh(s)
     return {
@@ -4810,13 +4595,7 @@ def waitlist_claim(waitlist_id: str, payload: WaitlistClaimIn,
     # coordinator_schedule's path produces. Without them a waitlist-
     # claimed surgery has no audit trail and no patient confirmation.
 
-    # Advance milestone, remove from waitlist
-    m_row = next((m for m in s.milestones if m.kind == "patient_picks_date"), None)
-    if m_row and m_row.status not in ("done", "skipped"):
-        m_row.status = "done"
-        m_row.completed_at = now_utc_naive()
-        m_row.completed_by = current_user.get("email") or "system:waitlist-claim"
-
+    # Remove from waitlist
     w.removed_at = now_utc_naive()
     w.removed_reason = "claimed_slot"
 

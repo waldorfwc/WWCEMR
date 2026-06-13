@@ -393,6 +393,10 @@ class SurgeryMilestone(Base):
     """One row per workflow step on a surgery. The full set is created
     when the surgery transitions out of `incomplete` to `new`.
 
+    RETIRED 2026-06: the steps engine (step_engine.py) replaced milestones;
+    this table is kept as dormant audit history — no reads or writes remain
+    in app code.
+
     Hospital-based path (12 steps):
       1. benefits_determined
       2. prior_auth

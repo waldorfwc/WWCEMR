@@ -284,15 +284,6 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
         # boarding slip / fax.
         s.calendar_invite_sent_at = None
 
-    # Advance the patient_picks_date milestone on initial pick (don't
-    # re-advance on reschedule)
-    if not is_reschedule:
-        m_row = next((m for m in s.milestones if m.kind == "patient_picks_date"), None)
-        if m_row and m_row.status not in ("done", "skipped"):
-            m_row.status = "done"
-            m_row.completed_at = now_utc_naive()
-            m_row.completed_by = picked_by
-
     db.commit()
     db.refresh(s)
     return {

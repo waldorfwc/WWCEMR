@@ -100,8 +100,7 @@ async def docusign_webhook(request: Request, db: Session = Depends(get_db)):
 
     # Re-evaluate the parent surgery's overall consent state
     surgery = (db.query(Surgery)
-                 .options(joinedload(Surgery.milestones),
-                          joinedload(Surgery.consent_envelopes))
+                 .options(joinedload(Surgery.consent_envelopes))
                  .filter(Surgery.id == row.surgery_id).first())
     if surgery:
         reconcile_surgery_consent(db, surgery)

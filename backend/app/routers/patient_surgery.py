@@ -30,7 +30,7 @@ from sqlalchemy.orm.exc import StaleDataError
 from app.config import settings
 from app.database import get_db
 from app.models.surgery import (
-    BlockDay, PatientAuthAttempt, Surgery, SurgeryFile, SurgeryMilestone, SurgerySlot,
+    BlockDay, PatientAuthAttempt, Surgery, SurgeryFile, SurgerySlot,
     SurgeryNote,
 )
 from app.services.surgery.block_schedule import (
@@ -402,7 +402,6 @@ def patient_pick(surgery_id: str, payload: PickPayload,
     from app.services.surgery.self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
            .first())
     if not s:
@@ -479,7 +478,6 @@ def patient_reschedule(surgery_id: str, payload: PickPayload,
     from app.services.surgery.self_schedule import schedule_gate_for_surgery
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
            .first())
     if not s:
@@ -634,7 +632,6 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
     from app.models.surgery import SurgeryCancellation, SurgerySlot
 
     s = (db.query(Surgery)
-           .options(joinedload(Surgery.milestones))
            .filter(Surgery.id == surgery_id)
            .first())
     if not s:

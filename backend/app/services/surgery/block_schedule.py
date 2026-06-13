@@ -464,18 +464,5 @@ def book_slot(db: Session, *, block_day_id: str, surgery_id: str,
     if surgery.status in ("new", "in_progress"):
         surgery.status = "confirmed"
 
-    # Auto-advance the patient_picks_date milestone now that a real slot
-    # has been booked. The Smartsheet import path infers this from the
-    # spreadsheet's "Surgery Date" column, but UI bookings used to leave
-    # the milestone stuck in pending — confused the behind-schedule check
-    # for any surgery scheduled via the coordinator flow or bulk import.
-    from app.utils.dt import now_utc_naive
-    ppd = next((m for m in (surgery.milestones or [])
-                if m.kind == "patient_picks_date"), None)
-    if ppd and ppd.status in ("pending", "in_progress", "locked"):
-        ppd.status = "done"
-        ppd.completed_at = now_utc_naive()
-        ppd.completed_by = "system:book_slot"
-
     db.commit(); db.refresh(slot)
     return slot
