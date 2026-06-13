@@ -178,9 +178,14 @@ async def _stale_data_handler(request: Request, exc: StaleDataError):
 
 @app.exception_handler(RequestValidationError)
 async def _validation_handler(request: Request, exc: RequestValidationError):
+    # exc.errors() can embed a raw ValueError in each entry's "ctx" when a
+    # custom field_validator raises ValueError; that object is not directly
+    # JSON-serializable, so encode through jsonable_encoder (which stringifies
+    # it) instead of handing it straight to JSONResponse and 500-ing.
+    from fastapi.encoders import jsonable_encoder
     return JSONResponse(
         status_code=422,
-        content={"detail": exc.errors(), "code": "validation_error"},
+        content={"detail": jsonable_encoder(exc.errors()), "code": "validation_error"},
     )
 
 
