@@ -31,6 +31,8 @@ from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from app.models.surgery import Surgery
+from app.services.surgery.block_schedule import CapacityViolation, DURATIONS
+from app.services.surgery.slot_conflict import overlapping_slot
 
 log = logging.getLogger(__name__)
 
@@ -69,13 +71,23 @@ _HEADER_MAP = {
 # The user has asked us to keep the appointment type as the procedure name on
 # each surgery row (these are ModMed's generic labels and will be renamed by
 # hand later), so this table only resolves the booking attributes.
+#
+# Durations are derived from block_schedule.DURATIONS[procedure_kind] so the
+# minute-wall in can_fit (which sums STORED durations for `used` but uses the
+# canonical DURATIONS for `incoming`) can never see two different scales for
+# the same kind. (audit #18)
+_APPT_TYPE_KIND: dict[str, tuple[str, str]] = {
+    "medstar-robot-short":   ("medstar", "robotic_180"),
+    "medstar-robot-long":    ("medstar", "robotic_240"),
+    "medstar-minor":         ("medstar", "minor"),
+    "crmc-minor":            ("crmc",    "minor"),
+    "crmc-major":            ("crmc",    "major"),
+    "office-based surgery":  ("office",  "office"),
+}
+
 APPT_TYPE_MAP: dict[str, tuple[str, str, int]] = {
-    "medstar-robot-short":   ("medstar", "robotic_180", 180),
-    "medstar-robot-long":    ("medstar", "robotic_240", 240),
-    "medstar-minor":         ("medstar", "minor",        60),
-    "crmc-minor":            ("crmc",    "minor",        90),
-    "crmc-major":            ("crmc",    "major",       120),
-    "office-based surgery":  ("office",  "office",       30),
+    label: (facility, kind, DURATIONS[kind])
+    for label, (facility, kind) in _APPT_TYPE_KIND.items()
 }
 
 
@@ -84,6 +96,45 @@ def _resolve_appt_type(label: Optional[str]) -> Optional[tuple[str, str, int]]:
     if not label:
         return None
     return APPT_TYPE_MAP.get(label.strip().lower())
+
+
+def _resolve_block_day(db, BlockDay, appt_date, facility, appt_time):
+    """Pick the right BlockDay window for an imported appointment.
+
+    Multi-window days (AM/PM) mean a bare (date, facility).first() picks
+    an arbitrary window. Disambiguate by matching appt_time to the window
+    whose [start_time, end_time) contains it (or whose start_time ==
+    appt_time). (audit #19)
+
+    Returns (BlockDay | None, error_message | None).
+      - No BlockDay rows for that (date, facility) → (None, "No BlockDay…")
+      - Exactly one window → that window (back-compat; no ambiguity).
+      - Multiple windows, one matches appt_time → that window.
+      - Multiple windows, none contains appt_time → (None, error) — a real
+        error we record rather than silently picking a window.
+    """
+    days = (db.query(BlockDay)
+              .filter(BlockDay.block_date == appt_date,
+                      BlockDay.facility == facility)
+              .order_by(BlockDay.start_time)
+              .all())
+    if not days:
+        return None, (f"No BlockDay for {appt_date} at {facility} "
+                       f"— set up the block schedule first.")
+    if len(days) == 1:
+        return days[0], None
+
+    appt_min = appt_time.hour * 60 + appt_time.minute
+    for bd in days:
+        start_min = bd.start_time.hour * 60 + bd.start_time.minute
+        end_min = bd.end_time.hour * 60 + bd.end_time.minute
+        if start_min <= appt_min < end_min or start_min == appt_min:
+            return bd, None
+    windows = ", ".join(
+        f"{bd.start_time.strftime('%H:%M')}–{bd.end_time.strftime('%H:%M')}"
+        for bd in days)
+    return None, (f"{appt_time.strftime('%H:%M')} doesn't fall in any "
+                   f"{facility} block window on {appt_date} ({windows}).")
 
 
 def _norm_header(s: Any) -> str:
@@ -280,34 +331,50 @@ def import_rows(db: Session, rows: list[dict], *,
     def _force_book(surgery, block_day, start_t, duration, proc_kind):
         """Drop any prior slot for this surgery, create a new one on the
         block day with the supplied window, and stamp the surgery's
-        scheduled_date / start_time / facility. Bypasses capacity /
-        block-window / blackout guards — used only in backfill_mode.
+        scheduled_date / start_time / facility. Bypasses capacity COUNT
+        rules / blackout guards — used only in backfill_mode.
 
-        Raises ValueError if another patient is already booked at the
-        exact same start_time on the same BlockDay. That's a real
-        patient-level conflict (not a policy violation), and silently
-        doublebooking on top of a real existing surgery would be the
-        kind of harm backfill_mode is NOT supposed to cause.
+        It does NOT bypass physical overlap or block-window bounds: a
+        force-book that physically double-books another patient, or that
+        runs outside the OR block's hours, is real-world harm that
+        backfill_mode is NOT supposed to cause. (audit #10/#20)
+
+        Raises ValueError if the new window [start, start+duration)
+        overlaps any existing slot belonging to a different surgery on
+        the same BlockDay, or if it falls outside the block window.
         """
-        # Detect same-start-time conflict with a different surgery before
-        # we touch anything.
-        conflict = (db.query(SurgerySlot)
-                      .filter(SurgerySlot.block_day_id == block_day.id,
-                              SurgerySlot.start_time == start_t,
-                              SurgerySlot.surgery_id != surgery.id,
-                              SurgerySlot.surgery_id.isnot(None))
-                      .first())
-        if conflict:
-            other = db.query(Surgery).filter(Surgery.id == conflict.surgery_id).first()
-            raise ValueError(
-                f"start-time conflict with {other.patient_name} "
-                f"(chart {other.chart_number}) at {start_t.strftime('%H:%M')}"
-            )
-        # Drop prior slots for THIS surgery only
+        # Drop prior slots for THIS surgery first so a re-book against the
+        # surgery's own old slot isn't flagged as a self-overlap.
         prior = db.query(SurgerySlot).filter(
             SurgerySlot.surgery_id == surgery.id).all()
         for old in prior:
             db.delete(old)
+        db.flush()
+
+        # Block-window bounds — even in backfill_mode the slot must fit
+        # inside the BlockDay's [start_time, end_time).
+        block_start_min = block_day.start_time.hour * 60 + block_day.start_time.minute
+        block_end_min   = block_day.end_time.hour * 60 + block_day.end_time.minute
+        slot_start_min  = start_t.hour * 60 + start_t.minute
+        if slot_start_min < block_start_min or (slot_start_min + duration) > block_end_min:
+            raise ValueError(
+                f"slot {start_t.strftime('%H:%M')} for {duration} min is "
+                f"outside the block window "
+                f"({block_day.start_time.strftime('%H:%M')}–"
+                f"{block_day.end_time.strftime('%H:%M')})"
+            )
+
+        # TRUE interval-overlap detection — reuse the same helper the
+        # coordinator/book_slot path uses, not an exact start-time match.
+        conflict = overlapping_slot(db, block_day.id, start_t, duration)
+        if conflict and conflict.surgery_id and conflict.surgery_id != surgery.id:
+            other = db.query(Surgery).filter(Surgery.id == conflict.surgery_id).first()
+            other_name = other.patient_name if other else "another surgery"
+            other_chart = f" (chart {other.chart_number})" if other else ""
+            raise ValueError(
+                f"start-time/overlap conflict with {other_name}{other_chart} "
+                f"at {conflict.start_time.strftime('%H:%M')}"
+            )
         slot = SurgerySlot(
             block_day_id=block_day.id,
             surgery_id=surgery.id,
@@ -357,17 +424,13 @@ def import_rows(db: Session, rows: list[dict], *,
                     continue
                 # Backfill path — find the BlockDay and force-book
                 facility, procedure_kind, default_duration = appt_info
-                bd = (db.query(BlockDay)
-                        .filter(BlockDay.block_date == appt_date,
-                                BlockDay.facility == facility)
-                        .first())
+                bd, bd_err = _resolve_block_day(
+                    db, BlockDay, appt_date, facility, appt_time)
                 if not bd:
                     schedule_errors.append({
                         "chart_number": chart,
                         "patient_name": kwargs["patient_name"],
-                        "reason": (f"No BlockDay for {appt_date} at "
-                                     f"{facility} — set up the block "
-                                     f"schedule first."),
+                        "reason": bd_err,
                     })
                     continue
                 if dry_run:
@@ -380,7 +443,15 @@ def import_rows(db: Session, rows: list[dict], *,
                         "facility":   facility,
                     })
                     continue
-                _force_book(existing, bd, appt_time, default_duration, procedure_kind)
+                try:
+                    _force_book(existing, bd, appt_time, default_duration, procedure_kind)
+                except (CapacityViolation, ValueError) as exc:
+                    schedule_errors.append({
+                        "chart_number": chart,
+                        "patient_name": kwargs["patient_name"],
+                        "reason":       str(exc),
+                    })
+                    continue
                 db.add(SurgeryNote(
                     surgery_id=existing.id,
                     created_by=by_email,
@@ -433,16 +504,13 @@ def import_rows(db: Session, rows: list[dict], *,
             if not (auto_schedule and appt_info and appt_date and appt_time):
                 continue
             facility, procedure_kind, default_duration = appt_info
-            bd = (db.query(BlockDay)
-                    .filter(BlockDay.block_date == appt_date,
-                            BlockDay.facility == facility)
-                    .first())
+            bd, bd_err = _resolve_block_day(
+                db, BlockDay, appt_date, facility, appt_time)
             if not bd:
                 schedule_errors.append({
                     "chart_number": chart,
                     "patient_name": kwargs["patient_name"],
-                    "reason": (f"No BlockDay for {appt_date} at {facility} "
-                                f"— set up the block schedule first."),
+                    "reason": bd_err,
                 })
                 continue
             try:
@@ -450,16 +518,14 @@ def import_rows(db: Session, rows: list[dict], *,
                     _force_book(s, bd, appt_time, default_duration, procedure_kind)
                     slot = None  # not needed below; force-book stamped surgery fields
                 else:
-                    from app.services.surgery.block_schedule import (
-                        book_slot, CapacityViolation,
-                    )
+                    from app.services.surgery.block_schedule import book_slot
                     slot = book_slot(
                         db, block_day_id=str(bd.id), surgery_id=str(s.id),
                         start_time=appt_time,
                         duration_minutes=default_duration,
                         procedure_kind=procedure_kind,
                     )
-            except CapacityViolation as exc:
+            except (CapacityViolation, ValueError) as exc:
                 schedule_errors.append({
                     "chart_number": chart,
                     "patient_name": kwargs["patient_name"],

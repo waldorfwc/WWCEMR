@@ -326,6 +326,10 @@ class Surgery(Base):
 
     # Manager / escalation
     escalate_to_email = Column(String(200), nullable=True)
+    # Behind-schedule escalation idempotency (audit #9): {step_key: sent_iso}.
+    # The hourly sweep nags managers once per overdue current step. Resets
+    # naturally as the surgery advances to a new step key.
+    escalation_state = Column(JSON, nullable=True)
 
     # Patient self-service date picker — when True, patient can pick a date
     # even if their balance isn't $0 yet (e.g. payment plan in place).

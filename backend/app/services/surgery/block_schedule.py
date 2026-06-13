@@ -244,7 +244,6 @@ DEFAULT_CAPACITY_RULES = {
         "kind": "fixed_slots",
         "slot_times": ["07:30", "08:30", "09:30", "10:30", "11:30",
                         "14:30", "15:30"],
-        "case_minutes": 60,
     },
 }
 

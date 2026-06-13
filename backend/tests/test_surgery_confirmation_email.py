@@ -20,6 +20,7 @@ def _seed_surgery_and_block(db, email="pat@example.com"):
         chart_number="C001", patient_name="Pat", email=email,
         eligible_facilities=["medstar"], selected_facility="medstar",
         status="in_progress",
+        procedure_classification="robotic_180",
         procedures=[{"name": "Hyst", "kind": "robotic_180"}],
     )
     db.add(s); db.flush()

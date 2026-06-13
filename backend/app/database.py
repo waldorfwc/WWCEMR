@@ -453,6 +453,10 @@ def _apply_lightweight_migrations():
         ("larc_assignments", "patient_paid_at",     "DATETIME"),
         ("larc_assignments", "patient_paid_by",     "VARCHAR(200)"),
         ("larc_assignments", "patient_paid_amount", "NUMERIC(10,2)"),
+        # Manager behind-schedule escalation idempotency (audit #9). Maps
+        # current-step key -> ISO timestamp so the hourly sweep nags once
+        # per overdue step instead of once per (retired) milestone row.
+        ("surgeries", "escalation_state", "JSON"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

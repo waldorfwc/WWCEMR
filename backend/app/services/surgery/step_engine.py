@@ -197,12 +197,17 @@ def _state(s: Any, key: str) -> str:
         ors = (s.operative_report_status or "").lower()
         return "done" if ors in ("completed", "received") else "todo"
     if key == "path_report":
-        ors = (s.operative_report_status or "").lower()
-        if ors == "not_required":
+        # Office pathology gate reads pathology_status, NOT
+        # operative_report_status. Column values:
+        # none_expected | expected | received | not_required | completed
+        ps = (getattr(s, "pathology_status", None) or "").lower()
+        if ps == "not_required":
             return "n/a"
-        return "done" if ors in ("completed", "received") else "todo"
+        return "done" if ps in ("completed", "received") else "todo"
     if key == "bill":
-        return "done" if s.payment_posted_to_billing else "todo"
+        # Billing stamps billed_at; payment_posted_to_billing is never
+        # written by any live path. Mirror _STEP_DONE_TIMESTAMPS["bill"].
+        return "done" if s.billed_at else "todo"
     return "todo"
 
 
@@ -229,19 +234,60 @@ def current_step(s: Any) -> Optional[dict]:
     return None
 
 
+def _as_dt(v: Any) -> Optional[datetime]:
+    """Normalize a date|datetime to datetime so heterogeneous stamps
+    (benefits_verified_at is a DATE; the others are DATETIME) can be
+    compared with max() without a TypeError."""
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v
+    if isinstance(v, date):
+        return datetime(v.year, v.month, v.day)
+    return v
+
+
 def _entered_at(s: Any) -> Optional[datetime]:
-    """Approximate when the current step was entered: the latest known
-    completion timestamp among done steps, else updated_at/created_at."""
+    """Approximate when the current step was entered, used as the
+    behind-schedule clock's anchor.
+
+    The anchor must be the MOST RECENT completion signal for the work done
+    so far -- not the oldest. We therefore:
+      1. Walk the steps in flow order up to and including the current step.
+      2. Collect every available completion timestamp (from
+         _STEP_DONE_TIMESTAMPS) for steps in that prefix that are done.
+      3. Anchor on the max (latest) of those stamps.
+      4. If the current step has no preceding stamped+done step, fall back
+         to updated_at/created_at.
+
+    Bounding to the current-step prefix and taking the max prevents a
+    late-stage surgery from being anchored to a weeks-old early stamp
+    (e.g. benefits_verified_at) and flagged overdue the moment it is
+    recently worked.
+    """
+    steps = compute_steps(s)
+    cur = current_step(s)
+    # Index of the current step in flow order; if none (all done/n/a),
+    # consider the whole list.
+    if cur is None:
+        cutoff = len(steps)
+    else:
+        cutoff = next((i for i, st in enumerate(steps)
+                       if st["key"] == cur["key"]), len(steps))
+
     stamps = []
-    states = {st["key"]: st["state"] for st in compute_steps(s)}
-    for key, field in _STEP_DONE_TIMESTAMPS.items():
-        if states.get(key) == "done":
-            v = getattr(s, field, None)
-            if v:
-                stamps.append(v)
+    for st in steps[:cutoff + 1]:  # at or before the current step
+        if st["state"] != "done":
+            continue
+        field = _STEP_DONE_TIMESTAMPS.get(st["key"])
+        if not field:
+            continue
+        v = getattr(s, field, None)
+        if v:
+            stamps.append(_as_dt(v))
     if stamps:
         return max(stamps)
-    return s.updated_at or s.created_at
+    return _as_dt(s.updated_at or s.created_at)
 
 
 def is_behind(s: Any, *, expected_days: Optional[dict] = None,

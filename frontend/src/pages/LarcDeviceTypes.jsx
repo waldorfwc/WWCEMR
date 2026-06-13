@@ -107,7 +107,7 @@ export default function LarcDeviceTypes() {
       {editing && (
         <DeviceTypeForm
           initial={editing === 'new' ? null : editing}
-          dsTemplates={dsTemplates}
+          templates={bsTemplates}
           onClose={() => setEditing(null)}
           qc={qc} />
       )}
@@ -116,7 +116,7 @@ export default function LarcDeviceTypes() {
 }
 
 
-function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
+function DeviceTypeForm({ initial, templates, onClose, qc }) {
   const [form, setForm] = useState({
     name: initial?.name || '',
     manufacturer: initial?.manufacturer || '',
@@ -233,12 +233,12 @@ function DeviceTypeForm({ initial, dsTemplates, onClose, qc }) {
           </div>
           <div>
             <label className="text-[11px] uppercase text-gray-500 block mb-1">BoldSign Enrollment Template</label>
-            {bsTemplates && Array.isArray(bsTemplates.templates) ? (
+            {templates && Array.isArray(templates.templates) ? (
               <select className="input text-sm w-full mb-1"
                       value={form.enrollment_form_template}
                       onChange={e => update('enrollment_form_template', e.target.value)}>
                 <option value="">— none —</option>
-                {bsTemplates.templates.map(t => (
+                {templates.templates.map(t => (
                   <option key={t.id} value={t.id}>
                     {t.name} ({t.id?.slice(0, 8)}…)
                   </option>

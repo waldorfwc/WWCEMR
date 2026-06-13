@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 from app.services.surgery.step_engine import (
     HOSPITAL_STEPS, OFFICE_STEPS, compute_steps, current_step, is_behind,
-    DEFAULT_EXPECTED_DAYS_HOSPITAL,
+    _entered_at, DEFAULT_EXPECTED_DAYS_HOSPITAL,
 )
 
 
@@ -25,6 +25,7 @@ def _hospital_surgery(**over):
         assistant_surgeon_appt_confirmed_at=None, calendar_invite_sent_at=None,
         scheduled_in_modmed_at=None, labs_sent_to_hospital=False,
         post_op_call_status=None, operative_report_status=None,
+        pathology_status="none_expected",
         payment_posted_to_billing=False, billed_at=None,
         updated_at=datetime(2026, 6, 1), created_at=datetime(2026, 5, 1),
     )
@@ -94,3 +95,83 @@ def test_is_behind_uses_expected_days():
     assert behind and hrs > 0
     behind2, _ = is_behind(s, expected_days={"benefits": 30}, grace_hours=48)
     assert not behind2
+
+
+# --- #3: bill step reads billed_at, not payment_posted_to_billing ---
+
+def test_bill_done_when_billed_at_set():
+    s = _hospital_surgery(billed_at=datetime(2026, 6, 10),
+                          payment_posted_to_billing=False)
+    steps = {x["key"]: x for x in compute_steps(s)}
+    assert steps["bill"]["state"] == "done"
+
+
+def test_bill_todo_when_only_legacy_flag_set():
+    # The dead payment_posted_to_billing flag must NOT mark bill done.
+    s = _hospital_surgery(billed_at=None, payment_posted_to_billing=True)
+    steps = {x["key"]: x for x in compute_steps(s)}
+    assert steps["bill"]["state"] == "todo"
+
+
+# --- #6: path_report (office) reads pathology_status ---
+
+def _office_surgery(**over):
+    over.setdefault("selected_facility", "office")
+    over.setdefault("eligible_facilities", ["office"])
+    return _hospital_surgery(**over)
+
+
+def test_path_report_done_when_pathology_received():
+    s = _office_surgery(pathology_status="received")
+    steps = {x["key"]: x for x in compute_steps(s)}
+    assert steps["path_report"]["state"] == "done"
+    s2 = _office_surgery(pathology_status="completed")
+    steps2 = {x["key"]: x for x in compute_steps(s2)}
+    assert steps2["path_report"]["state"] == "done"
+
+
+def test_path_report_na_when_not_required():
+    s = _office_surgery(pathology_status="not_required")
+    steps = {x["key"]: x for x in compute_steps(s)}
+    assert steps["path_report"]["state"] == "n/a"
+
+
+def test_path_report_todo_when_expected():
+    s = _office_surgery(pathology_status="expected")
+    steps = {x["key"]: x for x in compute_steps(s)}
+    assert steps["path_report"]["state"] == "todo"
+
+
+# --- #15: _entered_at anchors on the most recent completion signal ---
+
+def test_entered_at_not_anchored_to_stale_early_stamp():
+    """A surgery whose current step is late in the flow must NOT be
+    anchored to a weeks-old benefits_verified_at stamp. The only stamped
+    step here is benefits (old); modmed_appt (current step's predecessor)
+    has a recent stamp, and the surgery was recently worked (updated_at).
+    """
+    old = datetime(2026, 5, 1)            # weeks ago
+    recent = datetime(2026, 6, 11)        # ~yesterday
+    # Drive the surgery all the way to the bill step: every earlier step
+    # done/n-a. benefits has an OLD stamp; modmed_appt has a RECENT stamp.
+    s = _hospital_surgery(
+        benefits_verified_at=date(2026, 5, 1),       # stale early stamp
+        scheduled_date=date(2026, 5, 15),
+        post_op_appt_date=date(2026, 5, 20),
+        consent_status="signed",
+        calendar_invite_sent_at=old,                 # post_to_hospital
+        scheduled_in_modmed_at=recent,               # modmed_appt (recent)
+        labs_sent_to_hospital=True,
+        post_op_call_status="Spoke to Pt.",
+        operative_report_status="completed",         # notes_reports
+        billed_at=None,                              # current step = bill
+        updated_at=recent,
+        created_at=old,
+    )
+    assert current_step(s)["key"] == "bill"
+    anchor = _entered_at(s)
+    # Must be the recent modmed stamp, never the stale benefits date.
+    assert anchor == recent
+    # And with a normal expected-days window it is not flagged overdue.
+    behind, _ = is_behind(s, grace_hours=48)
+    assert not behind

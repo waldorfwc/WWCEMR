@@ -10,11 +10,12 @@ and live here so they can't drift.
 from __future__ import annotations
 
 import logging
-from datetime import time as dtime
+from datetime import date as _date, time as dtime
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.utils.dt import now_utc_naive
 from app.models.surgery import Surgery, SurgeryNote, SurgerySlot, BlockDay
 from app.services.surgery.blackout_conflict import is_date_blacked_out
 from app.services.surgery.slot_conflict import overlapping_slot
@@ -66,7 +67,14 @@ def _default_duration_for(db: Session, surgery: Surgery, block_day: BlockDay) ->
     if surgery and surgery.duration_minutes:
         return surgery.duration_minutes
 
-    kind = block_day.block_kind
+    # Key duration off the SURGERY's own procedure_classification, NOT
+    # block_day.block_kind. block_kind values (robotic_only|minor_only|
+    # major_only|mixed|office) live in a different namespace than
+    # procedure_kind (minor|major|office|robotic_180|robotic_240), so
+    # using block_kind missed every non-office lookup and silently
+    # returned the generic 60 — storing a 240-min robotic as a 60-min
+    # slot and corrupting capacity accounting. (audit #2)
+    kind = (surgery.procedure_classification if surgery else None) or "minor"
     templates = (db.query(SurgeryProcedureTemplate)
                    .filter(SurgeryProcedureTemplate.procedure_kind == kind,
                             SurgeryProcedureTemplate.is_active.is_(True))
@@ -96,6 +104,48 @@ def claim_slot_for_patient(
 
     Returns: {slot_id, block_day_id, start_time, duration_minutes}
     """
+    # Terminal-status guard — mirror date_picker.pick_or_reschedule and
+    # patient_cancel. A cancelled/completed/unresponsive surgery must not
+    # be (re)booked through the shared claim path. (audit #24/#30)
+    if surgery.status in ("cancelled", "completed", "unresponsive"):
+        raise SelfScheduleError(
+            "This surgery is not in a state that accepts a date pick.",
+            status_code=409,
+        )
+
+    # Reschedule-window guard (audit #24). When the surgery ALREADY has a
+    # scheduled_date, claiming a slot is effectively a RESCHEDULE — and a
+    # reschedule must honour the same window floors that /reschedule and
+    # /pick enforce, which the bare schedule_gate (balance + consent) does
+    # not. A FIRST-TIME booking (no existing scheduled_date) skips this so
+    # initial self-scheduling still works.
+    if surgery.scheduled_date is not None:
+        # 14-day rule: reschedules inside 14 days go through the office.
+        days_to_surgery = (surgery.scheduled_date - _date.today()).days
+        if days_to_surgery < 14:
+            raise SelfScheduleError(
+                f"Your surgery is in {days_to_surgery} day(s). Reschedules "
+                "within 14 days must be handled by our office — please call "
+                "us at 240-252-2140.",
+                status_code=409,
+            )
+        # 5-business-day floor on the NEW date being claimed.
+        from app.services.surgery.date_picker import patient_min_pickable_date
+        floor = patient_min_pickable_date(db)
+        # bd is loaded below under the row lock; resolve block_date here for
+        # the floor check without holding the lock yet.
+        _bd_for_floor = (db.query(BlockDay)
+                           .filter(BlockDay.id == block_day_id)
+                           .first())
+        if _bd_for_floor and _bd_for_floor.block_date < floor:
+            raise SelfScheduleError(
+                "Online scheduling requires at least 5 business days notice. "
+                f"The earliest date you can pick is "
+                f"{floor.strftime('%A, %B %d, %Y')}. Please call our office "
+                "at 240-252-2140 for sooner availability.",
+                status_code=409,
+            )
+
     # SELECT FOR UPDATE on the block_day row to serialize concurrent
     # claims targeting the same day. Without this, two parallel POSTs
     # at the same start_time can both pass the overlap check (which
@@ -138,6 +188,25 @@ def claim_slot_for_patient(
             status_code=409,
         )
 
+    # Eligible-facility gate — mirror date_picker.pick_or_reschedule so a
+    # patient can't book a wrong-facility slot (e.g. robotic onto an
+    # office day). (audit #1)
+    proc_kind = surgery.procedure_classification or "minor"
+    if bd.facility not in (surgery.eligible_facilities or []):
+        raise SelfScheduleError(
+            "This facility isn't available for your procedure.",
+            status_code=409,
+        )
+
+    # Capacity gate — claim_slot_for_patient previously inserted the slot
+    # directly, never calling can_fit, so a patient could overbook a
+    # block past capacity. Run can_fit under the row lock we already
+    # hold, keyed off the surgery's real procedure_classification. (audit #1)
+    from app.services.surgery.block_schedule import can_fit
+    ok, reason = can_fit(db, bd, proc_kind)
+    if not ok:
+        raise SelfScheduleError(reason, status_code=409)
+
     # Release any prior slot for this surgery so a rebook doesn't leave
     # orphan rows. The surgery row's scheduled_date is overwritten below;
     # without this the old slot keeps inflating cases_already_booked on
@@ -156,14 +225,22 @@ def claim_slot_for_patient(
         # "mixed", ...) and writing it here both poisons can_fit and
         # corrupts the SurgerySlot.procedure_kind column for downstream
         # readers.
-        procedure_kind=surgery.procedure_classification or "minor",
+        procedure_kind=proc_kind,
     )
     db.add(slot)
     surgery.scheduled_date = bd.block_date
     surgery.scheduled_start_time = start
     surgery.selected_facility = bd.facility
-    if surgery.status in ("new", "in_progress"):
+    # Promote ANY active non-terminal status to confirmed (audit #25). A
+    # `hold` (or any active) surgery that books with $0 balance + signed
+    # consent previously stayed `hold` and dropped off /surgery/calendar.
+    # Terminal statuses are blocked by the guard above and never reach here.
+    if surgery.status not in ("cancelled", "completed", "unresponsive"):
         surgery.status = "confirmed"
+    # A successful claim is patient engagement — reset the auto-unresponsive
+    # clock so a freshly-booked patient isn't later mis-swept. The /pick
+    # path does this; the shared claim path must too. (audit #31)
+    surgery.last_patient_activity_at = now_utc_naive()
     db.add(SurgeryNote(
         surgery_id=surgery.id,
         created_by=sent_by,

@@ -42,7 +42,8 @@ def _already_sent_for(db: Session, surgery_id, lead_days: int) -> bool:
     'surgery_reminder' and context.days_until == str(lead_days)."""
     rows = (db.query(PatientEmail)
               .filter(PatientEmail.surgery_id == surgery_id,
-                       PatientEmail.template_kind == "surgery_reminder")
+                       PatientEmail.template_kind == "surgery_reminder",
+                       PatientEmail.status != "skipped")
               .all())
     for r in rows:
         ctx = r.context or {}
@@ -92,7 +93,7 @@ def run_reminder_sweep(db: Session, today: date | None = None) -> dict:
                 to_email=s.email,
                 context={
                     "patient_name": s.patient_name,
-                    "surgery_date": target.isoformat(),
+                    "surgery_date": target.strftime("%m/%d/%Y"),
                     "start_time":   slot_start,
                     "facility":     s.selected_facility or "",
                     "procedure":    procedure,

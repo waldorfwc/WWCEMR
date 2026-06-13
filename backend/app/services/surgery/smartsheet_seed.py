@@ -128,13 +128,23 @@ def _classify_procedure(procedures: list[dict], is_robotic: bool, facility: Opti
 
 # ─── Money parsing ──────────────────────────────────────────────────
 
+# Per project memory feedback_money_sanity_ceiling: any value >$50K in a
+# money column is a column-shift artifact, not a real dollar amount →
+# clamp to 0. Mirrors the importers (transaction_detail, charge_analysis,
+# claims_analysis) that use the same sanity ceiling.
+_MONEY_SANITY_CEILING = Decimal("50000")
+
+
 def _money(s) -> Optional[Decimal]:
     if s is None or s == "":
         return None
     try:
-        return Decimal(str(s).replace("$", "").replace(",", "").strip())
+        d = Decimal(str(s).replace("$", "").replace(",", "").strip())
     except (InvalidOperation, AttributeError):
         return None
+    if d > _MONEY_SANITY_CEILING:
+        return Decimal("0")
+    return d
 
 
 def _date(s) -> Optional[date]:

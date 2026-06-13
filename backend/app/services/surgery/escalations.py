@@ -1,13 +1,20 @@
 """Behind-schedule sweep for surgeries.
 
-Walks every active surgery (status: new, in_progress, confirmed) and
-identifies its current milestone. If the milestone is overdue by >48h
-relative to its expected_duration_days, sends one escalation message
-to the surgery's escalate_to_email (defaulting to the office_manager
-group when not set per-surgery).
+Walks every active surgery (status: new, in_progress, confirmed) and asks
+the steps engine whether its CURRENT step is behind schedule -- the same
+signal the dashboard's Critical Alerts use (step_engine.is_behind with the
+config-driven expected-days map and the `critical_overdue_hours` grace
+window). Every behind surgery is grouped by its escalation recipient and
+each manager gets a single digest email/Slack DM.
 
-Idempotent — uses Surgery.escalation_sent_at on the milestone row to
-avoid spamming the same manager every hour.
+Milestones were retired in the 2026-06 steps cutover, so the sweep no
+longer reads SurgeryMilestone rows (which were always empty post-cutover,
+silently killing the manager push -- audit #9).
+
+Idempotent -- uses Surgery.escalation_state (a {step_key: sent_iso} map)
+to nag a manager only once per overdue current step. When a surgery
+advances to a new current step the key changes, so a genuinely-new stall
+re-escalates.
 
 Reuses the checklist notification helpers (send_email + send_slack_dm)
 so messages land in the same channels.
@@ -15,44 +22,25 @@ so messages land in the same channels.
 from __future__ import annotations
 
 import logging
-import os
-from datetime import date, datetime, timedelta
-from app.utils.dt import now_utc_naive
 from typing import Optional
 
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
-from app.models.surgery import Surgery, SurgeryMilestone
+from app.models.surgery import Surgery
 from app.models.user import User
 from app.services import checklist_notifications as notif
+from app.services.surgery import step_engine
+from app.services.surgery.settings import cfg
+from app.utils.dt import now_utc_naive
 
 log = logging.getLogger(__name__)
 
 
-# Behind-schedule threshold. Anything overdue by more than this gets
-# the manager notified. <48h shows on the To-do panel only.
-ESCALATION_HOURS = 48
-
-
-def _current_milestone(s: Surgery) -> Optional[SurgeryMilestone]:
-    pending = [m for m in (s.milestones or [])
-               if m.status not in ("done", "skipped", "not_applicable")]
-    pending.sort(key=lambda m: m.position)
-    return pending[0] if pending else None
-
-
-def _milestone_age_days(m: SurgeryMilestone) -> int:
-    # Anchor to m.started_at, falling back to the surgery's creation
-    # date when the milestone is still pending. Previously this fell
-    # back to surgery.updated_at — which gets bumped by every unrelated
-    # PATCH (SMS toggle, notes edit, surgeon swap), silently resetting
-    # the overdue clock on every still-open milestone. The result was
-    # that manager nudges never fired for genuinely-stale cases.
-    base = m.started_at or m.surgery.created_at
-    if not base:
-        return 0
-    base_date = base.date() if hasattr(base, 'date') else base
-    return max(0, (date.today() - base_date).days)
+# Manager escalation uses the SAME behind-schedule threshold as the
+# dashboard's Critical Alerts: `critical_overdue_hours` (default 48h).
+# The old milestone code hardcoded ESCALATION_HOURS = 48, identical to the
+# dashboard default -- there was never a separate, longer "manager" window,
+# so we read the one shared setting rather than reintroduce a constant.
 
 
 def _resolve_recipient(db: Session, s: Surgery) -> Optional[User]:
@@ -74,28 +62,45 @@ def _resolve_recipient(db: Session, s: Surgery) -> Optional[User]:
     return None
 
 
-def run_escalation_sweep(db: Session) -> dict:
-    """Hourly cron entry point. Returns counts."""
+def find_behind_surgeries(db: Session) -> list[tuple[Surgery, dict, int]]:
+    """Active surgeries whose current step is behind schedule per the
+    steps engine. Returns (surgery, current_step_dict, hours_overdue)
+    tuples. Pure candidate selection — no sending, no DB writes — so it
+    can be tested in isolation.
+    """
     surgeries = (db.query(Surgery)
-                   .options(joinedload(Surgery.milestones))
                    .filter(Surgery.status.in_(["new", "in_progress", "confirmed"]))
                    .all())
 
-    grouped: dict[str, list[dict]] = {}    # manager_email → [items]
-    instances_to_mark: list[SurgeryMilestone] = []
-
+    grace = cfg(db, "critical_overdue_hours")
+    out: list[tuple[Surgery, dict, int]] = []
     for s in surgeries:
-        m = _current_milestone(s)
-        if not m or not m.expected_duration_days:
+        cur = step_engine.current_step(s)
+        if cur is None:
             continue
-        age = _milestone_age_days(m)
-        overdue_days = age - m.expected_duration_days
-        overdue_hours = overdue_days * 24
-        if overdue_hours <= ESCALATION_HOURS:
+        behind, hours_overdue = step_engine.is_behind(
+            s,
+            expected_days=step_engine.expected_days_map(db, s),
+            grace_hours=grace,
+        )
+        if not behind:
             continue
+        out.append((s, cur, hours_overdue))
+    return out
 
-        # Already escalated? skip (we only nag once per overdue cycle)
-        if (m.data_json or {}).get("escalation_sent_at"):
+
+def run_escalation_sweep(db: Session) -> dict:
+    """Hourly cron entry point. Returns counts."""
+    grouped: dict[str, list[dict]] = {}    # manager_email → [items]
+    surgeries_to_mark: list[tuple[Surgery, str, str]] = []  # (surgery, step_key, now_iso)
+
+    now_iso = now_utc_naive().isoformat()
+
+    for s, cur, hours_overdue in find_behind_surgeries(db):
+        step_key = cur["key"]
+
+        # Already escalated for this current step? skip (nag once per cycle).
+        if (s.escalation_state or {}).get(step_key):
             continue
 
         manager = _resolve_recipient(db, s)
@@ -103,16 +108,17 @@ def run_escalation_sweep(db: Session) -> dict:
             log.info("Surgery %s: no escalation recipient available", s.id)
             continue
 
+        days_overdue = hours_overdue // 24
         item = {
             "surgery_id": str(s.id),
             "patient_name": s.patient_name,
             "chart_number": s.chart_number,
-            "milestone": m.title,
-            "hours_overdue": overdue_hours,
-            "days_overdue": overdue_days,
+            "milestone": cur["title"],
+            "hours_overdue": hours_overdue,
+            "days_overdue": days_overdue,
         }
         grouped.setdefault(manager.email, []).append(item)
-        instances_to_mark.append(m)
+        surgeries_to_mark.append((s, step_key, now_iso))
 
     sent = 0
     for email, items in grouped.items():
@@ -125,15 +131,14 @@ def run_escalation_sweep(db: Session) -> dict:
         if result.get("sent"):
             sent += 1
 
-    now = now_utc_naive().isoformat()
-    for m in instances_to_mark:
-        m.data_json = {**(m.data_json or {}), "escalation_sent_at": now}
-    if instances_to_mark:
+    for s, step_key, ts in surgeries_to_mark:
+        s.escalation_state = {**(s.escalation_state or {}), step_key: ts}
+    if surgeries_to_mark:
         db.commit()
 
     return {
         "managers_notified": sent,
-        "milestones_escalated": len(instances_to_mark),
+        "surgeries_escalated": len(surgeries_to_mark),
     }
 
 
@@ -142,7 +147,7 @@ def _send_surgery_escalation(manager: User, items: list[dict],
     """Email + Slack DM to one manager, listing all their behind-schedule
     surgeries in a single digest."""
     name = manager.display_name or manager.email.split("@")[0]
-    subject = f"WWC · {len(items)} surgery milestone(s) >48h behind schedule"
+    subject = f"WWC · {len(items)} surgery step(s) behind schedule"
 
     rows_html = "".join(
         f'<li><strong>{it["patient_name"]}</strong> — {it["milestone"]} '
@@ -156,18 +161,18 @@ def _send_surgery_escalation(manager: User, items: list[dict],
 
     html = f"""
     <p>Hi {name},</p>
-    <p>The following surgery milestones are more than 48h past their expected duration:</p>
+    <p>The following surgery steps are behind their expected schedule:</p>
     <ul>{rows_html}</ul>
     <p><a href="https://gw.waldorfwomenscare.com/surgery" style="color:#7B2D5E">Open surgery dashboard →</a></p>
     """
-    text = (f"Hi {name}, {len(items)} surgery milestone(s) need attention:\n"
+    text = (f"Hi {name}, {len(items)} surgery step(s) need attention:\n"
             f"{rows_text}\n\nDashboard: https://gw.waldorfwomenscare.com/surgery")
 
     email_ok = notif.send_email(manager.email, subject, html, text) if manager.notify_email else False
     slack_ok = False
     if manager.notify_slack:
         slack_text = (
-            f"🚩 *{len(items)}* surgery milestone(s) >48h behind:\n"
+            f"🚩 *{len(items)}* surgery step(s) behind schedule:\n"
             + "\n".join(f"• {it['patient_name']} — {it['milestone']} _({it['days_overdue']}d)_"
                         for it in items[:8])
             + (f"\n_…and {len(items) - 8} more_" if len(items) > 8 else "")

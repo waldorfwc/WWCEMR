@@ -142,6 +142,20 @@ def require_patient_token(surgery_id: str,
     return token
 
 
+# ─── Terminal-status guard ──────────────────────────────────────────
+
+TERMINAL_SURGERY_STATUSES = ("cancelled", "completed", "unresponsive")
+
+
+def _reject_if_terminal(s: Surgery) -> None:
+    """Reject (409) any patient self-service write against a terminal-state
+    surgery. Mirrors the guard patient_cancel / pick_or_reschedule already
+    enforce — endpoints that mutate a closed case (cardiologist, sms-consent,
+    upload-fmla) lacked it. (audit #30)"""
+    if s.status in TERMINAL_SURGERY_STATUSES:
+        raise HTTPException(status_code=409, detail="This surgery is no longer active.")
+
+
 # ─── Lockout check ──────────────────────────────────────────────────
 
 def _is_locked_out(db: Session, surgery_id: str) -> bool:
@@ -360,6 +374,7 @@ def patient_update_cardiologist(surgery_id: str, payload: CardiologistUpdate,
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404)
+    _reject_if_terminal(s)
     if not s.clearance_required:
         raise HTTPException(status_code=409,
                             detail="Clearance isn't required for this surgery.")
@@ -772,6 +787,7 @@ def patient_sms_consent(
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
+    _reject_if_terminal(s)
     from datetime import datetime as _dt
     s.sms_consent = bool(payload.sms_consent)
     if s.sms_consent:
@@ -812,6 +828,7 @@ async def patient_upload_fmla(
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404)
+    _reject_if_terminal(s)
 
     contents = await file.read()
     from app.services.surgery.uploads import store_upload, UploadError

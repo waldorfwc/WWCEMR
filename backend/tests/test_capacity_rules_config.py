@@ -55,8 +55,7 @@ def test_office_seven_slots_default(db):
 def test_office_slots_config_override(db):
     db.add(SurgeryConfig(key="capacity_rules", value={
         "office": {"kind": "fixed_slots",
-                    "slot_times": ["08:00", "09:00", "10:00"],
-                    "case_minutes": 60}}))
+                    "slot_times": ["08:00", "09:00", "10:00"]}}))
     db.commit()
     assert office_slot_times_min(db) == [480, 540, 600]
     day = _day("office", [("office", 60)] * 3, start=time(7, 0), end=time(17, 0))
