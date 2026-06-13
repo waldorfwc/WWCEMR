@@ -307,6 +307,98 @@ function StepsTab() {
   )
 }
 
-function PostOpTab()    { return <Placeholder name="Post-Op Schedules" /> }
+// ─── Post-Op Schedules tab ──────────────────────────────────────────
+
+function PostOpTab() {
+  const qc = useQueryClient()
+  const { data: config } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+  })
+  const { data: defaults } = useQuery({
+    queryKey: ['post-op-defaults'],
+    queryFn: () => api.get('/surgery/config/post-op-defaults').then(r => r.data),
+  })
+  const [rules, setRules] = useState(null)
+  const save = useMutation({
+    mutationFn: (body) => api.put('/surgery/config', { post_op_schedules: body }).then(r => r.data),
+    onSuccess: () => { setRules(null); qc.invalidateQueries({ queryKey: ['surgery-config'] }) },
+  })
+  if (!config || !defaults) return <LoadingState />
+  const effective = rules ?? config.post_op_schedules ?? defaults.rules
+
+  const upd = (i, fn) => setRules(effective.map((r, j) => j === i ? fn(r) : r))
+
+  return (
+    <div className="space-y-4">
+      <p className="text-[12px] text-muted">
+        First matching rule (top-down) sets a procedure's follow-up visits.
+        Keywords match anywhere in the procedure description.
+      </p>
+      {effective.map((rule, i) => (
+        <section key={i} className="card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <input className="input w-80 font-medium"
+                   value={rule.match.join(', ')}
+                   onChange={e => upd(i, r => ({ ...r,
+                     match: e.target.value.split(',').map(s => s.trim().toLowerCase()).filter(Boolean) }))} />
+            <button className="text-xs text-red-700 hover:underline"
+                    onClick={() => setRules(effective.filter((_, j) => j !== i))}>
+              Remove Rule
+            </button>
+          </div>
+          {rule.visits.map((v, k) => (
+            <div key={k} className="flex items-center gap-2 text-[13px] py-1">
+              <input className="input w-44" value={v.label}
+                     onChange={e => upd(i, r => ({ ...r, visits: r.visits.map((x, m) =>
+                       m === k ? { ...x, label: e.target.value } : x) }))} />
+              <input type="number" min={1} max={365} className="input w-20" value={v.offset_days}
+                     onChange={e => upd(i, r => ({ ...r, visits: r.visits.map((x, m) =>
+                       m === k ? { ...x, offset_days: Number(e.target.value) } : x) }))} />
+              <span className="text-muted">days after surgery</span>
+              <select className="input w-28" value={v.mode}
+                      onChange={e => upd(i, r => ({ ...r, visits: r.visits.map((x, m) =>
+                        m === k ? { ...x, mode: e.target.value } : x) }))}>
+                <option value="office">Office</option>
+                <option value="telehealth">Telehealth</option>
+              </select>
+              <label className="text-[11px] flex items-center gap-1">
+                <input type="checkbox" checked={!!v.location_locked}
+                       onChange={e => upd(i, r => ({ ...r, visits: r.visits.map((x, m) =>
+                         m === k ? { ...x, location_locked: e.target.checked } : x) }))} />
+                In-Person Required
+              </label>
+              <button className="text-xs text-plum-700 hover:underline"
+                      onClick={() => upd(i, r => ({ ...r, visits: r.visits.filter((_, m) => m !== k) }))}>
+                ✕
+              </button>
+            </div>
+          ))}
+          <button className="text-xs text-plum-700 hover:underline mt-1"
+                  onClick={() => upd(i, r => ({ ...r, visits: [...r.visits,
+                    { label: 'New visit', offset_days: 14, mode: 'office', location_locked: false }] }))}>
+            + Add Visit
+          </button>
+        </section>
+      ))}
+      <div className="flex items-center gap-3">
+        <button className="text-xs text-plum-700 hover:underline"
+                onClick={() => setRules([...effective,
+                  { match: ['keyword'], visits: [{ label: '2 weeks post-op',
+                    offset_days: 14, mode: 'office', location_locked: false }] }])}>
+          + Add Rule
+        </button>
+        <button className="btn-primary text-xs" disabled={!rules || save.isPending}
+                onClick={() => save.mutate(rules)}>
+          {save.isPending ? 'Saving…' : 'Save Changes'}
+        </button>
+        {save.isError && (
+          <span className="text-xs text-red-700">{saveErrorMessage(save.error)}</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function CapacityTab()  { return <Placeholder name="Facilities & Capacity" /> }
 function TemplatesTab() { return <Placeholder name="Templates" /> }
