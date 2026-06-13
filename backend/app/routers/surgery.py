@@ -34,6 +34,7 @@ from app.permissions.dependencies import requires_tier, requires_super_admin
 from app.services.audit_service import log_action
 from app.services.surgery.slot_conflict import overlapping_slot
 from app.services.surgery.blackout_conflict import is_date_blacked_out
+from app.services.surgery.settings import cfg
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
@@ -135,7 +136,7 @@ def _latest_file(s: Surgery, *, kind: str) -> Optional[dict]:
     }
 
 
-def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
+def _surgery_dict(db: Session, s: Surgery, *, include_milestones: bool = False,
                    today: Optional[_date] = None) -> dict:
     behind, hours_overdue = _is_behind(s)
     cur_m = _current_milestone(s)
@@ -175,7 +176,7 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
             if s.office_meds_pickup_confirmed_at else None),
         "office_meds_pickup_confirmed_by": s.office_meds_pickup_confirmed_by,
         "preop_date": str(s.preop_date) if s.preop_date else None,
-        "preop_needs_repeat": _preop_needs_repeat(s),
+        "preop_needs_repeat": _preop_needs_repeat(db, s),
         "lab_appointment_date": (
             str(s.lab_appointment_date) if s.lab_appointment_date else None),
         "lab_appointment_reported_at": (
@@ -295,7 +296,7 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
         "behind_schedule": behind,
         "hours_overdue": hours_overdue,
         "stuck": s.status == "in_progress" and behind,
-        "buckets": sorted(_surgery_buckets(s, today)) if s.milestones is not None else [],
+        "buckets": sorted(_surgery_buckets(db, s, today)) if s.milestones is not None else [],
         "google_calendar_event_id":    s.google_calendar_event_id,
         "google_calendar_sync_status": s.google_calendar_sync_status,
         "google_calendar_sync_error":  s.google_calendar_sync_error,
@@ -328,7 +329,7 @@ def _surgery_dict(s: Surgery, *, include_milestones: bool = False,
 def dashboard(db: Session = Depends(get_db),
               current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     today = _date.today()
-    thirty_days_ago = today - timedelta(days=30)
+    thirty_days_ago = today - timedelta(days=cfg(db, "completed_window_days"))
 
     n_completed_30d = db.query(func.count(Surgery.id)).filter(
         Surgery.status == "completed",
@@ -347,7 +348,7 @@ def dashboard(db: Session = Depends(get_db),
     todo = []
     stuck_count = 0
     for s in rows:
-        for b in _surgery_buckets(s, today):
+        for b in _surgery_buckets(db, s, today):
             bucket_counts[b] = bucket_counts.get(b, 0) + 1
 
         behind, hrs = _is_behind(s)
@@ -361,7 +362,7 @@ def dashboard(db: Session = Depends(get_db),
                 "milestone": cur_m.title if cur_m else None,
                 "hours_overdue": hrs,
             }
-            if hrs > 48:
+            if hrs > cfg(db, "critical_overdue_hours"):
                 critical.append(item)
             else:
                 todo.append(item)
@@ -383,7 +384,7 @@ def dashboard(db: Session = Depends(get_db),
                   .options(joinedload(BlockDay.slots))
                   .filter(BlockDay.block_date >= today)
                   .order_by(BlockDay.block_date)
-                  .limit(180).all())
+                  .limit(cfg(db, "schedule_horizon_days")).all())
     for bd in upcoming:
         if next_slots.get(bd.facility) is not None:
             continue
@@ -494,17 +495,6 @@ ALL_BUCKETS = [
 ]
 
 
-# Days past the pre-op visit (with the surgeon) before a no-date-picked
-# surgery is flagged as unresponsive. The pre-op visit is when expectations
-# and risks are reviewed, so a patient who hasn't picked a date 30 days
-# later has stopped engaging.
-UNRESPONSIVE_AFTER_DAYS = 30
-
-# Pre-op exams/labs are good for 180 days before surgery. After that they
-# must be repeated.
-PREOP_VALID_DAYS = 180
-
-
 def _patient_age(dob: Optional[_date], today: Optional[_date] = None) -> Optional[int]:
     """Calculated age in years on `today`. Returns None if DOB missing."""
     if not dob:
@@ -513,11 +503,11 @@ def _patient_age(dob: Optional[_date], today: Optional[_date] = None) -> Optiona
     return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
 
 
-def _preop_needs_repeat(s: Surgery) -> bool:
+def _preop_needs_repeat(db: Session, s: Surgery) -> bool:
     """True if the pre-op visit is too old (>180 days from surgery date)."""
     if not s.preop_date or not s.scheduled_date:
         return False
-    return (s.scheduled_date - s.preop_date).days > PREOP_VALID_DAYS
+    return (s.scheduled_date - s.preop_date).days > cfg(db, "preop_valid_days")
 
 
 def _post_op_visits_serialized(s: Surgery) -> list[dict]:
@@ -544,7 +534,7 @@ def _assistant_surgeon_outstanding(s: Surgery) -> bool:
             or s.assistant_surgeon_appt_confirmed_at is None)
 
 
-def _surgery_buckets(s: Surgery, today: Optional[_date] = None) -> set[str]:
+def _surgery_buckets(db: Session, s: Surgery, today: Optional[_date] = None) -> set[str]:
     """Return the set of dashboard buckets this surgery currently belongs to."""
     today = today or _date.today()
     buckets: set[str] = set()
@@ -580,7 +570,7 @@ def _surgery_buckets(s: Surgery, today: Optional[_date] = None) -> set[str]:
     # Unresponsive: pre-op visit happened 30+ days ago but the patient
     # hasn't picked a surgery date. Helps schedulers triage stalled patients.
     if (not has_date and s.preop_date
-            and (today - s.preop_date).days >= UNRESPONSIVE_AFTER_DAYS):
+            and (today - s.preop_date).days >= cfg(db, "unresponsive_after_days")):
         buckets.add("unresponsive")
 
     if has_date:
@@ -594,12 +584,12 @@ def _surgery_buckets(s: Surgery, today: Optional[_date] = None) -> set[str]:
         if not all_required_appts_filled(s):
             buckets.add("needs_followup_appt")
         # Pre-op stale: exam/labs older than 180 days from surgery date
-        if _preop_needs_repeat(s):
+        if _preop_needs_repeat(db, s):
             buckets.add("needs_repeat_preop")
 
         # Labs alert: hospital surgery, within 7 days, labs not yet sent
         if (is_hospital and days_until is not None
-                and 0 <= days_until <= 7
+                and 0 <= days_until <= cfg(db, "labs_alert_window_days")
                 and not s.labs_sent_to_hospital):
             buckets.add("needs_labs")
 
@@ -609,7 +599,7 @@ def _surgery_buckets(s: Surgery, today: Optional[_date] = None) -> set[str]:
             # Spoke-to-pt is the only "done" state for the post-op call
             if (s.post_op_call_status or "") != "Spoke to Pt.":
                 buckets.add("needs_post_op_call")
-            if (days_since >= 5
+            if (days_since >= cfg(db, "post_op_docs_alert_days")
                     and s.operative_report_status not in (
                         "completed", "received", "not_required")):
                 buckets.add("needs_post_op_docs")
@@ -631,7 +621,7 @@ PRE_OP_MILESTONES = {
 }
 
 
-def _readiness_indicator(s: Surgery) -> tuple[str, list[str], int]:
+def _readiness_indicator(db: Session, s: Surgery) -> tuple[str, list[str], int]:
     """Returns (color, open_milestone_titles, critical_count).
 
     color is 'green' | 'yellow' | 'red':
@@ -649,7 +639,7 @@ def _readiness_indicator(s: Surgery) -> tuple[str, list[str], int]:
         open_titles.append(m.title)
         if m.expected_duration_days:
             age = _milestone_age_days(m)
-            if age - m.expected_duration_days > 2:    # >48h late
+            if age - m.expected_duration_days > cfg(db, "critical_overdue_hours") / 24:    # >48h late
                 critical += 1
     if not open_titles:
         return "green", [], 0
@@ -690,7 +680,7 @@ def calendar(
 
     out = []
     for s in rows:
-        color, open_titles, critical = _readiness_indicator(s)
+        color, open_titles, critical = _readiness_indicator(db, s)
         primary_proc = ""
         procs = s.procedures or []
         if procs:
@@ -811,11 +801,11 @@ def list_surgeries(
         if bucket not in ALL_BUCKETS:
             raise HTTPException(status_code=422, detail=f"unknown bucket: {bucket}")
         today = _date.today()
-        rows = [s for s in rows if bucket in _surgery_buckets(s, today)]
+        rows = [s for s in rows if bucket in _surgery_buckets(db, s, today)]
     if behind_only:
         rows = [s for s in rows if _is_behind(s)[0]]
     if preop_needs_repeat is not None:
-        rows = [s for s in rows if _preop_needs_repeat(s) == preop_needs_repeat]
+        rows = [s for s in rows if _preop_needs_repeat(db, s) == preop_needs_repeat]
     if age_min is not None:
         rows = [s for s in rows
                 if _patient_age(s.dob) is not None and _patient_age(s.dob) >= age_min]
@@ -837,7 +827,7 @@ def list_surgeries(
         "total": total,
         "page": page,
         "per_page": per_page,
-        "surgeries": [_surgery_dict(s) for s in paged],
+        "surgeries": [_surgery_dict(db, s) for s in paged],
     }
 
 
@@ -1129,7 +1119,7 @@ def create_manual(payload: ManualSurgeryIn,
     maybe_assign_surgery_number(db, s)
     upsert_patient_directory(db, s)
     db.commit(); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 # ─── Picklists (must be declared BEFORE /{surgery_id} so it isn't eaten as a path-param) ─
@@ -1217,7 +1207,7 @@ def get_surgery(surgery_id: str, db: Session = Depends(get_db),
         user_name=current_user.get("name") or current_user.get("email"),
         description=f"Viewed surgery chart {s.surgery_number or s.id} ({s.patient_name})",
     )
-    out = _surgery_dict(s, include_milestones=True)
+    out = _surgery_dict(db, s, include_milestones=True)
     # Expose the booked slot so the frontend can offer duration inline edit (Phase D6)
     slot = (db.query(SurgerySlot)
               .filter(SurgerySlot.surgery_id == s.id)
@@ -1689,7 +1679,7 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
             logging.getLogger(__name__).warning(
                 "calendar resync after PATCH failed for %s: %s", s.id, e)
 
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 class MilestoneAction(BaseModel):
@@ -1770,7 +1760,7 @@ def milestone_action(
 
     _commit_or_409(db, surgery_id=surgery_id)
     db.refresh(m); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 # ─── Status transitions (cancel / hold / unresponsive) ──────────────
@@ -3448,7 +3438,7 @@ def scheduler_pick_date(surgery_id: str, payload: SchedulerPickIn,
     return {
         "ok": True,
         **result,
-        "surgery": _surgery_dict(s, include_milestones=True),
+        "surgery": _surgery_dict(db, s, include_milestones=True),
     }
 
 
@@ -3476,7 +3466,7 @@ def toggle_modmed_scheduled(
         s.scheduled_in_modmed_at = None
         s.scheduled_in_modmed_by = None
     db.commit(); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 @router.post("/{surgery_id}/office-meds-pickup")
@@ -3500,7 +3490,7 @@ def toggle_office_meds_pickup(
         s.office_meds_pickup_confirmed_at = None
         s.office_meds_pickup_confirmed_by = None
     db.commit(); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 # ─── Coordinator schedule endpoint (Phase D2) ───────────────────────
@@ -3820,7 +3810,7 @@ def save_post_op_appts(
                 m.completed_by = None
 
     db.commit(); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 # ─── Assistant surgeon coordination ────────────────────────────────
@@ -3861,7 +3851,7 @@ def assistant_surgeon_notify_office(
     s.assistant_surgeon_office_notified_by = by
     _maybe_complete_assistant_milestone(db, s, by)
     db.commit(); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 class AssistantApptConfirm(BaseModel):
@@ -3897,7 +3887,7 @@ def assistant_surgeon_confirm_appt(
     s.assistant_surgeon_appt_confirmed_by = by
     _maybe_complete_assistant_milestone(db, s, by)
     db.commit(); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 @router.post("/{surgery_id}/assistant-surgeon/reset")
@@ -3924,7 +3914,7 @@ def assistant_surgeon_reset(
         m.completed_at = None
         m.completed_by = None
     db.commit(); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 # ─── AI billing-code suggestion (Phase 3) ───────────────────────────
@@ -3954,7 +3944,7 @@ def suggest_billing_codes(surgery_id: str,
         raise HTTPException(status_code=400, detail=str(e))
     return {
         **result,
-        "surgery": _surgery_dict(s, include_milestones=True),
+        "surgery": _surgery_dict(db, s, include_milestones=True),
     }
 
 
@@ -4382,7 +4372,7 @@ def consent_mark_sent(surgery_id: str, payload: ConsentTransitionPayload = Conse
         if payload.notes:
             m.notes = payload.notes
     _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 @router.get("/{surgery_id}/consent/template-matches")
@@ -4454,7 +4444,7 @@ def consent_docusign_send(surgery_id: str,
 
     return {
         **result,
-        "surgery": _surgery_dict(s, include_milestones=True),
+        "surgery": _surgery_dict(db, s, include_milestones=True),
     }
 
 
@@ -4484,7 +4474,7 @@ def consent_docusign_sync(surgery_id: str,
         raise HTTPException(status_code=502, detail=str(e))
     return {
         **result,
-        "surgery": _surgery_dict(s, include_milestones=True),
+        "surgery": _surgery_dict(db, s, include_milestones=True),
     }
 
 
@@ -4602,7 +4592,7 @@ def consent_mark_signed(surgery_id: str, payload: ConsentTransitionPayload = Con
                      f"{s.surgery_number or s.id} (evidence file "
                      f"{has_consent_file.id})"),
     )
-    return _surgery_dict(s, include_milestones=True)
+    return _surgery_dict(db, s, include_milestones=True)
 
 
 @router.post("/{surgery_id}/consent/reset")

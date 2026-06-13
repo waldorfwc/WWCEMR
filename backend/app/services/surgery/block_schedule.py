@@ -91,14 +91,21 @@ def _dates_for_schedule(sched: BlockSchedule, start: date, end: date) -> list[da
     return sorted(set(out))
 
 
-def materialize_block_days(db: Session, *, days_ahead: int = 180) -> dict:
+def materialize_block_days(db: Session, *, days_ahead: int | None = None) -> dict:
     """Walk all active BlockSchedules and create BlockDay rows for the
     next `days_ahead` days. Skips office-wide blackout dates entirely
     and facility-scoped blackouts for that facility.
 
     Idempotent: existing BlockDay rows (matching facility+date) are
     refreshed in place (e.g. if the schedule's hours change).
+
+    When `days_ahead` is not passed, the horizon comes from the
+    schedule_horizon_days surgery setting (default 180).
     """
+    if days_ahead is None:
+        from app.services.surgery.settings import cfg
+        days_ahead = cfg(db, "schedule_horizon_days")
+
     today = date.today()
     end = today + timedelta(days=days_ahead)
 
