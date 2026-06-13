@@ -57,7 +57,7 @@ def main():
                 if m.position > insert_after:
                     m.position += 1
 
-            initial_status = "done" if all_required_appts_filled(s) else "pending"
+            initial_status = "done" if all_required_appts_filled(s, db=db) else "pending"
             now = datetime.utcnow()
             new_m = SurgeryMilestone(
                 surgery_id=s.id,

@@ -188,7 +188,7 @@ def _surgery_dict(db: Session, s: Surgery, *, include_milestones: bool = False,
             str(s.post_op_appt_2nd_date) if s.post_op_appt_2nd_date else None),
         "post_op_appt_location":     s.post_op_appt_location,
         "post_op_appt_2nd_location": s.post_op_appt_2nd_location,
-        "post_op_schedule_required": _post_op_visits_serialized(s),
+        "post_op_schedule_required": _post_op_visits_serialized(db, s),
         "auth_status": s.auth_status,
         "auth_number": s.auth_number,
         "clearance_required": bool(s.clearance_required),
@@ -510,7 +510,7 @@ def _preop_needs_repeat(db: Session, s: Surgery) -> bool:
     return (s.scheduled_date - s.preop_date).days > cfg(db, "preop_valid_days")
 
 
-def _post_op_visits_serialized(s: Surgery) -> list[dict]:
+def _post_op_visits_serialized(db: Session, s: Surgery) -> list[dict]:
     """List of post-op visits the practice rules say this surgery needs.
     Pure-data — the frontend uses it to render the right number of date
     inputs on the post-op-appts milestone card."""
@@ -519,7 +519,7 @@ def _post_op_visits_serialized(s: Surgery) -> list[dict]:
         {"label": v.label, "days_post_op": v.days_post_op,
          "suggested_location": v.suggested_location,
          "location_locked": v.location_locked}
-        for v in determine_post_op_schedule(s)
+        for v in determine_post_op_schedule(s, db=db)
     ]
 
 
@@ -581,7 +581,7 @@ def _surgery_buckets(db: Session, s: Surgery, today: Optional[_date] = None) -> 
                 "received", "sent_to_hospital", "completed"):
             buckets.add("needs_clearance")
         from app.services.post_op_schedule import all_required_appts_filled
-        if not all_required_appts_filled(s):
+        if not all_required_appts_filled(s, db=db):
             buckets.add("needs_followup_appt")
         # Pre-op stale: exam/labs older than 180 days from surgery date
         if _preop_needs_repeat(db, s):
@@ -3723,7 +3723,7 @@ def get_post_op_schedule(
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
-    visits = determine_post_op_schedule(s)
+    visits = determine_post_op_schedule(s, db=db)
     base = s.scheduled_date
     return {
         "scheduled_date": str(base) if base else None,
@@ -3781,7 +3781,7 @@ def save_post_op_appts(
     # Safety net: clinically-required in-person visits can't be saved
     # as telehealth even if a stale frontend tries to.
     from app.services.post_op_schedule import determine_post_op_schedule
-    rule_visits = determine_post_op_schedule(s)
+    rule_visits = determine_post_op_schedule(s, db=db)
     if len(rule_visits) > 0 and rule_visits[0].location_locked and first_loc == "telehealth":
         raise HTTPException(
             status_code=422,
@@ -3797,7 +3797,7 @@ def save_post_op_appts(
     # Auto-close the milestone when all required appts are filled
     m = next((mm for mm in s.milestones if mm.kind == "post_op_appts_scheduled"), None)
     if m:
-        if all_required_appts_filled(s):
+        if all_required_appts_filled(s, db=db):
             if m.status != "done":
                 m.status = "done"
                 m.completed_at = now_utc_naive()
