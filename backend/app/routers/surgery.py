@@ -506,19 +506,21 @@ def _surgery_buckets(db: Session, s: Surgery, today: Optional[_date] = None) -> 
         # Incomplete surgeries don't have milestones — stop here
         return buckets
 
-    by_kind = {m.kind: m for m in (s.milestones or [])}
+    # Bucket membership is computed from the steps engine (milestones are
+    # retired and no longer written). A step that is done or n/a means that
+    # piece of work is no longer outstanding.
+    _step_state = {st["key"]: st["state"] for st in step_engine.compute_steps(s)}
 
-    def is_done(kind: str) -> bool:
-        m = by_kind.get(kind)
-        return m is not None and m.status in ("done", "skipped", "not_applicable")
+    def step_done(key: str) -> bool:
+        return _step_state.get(key) in ("done", "n/a")
 
     has_date = s.scheduled_date is not None
     days_until = (s.scheduled_date - today).days if has_date else None
     is_hospital = s.selected_facility in ("medstar", "crmc")
 
-    if not is_done("benefits_determined"):
+    if not step_done("benefits"):
         buckets.add("needs_benefits")
-    if not is_done("prior_auth"):
+    if not step_done("prior_auth"):
         buckets.add("needs_prior_auth")
     if _assistant_surgeon_outstanding(s):
         buckets.add("needs_assistant_surgeon")
@@ -531,7 +533,7 @@ def _surgery_buckets(db: Session, s: Surgery, today: Optional[_date] = None) -> 
 
     if has_date:
         buckets.add("date_picked")
-        if not is_done("consent"):
+        if not step_done("consents"):
             buckets.add("needs_consent")
         if s.clearance_required and s.clearance_status not in (
                 "received", "sent_to_hospital", "completed"):
@@ -568,13 +570,9 @@ def _surgery_buckets(db: Session, s: Surgery, today: Optional[_date] = None) -> 
 
 # ─── Calendar (32-day pre-op readiness view) ───────────────────────
 
-# Milestone kinds that must be done before surgery day. Anything past
-# `patient_picks_date` is post-op and doesn't gate readiness.
-PRE_OP_MILESTONES = {
-    "benefits_determined", "prior_auth",
-    "patient_picks_date", "device_assigned", "consent",
-    "surgery_confirmed_hospital", "labs_to_hospital",
-}
+# Pre-op readiness gates on the step engine's PRE_OP_STEP_KEYS_* sets
+# (see step_engine). The old milestone-kind set was retired with the
+# steps cutover.
 
 
 def _readiness_indicator(db: Session, s: Surgery) -> tuple[str, list[str], int]:
