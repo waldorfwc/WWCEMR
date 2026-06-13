@@ -25,15 +25,9 @@ router = APIRouter(prefix="/surgery", tags=["surgery-config"])
 
 
 # ─── Defaults (used when a config key has no row yet) ───────────────
-
-CONFIG_DEFAULTS = {
-    "office_full_threshold":     6,
-    "office_lookahead_days":     6,
-    "hospital_lookahead_days":  14,
-    # Phase I — surgery reminder lead-days. Cron iterates these and emails
-    # patients whose surgery is exactly N days away (per entry).
-    "reminder_lead_days":        [3, 1],
-}
+# Source of truth lives in the registry; import it here so _read_config
+# and put_config keep working unchanged.
+from app.services.surgery.settings import SETTINGS_DEFAULTS as CONFIG_DEFAULTS  # noqa: E402
 
 ALERT_KINDS = ("office_release", "hospital_release")
 PROCEDURE_KINDS = ("minor", "major", "office", "robotic_180", "robotic_240")
