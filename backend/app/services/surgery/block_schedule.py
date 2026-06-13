@@ -321,14 +321,25 @@ def can_fit(db: Session, block_day: BlockDay, procedure_kind: str) -> tuple[bool
             return True, ""
         if procedure_kind == "minor" and rule.get("minor_addon"):
             addon = rule["minor_addon"]
-            total = sum(counts.get(k, 0) for k in options)
-            if total >= addon["blocked_at"]:
-                return False, f"Day full with {total} robotics — no minor add-ons."
-            if total == addon["after_count"]:
+            # A minor add-on rides on a canonical block of the PRIMARY robotic
+            # kind (the first option, e.g. robotic_180) with no other robotic
+            # kind present — mirrors the original "robotic_180 == 2 and
+            # robotic_240 == 0" rule. Mixed-robotic days (only reachable via
+            # force-booked imports) do not qualify.
+            opt_kinds = list(options)
+            primary = opt_kinds[0] if opt_kinds else None
+            primary_count = counts.get(primary, 0)
+            others = sum(counts.get(k, 0) for k in opt_kinds[1:])
+            if primary_count >= addon["blocked_at"]:
+                return False, (f"Day full with {primary_count} × "
+                                f"{DURATIONS.get(primary)}-min robotics — "
+                                f"no minor add-ons.")
+            if primary_count == addon["after_count"] and others == 0:
                 return True, ""
             return False, (f"Minors at {block_day.facility} require "
-                            f"{addon['after_count']} robotics already booked; "
-                            f"currently {total}.")
+                            f"{addon['after_count']} × {DURATIONS.get(primary)}-min "
+                            f"robotics already booked; currently "
+                            f"{primary_count + others}.")
         return False, f"{block_day.facility} block doesn't accept {procedure_kind} cases."
 
     if kind == "mix_exclusive":
