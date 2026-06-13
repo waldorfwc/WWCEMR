@@ -192,6 +192,7 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "calendar_invite_sent_at":   (s.calendar_invite_sent_at.isoformat()
                                         if s.calendar_invite_sent_at else None),
         "operative_report_status":   s.operative_report_status,
+        "pathology_status":          s.pathology_status,
         "post_op_call_status":       s.post_op_call_status,
         "latest_boarding_slip": _latest_file(s, kind="boarding_slip"),
         "billing_ai_notes": s.billing_ai_notes,
