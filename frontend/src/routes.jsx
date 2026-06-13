@@ -89,7 +89,7 @@ import SurgeryBulkImport from './pages/SurgeryBulkImport'
 import SurgeryCalendar from './pages/SurgeryCalendar'
 import SurgeryDetail from './pages/SurgeryDetail'
 import SurgeryFeeSchedule from './pages/SurgeryFeeSchedule'
-import SurgeryRules from './pages/SurgeryRules'
+import SurgerySettings from './pages/SurgerySettings'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
 
 // Mirrors backend Tier ordinals (app/permissions/catalog.py).
@@ -169,7 +169,8 @@ export const ROUTES = [
   // Specific paths before /surgery/:id so they don't get swallowed.
   { path: '/surgery',                element: <Surgery />,             module: M.SURGERY, tier: TIER.VIEW,
       nav: { label: 'Surgery', order: 60 } },
-  { path: '/surgery/rules',          element: <SurgeryRules />,        module: M.SURGERY, tier: TIER.MANAGE },
+  { path: '/surgery/settings',       element: <SurgerySettings />,     module: M.SURGERY, tier: TIER.MANAGE },
+  { path: '/surgery/rules',          element: <Navigate to="/surgery/settings" replace />, module: M.SURGERY, tier: TIER.MANAGE },
   { path: '/surgery/block-schedule', element: <SurgeryBlockSchedule />, module: M.SURGERY, tier: TIER.MANAGE },
   { path: '/surgery/waitlist',       element: <SurgeryWaitlist />,     module: M.SURGERY, tier: TIER.WORK },
   { path: '/surgery/calendar',       element: <SurgeryCalendar />,     module: M.SURGERY, tier: TIER.VIEW },

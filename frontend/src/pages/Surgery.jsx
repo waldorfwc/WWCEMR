@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Activity, AlertTriangle, BookOpen, Calendar, CheckCircle2, Clock, Hospital,
+  Activity, AlertTriangle, CalendarRange, Calendar, CheckCircle2, Clock, Hospital,
   Search, Stethoscope, TrendingUp, Users, Building2, Upload, X, FileText, Settings,
   Check, Phone, Save, Star, ChevronDown, ChevronUp, Trash2, MessageSquare,
   DollarSign, SearchX,
@@ -236,10 +236,10 @@ export default function Surgery() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Link to="/surgery/rules"
+          <Link to="/surgery/settings"
                 className="btn-secondary text-sm flex items-center gap-1"
-                title="Reference guide for schedulers — block rules, capacity, consents, etc.">
-            <BookOpen size={13} /> Rules
+                title="Surgery Settings — alerts, steps, capacity, templates">
+            <Settings size={13} /> Settings
           </Link>
           <Link to="/surgery/calendar"
                 className="btn-secondary text-sm flex items-center gap-1">
@@ -247,7 +247,7 @@ export default function Surgery() {
           </Link>
           <Link to="/surgery/block-schedule"
                 className="btn-secondary text-sm flex items-center gap-1">
-            <Settings size={13} /> Block schedule
+            <CalendarRange size={13} /> Block schedule
           </Link>
           <Link to="/surgery/fee-schedule"
                 className="btn-secondary text-sm flex items-center gap-1">
