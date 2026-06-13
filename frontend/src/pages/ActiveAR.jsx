@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
-  Search, Upload, Plus, X, RefreshCw, MoreHorizontal, ChevronDown,
+  Search, Upload, Plus, X, MoreHorizontal, ChevronDown,
   ChevronRight, SlidersHorizontal, Layers, MessageSquare,
   Save, Star, Trash2, SearchX,
 } from 'lucide-react'
@@ -192,9 +192,6 @@ export default function ActiveAR() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['active-ar-filter-presets'] }),
   })
 
-  const [syncToast, setSyncToast] = useState(null)
-  const [syncing, setSyncing] = useState(false)
-
   // Quick filter "Mine" / "Unassigned" use the assignedTo field as a sentinel
   const isMine = assignedTo === me && me
   const isUnassigned = assignedTo === '__none__'
@@ -254,33 +251,6 @@ export default function ActiveAR() {
   const activeFilterCount = [search, priority, ageBucket, payer, plan, tfStatus, assignedTo, includeAged]
     .filter(v => v).length
 
-  async function runBatchSync() {
-    if (syncing) return
-    if (!window.confirm('Sync Waystar status for up to 50 claims? Takes 1–2 min.')) return
-    setSyncing(true); setSyncToast(null)
-    try {
-      const params = new URLSearchParams({ only_unchecked: 'true', max_count: '50' })
-      if (workflowState) params.set('workflow_state', workflowState)
-      if (payer) params.set('payer', payer)
-      if (ageBucket) params.set('age_bucket', ageBucket)
-      const res = await api.post(`/active-ar/sync-status-batch?${params}`)
-      setSyncToast({ ok: true, ...res.data })
-      qc.invalidateQueries()
-    } catch (e) {
-      setSyncToast({ ok: false, error: e?.response?.data?.detail || e.message })
-    } finally {
-      setSyncing(false)
-      setActionsOpen(false)
-    }
-  }
-
-  // Auto-dismiss sync toast after 6s
-  useEffect(() => {
-    if (!syncToast) return
-    const t = setTimeout(() => setSyncToast(null), 6000)
-    return () => clearTimeout(t)
-  }, [syncToast])
-
   return (
     <div className="space-y-3">
       {/* HEADER */}
@@ -312,10 +282,6 @@ export default function ActiveAR() {
               <ActionItem onClick={() => { setShowEnrich(true); setActionsOpen(false) }}>
                 <Upload size={14} /> Enrich from Charge Analysis
               </ActionItem>
-              <ActionItem onClick={runBatchSync} disabled={syncing}>
-                <RefreshCw size={14} className={syncing ? 'animate-spin' : ''} />
-                {syncing ? 'Syncing…' : 'Sync Waystar (50)'}
-              </ActionItem>
             </div>
           )}
           <button className="btn-primary flex items-center gap-1 text-sm" onClick={() => navigate('/active-ar/post-payment')}>
@@ -323,19 +289,6 @@ export default function ActiveAR() {
           </button>
         </div>
       </div>
-
-      {/* SYNC TOAST (auto-dismisses) */}
-      {syncToast && (
-        <div className={`fixed top-20 right-6 z-50 max-w-md text-xs rounded-lg shadow-lg px-3 py-2 border
-                         ${syncToast.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-700'}`}>
-          {syncToast.ok ? (
-            <>✓ Synced {syncToast.synced_count} · {syncToast.era_attached_count} ERA{syncToast.era_attached_count === 1 ? '' : 's'} attached
-              {syncToast.errors?.length > 0 && <> · {syncToast.errors.length} errors</>}</>
-          ) : (
-            <>Sync failed: {syncToast.error}</>
-          )}
-        </div>
-      )}
 
       {/* SUMMARY CHIPS — 6 high-value */}
       {summary && (

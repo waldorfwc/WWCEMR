@@ -104,7 +104,7 @@ processed for payment.
 The denial cited the claim as untimely (denial code(s) {{denial_codes}}). We
 respectfully dispute this determination.
 
-The original claim was submitted electronically through Waystar/Availity on
+The original claim was submitted electronically on
 [INSERT ORIGINAL SUBMISSION DATE], well within your published timely-filing
 window for this date of service. Proof of electronic submission, including
 the clearinghouse receipt and submission timestamp, is enclosed.

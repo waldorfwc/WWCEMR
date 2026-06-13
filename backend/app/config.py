@@ -19,13 +19,6 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
     allowed_domains: str = "waldorfwomenscare.com,caribcall.com"
-    waystar_api_key: str = ""
-    waystar_password: str = ""
-    waystar_base_url: str = ""
-    waystar_sftp_host: str = ""
-    waystar_sftp_port: int = 22
-    waystar_sftp_username: str = ""
-    waystar_sftp_password: str = ""
 
     # Storage backend selection — previously read directly via
     # os.environ.get(...) in storage.py, billing_doc_storage.py,

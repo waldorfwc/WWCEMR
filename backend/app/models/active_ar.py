@@ -112,10 +112,6 @@ class ActiveClaim(Base):
     written_off_amount = Column(Numeric(12, 2), nullable=True)
     written_off_reason = Column(String(200), nullable=True)
 
-    # Waystar status sync (filled in later)
-    last_status_check_at = Column(DateTime, nullable=True)
-    last_status_response = Column(Text, nullable=True)        # JSON string
-
     # Timestamps
     imported_at = Column(DateTime, default=now_utc_naive, nullable=False)
     last_seen_in_export_at = Column(DateTime, nullable=True)

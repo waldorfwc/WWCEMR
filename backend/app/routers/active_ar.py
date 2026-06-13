@@ -150,7 +150,6 @@ def _claim_to_dict(c: ActiveClaim, patient: Optional[Patient] = None,
         "assigned_to": c.assigned_to,
         "paid_amount": float(c.paid_amount or 0),
         "paid_in_full_at": str(c.paid_in_full_at) if c.paid_in_full_at else None,
-        "last_status_check_at": str(c.last_status_check_at) if c.last_status_check_at else None,
         "imported_at": str(c.imported_at) if c.imported_at else None,
         "last_seen_in_export_at": str(c.last_seen_in_export_at) if c.last_seen_in_export_at else None,
         # Charge Analysis enrichment
@@ -1067,77 +1066,6 @@ def list_assignees(db: Session = Depends(get_db),
 
     out = sorted(assignees.values(), key=lambda u: (u["display_name"] or u["email"]).lower())
     return {"assignees": out}
-
-
-# ---------- Waystar status sync ----------
-
-@router.post("/claims/{claim_id}/sync-status")
-def sync_claim_status(
-    claim_id: str,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(
-        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
-):
-    """Query Waystar for this single claim's status, persist the response,
-    log an activity entry, and auto-attach a matching ERA if found."""
-    from app.services.active_ar_waystar_sync import sync_one
-    c = db.query(ActiveClaim).filter(ActiveClaim.id == claim_id).first()
-    if not c:
-        raise HTTPException(status_code=404, detail="claim not found")
-    return sync_one(db, c, user_email=current_user.get("email"))
-
-
-@router.post("/sync-status-batch")
-def sync_status_batch(
-    db: Session = Depends(get_db),
-    workflow_state: Optional[str] = None,
-    payer: Optional[str] = None,
-    age_bucket: Optional[str] = None,
-    only_unchecked: bool = Query(
-        False,
-        description="If true, only sync claims that have never been checked "
-                    "or were checked > 24h ago.",
-    ),
-    max_count: int = Query(50, le=500),
-    current_user: dict = Depends(
-        requires_tier(Module.ACTIVE_AR, Tier.WORK)),
-):
-    """Run Waystar status sync across a filter set. Returns per-claim results."""
-    from app.services.active_ar_waystar_sync import sync_many
-    q = db.query(ActiveClaim).filter(
-        ActiveClaim.workflow_state.notin_(["paid", "rebilled_modmed", "written_off", "closed"])
-    )
-    if workflow_state:
-        q = q.filter(ActiveClaim.workflow_state == workflow_state)
-    if payer:
-        q = q.filter(ActiveClaim.insurance_company.ilike(f"%{payer}%"))
-
-    today = date.today()
-    if age_bucket:
-        bounds = {
-            "0-30":  (today - timedelta(days=30),  None),
-            "31-60": (today - timedelta(days=60),  today - timedelta(days=31)),
-            "61-90": (today - timedelta(days=90),  today - timedelta(days=61)),
-            "90+":   (None,                        today - timedelta(days=91)),
-        }.get(age_bucket)
-        if bounds:
-            lo, hi = bounds
-            if lo is not None:
-                q = q.filter(ActiveClaim.dos >= lo)
-            if hi is not None:
-                q = q.filter(ActiveClaim.dos <= hi)
-
-    if only_unchecked:
-        cutoff = now_utc_naive() - timedelta(hours=24)
-        q = q.filter(or_(
-            ActiveClaim.last_status_check_at.is_(None),
-            ActiveClaim.last_status_check_at < cutoff,
-        ))
-
-    # Prioritize: oldest DOS first (closest to TF deadline)
-    q = q.order_by(ActiveClaim.dos.asc().nullslast()).limit(max_count)
-    claims = q.all()
-    return sync_many(db, claims, user_email=current_user.get("email"), max_count=max_count)
 
 
 # ---------- Charge Analysis enrichment ----------

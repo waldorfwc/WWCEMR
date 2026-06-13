@@ -11,7 +11,6 @@ BILLING_ROUTES = [
     "/api/denials/summary",
     "/api/appeals",
     "/api/audit",
-    "/api/waystar/status",
     "/api/ar/summary",
     "/api/imports/era-files",
     "/api/dashboard/summary",
