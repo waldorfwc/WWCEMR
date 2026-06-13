@@ -1442,7 +1442,7 @@ def portal_messages_get(
     # require_portal_token also validates the bearer + surgery match; we
     # call it manually so we can also inspect the viewer claim for the
     # preview-skip decision below.
-    require_portal_token(request, surgery_id, authorization)
+    require_portal_token(request, surgery_id, db=db, authorization=authorization)
     token = authorization.split(" ", 1)[1].strip() if " " in authorization else ""
     payload = auth.decode_portal_token(token) or {}
     is_preview = (payload.get("viewer") or "").startswith("staff:")
