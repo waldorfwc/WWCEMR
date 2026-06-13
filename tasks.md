@@ -6,7 +6,12 @@ Updated 2026-06-13. Pick up here next time.
 
 ## 🟣 Surgery Settings + Steps Engine + DocuSign Removal (branch `feat/surgery-settings`)
 
-Status: **CODE COMPLETE, NOT DEPLOYED.** 20 commits on `feat/surgery-settings`
+Status: **DEPLOYED to Cloud Run 2026-06-13** from `feat/surgery-settings`
+(NOT yet merged to `main`; PR pending). Live revisions:
+**backend-00303-qwj**, **frontend-00233-wf5**. Automated smoke passed
+(health 200; all new settings/step/capacity/boldsign endpoints 401-gated =
+live; removed docusign webhook + larc/docusign-templates → 404). UI smoke
+(below) still needs a human pass. 21+ commits on `feat/surgery-settings`
 (off `main`). Backend imports clean, frontend builds clean, test suite at
 its pre-existing baseline (87 failed / 7 errors — all pre-existing
 missing-module/collection failures unrelated to this work; was 90 before,
