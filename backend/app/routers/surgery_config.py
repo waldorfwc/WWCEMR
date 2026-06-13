@@ -10,7 +10,7 @@ import re
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -59,7 +59,6 @@ class FacilityCapacity(BaseModel):
     exclusive: bool = True
     minor_addon: Optional[MinorAddon] = None
     slot_times: Optional[list[str]] = None     # fixed_slots only, "HH:MM"
-    case_minutes: Optional[int] = Field(default=None, ge=15, le=480)
 
     @field_validator("kind")
     @classmethod
@@ -67,6 +66,16 @@ class FacilityCapacity(BaseModel):
         if v not in ("robotic", "mix_exclusive", "fixed_slots"):
             raise ValueError(f"unknown capacity kind {v}")
         return v
+
+    @model_validator(mode="after")
+    def options_required_for_count_kinds(self):
+        # robotic / mix_exclusive cap by per-case-kind counts in
+        # `options`. An empty options list there means the facility
+        # rejects every case (audit #27). fixed_slots caps by slot_times,
+        # so it doesn't need options.
+        if self.kind in ("robotic", "mix_exclusive") and not self.options:
+            raise ValueError(f"{self.kind} capacity requires at least one option")
+        return self
 
     @field_validator("slot_times")
     @classmethod
@@ -133,6 +142,20 @@ class ConfigPayload(BaseModel):
                 raise ValueError(f"expected days for {k} must be 1-90")
         return v
 
+    @field_validator("reminder_lead_days")
+    @classmethod
+    def reminder_lead_days_valid(cls, v):
+        # Non-empty, each 1..60. An empty list would silently disable all
+        # reminders with no explicit signal (audit #8).
+        if v is None:
+            return v
+        if not v:
+            raise ValueError("reminder_lead_days must not be empty")
+        for d in v:
+            if not (1 <= int(d) <= 60):
+                raise ValueError(f"reminder lead day {d} must be 1-60")
+        return v
+
 
 class RecipientIn(BaseModel):
     alert_kind: str
@@ -189,6 +212,23 @@ def get_config(db: Session = Depends(get_db),
     return _read_config(db)
 
 
+# Dict-valued config keys that must MERGE incoming sub-keys into the
+# stored dict instead of wholesale-replacing it. StepsTab/capacity UIs
+# send only the touched sub-keys, so a full replace would silently wipe
+# previously-saved entries (audit #7). All four step_* keys deep-merge at
+# the sub-key level; capacity_rules merges at the facility level (an
+# incoming facility's rule replaces the stored one, but facilities the
+# payload omits are preserved). Everything else (post_op_schedules — a
+# LIST — and scalar keys) is full-replace.
+_DEEP_MERGE_KEYS = (
+    "step_expected_days_hospital",
+    "step_expected_days_office",
+    "step_titles_hospital",
+    "step_titles_office",
+)
+_FACILITY_MERGE_KEYS = ("capacity_rules",)
+
+
 @router.put("/config")
 def put_config(payload: ConfigPayload,
                db: Session = Depends(get_db),
@@ -199,6 +239,16 @@ def put_config(payload: ConfigPayload,
         if k not in CONFIG_DEFAULTS:
             continue
         row = db.query(SurgeryConfig).filter(SurgeryConfig.key == k).first()
+        # For dict-valued keys, merge the incoming dict into the stored
+        # one rather than replacing it. Both _DEEP_MERGE_KEYS and
+        # _FACILITY_MERGE_KEYS merge one level deep (incoming sub-keys /
+        # facilities override; omitted ones are preserved). The values
+        # are flat enough (int/str for steps, a full facility rule for
+        # capacity) that a single-level merge is the correct semantics.
+        if (k in _DEEP_MERGE_KEYS or k in _FACILITY_MERGE_KEYS) and isinstance(v, dict):
+            existing = dict(row.value) if (row is not None and isinstance(row.value, dict)) else {}
+            existing.update(v)
+            v = existing
         if row is None:
             db.add(SurgeryConfig(key=k, value=v, updated_by=actor))
         else:

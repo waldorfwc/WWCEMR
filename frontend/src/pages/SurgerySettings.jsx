@@ -389,7 +389,17 @@ function StepsTab() {
       <div>
         <button className="btn-primary text-xs"
                 disabled={!Object.keys(draft).length || save.isPending}
-                onClick={() => save.mutate(draft)}>
+                onClick={() => {
+                  // Defense in depth (audit #7): send the full merged dict
+                  // for each touched step key, not just the draft delta, so
+                  // the save can't drop previously-saved sibling sub-keys
+                  // even if the server-side merge regresses.
+                  const body = {}
+                  for (const key of Object.keys(draft)) {
+                    body[key] = { ...(config[key] || {}), ...(draft[key] || {}) }
+                  }
+                  save.mutate(body)
+                }}>
           {save.isPending ? 'Saving…' : 'Save Changes'}
         </button>
         {save.isError && (
