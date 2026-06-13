@@ -105,6 +105,13 @@ def mark_unresponsive(db: Session, s: Surgery, *, by: str) -> bool:
         refund_required=bool(s.amount_paid and float(s.amount_paid) > 0),
         notes=notes,
     ))
+    # Unresponsive is a terminal state, just like a manual cancel — so any
+    # outstanding portal/magic-link JWT for this surgery must stop working.
+    # cancel_surgery bumps portal_token_version; this sweep must too, in the
+    # same commit, or a swept patient could keep acting via a live token.
+    # (audit #26)
+    from app.services.patient_portal_auth import bump_portal_token_version
+    bump_portal_token_version(db, s)
     try:
         db.commit()
     except StaleDataError:

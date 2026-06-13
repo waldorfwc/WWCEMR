@@ -10,11 +10,12 @@ and live here so they can't drift.
 from __future__ import annotations
 
 import logging
-from datetime import time as dtime
+from datetime import date as _date, time as dtime
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.utils.dt import now_utc_naive
 from app.models.surgery import Surgery, SurgeryNote, SurgerySlot, BlockDay
 from app.services.surgery.blackout_conflict import is_date_blacked_out
 from app.services.surgery.slot_conflict import overlapping_slot
@@ -103,6 +104,48 @@ def claim_slot_for_patient(
 
     Returns: {slot_id, block_day_id, start_time, duration_minutes}
     """
+    # Terminal-status guard — mirror date_picker.pick_or_reschedule and
+    # patient_cancel. A cancelled/completed/unresponsive surgery must not
+    # be (re)booked through the shared claim path. (audit #24/#30)
+    if surgery.status in ("cancelled", "completed", "unresponsive"):
+        raise SelfScheduleError(
+            "This surgery is not in a state that accepts a date pick.",
+            status_code=409,
+        )
+
+    # Reschedule-window guard (audit #24). When the surgery ALREADY has a
+    # scheduled_date, claiming a slot is effectively a RESCHEDULE — and a
+    # reschedule must honour the same window floors that /reschedule and
+    # /pick enforce, which the bare schedule_gate (balance + consent) does
+    # not. A FIRST-TIME booking (no existing scheduled_date) skips this so
+    # initial self-scheduling still works.
+    if surgery.scheduled_date is not None:
+        # 14-day rule: reschedules inside 14 days go through the office.
+        days_to_surgery = (surgery.scheduled_date - _date.today()).days
+        if days_to_surgery < 14:
+            raise SelfScheduleError(
+                f"Your surgery is in {days_to_surgery} day(s). Reschedules "
+                "within 14 days must be handled by our office — please call "
+                "us at 240-252-2140.",
+                status_code=409,
+            )
+        # 5-business-day floor on the NEW date being claimed.
+        from app.services.surgery.date_picker import patient_min_pickable_date
+        floor = patient_min_pickable_date(db)
+        # bd is loaded below under the row lock; resolve block_date here for
+        # the floor check without holding the lock yet.
+        _bd_for_floor = (db.query(BlockDay)
+                           .filter(BlockDay.id == block_day_id)
+                           .first())
+        if _bd_for_floor and _bd_for_floor.block_date < floor:
+            raise SelfScheduleError(
+                "Online scheduling requires at least 5 business days notice. "
+                f"The earliest date you can pick is "
+                f"{floor.strftime('%A, %B %d, %Y')}. Please call our office "
+                "at 240-252-2140 for sooner availability.",
+                status_code=409,
+            )
+
     # SELECT FOR UPDATE on the block_day row to serialize concurrent
     # claims targeting the same day. Without this, two parallel POSTs
     # at the same start_time can both pass the overlap check (which
@@ -188,8 +231,16 @@ def claim_slot_for_patient(
     surgery.scheduled_date = bd.block_date
     surgery.scheduled_start_time = start
     surgery.selected_facility = bd.facility
-    if surgery.status in ("new", "in_progress"):
+    # Promote ANY active non-terminal status to confirmed (audit #25). A
+    # `hold` (or any active) surgery that books with $0 balance + signed
+    # consent previously stayed `hold` and dropped off /surgery/calendar.
+    # Terminal statuses are blocked by the guard above and never reach here.
+    if surgery.status not in ("cancelled", "completed", "unresponsive"):
         surgery.status = "confirmed"
+    # A successful claim is patient engagement — reset the auto-unresponsive
+    # clock so a freshly-booked patient isn't later mis-swept. The /pick
+    # path does this; the shared claim path must too. (audit #31)
+    surgery.last_patient_activity_at = now_utc_naive()
     db.add(SurgeryNote(
         surgery_id=surgery.id,
         created_by=sent_by,

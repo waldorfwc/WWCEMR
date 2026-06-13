@@ -126,6 +126,96 @@ def test_valid_claim_succeeds_and_creates_slot(db):
     assert slot.procedure_kind == "robotic_240"
 
 
+def test_booking_hold_surgery_promotes_to_confirmed(db):
+    # audit #25 — a `hold` (active, non-terminal) surgery that books must
+    # be promoted to `confirmed` so it appears on /surgery/calendar.
+    s = _seed_surgery(db, facility="medstar", proc="robotic_240",
+                      eligible=["medstar"])
+    s.status = "hold"
+    db.commit()
+    bd = _seed_block(db, facility="medstar")
+    with _mute_side_effects():
+        claim_slot_for_patient(
+            db, s, block_day_id=str(bd.id),
+            start_time_str="07:00", sent_by="patient:portal",
+        )
+    db.refresh(s)
+    assert s.status == "confirmed"
+
+
+def test_claim_sets_last_patient_activity_at(db):
+    # audit #31 — a successful claim must reset the auto-unresponsive clock.
+    s = _seed_surgery(db, facility="medstar", proc="robotic_240",
+                      eligible=["medstar"])
+    assert s.last_patient_activity_at is None
+    bd = _seed_block(db, facility="medstar")
+    with _mute_side_effects():
+        claim_slot_for_patient(
+            db, s, block_day_id=str(bd.id),
+            start_time_str="07:00", sent_by="patient:portal",
+        )
+    db.refresh(s)
+    assert s.last_patient_activity_at is not None
+
+
+def test_claim_rejects_terminal_status(db):
+    # audit #24/#30 — a cancelled surgery can't be (re)booked via claim.
+    s = _seed_surgery(db, facility="medstar", proc="robotic_240",
+                      eligible=["medstar"])
+    s.status = "cancelled"
+    db.commit()
+    bd = _seed_block(db, facility="medstar")
+    with _mute_side_effects():
+        with pytest.raises(SelfScheduleError) as ei:
+            claim_slot_for_patient(
+                db, s, block_day_id=str(bd.id),
+                start_time_str="07:00", sent_by="patient:portal",
+            )
+    assert ei.value.status_code == 409
+    assert db.query(SurgerySlot).filter(
+        SurgerySlot.surgery_id == s.id).count() == 0
+
+
+def test_first_time_booking_allowed_no_window_floor(db):
+    # audit #24 — a first-time booking (no existing scheduled_date) must
+    # still succeed even though the target block is only ~3 days out
+    # (inside the 5-business-day / 14-day reschedule windows). The window
+    # floor only applies to RESCHEDULES.
+    s = _seed_surgery(db, facility="medstar", proc="robotic_240",
+                      eligible=["medstar"])
+    assert s.scheduled_date is None
+    bd = _seed_block(db, facility="medstar", days_out=3)
+    with _mute_side_effects():
+        result = claim_slot_for_patient(
+            db, s, block_day_id=str(bd.id),
+            start_time_str="07:00", sent_by="patient:portal",
+        )
+    db.refresh(s)
+    assert result["block_day_id"] == str(bd.id)
+    assert s.scheduled_date == bd.block_date
+
+
+def test_reschedule_within_window_rejected(db):
+    # audit #24 — a surgery that ALREADY has a scheduled_date 3 days out is
+    # effectively rescheduling; claiming a new within-window slot must be
+    # rejected by the reschedule-window guard (14-day office rule).
+    s = _seed_surgery(db, facility="medstar", proc="robotic_240",
+                      eligible=["medstar"])
+    s.scheduled_date = date.today() + timedelta(days=3)
+    db.commit()
+    bd = _seed_block(db, facility="medstar", days_out=3)
+    with _mute_side_effects():
+        with pytest.raises(SelfScheduleError) as ei:
+            claim_slot_for_patient(
+                db, s, block_day_id=str(bd.id),
+                start_time_str="07:00", sent_by="patient:portal",
+            )
+    assert ei.value.status_code == 409
+    # No new slot booked.
+    assert db.query(SurgerySlot).filter(
+        SurgerySlot.surgery_id == s.id).count() == 0
+
+
 def test_duration_keys_off_procedure_classification_not_block_kind(db):
     # robotic_240 with no explicit duration must store 240, not 60.
     s = _seed_surgery(db, facility="medstar", proc="robotic_240",
