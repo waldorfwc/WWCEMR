@@ -44,8 +44,9 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "capacity_rules":              None,   # block_schedule.py defaults
 
     # ── intake option lists (editable in Surgery Settings) ──
-    "clearance_types":             ["EKG", "Hematology", "Cardiology", "Pulmonology", "General"],
-    "surgery_device_types":        ["Benesta", "Liletta", "Mirena", "Paragard", "Skyla", "Kyleena"],
+    "clearance_types":             ["None", "EKG", "Hematology", "Cardiology", "Pulmonology", "General"],
+    "surgery_device_types":        ["None", "Benesta", "Liletta", "Mirena", "Paragard", "Skyla", "Kyleena"],
+    "assistant_surgeons":          ["None", "Dr. Gillespie"],
 }
 
 

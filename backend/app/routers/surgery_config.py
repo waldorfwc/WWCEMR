@@ -134,6 +134,7 @@ class ConfigPayload(BaseModel):
     # intake option lists (full-replace string lists)
     clearance_types:           Optional[list[str]] = None
     surgery_device_types:      Optional[list[str]] = None
+    assistant_surgeons:        Optional[list[str]] = None
 
     @field_validator("step_expected_days_hospital", "step_expected_days_office")
     @classmethod
@@ -159,7 +160,7 @@ class ConfigPayload(BaseModel):
                 raise ValueError(f"reminder lead day {d} must be 1-60")
         return v
 
-    @field_validator("clearance_types", "surgery_device_types")
+    @field_validator("clearance_types", "surgery_device_types", "assistant_surgeons")
     @classmethod
     def option_list_valid(cls, v):
         # Simple string lists: non-empty list, each entry non-blank once
