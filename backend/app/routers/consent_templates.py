@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from app.utils.dt import now_utc_naive
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -43,6 +43,7 @@ class ConsentTemplateIn(BaseModel):
     min_days_before_surgery: Optional[int] = None
     notes: Optional[str] = None
     is_active: bool = True
+    category: Literal["surgical", "larc"] = "surgical"
 
 
 def _normalize_cpt_codes(raw) -> list[str]:
@@ -87,6 +88,7 @@ def _to_dict(t: ConsentTemplate, in_use_count: int = 0) -> dict:
         "min_days_before_surgery": t.min_days_before_surgery,
         "notes": t.notes,
         "is_active": bool(t.is_active),
+        "category": t.category or "surgical",
         "in_use_count": in_use_count,
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
@@ -94,10 +96,13 @@ def _to_dict(t: ConsentTemplate, in_use_count: int = 0) -> dict:
 
 
 @router.get("")
-def list_templates(db: Session = Depends(get_db),
-                    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
-    rows = (db.query(ConsentTemplate)
-              .order_by(ConsentTemplate.is_supplemental, ConsentTemplate.name)
+def list_templates(category: Optional[str] = None,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    q = db.query(ConsentTemplate)
+    if category in {"surgical", "larc"}:
+        q = q.filter(ConsentTemplate.category == category)
+    rows = (q.order_by(ConsentTemplate.is_supplemental, ConsentTemplate.name)
               .all())
     # Count envelopes per template (so admins can't surprise-delete a template
     # with surgeries depending on it)
@@ -127,6 +132,7 @@ def create_template(payload: ConsentTemplateIn,
         min_days_before_surgery=payload.min_days_before_surgery,
         notes=payload.notes,
         is_active=bool(payload.is_active),
+        category=payload.category,
     )
     db.add(t); db.commit(); db.refresh(t)
     return _to_dict(t)
@@ -153,6 +159,7 @@ def update_template(template_id: str, payload: ConsentTemplateIn,
     t.min_days_before_surgery = payload.min_days_before_surgery
     t.notes = payload.notes
     t.is_active = bool(payload.is_active)
+    t.category = payload.category
     t.updated_at = now_utc_naive()
     db.commit(); db.refresh(t)
     return _to_dict(t)

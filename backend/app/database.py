@@ -42,6 +42,7 @@ def init_db():
     # Default groups already exist in production; the legacy seed code is
     # retained at _seed_default_groups for traceability but no longer called.
     _migrate_template_targeting()
+    _migrate_consent_template_category()
     _migrate_billing_doc_status_open_to_new()
     _backfill_larc_assignment_device_type()
     from app.services.larc.seed import seed_larc_device_types
@@ -127,6 +128,7 @@ def _apply_lightweight_migrations():
     """
     needed = [
         # (table, column, SQL column type)
+        ("consent_templates", "category", "VARCHAR(20) DEFAULT 'surgical'"),
         ("adjustment_code_references", "wwc_notes", "TEXT"),
         ("adjustment_code_references", "wwc_notes_updated_by", "VARCHAR(255)"),
         ("adjustment_code_references", "wwc_notes_updated_at", "DATETIME"),
@@ -822,6 +824,47 @@ def _migrate_template_targeting():
                 tmpl.assigned_groups.append(grp)
                 linked += 1
         if linked:
+            db.commit()
+    finally:
+        db.close()
+
+
+_LARC_CONSENT_KEYWORDS = (
+    "nexplanon", "mirena", "skyla", "kyleena", "paragard",
+    "liletta", "iud", "implant", "larc",
+)
+
+
+def _migrate_consent_template_category():
+    """One-time: classify existing ConsentTemplates into category='larc' when
+    their name or any procedure_match keyword references a LARC device; leave
+    everything else as the 'surgical' default. Idempotent — only updates rows
+    that match a LARC keyword and aren't already 'larc'. Skips entirely if the
+    table / category column don't exist yet."""
+    insp = inspect(engine)
+    if "consent_templates" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("consent_templates")}
+    if "category" not in cols:
+        return
+
+    from app.models.surgery import ConsentTemplate
+
+    db = SessionLocal()
+    try:
+        rows = db.query(ConsentTemplate).all()
+        changed = 0
+        for t in rows:
+            if (t.category or "").lower() == "larc":
+                continue
+            haystack_parts = [t.name or ""]
+            for p in (t.procedure_match or []):
+                haystack_parts.append(str(p))
+            haystack = " ".join(haystack_parts).lower()
+            if any(kw in haystack for kw in _LARC_CONSENT_KEYWORDS):
+                t.category = "larc"
+                changed += 1
+        if changed:
             db.commit()
     finally:
         db.close()
