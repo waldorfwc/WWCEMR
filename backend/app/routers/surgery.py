@@ -101,6 +101,31 @@ def _latest_file(s: Surgery, *, kind: str) -> Optional[dict]:
     }
 
 
+def _resolve_consent_templates_selected(db: Session, s: Surgery) -> list[dict]:
+    """Resolve the curated consent_template_ids into display rows
+    [{id, name, is_supplemental}]. Templates that no longer exist are
+    skipped. Order follows the stored id list."""
+    ids = list(s.consent_template_ids or [])
+    if not ids:
+        return []
+    from app.models.surgery import ConsentTemplate
+    rows = (db.query(ConsentTemplate)
+              .filter(ConsentTemplate.id.in_(ids))
+              .all())
+    by_id = {str(t.id): t for t in rows}
+    out: list[dict] = []
+    for tid in ids:
+        t = by_id.get(str(tid))
+        if not t:
+            continue
+        out.append({
+            "id": str(t.id),
+            "name": t.name,
+            "is_supplemental": bool(t.is_supplemental),
+        })
+    return out
+
+
 def _surgery_dict(db: Session, s: Surgery, *,
                    today: Optional[_date] = None) -> dict:
     behind, hours_overdue = _is_behind_steps(db, s)
@@ -168,6 +193,10 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "cardiologist_phone": s.cardiologist_phone,
         "cardiologist_fax":   s.cardiologist_fax,
         "consent_status": s.consent_status,
+        "consent_template_ids": list(s.consent_template_ids or []),
+        "consent_overrides": (s.consent_overrides
+                              or {"added": [], "removed": []}),
+        "consent_templates_selected": _resolve_consent_templates_selected(db, s),
         "consent_doc_id": s.consent_doc_id,
         "consent_sent_at": s.consent_sent_at.isoformat() if s.consent_sent_at else None,
         "consent_signed_at": s.consent_signed_at.isoformat() if s.consent_signed_at else None,
@@ -1090,6 +1119,12 @@ class ManualSurgeryIn(BaseModel):
     assistant_surgeon_name: Optional[str] = None
     clearance_types: list[str] = []
     device_types: list[str] = []
+    # Curated consent selection (intake-consents). consent_template_ids is the
+    # list the coordinator settled on (matcher auto-pull ∪ added − removed);
+    # consent_overrides records the manual deltas so re-pull on edit preserves
+    # them.
+    consent_template_ids: list[str] = []
+    consent_overrides: Optional[dict] = None
     surgery_name: str           # display label for the procedure picked from the dropdown
     procedures: list[dict] = []  # [{cpt, description}]
     diagnoses: list[dict] = []
@@ -1264,6 +1299,22 @@ def create_manual(payload: ManualSurgeryIn,
             s.device_required = True
             s.device_kind = real_devices[0]
 
+    # Curated consent selection (intake-consents). Store the ids as-is and
+    # normalize overrides to {"added": [...], "removed": [...]}. When the
+    # coordinator picked at least one consent template, arm the consent
+    # workflow by escalating consent_status not_required → required (the
+    # not-yet-sent value the rest of the app uses).
+    consent_ids = [str(t).strip() for t in (payload.consent_template_ids or [])
+                   if str(t).strip()]
+    s.consent_template_ids = consent_ids
+    ovr = payload.consent_overrides or {}
+    s.consent_overrides = {
+        "added":   list(ovr.get("added")   or []),
+        "removed": list(ovr.get("removed") or []),
+    }
+    if consent_ids and (s.consent_status or "not_required") == "not_required":
+        s.consent_status = "required"
+
     db.add(s); db.flush()
     from app.services.surgery.local_helpers import (
         upsert_patient_directory, maybe_assign_surgery_number,
@@ -1272,6 +1323,91 @@ def create_manual(payload: ManualSurgeryIn,
     upsert_patient_directory(db, s)
     db.commit(); db.refresh(s)
     return _surgery_dict(db, s)
+
+
+# ─── Consent match-preview + template picker (intake-consents B2) ─────
+# Declared BEFORE /{surgery_id} so the static paths aren't eaten as a
+# surgery_id path-param.
+
+class ConsentMatchPreviewIn(BaseModel):
+    """Inputs for previewing consent template matches against an unsaved
+    (transient) surgery — used by the Add/Update Surgery form before the row
+    exists or is committed."""
+    procedures: list[dict] = []          # [{cpt?, description?}]
+    eligible_facilities: Optional[list[str]] = None
+    selected_facility: Optional[str] = None
+    primary_insurance: Optional[str] = None
+    scheduled_date: Optional[str] = None
+
+
+@router.post("/consent/match-preview")
+def consent_match_preview(
+    payload: ConsentMatchPreviewIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
+):
+    """Preview which consent templates would match the given (unsaved) surgery
+    inputs. Builds a TRANSIENT Surgery (never added to the session) and runs
+    the matcher, which reads only plain attributes (procedures,
+    selected_facility, primary_insurance, scheduled_date)."""
+    from app.services.consent_template_matcher import (
+        match_templates_for_surgery, unmatched_procedures,
+    )
+    # selected_facility: provided wins, else the single eligible facility.
+    facility = payload.selected_facility
+    if not facility:
+        elig = payload.eligible_facilities or []
+        if len(elig) == 1:
+            facility = elig[0]
+    sched = None
+    if payload.scheduled_date:
+        try:
+            sched = datetime.strptime(payload.scheduled_date[:10], "%Y-%m-%d").date()
+        except ValueError:
+            raise HTTPException(status_code=422,
+                                detail="scheduled_date must be YYYY-MM-DD")
+
+    transient = Surgery(
+        chart_number="preview",
+        patient_name="preview",
+        procedures=payload.procedures or [],
+        selected_facility=facility,
+        primary_insurance=payload.primary_insurance,
+        scheduled_date=sched,
+    )
+    matches = match_templates_for_surgery(db, transient)
+    return {
+        "matches": [
+            {
+                "template_id": str(m.template.id),
+                "name": m.template.name,
+                "is_supplemental": m.is_supplemental,
+                "warnings": [m.warning] if m.warning else [],
+            } for m in matches
+        ],
+        "unmatched_procedures": unmatched_procedures(db, transient),
+    }
+
+
+@router.get("/consent/templates")
+def consent_templates_picker(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
+):
+    """Active consent templates for the manual-add picker. Avoids the MANAGE
+    gate on /consent-templates. Ordered (is_supplemental, name)."""
+    from app.models.surgery import ConsentTemplate
+    rows = (db.query(ConsentTemplate)
+              .filter(ConsentTemplate.is_active.is_(True))
+              .order_by(ConsentTemplate.is_supplemental, ConsentTemplate.name)
+              .all())
+    return [
+        {
+            "id": str(t.id),
+            "name": t.name,
+            "is_supplemental": bool(t.is_supplemental),
+        } for t in rows
+    ]
 
 
 # ─── Picklists (must be declared BEFORE /{surgery_id} so it isn't eaten as a path-param) ─
@@ -1408,6 +1544,9 @@ class SurgeryPatch(BaseModel):
     cardiologist_fax: Optional[str] = None
     sterilization_consent_required: Optional[bool] = None
     sterilization_consent_status: Optional[str] = None
+    # Curated consent selection (intake-consents)
+    consent_template_ids: Optional[list[str]] = None
+    consent_overrides: Optional[dict] = None
     deductible:             Optional[DollarAmount] = None
     copay:                  Optional[DollarAmount] = None
     allowed_amount:         Optional[DollarAmount] = None
@@ -1820,6 +1959,23 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         else:
             s.assistant_surgeon_name = a_raw
             s.assistant_surgeon_required = True
+
+    # Curated consent selection (intake-consents). Set explicitly (pop from
+    # the generic setattr loop). Re-arm consent_status only by escalating
+    # not_required → required when a selection is present; never downgrade a
+    # surgery whose consent is already sent/signed.
+    if "consent_template_ids" in data:
+        cids = [str(t).strip() for t in (data.pop("consent_template_ids") or [])
+                if str(t).strip()]
+        s.consent_template_ids = cids
+        if cids and s.consent_status == "not_required":
+            s.consent_status = "required"
+    if "consent_overrides" in data:
+        ovr = data.pop("consent_overrides") or {}
+        s.consent_overrides = {
+            "added":   list(ovr.get("added")   or []),
+            "removed": list(ovr.get("removed") or []),
+        }
 
     # Apply (the generic patch loop sets auth_status, assistant_surgeon_required,
     # status, etc. directly on the Surgery row; the steps engine derives workflow
@@ -4435,7 +4591,16 @@ def consent_template_matches(surgery_id: str,
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
         raise HTTPException(status_code=404, detail="surgery not found")
-    matches = match_templates_for_surgery(db, s)
+    # Curated selection (intake-consents) is authoritative: when the surgery
+    # has a stored consent_template_ids list, the "will send" preview reflects
+    # that list. Otherwise fall back to the matcher. unmatched_procedures is
+    # always informational from the matcher.
+    stored_ids = list(s.consent_template_ids or [])
+    if stored_ids:
+        from app.services import boldsign_envelopes as _bs
+        matches = _bs._matches_from_stored_ids(db, s, stored_ids)
+    else:
+        matches = match_templates_for_surgery(db, s)
     return {
         "matches": [
             {
