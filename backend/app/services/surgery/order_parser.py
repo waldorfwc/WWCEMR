@@ -47,7 +47,7 @@ Rules:
 - "is_office_procedure": true when the document title contains "In-Office" OR the only eligible facility is "office".
 - Extract clearance_required only if the order explicitly says clearance/medical clearance is needed (rarely stated; usually null).
 - From the demographics header, pull the patient mailing "address" (street, city, state, zip into address_street/address_city/address_state/address_zip), the patient "phone" (cell phone), and the patient "email" when present.
-- For insurance_primary, pull the insurance "company" name, the "member_id", and the "payer_id". The payer_id is the electronic/claims Payer ID — often labeled "Payer ID", "Payer #", or appearing as a short 5-character alphanumeric code near the insurance/claims info. It is distinct from the member/subscriber ID. Use null if not present.
+- For insurance_primary, pull the insurance "company" name, the "member_id", and the "payer_id". The payer_id is the numeric electronic/claims Payer ID — often labeled "Payer ID", "Payer #", or shown in parentheses after the company name, e.g. "BCBS Administrators PPO ONLY (75191)" → company "BCBS Administrators PPO ONLY", payer_id "75191". When the company name has a trailing "(NNNNN)" numeric token, that number IS the payer_id; put it in payer_id and DROP it from company. It is distinct from the member/subscriber ID. Use null if not present.
 - "procedure_type": the overall surgical procedure name/title as stated on the order (e.g. "Total Laparoscopic Hysterectomy"). This is the headline procedure, not a CPT-level line item.
 - "ordered_at": the document's order/creation date — the date the order was written/generated.
 """
@@ -75,7 +75,7 @@ JSON_SHAPE_HINT = """Return JSON with this exact shape (use null for any missing
     "relationship": "Self",
     "company": "...",
     "member_id": "...",
-    "payer_id": "...",
+    "payer_id": "...",  // numeric Payer ID, e.g. "75191"; if shown as "Company (75191)", set payer_id "75191" and company "Company"
     "group": "..."
   },
   "diagnoses": [
@@ -261,6 +261,23 @@ def _validate_and_coerce(data: dict) -> dict:
     for k in ("is_robotic", "is_office_procedure"):
         if k in data:
             data[k] = bool(data[k])
+
+    # insurance_primary: split a trailing/parenthetical payer ID out of the
+    # company name. Surgery-order PDFs render the company as e.g.
+    # "BCBS Administrators PPO ONLY (75191)" where 75191 is the electronic
+    # payer ID. The dropdown company never matches that string, so we lift
+    # the (NNNNN) into payer_id (only if not already set) and strip it from
+    # the company so the name can be resolved against the picklist.
+    ins = data.get("insurance_primary")
+    if isinstance(ins, dict):
+        company = ins.get("company")
+        if isinstance(company, str) and company:
+            m = re.search(r"\(\s*(\d{3,6})\s*\)", company)
+            if m:
+                if not ins.get("payer_id"):
+                    ins["payer_id"] = m.group(1)
+                stripped = re.sub(r"\s*\(\s*\d{3,6}\s*\)\s*", " ", company).strip()
+                ins["company"] = stripped or None
 
     return data
 

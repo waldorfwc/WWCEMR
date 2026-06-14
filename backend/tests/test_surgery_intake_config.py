@@ -54,3 +54,38 @@ def test_put_blank_entry_rejected(client):
         "surgery_device_types": ["Mirena", "   "],
     })
     assert resp.status_code == 422
+
+
+# ── payer_id_insurance_map (order-prefill resolution) ──
+
+def test_config_includes_payer_id_map_default(client):
+    body = client.get("/api/surgery/config").json()
+    assert body["payer_id_insurance_map"] == {"75191": "Blue Cross & Blue Shield PPO"}
+
+
+def test_put_payer_id_map_roundtrips(client):
+    resp = client.put("/api/surgery/config", json={
+        "payer_id_insurance_map": {"75191": "Blue Cross & Blue Shield PPO",
+                                   "60054": "Aetna"},
+    })
+    assert resp.status_code == 200, resp.text
+    body = client.get("/api/surgery/config").json()
+    # full-replace: the stored map is exactly what we PUT
+    assert body["payer_id_insurance_map"] == {
+        "75191": "Blue Cross & Blue Shield PPO",
+        "60054": "Aetna",
+    }
+
+
+def test_put_payer_id_map_bad_key_rejected(client):
+    resp = client.put("/api/surgery/config", json={
+        "payer_id_insurance_map": {"ABC": "Aetna"},
+    })
+    assert resp.status_code == 422
+
+
+def test_put_payer_id_map_blank_value_rejected(client):
+    resp = client.put("/api/surgery/config", json={
+        "payer_id_insurance_map": {"75191": "   "},
+    })
+    assert resp.status_code == 422

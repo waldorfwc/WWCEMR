@@ -112,3 +112,83 @@ def test_extract_rejects_non_pdf(client):
         files={"file": ("order.txt", b"not a pdf", "text/plain")},
     )
     assert r.status_code == 422
+
+
+# ── Payer-ID split out of the company name (deterministic post-process) ──
+
+def test_validate_and_coerce_splits_payer_id_from_company():
+    from app.services.surgery.order_parser import _validate_and_coerce
+    out = _validate_and_coerce({
+        "patient": {"first_name": "Pat", "last_name": "Doe"},
+        "insurance_primary": {
+            "company": "BCBS Administrators PPO ONLY (75191)",
+            "member_id": "M1",
+            # no explicit payer_id — must be lifted from the parenthetical
+            "payer_id": None,
+        },
+    })
+    ins = out["insurance_primary"]
+    assert ins["payer_id"] == "75191"
+    assert ins["company"] == "BCBS Administrators PPO ONLY"
+
+
+def test_validate_and_coerce_keeps_existing_payer_id():
+    from app.services.surgery.order_parser import _validate_and_coerce
+    out = _validate_and_coerce({
+        "patient": {"first_name": "Pat", "last_name": "Doe"},
+        "insurance_primary": {
+            "company": "BCBS Administrators PPO ONLY (75191)",
+            "payer_id": "99999",  # already populated → keep, but still strip
+        },
+    })
+    ins = out["insurance_primary"]
+    assert ins["payer_id"] == "99999"
+    assert ins["company"] == "BCBS Administrators PPO ONLY"
+
+
+def _stub_company_with_payer(company, payer_id):
+    """Stub parse_order_text to return the post-split insurance block (the
+    parenthetical-payer-id split is covered by the _validate_and_coerce unit
+    tests above; here we exercise the endpoint's map resolution). The real
+    build_surgery_kwargs maps the payer_id + company through unchanged."""
+    return (
+        patch("app.services.surgery.order_parser.extract_pdf_text_from_bytes",
+              return_value="X" * 200),
+        patch("app.services.surgery.order_parser.parse_order_text",
+              return_value={
+                  "patient": {"first_name": "Pat", "last_name": "Doe"},
+                  "insurance_primary": {"company": company, "member_id": "M1",
+                                        "payer_id": payer_id},
+                  "procedures": [],
+              }),
+    )
+
+
+def test_extract_resolves_payer_id_to_company_via_map(client, db):
+    # post-split block (company stripped, payer_id set); default map resolves
+    # the canonical picklist company.
+    p1, p2 = _stub_company_with_payer("BCBS Administrators PPO ONLY", "75191")
+    with p1, p2:
+        r = client.post(
+            "/api/surgery/orders/extract",
+            files={"file": ("order.pdf", b"%PDF-1.4 stub", "application/pdf")},
+        )
+    assert r.status_code == 200, r.text
+    fields = r.json()["fields"]
+    assert fields["payer_id"] == "75191"
+    # raw company stripped + resolved to the canonical picklist value
+    assert fields["primary_insurance"] == "Blue Cross & Blue Shield PPO"
+
+
+def test_extract_unmapped_payer_id_keeps_raw_company(client, db):
+    p1, p2 = _stub_company_with_payer("Some Obscure Plan", "12345")
+    with p1, p2:
+        r = client.post(
+            "/api/surgery/orders/extract",
+            files={"file": ("order.pdf", b"%PDF-1.4 stub", "application/pdf")},
+        )
+    assert r.status_code == 200, r.text
+    fields = r.json()["fields"]
+    assert fields["payer_id"] == "12345"
+    # not in the map → raw (stripped) company is preserved, no crash
+    assert fields["primary_insurance"] == "Some Obscure Plan"

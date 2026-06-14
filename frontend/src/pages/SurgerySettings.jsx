@@ -942,6 +942,11 @@ function IntakeTab() {
           items={listFor(l.key)}
           onChange={(next) => setDraft(d => ({ ...d, [l.key]: next }))} />
       ))}
+      <PayerInsuranceMapEditor
+        value={draft.payer_id_insurance_map
+          ?? (data.payer_id_insurance_map && typeof data.payer_id_insurance_map === 'object'
+                ? data.payer_id_insurance_map : {})}
+        onChange={(next) => setDraft(d => ({ ...d, payer_id_insurance_map: next }))} />
       <button className="btn-primary text-xs mt-1"
               disabled={!Object.keys(draft).length || save.isPending}
               onClick={() => save.mutate(draft)}>
@@ -951,6 +956,83 @@ function IntakeTab() {
         <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
       )}
     </section>
+  )
+}
+
+// Edits the payer_id_insurance_map config object: rows of
+// [payer ID] → [insurance company]. The value is held as an array of
+// [payerId, insurance] pairs while editing (so blank / duplicate payer IDs
+// don't collapse rows), then serialized back to an object on each change.
+function PayerInsuranceMapEditor({ value, onChange }) {
+  const { data: picks } = useQuery({
+    queryKey: ['surgery-picklists'],
+    queryFn: () => api.get('/surgery/picklists').then(r => r.data),
+    staleTime: 300_000,
+  })
+  const insuranceOpts = picks?.insurance_companies || []
+  // Local row state mirrors the object but preserves order / in-progress rows.
+  const [rows, setRows] = useState(() => Object.entries(value || {}))
+
+  const commit = (nextRows) => {
+    setRows(nextRows)
+    const obj = {}
+    for (const [pid, ins] of nextRows) {
+      const key = (pid || '').trim()
+      if (key) obj[key] = ins || ''
+    }
+    onChange(obj)
+  }
+  const setRow = (i, pid, ins) =>
+    commit(rows.map((r, j) => (j === i ? [pid, ins] : r)))
+
+  return (
+    <div className="mb-5">
+      <h3 className="text-sm font-medium mb-1">Payer ID → Insurance</h3>
+      <p className="text-[11px] text-muted mb-2">
+        Maps an electronic payer ID extracted from a surgery order to a canonical
+        insurance company. When an order's payer ID matches, the primary insurance
+        is auto-resolved to the mapped company.
+      </p>
+      <div className="space-y-1.5 mb-2">
+        {rows.length === 0 && (
+          <span className="text-[11px] text-muted italic">No mappings yet.</span>
+        )}
+        {rows.map(([pid, ins], i) => (
+          <div key={i} className="grid grid-cols-[140px_1fr_24px] gap-2 items-center">
+            <input className="input text-sm font-mono"
+                   placeholder="75191"
+                   value={pid}
+                   onChange={e => setRow(i, e.target.value, ins)} />
+            {insuranceOpts.length > 0 ? (
+              <select className="input text-sm"
+                      value={ins}
+                      onChange={e => setRow(i, pid, e.target.value)}>
+                <option value="">— select insurance —</option>
+                {(ins && !insuranceOpts.includes(ins)
+                  ? [...insuranceOpts, ins] : insuranceOpts).map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            ) : (
+              <input className="input text-sm"
+                     placeholder="Insurance company"
+                     value={ins}
+                     onChange={e => setRow(i, pid, e.target.value)} />
+            )}
+            <button type="button"
+                    className="text-gray-400 hover:text-red-600"
+                    title="Remove mapping"
+                    onClick={() => commit(rows.filter((_, j) => j !== i))}>
+              <X size={13} />
+            </button>
+          </div>
+        ))}
+      </div>
+      <button type="button" className="btn-secondary text-xs"
+              onClick={() => setRows([...rows, ['', '']])}>
+        + Add Mapping
+      </button>
+    </div>
   )
 }
 

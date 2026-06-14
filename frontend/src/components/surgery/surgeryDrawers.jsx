@@ -241,6 +241,7 @@ function mapDetailToForm(d) {
     address_zip: d.address_zip || '',
     primary_insurance: d.primary_insurance || '',
     primary_member_id: d.primary_member_id || '',
+    payer_id: d.primary_payer_id || '',
     secondary_insurance: d.secondary_insurance || '',
     secondary_member_id: d.secondary_member_id || '',
     surgeon_primary: d.surgeon_primary || 'Aryian Cooke, MD',

@@ -1008,10 +1008,25 @@ async def extract_order(
     # ManualSurgeryIn names — populate them explicitly, only when non-empty.
     parsed = parsed or {}
 
-    # payer_id: from the parsed insurance (via build_surgery_kwargs).
+    # payer_id: from the parsed insurance (via build_surgery_kwargs), falling
+    # back to the raw parsed insurance block.
     payer_id = kwargs.get("primary_payer_id")
+    if payer_id in (None, "", [], {}):
+        payer_id = ((parsed.get("insurance_primary") or {}).get("payer_id"))
     if payer_id not in (None, "", [], {}):
         fields["payer_id"] = _ser(payer_id)
+        # Resolve payer_id → canonical picklist company via the configurable
+        # map so the insurance dropdown prefills. The raw extracted company
+        # (e.g. "BCBS Administrators PPO ONLY") never matches a dropdown
+        # option; the mapped value (e.g. "Blue Cross & Blue Shield PPO")
+        # does. If the payer ID isn't mapped, leave the raw company as-is.
+        try:
+            pid_map = cfg(db, "payer_id_insurance_map") or {}
+            mapped = pid_map.get(str(payer_id))
+            if mapped:
+                fields["primary_insurance"] = mapped
+        except Exception:
+            pass
 
     # surgery_name: prefer the headline procedure_type, else the first
     # procedure's description.
