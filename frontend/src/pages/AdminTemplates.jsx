@@ -209,9 +209,6 @@ export default function AdminTemplates() {
     <div>
       <div className="flex items-baseline justify-between mb-4">
         <div>
-          <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
-            <ArrowLeft size={12} /> Back to Admin
-          </Link>
           <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Checklist Templates</h1>
           <p className="text-muted text-[12px] mt-0.5">
             Each active template generates one task instance per scheduled day per assignee.

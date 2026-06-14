@@ -29,6 +29,7 @@ import ARDashboard from './pages/ARDashboard'
 import ActiveAR from './pages/ActiveAR'
 import ActiveARDetail from './pages/ActiveARDetail'
 import Admin from './pages/Admin'
+import AdminNav from './components/admin/AdminNav'
 import AdminReputationLeaderboard from './pages/AdminReputationLeaderboard'
 import AdminReputationProfiles from './pages/AdminReputationProfiles'
 import AdminReputationReviews from './pages/AdminReputationReviews'
@@ -277,10 +278,16 @@ export const ROUTES = [
   { path: '/audit', element: <AuditLog />, module: M.AUDIT_LOG, tier: TIER.VIEW },
 
   // ── Admin console — super-admin only ───────────────────────────
-  { path: '/admin',                            element: <Admin />,                         superAdmin: true },
-  { path: '/admin/permissions',                element: <AdminPermissions />,              superAdmin: true },
+  // Layout route: AdminNav renders the shared top-nav + <Outlet/>. Reached
+  // from the username menu (TopNav), NOT a sidebar entry — so the parent
+  // carries NO `nav` key. Child paths are RELATIVE.
+  { path: '/admin', element: <AdminNav />, superAdmin: true,
+      children: [
+    { index: true,      element: <Admin />,            superAdmin: true },
+    { path: 'permissions', element: <AdminPermissions />, superAdmin: true },
+    { path: 'templates',   element: <AdminTemplates />,   superAdmin: true },
+  ]},
   { path: '/admin/practice-settings',          element: <Navigate to="/larc/settings" replace /> },
-  { path: '/admin/templates',                  element: <AdminTemplates />,                superAdmin: true },
   { path: '/admin/consent-templates', element: <Navigate to="/surgery/settings" replace /> },
   { path: '/admin/message-templates', element: <Navigate to="/surgery/settings" replace /> },
   { path: '/admin/google-sync',       element: <Navigate to="/surgery/settings" replace /> },
