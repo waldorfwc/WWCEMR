@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CheckSquare, ChevronRight, Edit3, Eye, FileSignature, MessageSquare, Phone, Plus, Settings, Shield, Star, Trash2, Trophy, Users, X } from 'lucide-react'
+import { CheckSquare, ChevronRight, Edit3, Eye, FileSignature, MessageSquare, Phone, Plus, Settings, Shield, Trash2, Users, X } from 'lucide-react'
 import api from '../utils/api'
 
 function Flash({ kind, text }) {
@@ -655,18 +655,6 @@ export default function Admin() {
           <Link to="/admin/message-templates"
                 className="btn-secondary text-sm flex items-center gap-1">
             <MessageSquare size={13} /> Message Templates
-          </Link>
-          <Link to="/admin/reputation/profiles"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <Star size={13} /> Reputation Profiles
-          </Link>
-          <Link to="/admin/reputation/leaderboard"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <Trophy size={13} /> Leaderboard
-          </Link>
-          <Link to="/admin/reputation/reviews"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <Star size={13} /> Reviews
           </Link>
           <Link to="/admin/training/cards"
                 className="btn-secondary text-sm flex items-center gap-1">

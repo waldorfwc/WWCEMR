@@ -100,6 +100,7 @@ import SurgeryFeeSchedule from './pages/SurgeryFeeSchedule'
 import SurgerySettings from './pages/SurgerySettings'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
 import SurgeryNav from './components/surgery/SurgeryNav'
+import MarketingNav from './components/marketing/MarketingNav'
 
 // Mirrors backend Tier ordinals (app/permissions/catalog.py).
 export const TIER = {
@@ -120,6 +121,7 @@ export const MODULE = {
   INSURANCE_DOCS:     'billing_insurance_docs',
   INSURANCE_CONTACTS: 'billing_insurance_contacts',
   RECALL:             'recall',
+  REPUTATION:         'reputation',
   SURGERY:            'surgery',
   LARC:               'device_larc',
   PELLETS:            'pellets',
@@ -249,6 +251,18 @@ export const ROUTES = [
     { path: 'settings',     element: <PelletSettings />,      module: M.PELLETS, tier: TIER.MANAGE },
   ]},
 
+  // ── Marketing (reputation / reviews) ───────────────────────────
+  // Layout route: MarketingNav renders the shared top-nav + <Outlet/>.
+  // Moved out of the Admin console; gated on the Reputation module tier
+  // (VIEW to see reviews/leaderboard, MANAGE to configure profiles).
+  { path: '/marketing', element: <MarketingNav />, module: M.REPUTATION, tier: TIER.VIEW,
+      nav: { label: 'Marketing', order: 95 },
+      children: [
+    { index: true,         element: <AdminReputationReviews />,     module: M.REPUTATION, tier: TIER.VIEW },
+    { path: 'leaderboard', element: <AdminReputationLeaderboard />, module: M.REPUTATION, tier: TIER.VIEW },
+    { path: 'profiles',    element: <AdminReputationProfiles />,    module: M.REPUTATION, tier: TIER.MANAGE },
+  ]},
+
   // ── Chart / documents / patients ───────────────────────────────
   { path: '/documents',         element: <Documents />,    module: M.CHART, tier: TIER.VIEW,
       nav: { label: 'Charts', order: 20 } },
@@ -270,9 +284,11 @@ export const ROUTES = [
   { path: '/admin/training',                   element: <AdminTraining />,                 superAdmin: true },
   { path: '/admin/training/cards',             element: <AdminTrainingCards />,            superAdmin: true },
   { path: '/admin/google-sync',                element: <AdminGoogleSync />,               superAdmin: true },
-  { path: '/admin/reputation/profiles',        element: <AdminReputationProfiles />,       superAdmin: true },
-  { path: '/admin/reputation/leaderboard',     element: <AdminReputationLeaderboard />,    superAdmin: true },
-  { path: '/admin/reputation/reviews',         element: <AdminReputationReviews />,        superAdmin: true },
+  // Reputation pages moved to top-level /marketing — keep old admin URLs working.
+  { path: '/admin/reputation',             element: <Navigate to="/marketing" replace /> },
+  { path: '/admin/reputation/reviews',     element: <Navigate to="/marketing" replace /> },
+  { path: '/admin/reputation/leaderboard', element: <Navigate to="/marketing/leaderboard" replace /> },
+  { path: '/admin/reputation/profiles',    element: <Navigate to="/marketing/profiles" replace /> },
 
   // ── Legacy admin URLs — unified permissions screen replaced them ──
   { path: '/admin/groups',                      element: <Navigate to="/admin/permissions" replace /> },
