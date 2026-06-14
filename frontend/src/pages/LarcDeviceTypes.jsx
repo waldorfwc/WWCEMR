@@ -5,7 +5,7 @@ import { ArrowLeft, Box, Edit3, Plus, X, Save } from 'lucide-react'
 import api from '../utils/api'
 
 
-export default function LarcDeviceTypes() {
+export default function LarcDeviceTypes({ embedded = false }) {
   const qc = useQueryClient()
   const [editing, setEditing] = useState(null)   // null | 'new' | type id
 
@@ -22,24 +22,30 @@ export default function LarcDeviceTypes() {
 
   return (
     <div>
-      <Link to="/larc" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
-        <ArrowLeft size={12} /> LARC dashboard
-      </Link>
+      {!embedded && (
+        <Link to="/larc" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
+          <ArrowLeft size={12} /> LARC dashboard
+        </Link>
+      )}
       <div className="flex items-baseline justify-between mb-3">
-        <h1 className="page-title flex items-center gap-2">
-          <Box size={22} className="text-plum-700" />
-          Device type catalog
-        </h1>
-        <button className="btn-primary text-sm flex items-center gap-1"
+        {!embedded && (
+          <h1 className="page-title flex items-center gap-2">
+            <Box size={22} className="text-plum-700" />
+            Device type catalog
+          </h1>
+        )}
+        <button className="btn-primary text-sm flex items-center gap-1 ml-auto"
                 onClick={() => setEditing('new')}>
           <Plus size={13} /> Add type
         </button>
       </div>
-      <p className="text-sm text-gray-500 mb-4">
-        Configure LARC device types — typical cost, reorder thresholds, and the BoldSign
-        enrollment form template per device. Bayer devices (Mirena/Skyla/Kyleena) can share
-        a template ID; the patient picks the specific device inside the form.
-      </p>
+      {!embedded && (
+        <p className="text-sm text-gray-500 mb-4">
+          Configure LARC device types — typical cost, reorder thresholds, and the BoldSign
+          enrollment form template per device. Bayer devices (Mirena/Skyla/Kyleena) can share
+          a template ID; the patient picks the specific device inside the form.
+        </p>
+      )}
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">

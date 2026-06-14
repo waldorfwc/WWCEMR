@@ -4,6 +4,8 @@ import { ArrowLeft, Settings } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import LoadingState from '../components/LoadingState'
+import LarcDeviceTypes from './LarcDeviceTypes'
+import LarcPharmacies from './LarcPharmacies'
 
 const TABS = [
   { id: 'thresholds', label: 'Thresholds & Windows' },
@@ -36,14 +38,10 @@ export default function LarcSettings() {
         ))}
       </div>
       {tab === 'thresholds' && <ThresholdsTab />}
-      {tab === 'types'      && <Placeholder name="Device Types" />}
-      {tab === 'pharmacies' && <Placeholder name="Pharmacies" />}
+      {tab === 'types'      && <LarcDeviceTypes embedded />}
+      {tab === 'pharmacies' && <LarcPharmacies embedded />}
     </div>
   )
-}
-
-function Placeholder({ name }) {
-  return <div className="text-muted text-sm">{name} — coming in this release.</div>
 }
 
 // ─── Thresholds & Windows tab ───────────────────────────────────────
