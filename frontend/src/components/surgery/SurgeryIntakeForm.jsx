@@ -95,7 +95,6 @@ export default function SurgeryIntakeForm({
     || !form.address_street.trim() || !form.address_city.trim()
     || !form.address_state.trim() || !form.address_zip.trim()
     || !form.primary_insurance || !form.primary_member_id.trim()
-    || !form.payer_id.trim()
     || !form.surgeon_primary || !form.surgery_name
     || !form.assistant_surgeon_name
     || !form.clearance_types.length
@@ -443,7 +442,7 @@ export default function SurgeryIntakeForm({
                  onChange={e => setForm({ ...form, primary_member_id: e.target.value })} />
         </Field>
         <div className="col-span-2">
-          <Field label="Payer ID *">
+          <Field label="Payer ID">
             <input className="input text-sm font-mono" value={form.payer_id}
                    placeholder="75191"
                    onChange={e => setForm({ ...form, payer_id: e.target.value })} />
