@@ -22,7 +22,7 @@ from typing import Optional
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # Sanity bounds on user-entered money fields. The practice's
@@ -52,7 +52,8 @@ from app.services.larc.workflow import (
     DEVICE_EXPIRY_HOLD_DAYS, LOCATIONS, LOCATION_LABELS,
     PHARMACY_ORDER_SLA_DAYS, assignment_buckets, log_audit, spawn_milestones,
 )
-from app.services.larc.settings import cfg
+from app.models.larc_config import LarcConfig
+from app.services.larc.settings import LARC_SETTINGS_DEFAULTS, cfg
 
 router = APIRouter(prefix="/larc", tags=["larc"])
 
@@ -386,6 +387,47 @@ def get_picklists(current_user: dict = Depends(requires_tier(Module.LARC, Tier.V
         "buckets": ALL_BUCKETS,
         "insurance_companies": INSURANCE_COMPANIES,
     }
+
+
+# ─── Config (key/value) ─────────────────────────────────────────────
+# Mirrors surgery_config's /surgery/config GET/PUT. Reads merge stored
+# rows over the registry defaults; writes upsert one row per known key.
+LARC_CONFIG_DEFAULTS = LARC_SETTINGS_DEFAULTS  # alias for the read merge
+
+
+class LarcConfigPayload(BaseModel):
+    device_expiry_hold_days:          Optional[int] = Field(default=None, ge=1, le=3650)
+    assignment_reallocate_after_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    pharmacy_order_sla_days:          Optional[int] = Field(default=None, ge=1, le=365)
+    checkout_ack_window_hours:        Optional[int] = Field(default=None, ge=1, le=720)
+
+
+@router.get("/config")
+def get_larc_config(db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    out = dict(LARC_SETTINGS_DEFAULTS)
+    for r in db.query(LarcConfig).all():
+        out[r.key] = r.value
+    return out
+
+
+@router.put("/config")
+def put_larc_config(payload: LarcConfigPayload,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
+    actor = current_user.get("email") or "system"
+    data = payload.model_dump(exclude_unset=True, mode="json")
+    for k, v in data.items():
+        if k not in LARC_SETTINGS_DEFAULTS:
+            continue
+        row = db.query(LarcConfig).filter(LarcConfig.key == k).first()
+        if row is None:
+            db.add(LarcConfig(key=k, value=v, updated_by=actor))
+        else:
+            row.value = v
+            row.updated_by = actor
+    db.commit()
+    return get_larc_config(db, current_user)   # echo merged config
 
 
 def _device_type_dict(t: LarcDeviceType) -> dict:
