@@ -2201,6 +2201,87 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
     }
 
 
+# ─── Soft-delete / restore (remove a patient from the surgery system) ──
+
+@router.post("/{surgery_id}/delete")
+def delete_surgery(surgery_id: str, db: Session = Depends(get_db),
+                   current_user: dict = Depends(
+                       requires_tier(Module.SURGERY, Tier.MANAGE))):
+    """Soft-delete a surgery: keep the row but hide it everywhere (list,
+    dashboard, calendar, waitlist, capacity, detail→404). Recoverable via
+    POST /surgery/{id}/restore. Distinct from cancel — a deleted surgery is
+    removed from the surgery system entirely, not just marked off.
+
+    Frees any booked slot (so the time reopens) and bumps the portal-token
+    version (revoking outstanding patient JWTs), mirroring cancel_surgery.
+    BoldSign void / GCal delete are intentionally skipped to keep scope
+    tight — the slot is freed and tokens revoked, which covers the
+    patient-facing surface.
+    """
+    # Normal query — the row isn't deleted yet, so the global filter sees it.
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+
+    # Revoke outstanding patient portal / magic-link JWTs (stale ptv claim).
+    from app.services.patient_portal_auth import bump_portal_token_version
+    bump_portal_token_version(db, s)
+
+    # Free the booked slot(s) so the time becomes available again, and clear
+    # the scheduled fields — same mechanic as cancel_surgery.
+    held_slots = (db.query(SurgerySlot)
+                    .filter(SurgerySlot.surgery_id == s.id).all())
+    for slot in held_slots:
+        db.delete(slot)
+    s.scheduled_date = None
+    s.scheduled_start_time = None
+
+    s.soft_delete(current_user.get("email"))
+    _commit_or_409(db, surgery_id=surgery_id)
+
+    actor_email = (current_user.get("email") or "").lower().strip() or None
+    log_action(
+        db,
+        action="DELETE", resource_type="surgery",
+        resource_id=str(s.id), patient_id=s.chart_number or None,
+        user_id=actor_email, user_name=current_user.get("name") or actor_email,
+        description=(f"Soft-deleted surgery {s.surgery_number or s.id} "
+                     f"({s.patient_name})"),
+    )
+    return {"ok": True}
+
+
+@router.post("/{surgery_id}/restore")
+def restore_surgery(surgery_id: str, db: Session = Depends(get_db),
+                    current_user: dict = Depends(
+                        requires_tier(Module.SURGERY, Tier.MANAGE))):
+    """Restore a soft-deleted surgery. Loads the row with
+    include_deleted=True (the global filter would otherwise hide it)."""
+    s = (db.query(Surgery)
+           .execution_options(include_deleted=True)
+           .filter(Surgery.id == surgery_id)
+           .first())
+    if not s:
+        raise HTTPException(status_code=404, detail="surgery not found")
+    if not s.is_deleted:
+        # Already live — no-op (the row was never deleted / already restored).
+        return {"ok": True}
+
+    s.restore()
+    _commit_or_409(db, surgery_id=surgery_id)
+
+    actor_email = (current_user.get("email") or "").lower().strip() or None
+    log_action(
+        db,
+        action="RESTORE", resource_type="surgery",
+        resource_id=str(s.id), patient_id=s.chart_number or None,
+        user_id=actor_email, user_name=current_user.get("name") or actor_email,
+        description=(f"Restored soft-deleted surgery {s.surgery_number or s.id} "
+                     f"({s.patient_name})"),
+    )
+    return {"ok": True}
+
+
 # ─── Milestone helper ───────────────────────────────────────────────
 
 # ─── Block schedule admin (Phase 1.7) ───────────────────────────────

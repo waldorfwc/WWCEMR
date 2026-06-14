@@ -29,6 +29,7 @@ from sqlalchemy.orm import relationship
 
 from app.database import Base
 from app.models.guid import GUID, new_uuid
+from app.models.mixins import SoftDeleteMixin
 
 SURGERY_URGENCY_VALUES    = ("routine", "expedited", "urgent")
 SURGERY_COMPLEXITY_VALUES = ("standard", "complex")
@@ -47,7 +48,7 @@ SURGERY_MAX_MINUTES       = 480
 
 # ─── Surgery (the main row) ──────────────────────────────────────────
 
-class Surgery(Base):
+class Surgery(Base, SoftDeleteMixin):
     __tablename__ = "surgeries"
     __table_args__ = (
         Index("ix_surgery_chart", "chart_number"),
