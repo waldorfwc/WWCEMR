@@ -9,7 +9,7 @@ from app.utils.dt import now_utc_naive
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import desc, func, or_, and_
 from sqlalchemy.orm import Session, joinedload
 
@@ -21,6 +21,8 @@ from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.services.ringcentral_client import client as rc_client
+from app.models.recall_config import RecallConfig
+from app.services.recall.settings import RECALL_SETTINGS_DEFAULTS, cfg
 
 
 router = APIRouter(prefix="/recalls", tags=["recalls"])
@@ -78,7 +80,34 @@ ALL_OUTCOMES = (
 
 # Soft-claim TTL — how long an opened recall stays locked to one caller
 # without an outcome before any other caller can pick it up.
+# NOTE: the module-level constants above are the DOCUMENTED defaults; the
+# live values come from RecallConfig via cfg()/_taxonomy() at each use site
+# so that, with no config rows, behaviour is identical to the constants.
 CLAIM_TTL = timedelta(minutes=5)
+
+
+def _taxonomy(db: Session):
+    """Derive the recall outcome taxonomy from config (config-driven, but
+    behaviour-preserving: defaults equal the legacy module constants).
+
+    Returns (permanent, cooldown, completed, all_labels):
+      permanent  : {label: reason_code}
+      cooldown   : {label: timedelta(days=...)}
+      completed  : {label, ...}
+      all_labels : [label, ...]   (validation list; order preserved)
+    """
+    outs = cfg(db, "recall_outcomes")
+    permanent = {o["label"]: o.get("reason_code")
+                 for o in outs if o["category"] == "permanent"}
+    cooldown = {o["label"]: timedelta(days=int(o["cooldown_days"]))
+                for o in outs if o["category"] == "cooldown"}
+    completed = {o["label"] for o in outs if o["category"] == "completed"}
+    all_labels = [o["label"] for o in outs]
+    return permanent, cooldown, completed, all_labels
+
+
+def _claim_ttl(db: Session) -> timedelta:
+    return timedelta(minutes=int(cfg(db, "claim_ttl_minutes")))
 
 
 def _ensure_claim_available(e: RecallEntry, my_email: str) -> None:
@@ -93,9 +122,9 @@ def _ensure_claim_available(e: RecallEntry, my_email: str) -> None:
         )
 
 
-def _take_claim(e: RecallEntry, my_email: str) -> None:
+def _take_claim(e: RecallEntry, my_email: str, db: Session) -> None:
     e.claimed_by = my_email
-    e.claimed_until = now_utc_naive() + CLAIM_TTL
+    e.claimed_until = now_utc_naive() + _claim_ttl(db)
 
 
 def _release_claim(e: RecallEntry, my_email: Optional[str]) -> None:
@@ -215,6 +244,94 @@ def list_recalls(
     }
 
 
+# ─── Recall config (KV settings) ─────────────────────────────────────
+# Declared BEFORE the dynamic "/{recall_id}" route below so that GET
+# /recalls/config isn't captured by the recall-detail path matcher.
+
+_OUTCOME_CATEGORIES = ("permanent", "cooldown", "completed", "neutral")
+
+
+class RecallOutcomeIn(BaseModel):
+    label:        str
+    category:     str
+    cooldown_days: Optional[int] = Field(default=None, ge=0, le=365)
+    reason_code:  Optional[str] = None
+
+    @field_validator("label")
+    @classmethod
+    def label_non_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError("label must be non-empty")
+        return v
+
+    @field_validator("category")
+    @classmethod
+    def known_category(cls, v):
+        if v not in _OUTCOME_CATEGORIES:
+            raise ValueError(f"category must be one of {_OUTCOME_CATEGORIES}")
+        return v
+
+    @model_validator(mode="after")
+    def cooldown_needs_days(self):
+        # A cooldown outcome with no positive cooldown would silently
+        # behave like a neutral outcome — reject it explicitly.
+        if self.category == "cooldown" and (self.cooldown_days is None
+                                            or self.cooldown_days < 1):
+            raise ValueError("cooldown outcomes require cooldown_days >= 1")
+        return self
+
+
+class RecallConfigPayload(BaseModel):
+    claim_ttl_minutes:     Optional[int] = Field(default=None, ge=1, le=120)
+    overdue_window_months: Optional[int] = Field(default=None, ge=1, le=120)
+    recall_outcomes:       Optional[list[RecallOutcomeIn]] = None
+
+    @model_validator(mode="after")
+    def outcomes_non_empty_distinct(self):
+        # Only validate the list when it's actually provided. An empty
+        # list would wipe the whole taxonomy; duplicate labels would make
+        # validation/lookups ambiguous.
+        if self.recall_outcomes is not None:
+            if not self.recall_outcomes:
+                raise ValueError("recall_outcomes must not be empty")
+            labels = [o.label for o in self.recall_outcomes]
+            if len(set(labels)) != len(labels):
+                raise ValueError("recall_outcomes labels must be distinct")
+        return self
+
+
+def _read_recall_config(db: Session) -> dict:
+    out = dict(RECALL_SETTINGS_DEFAULTS)
+    for r in db.query(RecallConfig).all():
+        out[r.key] = r.value
+    return out
+
+
+@router.get("/config")
+def get_recall_config(db: Session = Depends(get_db),
+                      current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
+    return _read_recall_config(db)
+
+
+@router.put("/config")
+def put_recall_config(payload: RecallConfigPayload,
+                      db: Session = Depends(get_db),
+                      current_user: dict = Depends(requires_tier(Module.RECALL, Tier.MANAGE))):
+    actor = current_user.get("email") or "system"
+    data = payload.model_dump(exclude_unset=True, mode="json")
+    for k, v in data.items():
+        if k not in RECALL_SETTINGS_DEFAULTS:
+            continue
+        row = db.query(RecallConfig).filter(RecallConfig.key == k).first()
+        if row is None:
+            db.add(RecallConfig(key=k, value=v, updated_by=actor))
+        else:
+            row.value = v
+            row.updated_by = actor
+    db.commit()
+    return _read_recall_config(db)   # echo merged config
+
+
 # ─── Detail ──────────────────────────────────────────────────────────
 
 @router.get("/{recall_id}")
@@ -332,7 +449,7 @@ def claim_recall(recall_id: str, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="recall not found")
     me = (current_user.get("email") or "").lower().strip()
     _ensure_claim_available(e, me)
-    _take_claim(e, me)
+    _take_claim(e, me, db)
     db.commit()
     return {"claimed_by": e.claimed_by, "claimed_until": str(e.claimed_until)}
 
@@ -420,7 +537,7 @@ def dial(recall_id: str, db: Session = Depends(get_db),
             status_code=409,
             detail="You already dialed this recall in the last 30 seconds. "
                    "Wait for that call to come through.")
-    _take_claim(e, user_email)
+    _take_claim(e, user_email, db)
 
     # Resolve calling user's RC extension + callback phone
     user = db.query(User).filter(User.email == user_email).first()
@@ -523,12 +640,13 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
     e = db.query(RecallEntry).filter(RecallEntry.id == recall_id).first()
     if not e:
         raise HTTPException(status_code=404, detail="recall not found")
-    if payload.outcome not in ALL_OUTCOMES:
+    permanent, cooldown, completed, all_labels = _taxonomy(db)
+    if payload.outcome not in all_labels:
         raise HTTPException(status_code=422,
-                            detail=f"outcome must be one of {ALL_OUTCOMES}")
+                            detail=f"outcome must be one of {all_labels}")
     # Guard misclicks on permanent outcomes — explicit confirm required.
     # (Fable recalls audit M4.)
-    if payload.outcome in PERMANENT_OUTCOMES and not payload.confirm_permanent:
+    if payload.outcome in permanent and not payload.confirm_permanent:
         raise HTTPException(
             status_code=409,
             detail=(f"Outcome '{payload.outcome}' permanently removes the "
@@ -559,9 +677,9 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
     ))
 
     # Apply outcome rules
-    if payload.outcome in PERMANENT_OUTCOMES:
+    if payload.outcome in permanent:
         # Suppress permanently — chart cannot be re-added
-        reason = PERMANENT_OUTCOMES[payload.outcome]
+        reason = permanent[payload.outcome]
         existing = db.query(RecallSuppression).filter_by(
             chart_number=e.chart_number).first()
         if not existing:
@@ -574,10 +692,10 @@ def log_outcome(recall_id: str, payload: OutcomePayload,
         # Mark all entries for this chart as suppressed
         for ee in db.query(RecallEntry).filter_by(chart_number=e.chart_number).all():
             ee.status = "suppressed"
-    elif payload.outcome in COMPLETED_OUTCOMES:
+    elif payload.outcome in completed:
         e.status = "completed"
-    elif payload.outcome in COOLDOWN_OUTCOMES:
-        e.cooldown_until = now_utc_naive() + COOLDOWN_OUTCOMES[payload.outcome]
+    elif payload.outcome in cooldown:
+        e.cooldown_until = now_utc_naive() + cooldown[payload.outcome]
     elif payload.outcome == "Wrong number":
         # Hide for 30 days and stamp the latest_comment with a phone-fix
         # prompt so the dashboard / drawer surfaces "needs phone update"
@@ -684,11 +802,16 @@ def dashboard_stats(db: Session = Depends(get_db),
         func.count(RecallCallLog.id).desc()
     ).limit(5).all()
 
-    # Aging — patients whose last_visit is X+ months ago
+    # Aging — patients whose last_visit is X+ months ago. Window is
+    # config-driven (default 24 months); the legacy hardcoded value was
+    # timedelta(days=730), and int(24 * 365.25 / 12) == 730, so the
+    # default reproduces the old behaviour exactly.
+    overdue_months = int(cfg(db, "overdue_window_months"))
+    overdue_days = int(overdue_months * 365.25 / 12)
     n_overdue_24mo = db.query(func.count(RecallEntry.id)).filter(
         RecallEntry.status == "active",
         RecallEntry.last_visit.isnot(None),
-        RecallEntry.last_visit < (today - timedelta(days=730)),
+        RecallEntry.last_visit < (today - timedelta(days=overdue_days)),
     ).scalar() or 0
 
     return {
@@ -714,17 +837,18 @@ def dashboard_stats(db: Session = Depends(get_db),
 # ─── Outcomes catalog ────────────────────────────────────────────────
 
 @router.get("/outcomes/catalog")
-def outcomes_catalog(current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
+def outcomes_catalog(db: Session = Depends(get_db),
+                     current_user: dict = Depends(requires_tier(Module.RECALL, Tier.WORK))):
+    permanent, cooldown, completed, all_labels = _taxonomy(db)
     return {
         "outcomes": [
             {
                 "value": o,
-                "permanent_suppression": o in PERMANENT_OUTCOMES,
-                "completes_recall": o in COMPLETED_OUTCOMES,
-                "cooldown_days": COOLDOWN_OUTCOMES.get(o).days
-                                  if o in COOLDOWN_OUTCOMES else None,
+                "permanent_suppression": o in permanent,
+                "completes_recall": o in completed,
+                "cooldown_days": cooldown[o].days if o in cooldown else None,
             }
-            for o in ALL_OUTCOMES
+            for o in all_labels
         ]
     }
 

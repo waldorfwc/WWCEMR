@@ -84,7 +84,9 @@ import PelletPatients from './pages/PelletPatients'
 import PelletSettings from './pages/PelletSettings'
 import Pellets from './pages/Pellets'
 import PracticeSettings from './pages/admin/PracticeSettings'
+import RecallNav from './components/recall/RecallNav'
 import Recalls from './pages/Recalls'
+import RecallSettings from './pages/RecallSettings'
 import StaffInbox from './pages/StaffInbox'
 import StaffMessageTemplates from './pages/StaffMessageTemplates'
 import Surgery from './pages/Surgery'
@@ -167,8 +169,15 @@ export const ROUTES = [
       nav: { label: 'Manager', order: 90 } },
 
   // ── Recalls ────────────────────────────────────────────────────
-  { path: '/recalls', element: <Recalls />, module: M.RECALL, tier: TIER.WORK,
-      nav: { label: 'Recalls', order: 50 } },
+  // Layout route: RecallNav renders the shared top-nav + <Outlet/> for the
+  // child page. Each child carries its own gate. Keep nav on the parent so
+  // the TopNav "Recalls" entry persists. Child paths are RELATIVE.
+  { path: '/recalls', element: <RecallNav />, module: M.RECALL, tier: TIER.WORK,
+      nav: { label: 'Recalls', order: 50 },
+      children: [
+    { index: true,      element: <Recalls /> },
+    { path: 'settings', element: <RecallSettings />, module: M.RECALL, tier: TIER.MANAGE },
+  ]},
 
   // ── Surgery ────────────────────────────────────────────────────
   // Layout route: SurgeryNav renders the shared top-nav + <Outlet/> for the
