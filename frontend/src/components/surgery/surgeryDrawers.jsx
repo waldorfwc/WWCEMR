@@ -257,6 +257,128 @@ export function UpdateSurgeryDrawer({ onClose }) {
 }
 
 
+// Dedicated "Delete Surgery" drawer: search a patient and soft-delete them
+// from the surgery system. Peer of Add/Update in the "Add ▾" menu.
+export function DeleteSurgeryDrawer({ onClose }) {
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const [query, setQuery] = useState('')
+  const [debounced, setDebounced] = useState('')
+  const [error, setError] = useState(null)
+  const [deletedIds, setDeletedIds] = useState([])
+  const [deletingId, setDeletingId] = useState(null)
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 300)
+    return () => clearTimeout(t)
+  }, [query])
+
+  const { data: searchData, isFetching: searching } = useQuery({
+    queryKey: ['surgery-delete-search', debounced],
+    queryFn: () => api.get('/surgery', {
+      params: { search: debounced, per_page: 25 },
+    }).then(r => r.data),
+    enabled: debounced.length > 0,
+  })
+  const results = (searchData?.surgeries || []).filter(s => !deletedIds.includes(s.id))
+
+  const remove = useMutation({
+    mutationFn: (id) => api.post(`/surgery/${id}/delete`).then(r => r.data),
+    onMutate: (id) => { setDeletingId(id); setError(null) },
+    onSuccess: (_data, id) => {
+      setDeletedIds(prev => [...prev, id])
+      setDeletingId(null)
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['surgery-block-days'] })
+    },
+    onError: (e) => {
+      setDeletingId(null)
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Delete failed'))
+    },
+  })
+
+  const handleDelete = async (s) => {
+    const ok = await confirm({
+      title: 'Delete Patient',
+      message: `Soft-delete this surgery for ${s.patient_name || 'this patient'}? `
+        + 'It will be removed from the surgery system (recoverable by an admin).',
+      confirmLabel: 'Delete patient',
+      danger: true,
+    })
+    if (!ok) return
+    remove.mutate(s.id)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-2xl bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-6 py-4 flex items-center justify-between z-10">
+          <h2 className="font-serif font-semibold text-ink text-[18px]">Delete Surgery</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+        </div>
+
+        <div className="px-6 pt-5 pb-3 space-y-2">
+          <label className="text-[11px] uppercase text-gray-500 tracking-wide block">
+            Find Surgery to Delete
+          </label>
+          <div className="relative">
+            <Search size={12} className="absolute left-2 top-2.5 text-muted" />
+            <input
+              className="input text-sm pl-7 w-full"
+              placeholder="Patient name, chart #, or surgery #…"
+              value={query}
+              onChange={e => { setQuery(e.target.value); setError(null) }}
+            />
+          </div>
+          <p className="text-[11px] text-muted">
+            Soft-delete removes the patient from the surgery system. Recoverable by an admin.
+          </p>
+          {error && <p className="text-xs text-red-700">{error}</p>}
+
+          {debounced.length > 0 && (
+            <div className="border border-border-subtle rounded-md divide-y divide-border-subtle max-h-[28rem] overflow-y-auto">
+              {searching && results.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted">Searching…</div>
+              )}
+              {!searching && results.length === 0 && (
+                <div className="px-3 py-2 text-xs text-muted">No matching surgeries.</div>
+              )}
+              {results.map(s => (
+                <div key={s.id} className="px-3 py-2 text-sm flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium text-ink truncate">{s.patient_name}</div>
+                    <div className="text-[11px] text-muted">
+                      {s.chart_number || '—'} · {s.dob ? fmt.date(s.dob) : '—'} · {s.status}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(s)}
+                    disabled={deletingId === s.id}
+                    className="text-xs px-3 py-1.5 rounded text-white bg-red-700 hover:bg-red-800 disabled:opacity-50 shrink-0"
+                  >
+                    {deletingId === s.id ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {deletedIds.length > 0 && (
+            <p className="text-xs text-emerald-700">
+              Deleted {deletedIds.length} surger{deletedIds.length === 1 ? 'y' : 'ies'}.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
 // Map a GET /surgery/{id} dict into the shared form's initialValues.
 function mapDetailToForm(d) {
   const procedures = Array.isArray(d.procedures) && d.procedures.length
