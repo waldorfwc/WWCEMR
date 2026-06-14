@@ -317,6 +317,32 @@ def _create_envelope(s: Surgery, template: ConsentTemplate) -> str:
     return doc_id
 
 
+def _matches_from_stored_ids(db: Session, s: Surgery,
+                             stored_ids: list) -> list[TemplateMatch]:
+    """Build TemplateMatch rows for a curated consent_template_ids selection,
+    preserving the stored order. Inactive / missing templates are skipped.
+    Re-runs the matcher's min-days warning helper per template so the existing
+    warning gate still applies to the curated set."""
+    from app.services.consent_template_matcher import _check_min_days_warning
+    rows = (db.query(ConsentTemplate)
+              .filter(ConsentTemplate.id.in_(stored_ids),
+                      ConsentTemplate.is_active.is_(True))
+              .all())
+    by_id = {str(t.id): t for t in rows}
+    out: list[TemplateMatch] = []
+    for tid in stored_ids:
+        t = by_id.get(str(tid))
+        if not t:
+            continue
+        out.append(TemplateMatch(
+            template=t,
+            matched_procedure=None,
+            is_supplemental=bool(t.is_supplemental),
+            warning=_check_min_days_warning(t, s.scheduled_date),
+        ))
+    return out
+
+
 def send_consent_envelopes(
     db: Session,
     s: Surgery,
@@ -339,7 +365,14 @@ def send_consent_envelopes(
     if not _is_configured():
         raise BoldSignEnvelopeError("BoldSign API key not configured")
 
-    matches = match_templates_for_surgery(db, s)
+    # Curated selection is authoritative (intake-consents). When the surgery
+    # has a non-empty consent_template_ids list, send exactly those templates
+    # (skipping inactive/missing). Otherwise fall back to the matcher.
+    stored_ids = list(s.consent_template_ids or [])
+    if stored_ids:
+        matches = _matches_from_stored_ids(db, s, stored_ids)
+    else:
+        matches = match_templates_for_surgery(db, s)
     unmatched = unmatched_procedures(db, s)
 
     if not matches:

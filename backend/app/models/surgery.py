@@ -214,6 +214,12 @@ class Surgery(Base):
     # Consent
     consent_status = Column(String(40), default="not_required", nullable=False)
     # values: not_required | required | sent | signed
+    # Curated consent selection (intake-consents). consent_template_ids is the
+    # authoritative list of ConsentTemplate ids that will be sent for this
+    # surgery; consent_overrides tracks the manual deltas the coordinator made
+    # on top of the matcher's auto-pull so re-pulling preserves their edits.
+    consent_template_ids = Column(JSON, nullable=True)   # list[str] selected template IDs
+    consent_overrides    = Column(JSON, nullable=True)   # {"added": [...], "removed": [...]}
     consent_doc_id = Column(String(80), nullable=True)        # DocuSign id (Phase 3)
     consent_sent_at = Column(DateTime, nullable=True)
     consent_signed_at = Column(DateTime, nullable=True)
