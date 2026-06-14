@@ -1014,15 +1014,18 @@ async def extract_order(
     if payer_id in (None, "", [], {}):
         payer_id = ((parsed.get("insurance_primary") or {}).get("payer_id"))
     if payer_id not in (None, "", [], {}):
-        fields["payer_id"] = _ser(payer_id)
+        # Payer IDs may be alphanumeric (e.g. "128MD"); normalize to upper.
+        payer_id = _ser(payer_id).upper()
+        fields["payer_id"] = payer_id
         # Resolve payer_id → canonical picklist company via the configurable
         # map so the insurance dropdown prefills. The raw extracted company
         # (e.g. "BCBS Administrators PPO ONLY") never matches a dropdown
         # option; the mapped value (e.g. "Blue Cross & Blue Shield PPO")
-        # does. If the payer ID isn't mapped, leave the raw company as-is.
+        # does. Map keys are stored uppercase, so look up the uppercased ID.
+        # If the payer ID isn't mapped, leave the raw company as-is.
         try:
             pid_map = cfg(db, "payer_id_insurance_map") or {}
-            mapped = pid_map.get(str(payer_id))
+            mapped = pid_map.get(payer_id)
             if mapped:
                 fields["primary_insurance"] = mapped
         except Exception:

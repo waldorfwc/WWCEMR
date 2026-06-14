@@ -54,20 +54,32 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     #
     # Seeded with high-confidence national EDI payer IDs + one verified from a
     # real WWC order (75191). Payer IDs CAN vary by clearinghouse, so the
-    # coordinator should confirm the prefilled company on each order. Maryland
-    # Medicaid MCOs (Priority Partners, Maryland Physicians Care, MedStar
-    # Family Choice, Wellpoint/Amerigroup, UHC Community Plan, Aetna Better
-    # Health, etc.) and CareFirst plan variants use clearinghouse-specific IDs
+    # coordinator should confirm the prefilled company on each order. WWC's
+    # orders use Change Healthcare / Emdeon-style IDs, so the Maryland
+    # Medicaid MCO entries below are Change-Healthcare-aligned and should be
+    # confirmed on the first real order for each MCO. Keys may be alphanumeric
+    # (e.g. "WLPNT", "128MD") and are looked up case-insensitively. Note: UHC
+    # Community Plan shares payer ID 87726 with commercial UnitedHealthcare,
+    # so 87726 resolves to "UnitedHealthcare" (a payer ID maps to one
+    # company). CareFirst plan variants still use clearinghouse-specific IDs
     # that should be added from real orders rather than guessed. Editable in
     # Surgery Settings → Clearances & Devices → Payer ID → Insurance.
     "payer_id_insurance_map": {
         "75191": "Blue Cross & Blue Shield PPO",   # BCBS Administrators PPO — verified on a WWC order
         "60054": "Aetna",                          # national Aetna
         "62308": "Cigna",                          # national Cigna
-        "87726": "UnitedHealthcare",               # national UnitedHealthcare
+        "87726": "UnitedHealthcare",               # national UnitedHealthcare (also UHC Community Plan)
         "61101": "Humana",                         # national Humana
         "00580": "CareFirst BlueChoice",           # CareFirst BCBS of Maryland — verify per clearinghouse
         "12302": "Medicare",                       # Novitas JL (MD Part B) — verify per clearinghouse
+
+        # ── Maryland Medicaid MCOs (Change-Healthcare-aligned) ──
+        "52189": "Priority Partners (MCO)",          # Johns Hopkins HealthCare — consistent across clearinghouses
+        "22348": "Maryland Physicians Care (MCO)",   # Emdeon/Change Healthcare
+        "26375": "Wellpoint Maryland (MCO)",         # legacy Amerigroup ID (still valid)
+        "WLPNT": "Wellpoint Maryland (MCO)",         # current Wellpoint ID
+        "RP063": "MedStar Family Choice (MCO)",      # Change Healthcare
+        "128MD": "Aetna Better Health (MCO)",        # universal ABHMD ID
     },
 }
 

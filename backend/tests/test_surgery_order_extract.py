@@ -146,6 +146,37 @@ def test_validate_and_coerce_keeps_existing_payer_id():
     assert ins["company"] == "BCBS Administrators PPO ONLY"
 
 
+def test_validate_and_coerce_splits_alphanumeric_payer_id():
+    from app.services.surgery.order_parser import _validate_and_coerce
+    out = _validate_and_coerce({
+        "patient": {"first_name": "Pat", "last_name": "Doe"},
+        "insurance_primary": {
+            "company": "Aetna Better Health of Maryland (128MD)",
+            "member_id": "M1",
+            "payer_id": None,
+        },
+    })
+    ins = out["insurance_primary"]
+    assert ins["payer_id"] == "128MD"
+    assert ins["company"] == "Aetna Better Health of Maryland"
+
+
+def test_validate_and_coerce_skips_plan_type_token():
+    # (MCO) is a plan-type token, not a payer ID — must be denylisted so the
+    # company keeps it and no payer_id is set.
+    from app.services.surgery.order_parser import _validate_and_coerce
+    out = _validate_and_coerce({
+        "patient": {"first_name": "Pat", "last_name": "Doe"},
+        "insurance_primary": {
+            "company": "Something Health Plan (MCO)",
+            "payer_id": None,
+        },
+    })
+    ins = out["insurance_primary"]
+    assert ins["payer_id"] is None
+    assert ins["company"] == "Something Health Plan (MCO)"
+
+
 def _stub_company_with_payer(company, payer_id):
     """Stub parse_order_text to return the post-split insurance block (the
     parenthetical-payer-id split is covered by the _validate_and_coerce unit
@@ -178,6 +209,21 @@ def test_extract_resolves_payer_id_to_company_via_map(client, db):
     assert fields["payer_id"] == "75191"
     # raw company stripped + resolved to the canonical picklist value
     assert fields["primary_insurance"] == "Blue Cross & Blue Shield PPO"
+
+
+def test_extract_resolves_alphanumeric_payer_id_case_insensitively(client, db):
+    # lowercase "128md" must uppercase-resolve against the (uppercase) map
+    # to the seeded MCO company.
+    p1, p2 = _stub_company_with_payer("Aetna Better Health of Maryland", "128md")
+    with p1, p2:
+        r = client.post(
+            "/api/surgery/orders/extract",
+            files={"file": ("order.pdf", b"%PDF-1.4 stub", "application/pdf")},
+        )
+    assert r.status_code == 200, r.text
+    fields = r.json()["fields"]
+    assert fields["payer_id"] == "128MD"
+    assert fields["primary_insurance"] == "Aetna Better Health (MCO)"
 
 
 def test_extract_unmapped_payer_id_keeps_raw_company(client, db):

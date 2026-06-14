@@ -31,6 +31,14 @@ log = logging.getLogger(__name__)
 PARSE_MODEL = "claude-opus-4-7"  # high-accuracy structured extraction
 
 
+# Parenthetical tokens that look like a payer ID but are plan types /
+# common abbreviations. Never treat these as a payer ID (case-insensitive).
+_PAYER_ID_DENYLIST = {
+    "MCO", "PPO", "HMO", "EPO", "POS", "HSA", "HRA", "FSA",
+    "DOB", "SSN", "MRN", "NPI",
+}
+
+
 SYSTEM_PROMPT = """You parse OB/GYN surgery-order PDFs from a ModMed/EMA practice into structured JSON.
 
 Rules:
@@ -265,18 +273,30 @@ def _validate_and_coerce(data: dict) -> dict:
     # insurance_primary: split a trailing/parenthetical payer ID out of the
     # company name. Surgery-order PDFs render the company as e.g.
     # "BCBS Administrators PPO ONLY (75191)" where 75191 is the electronic
-    # payer ID. The dropdown company never matches that string, so we lift
-    # the (NNNNN) into payer_id (only if not already set) and strip it from
-    # the company so the name can be resolved against the picklist.
+    # payer ID, or with an ALPHANUMERIC ID like
+    # "Aetna Better Health of Maryland (128MD)". The dropdown company never
+    # matches that string, so we lift the (token) into payer_id (only if not
+    # already set), uppercase it, and strip it from the company so the name
+    # can be resolved against the picklist. Plan-type / common parenthetical
+    # tokens (MCO, PPO, HMO, …) are guarded against so they're never treated
+    # as a payer ID — e.g. "Something Health Plan (MCO)".
     ins = data.get("insurance_primary")
     if isinstance(ins, dict):
         company = ins.get("company")
         if isinstance(company, str) and company:
-            m = re.search(r"\(\s*(\d{3,6})\s*\)", company)
-            if m:
+            matches = list(re.finditer(r"\(\s*([A-Za-z0-9]{3,6})\s*\)", company))
+            chosen = None
+            for m in reversed(matches):           # prefer the LAST valid token
+                if m.group(1).upper() not in _PAYER_ID_DENYLIST:
+                    chosen = m
+                    break
+            if chosen is not None:
                 if not ins.get("payer_id"):
-                    ins["payer_id"] = m.group(1)
-                stripped = re.sub(r"\s*\(\s*\d{3,6}\s*\)\s*", " ", company).strip()
+                    ins["payer_id"] = chosen.group(1).upper()
+                # strip exactly the chosen (token) from the company string
+                start, end = chosen.span()
+                stripped = (company[:start] + " " + company[end:])
+                stripped = re.sub(r"\s+", " ", stripped).strip()
                 ins["company"] = stripped or None
 
     return data
