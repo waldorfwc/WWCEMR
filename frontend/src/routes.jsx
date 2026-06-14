@@ -73,6 +73,7 @@ import MyProfile from './pages/MyProfile'
 import PatientChart from './pages/PatientChart'
 import PatientDetail from './pages/PatientDetail'
 import Patients from './pages/Patients'
+import PelletNav from './components/pellet/PelletNav'
 import PelletAudit from './pages/PelletAudit'
 import PelletCountDetail from './pages/PelletCountDetail'
 import PelletCounts from './pages/PelletCounts'
@@ -211,19 +212,23 @@ export const ROUTES = [
   ]},
 
   // ── Pellets (DEA Schedule III) ─────────────────────────────────
-  // The /pellets redirect is itself the nav target — clicking the link
-  // lands on /pellets/patients (gated on PELLETS:VIEW just below).
-  { path: '/pellets',                 element: <Navigate to="/pellets/patients" replace />,
-      nav: { label: 'Pellets', order: 80, module: M.PELLETS, tier: TIER.VIEW } },
-  { path: '/pellets/inventory',       element: <Pellets />,              module: M.PELLETS, tier: TIER.VIEW },
-  { path: '/pellets/counts',          element: <PelletCounts />,         module: M.PELLETS, tier: TIER.WORK },
-  { path: '/pellets/counts/:id',      element: <PelletCountDetail />,    module: M.PELLETS, tier: TIER.WORK },
-  { path: '/pellets/audit',           element: <PelletAudit />,          module: M.PELLETS, tier: TIER.VIEW },
-  { path: '/pellets/manual',          element: <PelletManual />,         module: M.PELLETS, tier: TIER.VIEW },
-  { path: '/pellets/patients',        element: <PelletPatients />,       module: M.PELLETS, tier: TIER.VIEW },
-  { path: '/pellets/patients/:id',    element: <PelletPatientDetail />,  module: M.PELLETS, tier: TIER.VIEW },
-  { path: '/pellets/dose-types',      element: <PelletDoseTypes />,      module: M.PELLETS, tier: TIER.MANAGE },
-  { path: '/pellets/settings',        element: <PelletSettings />,       module: M.PELLETS, tier: TIER.MANAGE },
+  // Layout route: PelletNav renders the shared top-nav + <Outlet/> for the
+  // child page. Each child carries its own gate. Keep nav on the parent so
+  // the TopNav "Pellets" entry persists. Child paths are RELATIVE.
+  { path: '/pellets', element: <PelletNav />, module: M.PELLETS, tier: TIER.VIEW,
+      nav: { label: 'Pellets', order: 80 },
+      children: [
+    { index: true,          element: <PelletPatients />,      module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'inventory',    element: <Pellets />,             module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'counts',       element: <PelletCounts />,        module: M.PELLETS, tier: TIER.WORK },
+    { path: 'counts/:id',   element: <PelletCountDetail />,   module: M.PELLETS, tier: TIER.WORK },
+    { path: 'audit',        element: <PelletAudit />,         module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'manual',       element: <PelletManual />,        module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'patients',     element: <PelletPatients />,      module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'patients/:id', element: <PelletPatientDetail />, module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'dose-types',   element: <PelletDoseTypes />,     module: M.PELLETS, tier: TIER.MANAGE },
+    { path: 'settings',     element: <PelletSettings />,      module: M.PELLETS, tier: TIER.MANAGE },
+  ]},
 
   // ── Chart / documents / patients ───────────────────────────────
   { path: '/documents',         element: <Documents />,    module: M.CHART, tier: TIER.VIEW,
