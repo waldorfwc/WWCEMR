@@ -65,6 +65,13 @@ def test_config_includes_payer_id_map_default(client):
     assert pm["75191"] == "Blue Cross & Blue Shield PPO"
     assert pm["60054"] == "Aetna"
     assert pm["87726"] == "UnitedHealthcare"
+    # Maryland Medicaid MCOs (Change-Healthcare-aligned), incl. alphanumeric IDs.
+    assert pm["52189"] == "Priority Partners (MCO)"
+    assert pm["22348"] == "Maryland Physicians Care (MCO)"
+    assert pm["26375"] == "Wellpoint Maryland (MCO)"
+    assert pm["WLPNT"] == "Wellpoint Maryland (MCO)"
+    assert pm["RP063"] == "MedStar Family Choice (MCO)"
+    assert pm["128MD"] == "Aetna Better Health (MCO)"
     # Every mapped value must be a real picklist company (so the dropdown
     # selects it) — guards against typos in the seed.
     picks = client.get("/api/surgery/picklists").json()["insurance_companies"]
@@ -86,9 +93,40 @@ def test_put_payer_id_map_roundtrips(client):
     }
 
 
-def test_put_payer_id_map_bad_key_rejected(client):
+def test_put_payer_id_map_alphanumeric_key_accepted(client):
+    # Alphanumeric keys are valid and stored uppercase.
     resp = client.put("/api/surgery/config", json={
-        "payer_id_insurance_map": {"ABC": "Aetna"},
+        "payer_id_insurance_map": {"RP063": "MedStar Family Choice (MCO)"},
+    })
+    assert resp.status_code == 200, resp.text
+    body = client.get("/api/surgery/config").json()
+    assert body["payer_id_insurance_map"] == {
+        "RP063": "MedStar Family Choice (MCO)",
+    }
+
+
+def test_put_payer_id_map_key_normalized_uppercase(client):
+    # Lowercase key is uppercase-normalized on store.
+    resp = client.put("/api/surgery/config", json={
+        "payer_id_insurance_map": {"wlpnt": "Wellpoint Maryland (MCO)"},
+    })
+    assert resp.status_code == 200, resp.text
+    body = client.get("/api/surgery/config").json()
+    assert body["payer_id_insurance_map"] == {
+        "WLPNT": "Wellpoint Maryland (MCO)",
+    }
+
+
+def test_put_payer_id_map_too_short_key_rejected(client):
+    resp = client.put("/api/surgery/config", json={
+        "payer_id_insurance_map": {"AB": "Aetna"},
+    })
+    assert resp.status_code == 422
+
+
+def test_put_payer_id_map_non_alnum_key_rejected(client):
+    resp = client.put("/api/surgery/config", json={
+        "payer_id_insurance_map": {"AB!23": "Aetna"},
     })
     assert resp.status_code == 422
 

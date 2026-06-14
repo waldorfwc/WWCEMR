@@ -186,18 +186,22 @@ class ConfigPayload(BaseModel):
     @field_validator("payer_id_insurance_map")
     @classmethod
     def payer_id_map_valid(cls, v):
-        # Maps a numeric payer ID (3-6 digits) to a non-empty company name.
-        # Full-replaces the stored map on PUT (not in the deep/facility merge
-        # sets), so reject bad shapes rather than silently storing garbage.
+        # Maps a payer ID (3-6 ALPHANUMERIC chars) to a non-empty company
+        # name. Keys are uppercase-normalized for storage so lookups can be
+        # case-insensitive. Numeric IDs (e.g. "75191") still pass since
+        # digits are alphanumeric. Full-replaces the stored map on PUT (not
+        # in the deep/facility merge sets), so reject bad shapes rather than
+        # silently storing garbage.
         if v is None:
             return v
         if not isinstance(v, dict):
             raise ValueError("payer_id_insurance_map must be an object")
         out: dict[str, str] = {}
         for key, val in v.items():
-            k = (str(key) if key is not None else "").strip()
-            if not re.fullmatch(r"\d{3,6}", k):
-                raise ValueError(f"payer ID {key!r} must be 3-6 digits")
+            k = (str(key) if key is not None else "").strip().upper()
+            if not re.fullmatch(r"[A-Z0-9]{3,6}", k):
+                raise ValueError(
+                    f"payer ID {key!r} must be 3-6 alphanumeric chars")
             company = (val or "").strip() if isinstance(val, str) else ""
             if not company:
                 raise ValueError(f"company for payer ID {k} must not be blank")
