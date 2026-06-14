@@ -29,6 +29,7 @@ from app.models.larc import LarcAssignment, LarcDevice, LarcOwedPatient
 from app.models.surgery import Surgery, BlockDay, SurgeryMilestone, SurgeryConsentEnvelope
 from app.models.pellet import PelletPatient
 from app.utils.dt import now_utc_naive
+from app.services.audit_service import log_action
 
 
 router = APIRouter(prefix="/admin/cleanup", tags=["admin-cleanup"])
@@ -557,7 +558,7 @@ def silent_schedule(payload: _SilentScheduleIn,
 
 @router.get("/docusign-open-count")
 def docusign_open_count(db: Session = Depends(get_db),
-                        current_user: dict = Depends(requires_super_admin)):
+                        current_user: dict = Depends(requires_super_admin())):
     """Post-deploy sanity check: count legacy DocuSign consent envelopes that
     are still open (not in a terminal state). Should be 0 — confirms no legacy
     envelopes were stranded by the DocuSign rip-out."""
@@ -571,7 +572,7 @@ def docusign_open_count(db: Session = Depends(get_db),
 
 @router.get("/billing-doc-duplicate-hashes")
 def billing_doc_duplicate_hashes(db: Session = Depends(get_db),
-                                 current_user: dict = Depends(requires_super_admin)):
+                                 current_user: dict = Depends(requires_super_admin())):
     """Read-only diagnostic: find LIVE (non-deleted) billing_documents that
     share a content_hash. These are the genuine duplicates that block the
     partial unique index ix_billing_documents_content_hash_unique even after
@@ -609,4 +610,77 @@ def billing_doc_duplicate_hashes(db: Session = Depends(get_db),
         "live_duplicate_hash_groups": len(groups),
         "total_redundant_docs": sum(g["count"] - 1 for g in groups),
         "groups": groups,
+    }
+
+
+# Status progression — used to pick the most-worked row as the keeper.
+_BD_STATUS_RANK = {"worked": 3, "in_progress": 2, "new": 1}
+
+
+def _bd_canonical_keeper(rows):
+    """Pick the row to KEEP from a same-content_hash group. Rule (deterministic):
+    most-progressed status, then most access-log/notes history, then earliest
+    uploaded, then lowest id — so the choice is stable and favors the row a
+    human has actually worked."""
+    def sort_key(d):
+        return (
+            -_BD_STATUS_RANK.get(d.status, 0),
+            -(len(d.access_log or []) + len(d.notes_rel or [])),
+            d.uploaded_at or datetime.max,
+            str(d.id),
+        )
+    return sorted(rows, key=sort_key)[0]
+
+
+@router.post("/billing-doc-dedup")
+def billing_doc_dedup(dry_run: bool = Query(True),
+                      db: Session = Depends(get_db),
+                      current_user: dict = Depends(requires_super_admin())):
+    """Soft-delete redundant LIVE duplicate billing_documents so the partial
+    unique index on content_hash can build. For each content_hash with >1 live
+    row, KEEP one canonical row (see _bd_canonical_keeper) and soft-delete the
+    rest. DRY RUN BY DEFAULT — pass ?dry_run=false to actually delete.
+    Nothing is hard-deleted; soft-deleted rows remain recoverable."""
+    from app.models.billing_document import BillingDocument
+    actor = current_user.get("email") or "system"
+    dup_hashes = (db.query(BillingDocument.content_hash)
+                    .filter(BillingDocument.content_hash.isnot(None))
+                    .filter(BillingDocument.deleted_at.is_(None))
+                    .group_by(BillingDocument.content_hash)
+                    .having(func.count(BillingDocument.id) > 1)
+                    .all())
+    planned = []
+    deleted = 0
+    for (content_hash,) in dup_hashes:
+        rows = (db.query(BillingDocument)
+                  .filter(BillingDocument.content_hash == content_hash)
+                  .filter(BillingDocument.deleted_at.is_(None))
+                  .all())
+        keeper = _bd_canonical_keeper(rows)
+        redundant = [d for d in rows if d.id != keeper.id]
+        planned.append({
+            "content_hash": content_hash,
+            "keep": {"id": str(keeper.id), "filename": keeper.original_filename,
+                     "status": keeper.status,
+                     "uploaded_at": keeper.uploaded_at.isoformat() if keeper.uploaded_at else None},
+            "soft_delete": [{"id": str(d.id), "filename": d.original_filename,
+                             "status": d.status,
+                             "uploaded_at": d.uploaded_at.isoformat() if d.uploaded_at else None}
+                            for d in redundant],
+        })
+        if not dry_run:
+            for d in redundant:
+                d.soft_delete(by_email=f"dedup:{actor}")
+                deleted += 1
+    if not dry_run and deleted:
+        db.commit()
+        log_action(db, "DELETE", "billing_documents",
+                   resource_id=None, user_name=actor,
+                   description=f"billing-doc dedup: soft-deleted {deleted} redundant duplicate(s)")
+    return {
+        "dry_run": dry_run,
+        "groups": len(planned),
+        "would_soft_delete" if dry_run else "soft_deleted":
+            sum(len(p["soft_delete"]) for p in planned),
+        "plan": planned,
     }
