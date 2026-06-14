@@ -110,6 +110,8 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "surgery_number": s.surgery_number,
         "chart_number": s.chart_number,
         "patient_name": s.patient_name,
+        "first_name": s.first_name,
+        "last_name": s.last_name,
         "dob": str(s.dob) if s.dob else None,
         "age": _patient_age(s.dob),
         "phone": s.cell_phone or s.phone,
@@ -120,6 +122,9 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "address_zip": s.address_zip,
         "primary_insurance": s.primary_insurance,
         "primary_member_id": s.primary_member_id,
+        "primary_payer_id": s.primary_payer_id,
+        "secondary_insurance": s.secondary_insurance,
+        "secondary_member_id": s.secondary_member_id,
         "surgeon_primary": s.surgeon_primary,
         "surgeon_secondary": s.surgeon_secondary,
         "procedures": s.procedures,
@@ -158,6 +163,7 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "auth_number": s.auth_number,
         "clearance_required": bool(s.clearance_required),
         "clearance_status": s.clearance_status,
+        "clearance_types": s.clearance_types or [],
         "cardiologist_name":  s.cardiologist_name,
         "cardiologist_phone": s.cardiologist_phone,
         "cardiologist_fax":   s.cardiologist_fax,
@@ -189,6 +195,7 @@ def _surgery_dict(db: Session, s: Surgery, *,
                                         if s.benefits_verified_at else None),
         "labs_sent_to_hospital":     bool(s.labs_sent_to_hospital),
         "device_required":           bool(s.device_required),
+        "device_types":              s.device_types or [],
         "device_assigned":           bool(s.device_assigned),
         "payment_posted_to_billing": bool(s.payment_posted_to_billing),
         "calendar_invite_sent_at":   (s.calendar_invite_sent_at.isoformat()
@@ -1360,8 +1367,10 @@ class SurgeryPatch(BaseModel):
     address_zip: Optional[str] = None
     primary_insurance: Optional[str] = None
     primary_member_id: Optional[str] = None
+    primary_payer_id: Optional[str] = None
     primary_group: Optional[str] = None
     secondary_insurance: Optional[str] = None
+    secondary_member_id: Optional[str] = None
     surgeon_primary: Optional[str] = None
     surgeon_secondary: Optional[str] = None
     procedures: Optional[list[dict]] = None
@@ -1375,6 +1384,7 @@ class SurgeryPatch(BaseModel):
     auth_number: Optional[str] = None
     clearance_required: Optional[bool] = None
     clearance_status: Optional[str] = None
+    clearance_types: Optional[list[str]] = None
     cardiologist_name: Optional[str] = None
     cardiologist_phone: Optional[str] = None
     cardiologist_fax: Optional[str] = None
@@ -1425,6 +1435,7 @@ class SurgeryPatch(BaseModel):
     operative_report_status: Optional[str]  = None    # notes_reports step
     device_required:         Optional[bool] = None    # device step
     device_assigned:         Optional[bool] = None    # device step
+    device_types:            Optional[list[str]] = None  # multi-select device list
 
 
 # ─── Slot duration patch (Phase D3) ────────────────────────────────
@@ -1752,6 +1763,45 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                 "before": (str(before_val) if before_val is not None else None),
                 "after":  (str(new_val) if new_val is not None else None),
             }
+
+    # Multi-select list fields (clearance_types / device_types) and the
+    # assistant-surgeon name need the same derived-flag logic create_manual
+    # applies — they can't go through the blind setattr loop. Pop them here so
+    # the generic loop below doesn't double-apply (or clobber the flags).
+    def _non_none(items):
+        # Entries that are real selections, not the "None" sentinel
+        # (case-insensitive). Mirrors create_manual's helper.
+        return [it for it in (items or []) if (it or "").strip().lower() != "none"]
+
+    if "clearance_types" in data:
+        ctypes = data.pop("clearance_types") or []
+        s.clearance_types = ctypes
+        if _non_none(ctypes):
+            s.clearance_required = True
+            s.clearance_status = "required"
+        else:
+            s.clearance_required = False
+            s.clearance_status = "not_required"
+
+    if "device_types" in data:
+        dtypes = data.pop("device_types") or []
+        s.device_types = dtypes
+        real_devices = _non_none(dtypes)
+        if real_devices:
+            s.device_required = True
+            s.device_kind = real_devices[0]
+        else:
+            s.device_required = False
+            s.device_kind = None
+
+    if "assistant_surgeon_name" in data:
+        a_raw = (data.pop("assistant_surgeon_name") or "").strip()
+        if a_raw.lower() in ("", "none"):
+            s.assistant_surgeon_name = None
+            s.assistant_surgeon_required = False
+        else:
+            s.assistant_surgeon_name = a_raw
+            s.assistant_surgeon_required = True
 
     # Apply (the generic patch loop sets auth_status, assistant_surgeon_required,
     # status, etc. directly on the Surgery row; the steps engine derives workflow
