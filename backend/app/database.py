@@ -36,7 +36,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, larc, larc_config, billing_document, missing_charge, pellet, pellet_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier  # noqa
+    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, larc, larc_config, billing_document, missing_charge, pellet, pellet_config, recall_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier  # noqa
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
     # Default groups already exist in production; the legacy seed code is
