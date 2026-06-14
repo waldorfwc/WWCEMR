@@ -43,6 +43,8 @@ import Appeals from './pages/Appeals'
 import AuditLog from './pages/AuditLog'
 import BankRecon from './pages/BankRecon'
 import Billing from './pages/Billing'
+import ChecklistNav from './components/checklist/ChecklistNav'
+import ChecklistSettings from './pages/ChecklistSettings'
 import ClaimDetail from './pages/ClaimDetail'
 import Claims from './pages/Claims'
 import CodeHelper from './pages/CodeHelper'
@@ -130,8 +132,16 @@ const M = MODULE
 export const ROUTES = [
   // ── Personal — every authenticated staff user ───────────────────
   { path: '/me',        element: <MyProfile /> },
-  { path: '/checklist', element: <MyChecklist />,
-      nav: { label: 'My Checklist', order: 10 } },
+  // Layout route: ChecklistNav renders the shared top-nav + <Outlet/> for the
+  // child page. No module/tier — matches the previously ungated /checklist
+  // (any authed user). Keep nav on the parent so the sidebar "My Checklist"
+  // entry persists. Child paths are RELATIVE.
+  { path: '/checklist', element: <ChecklistNav />,
+      nav: { label: 'My Checklist', order: 10 },
+      children: [
+    { index: true,      element: <MyChecklist /> },
+    { path: 'settings', element: <ChecklistSettings /> },
+  ]},
 
   // ── Active AR + claims ─────────────────────────────────────────
   { path: '/ar',             element: <ARDashboard />,    module: M.ACTIVE_AR, tier: TIER.VIEW },
