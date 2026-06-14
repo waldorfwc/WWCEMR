@@ -9,15 +9,23 @@ import SurgeryAddMenu from './SurgeryAddMenu'
 // Page links rendered on every /surgery page. Each carries the minimum tier
 // required to see it (mirrors the route gate). `end` is used for Overview so
 // it isn't highlighted on every sub-route.
-const NAV_ITEMS = [
-  { to: '/surgery',                label: 'Overview',       tier: TIER.VIEW,   end: true },
-  { to: '/surgery/calendar',       label: 'Calendar',       tier: TIER.VIEW },
-  { to: '/surgery/block-schedule', label: 'Block Schedule', tier: TIER.MANAGE },
-  { to: '/surgery/waitlist',       label: 'Waitlist',       tier: TIER.WORK },
-  { to: '/surgery/fee-schedule',   label: 'Fee Schedule',   tier: TIER.MANAGE },
-  { to: '/surgery/messages',       label: 'Messages',       tier: TIER.WORK, badge: true },
-  { to: '/surgery/settings',       label: 'Settings',       tier: TIER.MANAGE },
-]
+//
+// NB: built INSIDE the component (not a module-level const). MODULE/TIER are
+// exported by routes.jsx, which imports this file — a circular dependency.
+// Referencing TIER.* at module-init time would read `undefined` mid-cycle and
+// throw, crashing the whole app. Reading them at render time is safe (the
+// cycle is resolved by then) — same pattern the other surgery files use.
+function navItems() {
+  return [
+    { to: '/surgery',                label: 'Overview',       tier: TIER.VIEW,   end: true },
+    { to: '/surgery/calendar',       label: 'Calendar',       tier: TIER.VIEW },
+    { to: '/surgery/block-schedule', label: 'Block Schedule', tier: TIER.MANAGE },
+    { to: '/surgery/waitlist',       label: 'Waitlist',       tier: TIER.WORK },
+    { to: '/surgery/fee-schedule',   label: 'Fee Schedule',   tier: TIER.MANAGE },
+    { to: '/surgery/messages',       label: 'Messages',       tier: TIER.WORK, badge: true },
+    { to: '/surgery/settings',       label: 'Settings',       tier: TIER.MANAGE },
+  ]
+}
 
 
 function navClass({ isActive }) {
@@ -48,7 +56,7 @@ function MessagesBadge() {
 
 export default function SurgeryNav() {
   const { tier } = useCurrentUser()
-  const items = NAV_ITEMS.filter(it => tier(MODULE.SURGERY, it.tier))
+  const items = navItems().filter(it => tier(MODULE.SURGERY, it.tier))
 
   return (
     <div>
