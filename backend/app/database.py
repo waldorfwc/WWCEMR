@@ -462,6 +462,9 @@ def _apply_lightweight_migrations():
         # current-step key -> ISO timestamp so the hourly sweep nags once
         # per overdue step instead of once per (retired) milestone row.
         ("surgeries", "escalation_state", "JSON"),
+        # Intake-consents: curated consent template selection + manual deltas.
+        ("surgeries", "consent_template_ids", "JSON"),
+        ("surgeries", "consent_overrides",    "JSON"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
