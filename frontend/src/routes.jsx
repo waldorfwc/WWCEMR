@@ -91,6 +91,7 @@ import SurgeryDetail from './pages/SurgeryDetail'
 import SurgeryFeeSchedule from './pages/SurgeryFeeSchedule'
 import SurgerySettings from './pages/SurgerySettings'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
+import SurgeryNav from './components/surgery/SurgeryNav'
 
 // Mirrors backend Tier ordinals (app/permissions/catalog.py).
 export const TIER = {
@@ -166,18 +167,23 @@ export const ROUTES = [
       nav: { label: 'Recalls', order: 50 } },
 
   // ── Surgery ────────────────────────────────────────────────────
-  // Specific paths before /surgery/:id so they don't get swallowed.
-  { path: '/surgery',                element: <Surgery />,             module: M.SURGERY, tier: TIER.VIEW,
-      nav: { label: 'Surgery', order: 60 } },
-  { path: '/surgery/settings',       element: <SurgerySettings />,     module: M.SURGERY, tier: TIER.MANAGE },
-  { path: '/surgery/rules',          element: <Navigate to="/surgery/settings" replace />, module: M.SURGERY, tier: TIER.MANAGE },
-  { path: '/surgery/block-schedule', element: <SurgeryBlockSchedule />, module: M.SURGERY, tier: TIER.MANAGE },
-  { path: '/surgery/waitlist',       element: <SurgeryWaitlist />,     module: M.SURGERY, tier: TIER.WORK },
-  { path: '/surgery/calendar',       element: <SurgeryCalendar />,     module: M.SURGERY, tier: TIER.VIEW },
-  { path: '/surgery/bulk-import',    element: <SurgeryBulkImport />,   module: M.SURGERY, tier: TIER.MANAGE },
-  { path: '/surgery/fee-schedule',   element: <SurgeryFeeSchedule />,  module: M.SURGERY, tier: TIER.MANAGE },
-  { path: '/surgery/messages',       element: <StaffInbox />,          module: M.SURGERY, tier: TIER.WORK },
-  { path: '/surgery/:id',            element: <SurgeryDetail />,       module: M.SURGERY, tier: TIER.VIEW },
+  // Layout route: SurgeryNav renders the shared top-nav + <Outlet/> for the
+  // child page. Each child carries its own gate. Keep nav on the parent so
+  // the TopNav "Surgery" entry persists. Child paths are RELATIVE.
+  { path: '/surgery', element: <SurgeryNav />, module: M.SURGERY, tier: TIER.VIEW,
+      nav: { label: 'Surgery', order: 60 },
+      children: [
+    { index: true,            element: <Surgery />,             module: M.SURGERY, tier: TIER.VIEW },
+    { path: 'settings',       element: <SurgerySettings />,     module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'rules',          element: <Navigate to="/surgery/settings" replace />, module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'block-schedule', element: <SurgeryBlockSchedule />, module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'waitlist',       element: <SurgeryWaitlist />,     module: M.SURGERY, tier: TIER.WORK },
+    { path: 'calendar',       element: <SurgeryCalendar />,     module: M.SURGERY, tier: TIER.VIEW },
+    { path: 'bulk-import',    element: <SurgeryBulkImport />,   module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'fee-schedule',   element: <SurgeryFeeSchedule />,  module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'messages',       element: <StaffInbox />,          module: M.SURGERY, tier: TIER.WORK },
+    { path: ':id',            element: <SurgeryDetail />,       module: M.SURGERY, tier: TIER.VIEW },
+  ]},
 
   // ── LARC device tracking ───────────────────────────────────────
   { path: '/larc',                  element: <Larc />,                module: M.LARC, tier: TIER.VIEW,
