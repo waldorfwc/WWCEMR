@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  CheckCircle2, Circle, SkipForward, RotateCcw, Settings, Clock, AlertCircle,
+  CheckCircle2, Circle, SkipForward, RotateCcw, Clock, AlertCircle,
   ThumbsUp, ThumbsDown, MessageSquareWarning, PackageCheck, CalendarClock,
   ClipboardList, X, Printer, Plus, Pencil, Trash2, ChevronDown, ChevronRight,
   Share2, BookOpen,
@@ -44,7 +44,6 @@ const CATEGORY_BADGE = {
 
 export default function MyChecklist() {
   const qc = useQueryClient()
-  const [showSettings, setShowSettings] = useState(false)
   const [showResponsibilities, setShowResponsibilities] = useState(false)
   const { tier } = useCurrentUser()
   const canCheckoutLarc = tier(MODULE.LARC, TIER.WORK)
@@ -89,14 +88,9 @@ export default function MyChecklist() {
              target="_blank" rel="noopener noreferrer">
             <BookOpen size={14} /> Documentation &amp; Training
           </a>
-          <button className="btn-secondary text-sm flex items-center gap-1"
-                  onClick={() => setShowSettings(s => !s)}>
-            <Settings size={14} /> {showSettings ? 'Close Settings' : 'Settings'}
-          </button>
         </div>
       </div>
 
-      {showSettings && <SettingsCard onClose={() => setShowSettings(false)} />}
       {showResponsibilities && (
         <ResponsibilitiesDrawer onClose={() => setShowResponsibilities(false)} />
       )}
@@ -492,7 +486,7 @@ function PainPointPanel({ highlight }) {
 }
 
 
-function SettingsCard({ onClose }) {
+export function SettingsCard({ onClose }) {
   const qc = useQueryClient()
   const { data: me } = useQuery({
     queryKey: ['checklist-me'],
