@@ -127,6 +127,7 @@ def _apply_lightweight_migrations():
     """
     needed = [
         # (table, column, SQL column type)
+        ("surgeries", "primary_payer_id", "VARCHAR(40)"),
         ("adjustment_code_references", "wwc_notes", "TEXT"),
         ("adjustment_code_references", "wwc_notes_updated_by", "VARCHAR(255)"),
         ("adjustment_code_references", "wwc_notes_updated_at", "DATETIME"),

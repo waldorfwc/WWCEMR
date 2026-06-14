@@ -143,6 +143,15 @@ def test_manual_create_mixed_none_arms_only_real(client, db):
     assert s.device_kind == "Mirena"
 
 
+def test_manual_create_payer_id_persisted(client, db):
+    resp = client.post("/api/surgery/manual",
+                       json=_base_payload(payer_id="60054"))
+    assert resp.status_code == 201, resp.text
+    from app.models.surgery import Surgery
+    s = db.query(Surgery).filter(Surgery.id == resp.json()["id"]).first()
+    assert s.primary_payer_id == "60054"
+
+
 def test_attach_order_kind_file(client, db):
     resp = client.post("/api/surgery/manual", json=_base_payload())
     sid = resp.json()["id"]

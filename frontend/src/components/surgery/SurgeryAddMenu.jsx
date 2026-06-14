@@ -1,21 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, Plus, Upload, Users } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Users } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { MODULE, TIER } from '../../routes.jsx'
-import { ManualCreateDrawer, UploadDrawer } from './surgeryDrawers'
+import { ManualCreateDrawer, UpdateSurgeryDrawer } from './surgeryDrawers'
 
 
 /**
  * "Add ▾" dropdown shown on every /surgery page (right side of SurgeryNav).
  * Gated on surgery:WORK — returns null for view-only users. Items open the
- * shared drawers (New Surgery / Upload Order) or link to bulk import.
+ * shared drawers (New Surgery / Update Surgery) or link to bulk import.
  */
 export default function SurgeryAddMenu() {
   const { tier } = useCurrentUser()
   const [open, setOpen] = useState(false)
   const [showManual, setShowManual] = useState(false)
-  const [showUpload, setShowUpload] = useState(false)
+  const [showUpdate, setShowUpdate] = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -57,10 +57,10 @@ export default function SurgeryAddMenu() {
             </button>
             <button
               type="button"
-              onClick={() => { setOpen(false); setShowUpload(true) }}
+              onClick={() => { setOpen(false); setShowUpdate(true) }}
               className="w-full px-3 py-2 text-left text-sm text-ink hover:bg-plum-50 flex items-center gap-2"
             >
-              <Upload size={14} className="text-plum-600" /> Upload Surgery Order
+              <Pencil size={14} className="text-plum-600" /> Update Surgery
             </button>
             <Link
               to="/surgery/bulk-import"
@@ -74,7 +74,7 @@ export default function SurgeryAddMenu() {
       </div>
 
       {showManual && <ManualCreateDrawer onClose={() => setShowManual(false)} />}
-      {showUpload && <UploadDrawer onClose={() => setShowUpload(false)} />}
+      {showUpdate && <UpdateSurgeryDrawer onClose={() => setShowUpdate(false)} />}
     </>
   )
 }
