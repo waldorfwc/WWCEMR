@@ -120,10 +120,16 @@ export default function SurgeryIntakeForm({
       const f = data?.fields || {}
       setForm(prev => {
         const next = { ...prev }
-        // Merge only keys the extractor actually returned.
+        // Merge every scalar field the extractor returned. (Name, procedures,
+        // diagnoses, and eligible_facilities are handled specially below.)
         for (const k of [
-          'chart_number', 'dob', 'primary_insurance', 'primary_member_id',
-          'payer_id', 'surgeon_primary', 'estimated_minutes', 'is_robotic', 'is_urgent',
+          'chart_number', 'dob',
+          'phone', 'email',
+          'address_street', 'address_city', 'address_state', 'address_zip',
+          'primary_insurance', 'primary_member_id', 'payer_id',
+          'secondary_insurance', 'secondary_member_id',
+          'surgeon_primary', 'surgery_name', 'preop_date',
+          'estimated_minutes', 'is_robotic', 'is_urgent',
         ]) {
           if (f[k] !== undefined && f[k] !== null) next[k] = f[k]
         }
