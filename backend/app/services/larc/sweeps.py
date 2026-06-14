@@ -34,6 +34,7 @@ from app.services.larc.workflow import (
     ASSIGNMENT_REALLOCATE_AFTER_DAYS, DEVICE_EXPIRY_HOLD_DAYS,
     PHARMACY_ORDER_SLA_DAYS, log_audit,
 )
+from app.services.larc.settings import cfg
 
 
 def _push_to_owed(db: Session, a: LarcAssignment, expires_at: Optional[_date],
@@ -71,7 +72,7 @@ def sweep_expiry_hold(db: Session, *, today: Optional[_date] = None) -> dict:
     """Devices expiring within DEVICE_EXPIRY_HOLD_DAYS go back to unassigned.
     Patients on those assignments land on the Owed list."""
     today = today or _date.today()
-    horizon = today + timedelta(days=DEVICE_EXPIRY_HOLD_DAYS)
+    horizon = today + timedelta(days=cfg(db, "device_expiry_hold_days"))
     n_reallocated = 0
     candidates = (db.query(LarcDevice)
                     .filter(LarcDevice.expiration_date.isnot(None),
@@ -100,7 +101,8 @@ def sweep_stale_assignments(db: Session, *, today: Optional[_date] = None) -> di
     """Assignments older than ASSIGNMENT_REALLOCATE_AFTER_DAYS with no
     insertion yet → patient goes on Owed list."""
     today = today or _date.today()
-    cutoff = now_utc_naive() - timedelta(days=ASSIGNMENT_REALLOCATE_AFTER_DAYS)
+    reallocate_after_days = cfg(db, "assignment_reallocate_after_days")
+    cutoff = now_utc_naive() - timedelta(days=reallocate_after_days)
     n_reallocated = 0
     candidates = (db.query(LarcAssignment)
                     .options(joinedload(LarcAssignment.device))
@@ -116,7 +118,7 @@ def sweep_stale_assignments(db: Session, *, today: Optional[_date] = None) -> di
         _push_to_owed(db, a, expires_at=a.device.expiration_date,
                        actor="system:stale-sweep",
                        summary=(f"Reallocated device #{a.device.our_id} — assignment unused for >"
-                                f"{ASSIGNMENT_REALLOCATE_AFTER_DAYS} days; "
+                                f"{reallocate_after_days} days; "
                                 f"{a.patient_name} moved to Owed list"))
         n_reallocated += 1
     db.commit()
@@ -127,7 +129,8 @@ def sweep_pharmacy_sla(db: Session) -> dict:
     """Pharmacy orders faxed >SLA days ago with no device received → write
     audit row. The dashboard already surfaces them in real-time; this
     sweep adds a daily audit timestamp so the breach is on record."""
-    cutoff = now_utc_naive() - timedelta(days=PHARMACY_ORDER_SLA_DAYS)
+    sla_days = cfg(db, "pharmacy_order_sla_days")
+    cutoff = now_utc_naive() - timedelta(days=sla_days)
     rows = (db.query(LarcAssignment)
               .options(joinedload(LarcAssignment.device))
               .filter(LarcAssignment.source_flow == "pharmacy_order",
@@ -136,7 +139,7 @@ def sweep_pharmacy_sla(db: Session) -> dict:
                       LarcAssignment.device_received_at.is_(None))
               .all())
     for a in rows:
-        days_overdue = (now_utc_naive() - a.request_faxed_at).days - PHARMACY_ORDER_SLA_DAYS
+        days_overdue = (now_utc_naive() - a.request_faxed_at).days - sla_days
         # Only write once per assignment per day (idempotent-ish)
         recent = (db.query(LarcAuditEvent)
                     .filter(LarcAuditEvent.assignment_id == a.id,
@@ -147,7 +150,7 @@ def sweep_pharmacy_sla(db: Session) -> dict:
             continue
         log_audit(db, actor="system:pharmacy-sla", action="pharmacy_sla_breach",
                   device=a.device, assignment=a,
-                  summary=f"Pharmacy order for {a.patient_name} is {days_overdue}d past 14-day SLA",
+                  summary=f"Pharmacy order for {a.patient_name} is {days_overdue}d past {sla_days}-day SLA",
                   detail={"days_overdue": days_overdue,
                            "faxed_at": a.request_faxed_at.isoformat()})
     db.commit()

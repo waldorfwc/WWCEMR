@@ -52,6 +52,7 @@ from app.services.larc.workflow import (
     DEVICE_EXPIRY_HOLD_DAYS, LOCATIONS, LOCATION_LABELS,
     PHARMACY_ORDER_SLA_DAYS, assignment_buckets, log_audit, spawn_milestones,
 )
+from app.services.larc.settings import cfg
 
 router = APIRouter(prefix="/larc", tags=["larc"])
 
@@ -270,8 +271,8 @@ def dashboard(db: Session = Depends(get_db),
                 "suggested_quantity": dt.reorder_quantity,
             })
 
-    # Expiring soon — within DEVICE_EXPIRY_HOLD_DAYS (365 days)
-    horizon = today + timedelta(days=DEVICE_EXPIRY_HOLD_DAYS)
+    # Expiring soon — within device_expiry_hold_days (default 365)
+    horizon = today + timedelta(days=cfg(db, "device_expiry_hold_days"))
     expiring = (db.query(LarcDevice)
                   .options(joinedload(LarcDevice.device_type))
                   .filter(LarcDevice.expiration_date.isnot(None),
@@ -304,6 +305,7 @@ def dashboard(db: Session = Depends(get_db),
             bucket_counts[b] = bucket_counts.get(b, 0) + 1
 
     # Pharmacy-order overdue (faxed >SLA days, not received)
+    sla_days = cfg(db, "pharmacy_order_sla_days")
     overdue_pharmacy = (db.query(LarcAssignment)
                           .options(joinedload(LarcAssignment.device))
                           .filter(LarcAssignment.not_deleted(),
@@ -311,12 +313,12 @@ def dashboard(db: Session = Depends(get_db),
                                   LarcAssignment.request_faxed_at.isnot(None),
                                   LarcAssignment.device_received_at.is_(None),
                                   LarcAssignment.request_faxed_at
-                                      <= now_utc_naive() - timedelta(days=PHARMACY_ORDER_SLA_DAYS))
+                                      <= now_utc_naive() - timedelta(days=sla_days))
                           .order_by(LarcAssignment.request_faxed_at)
                           .limit(20).all())
 
     # Checkout outstanding ack
-    cutoff_ack = now_utc_naive() - timedelta(hours=CHECKOUT_ACK_WINDOW_HOURS)
+    cutoff_ack = now_utc_naive() - timedelta(hours=cfg(db, "checkout_ack_window_hours"))
     unack_checkouts = (db.query(LarcCheckout)
                          .options(joinedload(LarcCheckout.assignment))
                          .filter(LarcCheckout.approval_status == "approved",
@@ -346,7 +348,7 @@ def dashboard(db: Session = Depends(get_db),
                 "chart_number": a.chart_number,
                 "device_type_name": a.device.device_type.name if a.device and a.device.device_type else None,
                 "faxed_on": a.request_faxed_at.isoformat() if a.request_faxed_at else None,
-                "days_overdue": (now_utc_naive() - a.request_faxed_at).days - PHARMACY_ORDER_SLA_DAYS
+                "days_overdue": (now_utc_naive() - a.request_faxed_at).days - sla_days
                                 if a.request_faxed_at else None,
             }
             for a in overdue_pharmacy
@@ -2156,9 +2158,9 @@ def fax_pharmacy(assignment_id: str, payload: FaxPharmacyIn = FaxPharmacyIn(),
                         f"{'inactive' if not ph.is_active else 'missing a fax number'}; "
                         "update the directory or pass a different pharmacy_id"))
     a.request_faxed_at = now_utc_naive()
-    # SLA: expect device within PHARMACY_ORDER_SLA_DAYS
-    from app.services.larc.workflow import PHARMACY_ORDER_SLA_DAYS
-    a.expected_received_by = (now_utc_naive().date() + timedelta(days=PHARMACY_ORDER_SLA_DAYS))
+    # SLA: expect device within pharmacy_order_sla_days
+    a.expected_received_by = (now_utc_naive().date()
+                              + timedelta(days=cfg(db, "pharmacy_order_sla_days")))
     _mark_milestone(a, "request_faxed", status="done", by=by, notes=payload.notes)
     log_audit(db, actor=by, action="request_faxed",
               device=a.device, assignment=a,
