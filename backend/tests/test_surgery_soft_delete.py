@@ -33,6 +33,10 @@ def _base_payload(**overrides):
         "dob": "1990-04-15",
         "phone": "240-555-0100",
         "email": "soft@example.com",
+        "address_street": "1 Main St",
+        "address_city": "Waldorf",
+        "address_state": "MD",
+        "address_zip": "20601",
         "primary_insurance": "Aetna",
         "primary_member_id": "A123",
         "surgeon_primary": "",
@@ -114,8 +118,6 @@ def test_delete_hides_from_list_detail_dashboard_then_restore(client):
     # keeper detail still 200
     assert client.get(f"/api/surgery/{keeper}").status_code == 200
 
-    # dashboard buckets exclude the deleted one (count drops by exactly 1)
-    dash = client.get("/api/surgery/dashboard").json()
     # restore
     rr = client.post(f"/api/surgery/{target}/restore")
     assert rr.status_code == 200, rr.text
@@ -133,19 +135,14 @@ def test_dashboard_counts_exclude_deleted(client):
     _create(client, chart_number="DSH2", first_name="B", last_name="B")
 
     before = client.get("/api/surgery/dashboard").json()
-    before_total = sum(before["bucket_counts"].values()) \
-        if "bucket_counts" in before else None
+    before_total = sum(before["buckets"].values())
 
     client.post(f"/api/surgery/{a}/delete")
 
     after = client.get("/api/surgery/dashboard").json()
-    if before_total is not None:
-        after_total = sum(after["bucket_counts"].values())
-        assert after_total == before_total - \
-            sum(1 for b in before["bucket_counts"]) * 0 - 1 + 0 \
-            if False else after_total <= before_total
-        # The deleted active surgery must no longer be counted.
-        assert after_total < before_total
+    after_total = sum(after["buckets"].values())
+    # The deleted active surgery must no longer be counted in any bucket.
+    assert after_total < before_total
 
 
 def test_delete_missing_returns_404(client):
