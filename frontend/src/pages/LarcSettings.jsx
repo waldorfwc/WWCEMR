@@ -7,14 +7,15 @@ import LoadingState from '../components/LoadingState'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import LarcDeviceTypes from './LarcDeviceTypes'
 import LarcPharmacies from './LarcPharmacies'
-import AdminConsentTemplates from './AdminConsentTemplates'
 import PracticeSettings from './admin/PracticeSettings'
 
+// Note: LARC "enrollment forms" (Nexplanon / Paragard / Bayer) are NOT
+// consents — they're per-device BoldSign enrollment templates managed in the
+// Device Types tab (LarcDeviceType.enrollment_form_template).
 const BASE_TABS = [
   { id: 'thresholds', label: 'Thresholds & Windows' },
   { id: 'types',      label: 'Device Types' },
   { id: 'pharmacies', label: 'Pharmacies' },
-  { id: 'consent',    label: 'Consent Templates' },
 ]
 
 export default function LarcSettings() {
@@ -50,7 +51,6 @@ export default function LarcSettings() {
       {tab === 'thresholds' && <ThresholdsTab />}
       {tab === 'types'      && <LarcDeviceTypes embedded />}
       {tab === 'pharmacies' && <LarcPharmacies embedded />}
-      {tab === 'consent' && <AdminConsentTemplates embedded category="larc" />}
       {tab === 'practice' && isSuperAdmin && <PracticeSettings embedded />}
     </div>
   )

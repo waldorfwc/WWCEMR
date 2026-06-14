@@ -49,7 +49,7 @@ export default function SurgerySettings() {
       {tab === 'postop'    && <PostOpTab />}
       {tab === 'capacity'  && <CapacityTab />}
       {tab === 'templates' && <TemplatesTab />}
-      {tab === 'consent'  && <AdminConsentTemplates embedded category="surgical" />}
+      {tab === 'consent'  && <AdminConsentTemplates embedded />}
       {tab === 'messages' && <StaffMessageTemplates embedded />}
       {tab === 'gsync'    && <AdminGoogleSync embedded />}
     </div>
