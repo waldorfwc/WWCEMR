@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, Pencil, Plus, Trash2, Users } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, RotateCcw, Trash2, Users } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { MODULE, TIER } from '../../routes.jsx'
 import { ManualCreateDrawer, UpdateSurgeryDrawer, DeleteSurgeryDrawer } from './surgeryDrawers'
@@ -80,6 +80,13 @@ export default function SurgeryAddMenu() {
                 >
                   <Trash2 size={14} /> Delete Surgery
                 </button>
+                <Link
+                  to="/surgery/deleted"
+                  onClick={() => setOpen(false)}
+                  className="w-full px-3 py-2 text-left text-sm text-ink hover:bg-plum-50 flex items-center gap-2"
+                >
+                  <RotateCcw size={14} className="text-plum-600" /> Restore Deleted
+                </Link>
               </>
             )}
           </div>

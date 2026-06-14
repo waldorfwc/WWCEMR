@@ -1471,6 +1471,38 @@ def scheduler_alerts(db: Session = Depends(get_db),
     }
 
 
+# ─── Deleted surgeries (restore view) ───────────────────────────────
+# NB: must be declared BEFORE the GET /{surgery_id} route below, or the
+# dynamic route would capture "deleted" as a surgery_id.
+
+@router.get("/deleted")
+def list_deleted_surgeries(search: str = "", db: Session = Depends(get_db),
+                           current_user: dict = Depends(
+                               requires_tier(Module.SURGERY, Tier.MANAGE))):
+    """List soft-deleted surgeries for the restore view. Uses
+    include_deleted=True to bypass the global soft-delete filter."""
+    q = (db.query(Surgery)
+           .execution_options(include_deleted=True)
+           .filter(Surgery.deleted_at.isnot(None)))
+    term = (search or "").strip()
+    if term:
+        like = f"%{term}%"
+        q = q.filter(or_(Surgery.patient_name.ilike(like),
+                         Surgery.chart_number.ilike(like),
+                         Surgery.surgery_number.ilike(like)))
+    rows = q.order_by(Surgery.deleted_at.desc()).limit(200).all()
+    return {"surgeries": [{
+        "id": str(s.id),
+        "patient_name": s.patient_name,
+        "chart_number": s.chart_number,
+        "surgery_number": s.surgery_number,
+        "dob": s.dob.isoformat() if s.dob else None,
+        "status": s.status,
+        "deleted_at": s.deleted_at.isoformat() if s.deleted_at else None,
+        "deleted_by": s.deleted_by,
+    } for s in rows]}
+
+
 # ─── Detail + edit + milestone advance ──────────────────────────────
 
 @router.get("/{surgery_id}")
