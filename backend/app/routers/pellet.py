@@ -56,6 +56,8 @@ from app.services.pellet.workflow import (
     spawn_milestones, default_price_for, patient_buckets,
 )
 from app.services.pellet import appt_import, dose_suggest
+from app.services.pellet.settings import PELLET_SETTINGS_DEFAULTS
+from app.models.pellet_config import PelletConfig
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 
@@ -3201,6 +3203,42 @@ def suggest_dose(payload: DoseSuggestIn,
         testosterone_mg=payload.testosterone_mg,
         location=payload.location,
     )
+
+
+# ─── Pellet config (KV settings) ────────────────────────────────────
+
+class PelletConfigPayload(BaseModel):
+    stale_visit_days:         Optional[int] = Field(default=None, ge=1, le=365)
+    dose_suggest_max_pellets: Optional[int] = Field(default=None, ge=1, le=50)
+    dose_suggest_max_results: Optional[int] = Field(default=None, ge=1, le=50)
+
+
+@router.get("/config")
+def get_pellet_config(db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
+    out = dict(PELLET_SETTINGS_DEFAULTS)
+    for r in db.query(PelletConfig).all():
+        out[r.key] = r.value
+    return out
+
+
+@router.put("/config")
+def put_pellet_config(payload: PelletConfigPayload,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    actor = current_user.get("email") or "system"
+    data = payload.model_dump(exclude_unset=True, mode="json")
+    for k, v in data.items():
+        if k not in PELLET_SETTINGS_DEFAULTS:
+            continue
+        row = db.query(PelletConfig).filter(PelletConfig.key == k).first()
+        if row is None:
+            db.add(PelletConfig(key=k, value=v, updated_by=actor))
+        else:
+            row.value = v
+            row.updated_by = actor
+    db.commit()
+    return get_pellet_config(db, current_user)   # echo merged config
 
 
 # ─── ModMed appointment upload ──────────────────────────────────────

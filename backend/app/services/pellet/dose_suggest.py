@@ -21,6 +21,7 @@ from sqlalchemy import func
 from app.models.pellet import (
     PelletDoseType, PelletLot, PelletStock,
 )
+from app.services.pellet.settings import cfg
 
 
 MAX_RESULTS = 6      # cap the list we return to the UI
@@ -38,6 +39,8 @@ def suggest_for_hormone(
     location: str = "white_plains",
 ) -> dict:
     """Return alternatives for a single hormone."""
+    max_pellets = cfg(db, "dose_suggest_max_pellets")
+    max_results = cfg(db, "dose_suggest_max_results")
     types = (db.query(PelletDoseType)
                .filter(PelletDoseType.hormone == hormone,
                        PelletDoseType.is_active.is_(True))
@@ -120,7 +123,7 @@ def suggest_for_hormone(
                 seen.add(key)
                 combos.append(Counter(current))
             return
-        if depth >= MAX_PELLETS:
+        if depth >= max_pellets:
             return
         for i in range(start_idx, len(dose_values)):
             _, tenths, _, _ = dose_values[i]
@@ -170,7 +173,7 @@ def suggest_for_hormone(
     return {
         "target_mg":    float(target_mg),
         "location":     location,
-        "alternatives": scored[:MAX_RESULTS],
+        "alternatives": scored[:max_results],
         "any_in_stock": any(s["in_stock"] for s in scored),
     }
 

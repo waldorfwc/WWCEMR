@@ -28,6 +28,7 @@ from app.database import SessionLocal
 from app.models.pellet import (
     PelletAuditEvent, PelletStock, PelletVisit, PelletVisitDose,
 )
+from app.services.pellet.settings import cfg
 
 
 STALE_DAYS = 7
@@ -55,7 +56,7 @@ def sweep_stale_visits(db: Session, *,
                         actor: str = "system:cron") -> dict:
     """Run the sweep. Returns counts of visits / doses affected."""
     today = as_of or date.today()
-    cutoff = today - timedelta(days=STALE_DAYS)
+    cutoff = today - timedelta(days=cfg(db, "stale_visit_days"))
 
     candidates = (db.query(PelletVisit)
                     .options(joinedload(PelletVisit.doses)
