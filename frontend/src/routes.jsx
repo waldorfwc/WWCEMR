@@ -177,8 +177,7 @@ export const ROUTES = [
   ]},
 
   // ── Manager dashboard — checklist owners ───────────────────────
-  { path: '/manager-dashboard', element: <ManagerDashboard />, module: M.MY_CHECKLIST, tier: TIER.MANAGE,
-      nav: { label: 'Manager', order: 90 } },
+  { path: '/manager-dashboard', element: <ManagerDashboard />, module: M.MY_CHECKLIST, tier: TIER.MANAGE },
 
   // ── Recalls ────────────────────────────────────────────────────
   // Layout route: RecallNav renders the shared top-nav + <Outlet/> for the
