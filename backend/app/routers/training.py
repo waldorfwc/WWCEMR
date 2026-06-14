@@ -139,7 +139,7 @@ def list_trainers(template_id: Optional[str] = None,
                    user_email: Optional[str] = None,
                    include_revoked: bool = False,
                    db: Session = Depends(get_db),
-                   current_user: dict = Depends(get_current_user)):
+                   current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.VIEW))):
     """List trainer authorizations. Filter by template or user."""
     q = db.query(TrainerAuthorization)
     if template_id:
@@ -343,7 +343,7 @@ def list_certifications(template_id: Optional[str] = None,
                          user_email: Optional[str] = None,
                          status: Optional[str] = None,
                          db: Session = Depends(get_db),
-                         current_user: dict = Depends(get_current_user)):
+                         current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.VIEW))):
     q = db.query(TrainingCertification)
     if template_id:
         q = q.filter(TrainingCertification.template_id == template_id)
@@ -406,7 +406,7 @@ def my_training(db: Session = Depends(get_db),
 
 @router.get("/matrix")
 def training_matrix(db: Session = Depends(get_db),
-                     current_user: dict = Depends(get_current_user)):
+                     current_user: dict = Depends(requires_tier(Module.TRAINING, Tier.VIEW))):
     """Full grid: every active template × every user, with certification
     status per cell. Used by /admin/training. Trims templates without
     requires_training and users not in any group."""
