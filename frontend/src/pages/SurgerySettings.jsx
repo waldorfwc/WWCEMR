@@ -4,6 +4,9 @@ import { ArrowLeft, Settings, Plus, Trash2, Save, Edit3, Search } from 'lucide-r
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import LoadingState from '../components/LoadingState'
+import AdminConsentTemplates from './AdminConsentTemplates'
+import StaffMessageTemplates from './StaffMessageTemplates'
+import AdminGoogleSync from './AdminGoogleSync'
 
 const TABS = [
   { id: 'alerts',    label: 'Alerts & Windows' },
@@ -11,6 +14,9 @@ const TABS = [
   { id: 'postop',    label: 'Post-Op Schedules' },
   { id: 'capacity',  label: 'Facilities & Capacity' },
   { id: 'templates', label: 'Templates' },
+  { id: 'consent',   label: 'Consent Templates' },
+  { id: 'messages',  label: 'Message Templates' },
+  { id: 'gsync',     label: 'Google Sync' },
 ]
 
 export default function SurgerySettings() {
@@ -43,6 +49,9 @@ export default function SurgerySettings() {
       {tab === 'postop'    && <PostOpTab />}
       {tab === 'capacity'  && <CapacityTab />}
       {tab === 'templates' && <TemplatesTab />}
+      {tab === 'consent'  && <AdminConsentTemplates embedded category="surgical" />}
+      {tab === 'messages' && <StaffMessageTemplates embedded />}
+      {tab === 'gsync'    && <AdminGoogleSync embedded />}
     </div>
   )
 }
