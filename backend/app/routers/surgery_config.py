@@ -135,6 +135,8 @@ class ConfigPayload(BaseModel):
     clearance_types:           Optional[list[str]] = None
     surgery_device_types:      Optional[list[str]] = None
     assistant_surgeons:        Optional[list[str]] = None
+    # payer-ID → insurance-company map (full-replace dict)
+    payer_id_insurance_map:    Optional[dict[str, str]] = None
 
     @field_validator("step_expected_days_hospital", "step_expected_days_office")
     @classmethod
@@ -179,6 +181,27 @@ class ConfigPayload(BaseModel):
             if s not in seen:
                 seen.add(s)
                 out.append(s)
+        return out
+
+    @field_validator("payer_id_insurance_map")
+    @classmethod
+    def payer_id_map_valid(cls, v):
+        # Maps a numeric payer ID (3-6 digits) to a non-empty company name.
+        # Full-replaces the stored map on PUT (not in the deep/facility merge
+        # sets), so reject bad shapes rather than silently storing garbage.
+        if v is None:
+            return v
+        if not isinstance(v, dict):
+            raise ValueError("payer_id_insurance_map must be an object")
+        out: dict[str, str] = {}
+        for key, val in v.items():
+            k = (str(key) if key is not None else "").strip()
+            if not re.fullmatch(r"\d{3,6}", k):
+                raise ValueError(f"payer ID {key!r} must be 3-6 digits")
+            company = (val or "").strip() if isinstance(val, str) else ""
+            if not company:
+                raise ValueError(f"company for payer ID {k} must not be blank")
+            out[k] = company
         return out
 
 

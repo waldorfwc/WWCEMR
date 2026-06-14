@@ -47,6 +47,11 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "clearance_types":             ["None", "EKG", "Hematology", "Cardiology", "Pulmonology", "General"],
     "surgery_device_types":        ["None", "Benesta", "Liletta", "Mirena", "Paragard", "Skyla", "Kyleena"],
     "assistant_surgeons":          ["None", "Dr. Gillespie"],
+
+    # ── payer-ID → insurance-company resolution (order-prefill) ──
+    # Maps an electronic payer ID (string) extracted from a surgery order to
+    # one of the INSURANCE_COMPANIES picklist values so insurance prefills.
+    "payer_id_insurance_map":      {"75191": "Blue Cross & Blue Shield PPO"},
 }
 
 
