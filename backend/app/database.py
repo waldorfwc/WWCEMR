@@ -465,6 +465,9 @@ def _apply_lightweight_migrations():
         # Intake-consents: curated consent template selection + manual deltas.
         ("surgeries", "consent_template_ids", "JSON"),
         ("surgeries", "consent_overrides",    "JSON"),
+        # Surgery soft-delete (recoverable remove from the surgery system).
+        ("surgeries", "deleted_at", "DATETIME"),
+        ("surgeries", "deleted_by", "VARCHAR(200)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
