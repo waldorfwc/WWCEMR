@@ -131,6 +131,9 @@ class ConfigPayload(BaseModel):
     # structured
     post_op_schedules:         Optional[list[PostOpRuleIn]] = None
     capacity_rules:            Optional[dict[str, FacilityCapacity]] = None
+    # intake option lists (full-replace string lists)
+    clearance_types:           Optional[list[str]] = None
+    surgery_device_types:      Optional[list[str]] = None
 
     @field_validator("step_expected_days_hospital", "step_expected_days_office")
     @classmethod
@@ -155,6 +158,27 @@ class ConfigPayload(BaseModel):
             if not (1 <= int(d) <= 60):
                 raise ValueError(f"reminder lead day {d} must be 1-60")
         return v
+
+    @field_validator("clearance_types", "surgery_device_types")
+    @classmethod
+    def option_list_valid(cls, v):
+        # Simple string lists: non-empty list, each entry non-blank once
+        # stripped, deduped, order preserved. An empty list or a blank
+        # entry is rejected so a save can't silently wipe the options.
+        if v is None:
+            return v
+        if not v:
+            raise ValueError("option list must not be empty")
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in v:
+            s = (item or "").strip()
+            if not s:
+                raise ValueError("option list entries must not be blank")
+            if s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out
 
 
 class RecipientIn(BaseModel):
