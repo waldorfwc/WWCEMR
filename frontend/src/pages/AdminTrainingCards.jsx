@@ -10,7 +10,7 @@ import { useConfirm } from '../components/ui/ConfirmDialog'
 import LoadingState from '../components/LoadingState'
 
 
-export default function AdminTrainingCards() {
+export default function AdminTrainingCards({ embedded = false }) {
   const qc = useQueryClient()
   const [search, setSearch] = useState('')
   const [filterMode, setFilterMode] = useState('all') // 'all' | 'gaps' | 'expiring'
@@ -105,9 +105,11 @@ export default function AdminTrainingCards() {
     <div>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
         <div>
-          <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
-            <ArrowLeft size={12} /> Back to Admin
-          </Link>
+          {!embedded && (
+            <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
+              <ArrowLeft size={12} /> Back to Admin
+            </Link>
+          )}
           <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Training — Per-task view</h1>
           <p className="text-muted text-[12px] mt-0.5">
             One card per training-gated task. Authorize trainers, certify employees one-at-a-time

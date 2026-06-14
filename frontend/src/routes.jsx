@@ -101,6 +101,7 @@ import SurgerySettings from './pages/SurgerySettings'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
 import SurgeryNav from './components/surgery/SurgeryNav'
 import MarketingNav from './components/marketing/MarketingNav'
+import TrainingNav from './components/training/TrainingNav'
 
 // Mirrors backend Tier ordinals (app/permissions/catalog.py).
 export const TIER = {
@@ -250,6 +251,14 @@ export const ROUTES = [
     { path: 'settings',     element: <PelletSettings />,      module: M.PELLETS, tier: TIER.MANAGE },
   ]},
 
+  // ── Training ───────────────────────────────────────────────────
+  { path: '/training', element: <TrainingNav />, module: M.TRAINING, tier: TIER.VIEW,
+      nav: { label: 'Training', order: 85 },
+      children: [
+    { index: true,    element: <AdminTraining embedded />,      module: M.TRAINING, tier: TIER.VIEW },
+    { path: 'cards',  element: <AdminTrainingCards embedded />,  module: M.TRAINING, tier: TIER.MANAGE },
+  ]},
+
   // ── Marketing (reputation / reviews) ───────────────────────────
   // Layout route: MarketingNav renders the shared top-nav + <Outlet/>.
   // Moved out of the Admin console; gated on the Reputation module tier
@@ -280,8 +289,8 @@ export const ROUTES = [
   { path: '/admin/templates',                  element: <AdminTemplates />,                superAdmin: true },
   { path: '/admin/consent-templates',          element: <AdminConsentTemplates />,         superAdmin: true },
   { path: '/admin/message-templates',          element: <StaffMessageTemplates />,         superAdmin: true },
-  { path: '/admin/training',                   element: <AdminTraining />,                 superAdmin: true },
-  { path: '/admin/training/cards',             element: <AdminTrainingCards />,            superAdmin: true },
+  { path: '/admin/training',       element: <Navigate to="/training" replace /> },
+  { path: '/admin/training/cards', element: <Navigate to="/training/cards" replace /> },
   { path: '/admin/google-sync',                element: <AdminGoogleSync />,               superAdmin: true },
   // Reputation pages moved to top-level /marketing — keep old admin URLs working.
   { path: '/admin/reputation',             element: <Navigate to="/marketing" replace /> },
