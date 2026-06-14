@@ -175,8 +175,17 @@ class Era835Parser:
 
             # ── Financial info (check/EFT) ───────────────────────────────
             elif seg_id == "BPR":
-                # BPR02 = payment amount, BPR16 = check date
-                era.check_amount = _dec(seg[2]) if len(seg) > 2 else Decimal("0")
+                # BPR02 = payment amount, BPR16 = check date.
+                # A single 835 file may carry multiple ST/SE transaction
+                # sets, each with its own BPR (a separate check/EFT).
+                # ACCUMULATE the BPR02 amounts so era.check_amount is the
+                # TOTAL remittance for the whole file — that total is what
+                # reconciles against the sum of every claim's paid amount
+                # (BPR02 reconciliation in era_posting.commit). Last-wins
+                # here would compare one check against all claims and
+                # wrongly reject every multi-check file.
+                if len(seg) > 2:
+                    era.check_amount += _dec(seg[2])
                 if len(seg) > 16:
                     era.check_date = _parse_date(seg[16])
 
