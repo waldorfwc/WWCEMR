@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, Pencil, Plus, Users } from 'lucide-react'
+import { ChevronDown, Pencil, Plus, Trash2, Users } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { MODULE, TIER } from '../../routes.jsx'
-import { ManualCreateDrawer, UpdateSurgeryDrawer } from './surgeryDrawers'
+import { ManualCreateDrawer, UpdateSurgeryDrawer, DeleteSurgeryDrawer } from './surgeryDrawers'
 
 
 /**
@@ -16,6 +16,7 @@ export default function SurgeryAddMenu() {
   const [open, setOpen] = useState(false)
   const [showManual, setShowManual] = useState(false)
   const [showUpdate, setShowUpdate] = useState(false)
+  const [showDelete, setShowDelete] = useState(false)
   const ref = useRef(null)
 
   useEffect(() => {
@@ -69,12 +70,25 @@ export default function SurgeryAddMenu() {
             >
               <Users size={14} className="text-plum-600" /> Upload Demographics
             </Link>
+            {tier(MODULE.SURGERY, TIER.MANAGE) && (
+              <>
+                <div className="my-1 border-t border-border-subtle" />
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); setShowDelete(true) }}
+                  className="w-full px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 flex items-center gap-2"
+                >
+                  <Trash2 size={14} /> Delete Surgery
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
 
       {showManual && <ManualCreateDrawer onClose={() => setShowManual(false)} />}
       {showUpdate && <UpdateSurgeryDrawer onClose={() => setShowUpdate(false)} />}
+      {showDelete && <DeleteSurgeryDrawer onClose={() => setShowDelete(false)} />}
     </>
   )
 }
