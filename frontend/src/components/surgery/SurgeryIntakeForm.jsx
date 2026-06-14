@@ -19,6 +19,7 @@ const EMPTY_FORM = {
   address_zip: '',
   primary_insurance: '',
   primary_member_id: '',
+  payer_id: '',
   secondary_insurance: '',
   secondary_member_id: '',
   surgeon_primary: 'Aryian Cooke, MD',
@@ -94,6 +95,7 @@ export default function SurgeryIntakeForm({
     || !form.address_street.trim() || !form.address_city.trim()
     || !form.address_state.trim() || !form.address_zip.trim()
     || !form.primary_insurance || !form.primary_member_id.trim()
+    || !form.payer_id.trim()
     || !form.surgeon_primary || !form.surgery_name
     || !form.assistant_surgeon_name
     || !form.clearance_types.length
@@ -122,7 +124,7 @@ export default function SurgeryIntakeForm({
         // Merge only keys the extractor actually returned.
         for (const k of [
           'chart_number', 'dob', 'primary_insurance', 'primary_member_id',
-          'surgeon_primary', 'estimated_minutes', 'is_robotic', 'is_urgent',
+          'payer_id', 'surgeon_primary', 'estimated_minutes', 'is_robotic', 'is_urgent',
         ]) {
           if (f[k] !== undefined && f[k] !== null) next[k] = f[k]
         }
@@ -218,6 +220,7 @@ export default function SurgeryIntakeForm({
       address_zip:    form.address_zip.trim(),
       primary_insurance: form.primary_insurance || null,
       primary_member_id: form.primary_member_id || null,
+      payer_id: form.payer_id || null,
       secondary_insurance: form.secondary_insurance || null,
       secondary_member_id: form.secondary_member_id || null,
       surgeon_primary: form.surgeon_primary || null,
@@ -246,6 +249,19 @@ export default function SurgeryIntakeForm({
     if (requiredMissing) return
     onSubmit({ fields: buildFields(), orderFile })
   }
+
+  // Tolerant insurance options: start from the picklist, and if the current
+  // (extracted/mapped) value isn't an exact picklist match, append it so it
+  // still displays and stays selected.
+  function withCurrent(opts, current) {
+    if (current && !opts.includes(current)) return [...opts, current]
+    return opts
+  }
+  const primaryInsuranceOpts = withCurrent(insuranceOpts, form.primary_insurance)
+  const secondaryInsuranceOpts = withCurrent(
+    insuranceOpts.filter(n => n !== form.primary_insurance),
+    form.secondary_insurance,
+  )
 
   return (
     <div className="p-6 space-y-3">
@@ -417,7 +433,7 @@ export default function SurgeryIntakeForm({
           <select className="input text-sm" value={form.primary_insurance}
                    onChange={e => setForm({ ...form, primary_insurance: e.target.value })}>
             <option value="">— select —</option>
-            {insuranceOpts.map(n => (
+            {primaryInsuranceOpts.map(n => (
               <option key={`p-${n}`} value={n}>{n}</option>
             ))}
           </select>
@@ -426,15 +442,23 @@ export default function SurgeryIntakeForm({
           <input className="input text-sm font-mono" value={form.primary_member_id}
                  onChange={e => setForm({ ...form, primary_member_id: e.target.value })} />
         </Field>
+        <div className="col-span-2">
+          <Field label="Payer ID *">
+            <input className="input text-sm font-mono" value={form.payer_id}
+                   placeholder="75191"
+                   onChange={e => setForm({ ...form, payer_id: e.target.value })} />
+            <p className="text-[11px] text-muted mt-0.5">
+              Electronic payer ID (e.g. 75191) — auto-filled from the order.
+            </p>
+          </Field>
+        </div>
         <Field label="Secondary insurance">
           <select className="input text-sm" value={form.secondary_insurance}
                    onChange={e => setForm({ ...form, secondary_insurance: e.target.value })}>
             <option value="">— none —</option>
-            {insuranceOpts
-              .filter(n => n !== form.primary_insurance)
-              .map(n => (
-                <option key={`s-${n}`} value={n}>{n}</option>
-              ))}
+            {secondaryInsuranceOpts.map(n => (
+              <option key={`s-${n}`} value={n}>{n}</option>
+            ))}
           </select>
         </Field>
         <Field label="Secondary member ID">
