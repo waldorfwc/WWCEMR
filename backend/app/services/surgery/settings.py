@@ -51,7 +51,24 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     # ── payer-ID → insurance-company resolution (order-prefill) ──
     # Maps an electronic payer ID (string) extracted from a surgery order to
     # one of the INSURANCE_COMPANIES picklist values so insurance prefills.
-    "payer_id_insurance_map":      {"75191": "Blue Cross & Blue Shield PPO"},
+    #
+    # Seeded with high-confidence national EDI payer IDs + one verified from a
+    # real WWC order (75191). Payer IDs CAN vary by clearinghouse, so the
+    # coordinator should confirm the prefilled company on each order. Maryland
+    # Medicaid MCOs (Priority Partners, Maryland Physicians Care, MedStar
+    # Family Choice, Wellpoint/Amerigroup, UHC Community Plan, Aetna Better
+    # Health, etc.) and CareFirst plan variants use clearinghouse-specific IDs
+    # that should be added from real orders rather than guessed. Editable in
+    # Surgery Settings → Clearances & Devices → Payer ID → Insurance.
+    "payer_id_insurance_map": {
+        "75191": "Blue Cross & Blue Shield PPO",   # BCBS Administrators PPO — verified on a WWC order
+        "60054": "Aetna",                          # national Aetna
+        "62308": "Cigna",                          # national Cigna
+        "87726": "UnitedHealthcare",               # national UnitedHealthcare
+        "61101": "Humana",                         # national Humana
+        "00580": "CareFirst BlueChoice",           # CareFirst BCBS of Maryland — verify per clearinghouse
+        "12302": "Medicare",                       # Novitas JL (MD Part B) — verify per clearinghouse
+    },
 }
 
 

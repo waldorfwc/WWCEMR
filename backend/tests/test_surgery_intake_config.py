@@ -60,7 +60,16 @@ def test_put_blank_entry_rejected(client):
 
 def test_config_includes_payer_id_map_default(client):
     body = client.get("/api/surgery/config").json()
-    assert body["payer_id_insurance_map"] == {"75191": "Blue Cross & Blue Shield PPO"}
+    pm = body["payer_id_insurance_map"]
+    # Seeded with high-confidence national payers + the verified WWC order one.
+    assert pm["75191"] == "Blue Cross & Blue Shield PPO"
+    assert pm["60054"] == "Aetna"
+    assert pm["87726"] == "UnitedHealthcare"
+    # Every mapped value must be a real picklist company (so the dropdown
+    # selects it) — guards against typos in the seed.
+    picks = client.get("/api/surgery/picklists").json()["insurance_companies"]
+    for payer_id, company in pm.items():
+        assert company in picks, f"{payer_id} → {company!r} not in insurance picklist"
 
 
 def test_put_payer_id_map_roundtrips(client):
