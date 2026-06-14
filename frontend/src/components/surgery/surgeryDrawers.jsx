@@ -257,5 +257,7 @@ function mapDetailToForm(d) {
     is_robotic: !!d.is_robotic,
     is_urgent: d.is_urgent ?? (d.urgency === 'urgent'),
     notes: d.notes || '',
+    consent_template_ids: d.consent_template_ids || [],
+    consent_overrides: d.consent_overrides || { added: [], removed: [] },
   }
 }
