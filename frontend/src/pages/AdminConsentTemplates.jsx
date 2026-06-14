@@ -64,10 +64,9 @@ function ChipList({ items }) {
 }
 
 
-function TemplateForm({ initial, lockedCategory = null, onClose, onSave }) {
+function TemplateForm({ initial, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
     name: initial?.name || '',
-    category: initial?.category || lockedCategory || 'surgical',
     boldsign_template_id: initial?.boldsign_template_id || '',
     cpt_codes_text: (initial?.cpt_codes || []).join(', '),
     procedure_match_text: (initial?.procedure_match || []).join(', '),
@@ -109,7 +108,6 @@ function TemplateForm({ initial, lockedCategory = null, onClose, onSave }) {
     e.preventDefault()
     onSave({
       name: form.name,
-      category: form.category,
       boldsign_template_id: form.boldsign_template_id,
       cpt_codes: listFromCommaString(form.cpt_codes_text),
       procedure_match: listFromCommaString(form.procedure_match_text),
@@ -155,20 +153,6 @@ function TemplateForm({ initial, lockedCategory = null, onClose, onSave }) {
                    onChange={e => setForm({ ...form, name: e.target.value })}
                    placeholder="e.g. D&C — MedStar Hospital" />
           </div>
-
-          {!lockedCategory && (
-            <div>
-              <label className="block text-[11px] font-medium text-gray-700 mb-1">
-                Category
-              </label>
-              <select className="input w-full text-[13px]"
-                      value={form.category}
-                      onChange={e => setForm({ ...form, category: e.target.value })}>
-                <option value="surgical">Surgical</option>
-                <option value="larc">LARC</option>
-              </select>
-            </div>
-          )}
 
           <div>
             <label className="block text-[11px] font-medium text-gray-700 mb-1">
@@ -371,11 +355,11 @@ function TemplateForm({ initial, lockedCategory = null, onClose, onSave }) {
 }
 
 
-export default function AdminConsentTemplates({ embedded = false, category = null }) {
+export default function AdminConsentTemplates({ embedded = false }) {
   const qc = useQueryClient()
   const { data: templates, isLoading } = useQuery({
-    queryKey: ['consent-templates', category],
-    queryFn: () => api.get('/consent-templates', { params: category ? { category } : {} }).then(r => r.data),
+    queryKey: ['consent-templates'],
+    queryFn: () => api.get('/consent-templates').then(r => r.data),
   })
   const [editing, setEditing] = useState(null)   // null | 'new' | template object
   const [filter, setFilter] = useState('')
@@ -536,7 +520,6 @@ export default function AdminConsentTemplates({ embedded = false, category = nul
       {editing && (
         <TemplateForm
           initial={editing === 'new' ? null : editing}
-          lockedCategory={category}
           onClose={() => setEditing(null)}
           onSave={(body) => {
             if (editing === 'new') createMut.mutate(body)
