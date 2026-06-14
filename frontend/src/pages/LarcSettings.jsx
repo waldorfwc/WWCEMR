@@ -6,11 +6,13 @@ import api from '../utils/api'
 import LoadingState from '../components/LoadingState'
 import LarcDeviceTypes from './LarcDeviceTypes'
 import LarcPharmacies from './LarcPharmacies'
+import AdminConsentTemplates from './AdminConsentTemplates'
 
 const TABS = [
   { id: 'thresholds', label: 'Thresholds & Windows' },
   { id: 'types',      label: 'Device Types' },
   { id: 'pharmacies', label: 'Pharmacies' },
+  { id: 'consent',    label: 'Consent Templates' },
 ]
 
 export default function LarcSettings() {
@@ -40,6 +42,7 @@ export default function LarcSettings() {
       {tab === 'thresholds' && <ThresholdsTab />}
       {tab === 'types'      && <LarcDeviceTypes embedded />}
       {tab === 'pharmacies' && <LarcPharmacies embedded />}
+      {tab === 'consent' && <AdminConsentTemplates embedded category="larc" />}
     </div>
   )
 }
