@@ -2691,14 +2691,14 @@ def send_portal_access(surgery_id: str,
 async def upload_file(
     surgery_id: str,
     file: UploadFile = File(...),
-    kind: str = Query(..., description="prior_auth | op_notes | path_report | clearance | consent | fmla | other"),
+    kind: str = Query(..., description="order | prior_auth | op_notes | path_report | clearance | consent | fmla | other"),
     notes: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Upload a file for a surgery. Auto-completes the matching milestone
     if there's an obvious mapping (prior_auth, op_notes, path_report)."""
-    if kind not in ("prior_auth", "op_notes", "path_report", "clearance",
+    if kind not in ("order", "prior_auth", "op_notes", "path_report", "clearance",
                     "consent", "fmla", "other"):
         raise HTTPException(status_code=422, detail=f"unknown file kind: {kind}")
 
