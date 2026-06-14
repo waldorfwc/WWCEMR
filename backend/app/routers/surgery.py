@@ -923,6 +923,90 @@ async def upload_order(
     }
 
 
+# ─── Parse-only order extract (prefill manual intake, no DB write) ──
+
+@router.post("/orders/extract")
+async def extract_order(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
+):
+    """Parse a ModMed surgery-order PDF and return the extracted fields for
+    prefilling the manual intake form. Runs the SAME parse as
+    /orders/upload but writes NOTHING to the DB and does not reject on
+    missing fields — partial extractions come back with a warning so the
+    coordinator can fill the gaps by hand."""
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=422, detail="Expected a PDF file")
+
+    from app.services.surgery.order_parser import (
+        parse_order_text, build_surgery_kwargs, extract_pdf_text_from_bytes,
+    )
+
+    contents = await file.read()
+    warnings: list[str] = []
+
+    # Read the PDF text. If we can't read anything at all, there's nothing
+    # to prefill — mirror upload_order's 422 (not a PDF / empty).
+    try:
+        text_body = extract_pdf_text_from_bytes(contents)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not read this PDF: {exc}. "
+                   "Create the surgery manually instead.")
+
+    if len(text_body) < 50:
+        # Likely a scanned image — flag it but don't hard-fail; the form
+        # can still be filled by hand.
+        warnings.append("PDF appears to be a scanned image — extraction may be incomplete.")
+
+    # Parse + build kwargs. A partial/failed parse returns whatever we have
+    # (possibly nothing) plus a warning rather than erroring.
+    kwargs: dict = {}
+    parsed: dict | None = None
+    try:
+        parsed = parse_order_text(text_body)
+        kwargs = build_surgery_kwargs(parsed)
+    except Exception as exc:
+        warnings.append(f"Automatic extraction failed ({exc}); leave blank for manual entry.")
+
+    # Map build_surgery_kwargs output → ManualSurgeryIn field names, keeping
+    # only non-empty values and JSON-serializing dates.
+    def _ser(v):
+        if isinstance(v, (_date, datetime)):
+            return v.strftime("%Y-%m-%d")
+        return v
+
+    # Most keys share names with ManualSurgeryIn; the parser doesn't emit
+    # an is_urgent flag, so derive it from the parsed priority.
+    KEYS = (
+        "chart_number", "patient_name", "first_name", "last_name", "dob",
+        "primary_insurance", "primary_member_id",
+        "secondary_insurance", "secondary_member_id",
+        "surgeon_primary", "surgery_name",
+        "procedures", "diagnoses", "eligible_facilities",
+        "estimated_minutes", "is_robotic", "is_urgent",
+    )
+    fields: dict = {}
+    for k in KEYS:
+        if k in kwargs:
+            v = _ser(kwargs[k])
+            if v not in (None, "", [], {}):
+                fields[k] = v
+
+    # is_urgent isn't produced by build_surgery_kwargs — derive from the
+    # parsed order priority when available.
+    if "is_urgent" not in fields:
+        try:
+            if str((parsed or {}).get("priority") or "").strip().lower() in ("urgent", "stat", "emergent"):
+                fields["is_urgent"] = True
+        except Exception:
+            pass
+
+    return {"fields": fields, "warnings": warnings}
+
+
 # ─── Manual create (no PDF) ─────────────────────────────────────────
 
 class ManualSurgeryIn(BaseModel):
