@@ -167,6 +167,10 @@ class Surgery(Base):
     # Devices
     device_required = Column(Boolean, default=False, nullable=False)
     device_kind = Column(String(80), nullable=True)
+    # Multi-select device list (new source of truth; device_kind kept as
+    # the legacy single-string field for back-compat — set to the first
+    # selected device). e.g. ["Mirena","Paragard"]
+    device_types = Column(JSON, nullable=True)
     device_assigned = Column(Boolean, default=False, nullable=False)
     rep_required = Column(Boolean, default=False, nullable=False)
     rep_notified = Column(Boolean, default=False, nullable=False)
@@ -182,6 +186,9 @@ class Surgery(Base):
     # Clearance
     clearance_required = Column(Boolean, default=False, nullable=False)
     clearance_status = Column(String(40), default="not_required", nullable=False)
+    # Multi-select clearance list (e.g. ["EKG","Cardiology"]); configurable
+    # via Surgery Settings → clearance_types.
+    clearance_types = Column(JSON, nullable=True)
     # values: not_required | required | request_sent | received |
     #         sent_to_hospital | completed
     cardiologist_name = Column(String(200), nullable=True)

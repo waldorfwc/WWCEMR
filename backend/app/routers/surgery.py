@@ -923,6 +923,90 @@ async def upload_order(
     }
 
 
+# ─── Parse-only order extract (prefill manual intake, no DB write) ──
+
+@router.post("/orders/extract")
+async def extract_order(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
+):
+    """Parse a ModMed surgery-order PDF and return the extracted fields for
+    prefilling the manual intake form. Runs the SAME parse as
+    /orders/upload but writes NOTHING to the DB and does not reject on
+    missing fields — partial extractions come back with a warning so the
+    coordinator can fill the gaps by hand."""
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=422, detail="Expected a PDF file")
+
+    from app.services.surgery.order_parser import (
+        parse_order_text, build_surgery_kwargs, extract_pdf_text_from_bytes,
+    )
+
+    contents = await file.read()
+    warnings: list[str] = []
+
+    # Read the PDF text. If we can't read anything at all, there's nothing
+    # to prefill — mirror upload_order's 422 (not a PDF / empty).
+    try:
+        text_body = extract_pdf_text_from_bytes(contents)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not read this PDF: {exc}. "
+                   "Create the surgery manually instead.")
+
+    if len(text_body) < 50:
+        # Likely a scanned image — flag it but don't hard-fail; the form
+        # can still be filled by hand.
+        warnings.append("PDF appears to be a scanned image — extraction may be incomplete.")
+
+    # Parse + build kwargs. A partial/failed parse returns whatever we have
+    # (possibly nothing) plus a warning rather than erroring.
+    kwargs: dict = {}
+    parsed: dict | None = None
+    try:
+        parsed = parse_order_text(text_body)
+        kwargs = build_surgery_kwargs(parsed)
+    except Exception as exc:
+        warnings.append(f"Automatic extraction failed ({exc}); leave blank for manual entry.")
+
+    # Map build_surgery_kwargs output → ManualSurgeryIn field names, keeping
+    # only non-empty values and JSON-serializing dates.
+    def _ser(v):
+        if isinstance(v, (_date, datetime)):
+            return v.strftime("%Y-%m-%d")
+        return v
+
+    # Most keys share names with ManualSurgeryIn; the parser doesn't emit
+    # an is_urgent flag, so derive it from the parsed priority.
+    KEYS = (
+        "chart_number", "patient_name", "first_name", "last_name", "dob",
+        "primary_insurance", "primary_member_id",
+        "secondary_insurance", "secondary_member_id",
+        "surgeon_primary", "surgery_name",
+        "procedures", "diagnoses", "eligible_facilities",
+        "estimated_minutes", "is_robotic", "is_urgent",
+    )
+    fields: dict = {}
+    for k in KEYS:
+        if k in kwargs:
+            v = _ser(kwargs[k])
+            if v not in (None, "", [], {}):
+                fields[k] = v
+
+    # is_urgent isn't produced by build_surgery_kwargs — derive from the
+    # parsed order priority when available.
+    if "is_urgent" not in fields:
+        try:
+            if str((parsed or {}).get("priority") or "").strip().lower() in ("urgent", "stat", "emergent"):
+                fields["is_urgent"] = True
+        except Exception:
+            pass
+
+    return {"fields": fields, "warnings": warnings}
+
+
 # ─── Manual create (no PDF) ─────────────────────────────────────────
 
 class ManualSurgeryIn(BaseModel):
@@ -944,6 +1028,9 @@ class ManualSurgeryIn(BaseModel):
     secondary_insurance: Optional[str] = None
     secondary_member_id: Optional[str] = None
     surgeon_primary: str
+    assistant_surgeon_name: Optional[str] = None
+    clearance_types: list[str] = []
+    device_types: list[str] = []
     surgery_name: str           # display label for the procedure picked from the dropdown
     procedures: list[dict] = []  # [{cpt, description}]
     diagnoses: list[dict] = []
@@ -998,9 +1085,43 @@ def create_manual(payload: ManualSurgeryIn,
     except ValueError:
         raise HTTPException(status_code=422, detail="preop_date must be YYYY-MM-DD")
 
+    # Surgeon defaults to the practice surgeon when left blank.
+    first_name = (payload.first_name or "").strip() or None
+    last_name = (payload.last_name or "").strip() or None
+    surgeon_primary = (payload.surgeon_primary or "").strip() or "Aryian Cooke, MD"
+
+    # Name: prefer the split first/last when both are present, composing
+    # "Last, First". Otherwise keep whatever patient_name the client sent.
+    if first_name and last_name:
+        patient_name = f"{last_name}, {first_name}"
+    else:
+        patient_name = (payload.patient_name or "").strip()
+
+    # Intake multi-selects: strip + dedupe (preserve order); None when empty.
+    def _clean_list(items):
+        out, seen = [], set()
+        for it in (items or []):
+            s = (it or "").strip()
+            if s and s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out or None
+
+    clearance_types = _clean_list(payload.clearance_types)
+    device_types = _clean_list(payload.device_types)
+
+    def _non_none(items):
+        # Entries that are actual selections, not the "None" sentinel
+        # (case-insensitive). Used to decide whether a workflow flag arms.
+        return [it for it in (items or []) if it.strip().lower() != "none"]
+
+    assistant_raw = (payload.assistant_surgeon_name or "").strip()
+    assistant_name = None if assistant_raw.lower() in ("", "none") else assistant_raw
+
+    # patient_name and surgeon_primary are validated against the computed
+    # values (composed name / defaulted surgeon), not the raw payload.
     required = [
         ("chart_number",       "Chart number"),
-        ("patient_name",       "Patient name"),
         ("phone",              "Phone"),
         ("email",              "Email"),
         ("address_street",     "Street address"),
@@ -1009,12 +1130,13 @@ def create_manual(payload: ManualSurgeryIn,
         ("address_zip",        "ZIP code"),
         ("primary_insurance",  "Primary insurance"),
         ("primary_member_id",  "Primary member ID"),
-        ("surgeon_primary",    "Surgeon"),
         ("surgery_name",       "Surgery name"),
     ]
     for fname, label in required:
         if not (getattr(payload, fname) or "").strip():
             raise HTTPException(status_code=422, detail=f"{label} is required")
+    if not patient_name:
+        raise HTTPException(status_code=422, detail="Patient name is required")
     if not payload.estimated_minutes or payload.estimated_minutes <= 0:
         raise HTTPException(status_code=422, detail="Estimated minutes is required")
     if not payload.eligible_facilities:
@@ -1026,9 +1148,9 @@ def create_manual(payload: ManualSurgeryIn,
 
     s = Surgery(
         chart_number=payload.chart_number.strip(),
-        patient_name=payload.patient_name.strip(),
-        first_name=payload.first_name,
-        last_name=payload.last_name,
+        patient_name=patient_name,
+        first_name=first_name,
+        last_name=last_name,
         dob=dob,
         phone=payload.phone,
         cell_phone=payload.phone,
@@ -1041,7 +1163,7 @@ def create_manual(payload: ManualSurgeryIn,
         primary_member_id=payload.primary_member_id,
         secondary_insurance=payload.secondary_insurance,
         secondary_member_id=payload.secondary_member_id,
-        surgeon_primary=payload.surgeon_primary,
+        surgeon_primary=surgeon_primary,
         procedures=payload.procedures or [],
         diagnoses=payload.diagnoses or [],
         eligible_facilities=eligible,
@@ -1056,6 +1178,32 @@ def create_manual(payload: ManualSurgeryIn,
         source="manual",
         created_by=current_user.get("email"),
     )
+
+    # Assistant surgeon (dropdown that may be "None"). A real name arms
+    # the assistant-surgeon workflow; "None"/blank leaves it disabled.
+    if assistant_name:
+        s.assistant_surgeon_name = assistant_name
+        s.assistant_surgeon_required = True
+
+    # Clearances: persist the selected list as-is. Only arm the clearance
+    # workflow ("required" is the not-yet-cleared value the rest of the
+    # app uses) when at least one real (non-"None") clearance is selected.
+    if clearance_types:
+        s.clearance_types = clearance_types
+        if _non_none(clearance_types):
+            s.clearance_required = True
+            s.clearance_status = "required"
+
+    # Devices: persist the selected list as-is. Only arm the device
+    # workflow + set the back-compat device_kind (first real device) when
+    # at least one non-"None" device is selected.
+    if device_types:
+        s.device_types = device_types
+        real_devices = _non_none(device_types)
+        if real_devices:
+            s.device_required = True
+            s.device_kind = real_devices[0]
+
     db.add(s); db.flush()
     from app.services.surgery.local_helpers import (
         upsert_patient_directory, maybe_assign_surgery_number,
@@ -2638,14 +2786,14 @@ def send_portal_access(surgery_id: str,
 async def upload_file(
     surgery_id: str,
     file: UploadFile = File(...),
-    kind: str = Query(..., description="prior_auth | op_notes | path_report | clearance | consent | fmla | other"),
+    kind: str = Query(..., description="order | prior_auth | op_notes | path_report | clearance | consent | fmla | other"),
     notes: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
     """Upload a file for a surgery. Auto-completes the matching milestone
     if there's an obvious mapping (prior_auth, op_notes, path_report)."""
-    if kind not in ("prior_auth", "op_notes", "path_report", "clearance",
+    if kind not in ("order", "prior_auth", "op_notes", "path_report", "clearance",
                     "consent", "fmla", "other"):
         raise HTTPException(status_code=422, detail=f"unknown file kind: {kind}")
 

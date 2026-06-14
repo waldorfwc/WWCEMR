@@ -42,6 +42,11 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     # ── structured configs (None → code defaults in their modules) ──
     "post_op_schedules":           None,   # post_op_schedule.py defaults
     "capacity_rules":              None,   # block_schedule.py defaults
+
+    # ── intake option lists (editable in Surgery Settings) ──
+    "clearance_types":             ["None", "EKG", "Hematology", "Cardiology", "Pulmonology", "General"],
+    "surgery_device_types":        ["None", "Benesta", "Liletta", "Mirena", "Paragard", "Skyla", "Kyleena"],
+    "assistant_surgeons":          ["None", "Dr. Gillespie"],
 }
 
 

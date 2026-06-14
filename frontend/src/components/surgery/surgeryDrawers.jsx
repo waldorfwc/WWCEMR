@@ -133,12 +133,22 @@ export function ManualCreateDrawer({ onClose }) {
     queryFn: () => api.get('/surgery/picklists').then(r => r.data),
     staleTime: 300_000,
   })
+  // Config drives the assistant-surgeon / clearance / device option lists
+  const { data: config } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+    staleTime: 300_000,
+  })
   const insuranceOpts = picks?.insurance_companies || []
   const surgeonOpts   = picks?.surgeons || []
   const procedureOpts = picks?.procedures || []
+  const assistantOpts = config?.assistant_surgeons || ['None']
+  const clearanceOpts = config?.clearance_types || ['None']
+  const deviceOpts    = config?.surgery_device_types || ['None']
   const [form, setForm] = useState({
     chart_number: '',
-    patient_name: '',
+    first_name: '',
+    last_name: '',
     dob: '',
     phone: '',
     email: '',
@@ -150,7 +160,10 @@ export function ManualCreateDrawer({ onClose }) {
     primary_member_id: '',
     secondary_insurance: '',
     secondary_member_id: '',
-    surgeon_primary: '',
+    surgeon_primary: 'Aryian Cooke, MD',
+    assistant_surgeon_name: 'None',
+    clearance_types: ['None'],
+    device_types: ['None'],
     surgery_name: '',
     procedures: [{ cpt: '', description: '' }],
     diagnoses:  [{ icd: '', description: '' }],
@@ -162,19 +175,94 @@ export function ManualCreateDrawer({ onClose }) {
     notes: '',
   })
   const [error, setError] = useState(null)
+  // Order upload / extract state
+  const [orderFile, setOrderFile] = useState(null)
+  const [warnings, setWarnings] = useState([])
+  const [extractError, setExtractError] = useState(null)
 
   const requiredMissing =
-    !form.chart_number.trim() || !form.patient_name.trim()
+    !form.chart_number.trim() || !form.first_name.trim() || !form.last_name.trim()
     || !form.dob || !form.phone.trim() || !form.email.trim()
     || !form.address_street.trim() || !form.address_city.trim()
     || !form.address_state.trim() || !form.address_zip.trim()
     || !form.primary_insurance || !form.primary_member_id.trim()
     || !form.surgeon_primary || !form.surgery_name
+    || !form.assistant_surgeon_name
+    || !form.clearance_types.length
+    || !form.device_types.length
     || !form.preop_date
     || !form.estimated_minutes
     || !form.eligible_facilities.length
     || !form.procedures.some(p => (p.cpt || '').trim() || (p.description || '').trim())
     || !form.diagnoses.some(d => (d.icd || '').trim() || (d.description || '').trim())
+
+  // Optional: upload a PDF order and prefill the form from extracted fields.
+  const extract = useMutation({
+    mutationFn: (file) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      return api.post('/surgery/orders/extract', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data)
+    },
+    onSuccess: (data) => {
+      setExtractError(null)
+      setWarnings(Array.isArray(data?.warnings) ? data.warnings : [])
+      const f = data?.fields || {}
+      setForm(prev => {
+        const next = { ...prev }
+        // Merge only keys the extractor actually returned.
+        for (const k of [
+          'chart_number', 'dob', 'primary_insurance', 'primary_member_id',
+          'surgeon_primary', 'estimated_minutes', 'is_robotic', 'is_urgent',
+        ]) {
+          if (f[k] !== undefined && f[k] !== null) next[k] = f[k]
+        }
+        // Name: prefer split fields; otherwise split "Last, First" patient_name.
+        if (f.first_name) next.first_name = f.first_name
+        if (f.last_name)  next.last_name  = f.last_name
+        if (!f.first_name && !f.last_name && f.patient_name) {
+          const pn = String(f.patient_name)
+          if (pn.includes(',')) {
+            const [last, first] = pn.split(',')
+            next.last_name = (last || '').trim()
+            next.first_name = (first || '').trim()
+          } else {
+            const parts = pn.trim().split(/\s+/)
+            next.first_name = parts.shift() || ''
+            next.last_name = parts.join(' ')
+          }
+        }
+        if (Array.isArray(f.procedures) && f.procedures.length) {
+          next.procedures = f.procedures.map(p => ({
+            cpt: p.cpt || '', description: p.description || '',
+          }))
+          next.surgery_name = f.procedures[0]?.description || next.surgery_name
+        }
+        if (Array.isArray(f.diagnoses) && f.diagnoses.length) {
+          next.diagnoses = f.diagnoses.map(d => ({
+            icd: d.icd || '', description: d.description || '',
+          }))
+        }
+        if (Array.isArray(f.eligible_facilities) && f.eligible_facilities.length) {
+          next.eligible_facilities = f.eligible_facilities
+        }
+        return next
+      })
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setExtractError(typeof d === 'string' ? d : (e?.message || 'Could not read that PDF.'))
+      setWarnings([])
+    },
+  })
+
+  function onPickOrder(file) {
+    setOrderFile(file)
+    setExtractError(null)
+    setWarnings([])
+    if (file) extract.mutate(file)
+  }
 
   function pickSurgery(label) {
     // The dropdown is keyed by description; auto-fill the first procedure row
@@ -193,7 +281,9 @@ export function ManualCreateDrawer({ onClose }) {
   const create = useMutation({
     mutationFn: () => api.post('/surgery/manual', {
       chart_number: form.chart_number,
-      patient_name: form.patient_name,
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim(),
+      patient_name: `${form.last_name.trim()}, ${form.first_name.trim()}`,
       dob: form.dob || null,
       phone: form.phone || null,
       email: form.email || null,
@@ -206,6 +296,9 @@ export function ManualCreateDrawer({ onClose }) {
       secondary_insurance: form.secondary_insurance || null,
       secondary_member_id: form.secondary_member_id || null,
       surgeon_primary: form.surgeon_primary || null,
+      assistant_surgeon_name: form.assistant_surgeon_name,
+      clearance_types: form.clearance_types,
+      device_types: form.device_types,
       surgery_name: form.surgery_name,
       preop_date: form.preop_date,
       procedures: (form.procedures || [])
@@ -222,9 +315,24 @@ export function ManualCreateDrawer({ onClose }) {
       is_urgent: form.is_urgent,
       notes: form.notes || null,
     }).then(r => r.data),
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       qc.invalidateQueries({ queryKey: ['surgery-list'] })
       qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      // Attach the order PDF (if one was uploaded) to the new surgery.
+      if (orderFile) {
+        try {
+          const fd = new FormData()
+          fd.append('file', orderFile)
+          await api.post(`/surgery/${data.id}/files?kind=order`, fd, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          })
+        } catch (e) {
+          // Non-fatal: the surgery exists, just warn and continue navigating.
+          const d = e?.response?.data?.detail
+          alert('Surgery created, but attaching the order PDF failed: '
+            + (typeof d === 'string' ? d : (e?.message || 'upload error')))
+        }
+      }
       onClose()
       navigate(`/surgery/${data.id}`)
     },
@@ -233,6 +341,15 @@ export function ManualCreateDrawer({ onClose }) {
       setError(typeof d === 'string' ? d : (e?.message || 'Create failed'))
     },
   })
+
+  function toggleArray(key, value) {
+    setForm(f => {
+      const set = new Set(f[key])
+      if (set.has(value)) set.delete(value)
+      else set.add(value)
+      return { ...f, [key]: Array.from(set) }
+    })
+  }
 
   function toggleFacility(f) {
     const set = new Set(form.eligible_facilities)
@@ -259,15 +376,57 @@ export function ManualCreateDrawer({ onClose }) {
             the detail page to spawn milestones.
           </p>
 
+          {/* Optional: upload a surgery order PDF to prefill the form. */}
+          <div className="card !p-3 space-y-2 bg-plum-50/40 border-plum-200">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <FileText size={14} className="text-plum-700" />
+              <span>Order PDF (optional) — prefill from order</span>
+            </label>
+            <p className="text-[11px] text-muted">
+              Pick a ModMed surgery order to auto-fill the fields below. You can
+              still enter everything manually. The PDF is attached to the surgery
+              on save.
+            </p>
+            <input
+              type="file" accept=".pdf"
+              className="text-xs"
+              onChange={e => onPickOrder(e.target.files?.[0] || null)}
+            />
+            {extract.isPending && (
+              <div className="text-[11px] text-plum-700">Extracting from order…</div>
+            )}
+            {orderFile && !extract.isPending && (
+              <button type="button"
+                      className="text-[11px] text-plum-700 hover:underline"
+                      onClick={() => extract.mutate(orderFile)}>
+                Re-run extract from “{orderFile.name}”
+              </button>
+            )}
+            {extractError && (
+              <div className="text-[11px] text-red-700">✗ {extractError}</div>
+            )}
+            {warnings.length > 0 && (
+              <ul className="text-[11px] text-amber-800 list-disc pl-4 space-y-0.5">
+                {warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <Field label="Chart # *">
               <input className="input text-sm font-mono" value={form.chart_number}
                      onChange={e => setForm({ ...form, chart_number: e.target.value })} />
             </Field>
-            <Field label="Patient name (Last, First) *">
-              <input className="input text-sm" value={form.patient_name}
-                     placeholder="Owens, Traci"
-                     onChange={e => setForm({ ...form, patient_name: e.target.value })} />
+            <div />
+            <Field label="First Name *">
+              <input className="input text-sm" value={form.first_name}
+                     placeholder="Traci"
+                     onChange={e => setForm({ ...form, first_name: e.target.value })} />
+            </Field>
+            <Field label="Last Name *">
+              <input className="input text-sm" value={form.last_name}
+                     placeholder="Owens"
+                     onChange={e => setForm({ ...form, last_name: e.target.value })} />
             </Field>
             <Field label="DOB *">
               <input className="input text-sm font-mono" type="date" value={form.dob}
@@ -313,6 +472,48 @@ export function ManualCreateDrawer({ onClose }) {
                 ))}
               </select>
             </Field>
+            <Field label="Assistant Surgeon *">
+              <select className="input text-sm" value={form.assistant_surgeon_name}
+                       onChange={e => setForm({ ...form, assistant_surgeon_name: e.target.value })}>
+                {assistantOpts.map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </Field>
+            <div className="col-span-2">
+              <Field label="Clearance Type * (select all that apply)">
+                <div className="flex flex-wrap gap-1.5">
+                  {clearanceOpts.map(c => (
+                    <button key={c} type="button"
+                            onClick={() => toggleArray('clearance_types', c)}
+                            className={`text-xs px-2 py-1 rounded border ${
+                              form.clearance_types.includes(c)
+                                ? 'bg-plum-100 border-plum-300 text-plum-700 font-semibold'
+                                : 'bg-white border-border-subtle text-muted'
+                            }`}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </div>
+            <div className="col-span-2">
+              <Field label="Device Required * (select all that apply)">
+                <div className="flex flex-wrap gap-1.5">
+                  {deviceOpts.map(d => (
+                    <button key={d} type="button"
+                            onClick={() => toggleArray('device_types', d)}
+                            className={`text-xs px-2 py-1 rounded border ${
+                              form.device_types.includes(d)
+                                ? 'bg-plum-100 border-plum-300 text-plum-700 font-semibold'
+                                : 'bg-white border-border-subtle text-muted'
+                            }`}>
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </div>
             <Field label="Pre-op date *">
               <input className="input text-sm font-mono" type="date" value={form.preop_date}
                      onChange={e => setForm({ ...form, preop_date: e.target.value })} />
@@ -447,11 +648,11 @@ export function ManualCreateDrawer({ onClose }) {
                 ))}
               </div>
             </div>
-            <Field label="Estimated minutes">
+            <Field label="Estimated minutes *">
               <input className="input text-sm font-mono" type="number" value={form.estimated_minutes}
                      onChange={e => setForm({ ...form, estimated_minutes: e.target.value })} />
             </Field>
-            <Field label="Eligible facilities">
+            <Field label="Eligible facilities *">
               <div className="flex gap-1.5">
                 {['medstar', 'crmc', 'office'].map(f => (
                   <button key={f} type="button"
@@ -494,7 +695,9 @@ export function ManualCreateDrawer({ onClose }) {
 
           {requiredMissing && (
             <div className="text-xs text-amber-700">
-              All starred fields are required (Secondary insurance and Notes are optional).
+              All starred fields are required, including Assistant Surgeon and at
+              least one Clearance Type and Device (use “None” if not applicable).
+              Secondary insurance, Notes, and the order PDF are optional.
             </div>
           )}
           {error && !create.isError && (

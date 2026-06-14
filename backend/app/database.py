@@ -328,6 +328,10 @@ def _apply_lightweight_migrations():
         ("surgeries", "assistant_surgeon_appt_date", "DATE"),
         ("surgeries", "assistant_surgeon_appt_confirmed_at", "DATETIME"),
         ("surgeries", "assistant_surgeon_appt_confirmed_by", "VARCHAR(120)"),
+        # Intake multi-selects (surgery-intake-fields): configurable
+        # clearance + device lists alongside the legacy single-string fields.
+        ("surgeries", "clearance_types", "JSON"),
+        ("surgeries", "device_types", "JSON"),
         # LARC: device-type category + reorder quantity (Phase 7 — office-procedure)
         ("larc_device_types", "category", "VARCHAR(20) DEFAULT 'larc'"),
         ("larc_device_types", "reorder_quantity", "INTEGER"),
