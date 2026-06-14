@@ -104,6 +104,7 @@ class Surgery(Base):
     primary_insurance = Column(String(200), nullable=True)
     primary_member_id = Column(String(80), nullable=True)
     primary_group = Column(String(80), nullable=True)
+    primary_payer_id = Column(String(40), nullable=True)
     secondary_insurance = Column(String(200), nullable=True)
     secondary_member_id = Column(String(80), nullable=True)
 

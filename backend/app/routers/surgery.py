@@ -982,6 +982,8 @@ async def extract_order(
     # an is_urgent flag, so derive it from the parsed priority.
     KEYS = (
         "chart_number", "patient_name", "first_name", "last_name", "dob",
+        "phone", "email",
+        "address_street", "address_city", "address_state", "address_zip",
         "primary_insurance", "primary_member_id",
         "secondary_insurance", "secondary_member_id",
         "surgeon_primary", "surgery_name",
@@ -994,6 +996,37 @@ async def extract_order(
             v = _ser(kwargs[k])
             if v not in (None, "", [], {}):
                 fields[k] = v
+
+    # Fields the parser produces but build_surgery_kwargs doesn't map 1:1 to
+    # ManualSurgeryIn names — populate them explicitly, only when non-empty.
+    parsed = parsed or {}
+
+    # payer_id: from the parsed insurance (via build_surgery_kwargs).
+    payer_id = kwargs.get("primary_payer_id")
+    if payer_id not in (None, "", [], {}):
+        fields["payer_id"] = _ser(payer_id)
+
+    # surgery_name: prefer the headline procedure_type, else the first
+    # procedure's description.
+    if "surgery_name" not in fields:
+        surgery_name = parsed.get("procedure_type")
+        if not surgery_name:
+            procs = parsed.get("procedures") or []
+            if procs and isinstance(procs[0], dict):
+                surgery_name = procs[0].get("description")
+        if surgery_name not in (None, "", [], {}):
+            fields["surgery_name"] = surgery_name
+
+    # preop_date: the date portion (YYYY-MM-DD) of the order's create date.
+    ordered_at = parsed.get("ordered_at")
+    if ordered_at:
+        try:
+            preop = str(ordered_at)[:10]
+            # Validate it's a real date before surfacing it.
+            datetime.strptime(preop, "%Y-%m-%d")
+            fields["preop_date"] = preop
+        except (ValueError, TypeError):
+            pass
 
     # is_urgent isn't produced by build_surgery_kwargs — derive from the
     # parsed order priority when available.
@@ -1025,6 +1058,7 @@ class ManualSurgeryIn(BaseModel):
     address_zip: str
     primary_insurance: str
     primary_member_id: str
+    payer_id: Optional[str] = None
     secondary_insurance: Optional[str] = None
     secondary_member_id: Optional[str] = None
     surgeon_primary: str
@@ -1161,6 +1195,7 @@ def create_manual(payload: ManualSurgeryIn,
         address_zip=payload.address_zip.strip(),
         primary_insurance=payload.primary_insurance,
         primary_member_id=payload.primary_member_id,
+        primary_payer_id=payload.payer_id,
         secondary_insurance=payload.secondary_insurance,
         secondary_member_id=payload.secondary_member_id,
         surgeon_primary=surgeon_primary,
