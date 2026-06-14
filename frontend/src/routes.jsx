@@ -64,6 +64,7 @@ import LarcInventoryCount from './pages/LarcInventoryCount'
 import LarcManual from './pages/LarcManual'
 import LarcOwed from './pages/LarcOwed'
 import LarcPharmacies from './pages/LarcPharmacies'
+import LarcSettings from './pages/LarcSettings'
 import ManagerDashboard from './pages/ManagerDashboard'
 import MissingCharges from './pages/MissingCharges'
 import MyChecklist from './pages/MyChecklist'
@@ -199,6 +200,7 @@ export const ROUTES = [
   { path: '/larc/eod',              element: <LarcEodReport />,       module: M.LARC, tier: TIER.VIEW },
   { path: '/larc/inventory-count',  element: <LarcInventoryCount />,  module: M.LARC, tier: TIER.WORK },
   { path: '/larc/manual',           element: <LarcManual />,          module: M.LARC, tier: TIER.VIEW },
+  { path: '/larc/settings',         element: <LarcSettings />,        module: M.LARC, tier: TIER.MANAGE },
 
   // ── Pellets (DEA Schedule III) ─────────────────────────────────
   // The /pellets redirect is itself the nav target — clicking the link
