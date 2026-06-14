@@ -1025,7 +1025,14 @@ def create_manual(payload: ManualSurgeryIn,
 
     clearance_types = _clean_list(payload.clearance_types)
     device_types = _clean_list(payload.device_types)
-    assistant_name = (payload.assistant_surgeon_name or "").strip() or None
+
+    def _non_none(items):
+        # Entries that are actual selections, not the "None" sentinel
+        # (case-insensitive). Used to decide whether a workflow flag arms.
+        return [it for it in (items or []) if it.strip().lower() != "none"]
+
+    assistant_raw = (payload.assistant_surgeon_name or "").strip()
+    assistant_name = None if assistant_raw.lower() in ("", "none") else assistant_raw
 
     # patient_name and surgeon_primary are validated against the computed
     # values (composed name / defaulted surgeon), not the raw payload.
@@ -1088,26 +1095,30 @@ def create_manual(payload: ManualSurgeryIn,
         created_by=current_user.get("email"),
     )
 
-    # Assistant surgeon (free-text, outside-practice). Setting a name
-    # arms the assistant-surgeon workflow.
+    # Assistant surgeon (dropdown that may be "None"). A real name arms
+    # the assistant-surgeon workflow; "None"/blank leaves it disabled.
     if assistant_name:
         s.assistant_surgeon_name = assistant_name
         s.assistant_surgeon_required = True
 
-    # Clearances: persist the multi-select list; a non-empty list marks
-    # clearance as required and not-yet-cleared ("required" is the value
-    # the rest of the app uses for not-cleared, e.g. order_parser).
+    # Clearances: persist the selected list as-is. Only arm the clearance
+    # workflow ("required" is the not-yet-cleared value the rest of the
+    # app uses) when at least one real (non-"None") clearance is selected.
     if clearance_types:
         s.clearance_types = clearance_types
-        s.clearance_required = True
-        s.clearance_status = "required"
+        if _non_none(clearance_types):
+            s.clearance_required = True
+            s.clearance_status = "required"
 
-    # Devices: persist the multi-select list; back-compat device_kind gets
-    # the first selected device.
+    # Devices: persist the selected list as-is. Only arm the device
+    # workflow + set the back-compat device_kind (first real device) when
+    # at least one non-"None" device is selected.
     if device_types:
         s.device_types = device_types
-        s.device_required = True
-        s.device_kind = device_types[0]
+        real_devices = _non_none(device_types)
+        if real_devices:
+            s.device_required = True
+            s.device_kind = real_devices[0]
 
     db.add(s); db.flush()
     from app.services.surgery.local_helpers import (

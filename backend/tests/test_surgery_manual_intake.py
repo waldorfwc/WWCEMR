@@ -95,6 +95,54 @@ def test_manual_create_device_types(client, db):
     assert s.device_kind == "Mirena"
 
 
+def test_manual_create_clearance_none_not_required(client, db):
+    resp = client.post("/api/surgery/manual",
+                       json=_base_payload(clearance_types=["None"]))
+    assert resp.status_code == 201, resp.text
+    from app.models.surgery import Surgery
+    s = db.query(Surgery).filter(Surgery.id == resp.json()["id"]).first()
+    assert s.clearance_types == ["None"]
+    assert s.clearance_required is False
+    assert s.clearance_status == "not_required"
+
+
+def test_manual_create_device_none_not_required(client, db):
+    resp = client.post("/api/surgery/manual",
+                       json=_base_payload(device_types=["None"]))
+    assert resp.status_code == 201, resp.text
+    from app.models.surgery import Surgery
+    s = db.query(Surgery).filter(Surgery.id == resp.json()["id"]).first()
+    assert s.device_types == ["None"]
+    assert s.device_required is False
+    assert s.device_kind is None
+
+
+def test_manual_create_assistant_none_not_required(client, db):
+    resp = client.post("/api/surgery/manual",
+                       json=_base_payload(assistant_surgeon_name="None"))
+    assert resp.status_code == 201, resp.text
+    from app.models.surgery import Surgery
+    s = db.query(Surgery).filter(Surgery.id == resp.json()["id"]).first()
+    assert s.assistant_surgeon_name is None
+    assert s.assistant_surgeon_required is False
+
+
+def test_manual_create_mixed_none_arms_only_real(client, db):
+    # "None" mixed with a real selection still arms the workflow and the
+    # device_kind picks the first real (non-"None") device.
+    resp = client.post("/api/surgery/manual", json=_base_payload(
+        clearance_types=["None", "EKG"],
+        device_types=["None", "Mirena"],
+    ))
+    assert resp.status_code == 201, resp.text
+    from app.models.surgery import Surgery
+    s = db.query(Surgery).filter(Surgery.id == resp.json()["id"]).first()
+    assert s.clearance_required is True
+    assert s.clearance_status == "required"
+    assert s.device_required is True
+    assert s.device_kind == "Mirena"
+
+
 def test_attach_order_kind_file(client, db):
     resp = client.post("/api/surgery/manual", json=_base_payload())
     sid = resp.json()["id"]
