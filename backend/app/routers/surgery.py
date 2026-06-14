@@ -944,6 +944,9 @@ class ManualSurgeryIn(BaseModel):
     secondary_insurance: Optional[str] = None
     secondary_member_id: Optional[str] = None
     surgeon_primary: str
+    assistant_surgeon_name: Optional[str] = None
+    clearance_types: list[str] = []
+    device_types: list[str] = []
     surgery_name: str           # display label for the procedure picked from the dropdown
     procedures: list[dict] = []  # [{cpt, description}]
     diagnoses: list[dict] = []
@@ -998,9 +1001,36 @@ def create_manual(payload: ManualSurgeryIn,
     except ValueError:
         raise HTTPException(status_code=422, detail="preop_date must be YYYY-MM-DD")
 
+    # Surgeon defaults to the practice surgeon when left blank.
+    first_name = (payload.first_name or "").strip() or None
+    last_name = (payload.last_name or "").strip() or None
+    surgeon_primary = (payload.surgeon_primary or "").strip() or "Aryian Cooke, MD"
+
+    # Name: prefer the split first/last when both are present, composing
+    # "Last, First". Otherwise keep whatever patient_name the client sent.
+    if first_name and last_name:
+        patient_name = f"{last_name}, {first_name}"
+    else:
+        patient_name = (payload.patient_name or "").strip()
+
+    # Intake multi-selects: strip + dedupe (preserve order); None when empty.
+    def _clean_list(items):
+        out, seen = [], set()
+        for it in (items or []):
+            s = (it or "").strip()
+            if s and s not in seen:
+                seen.add(s)
+                out.append(s)
+        return out or None
+
+    clearance_types = _clean_list(payload.clearance_types)
+    device_types = _clean_list(payload.device_types)
+    assistant_name = (payload.assistant_surgeon_name or "").strip() or None
+
+    # patient_name and surgeon_primary are validated against the computed
+    # values (composed name / defaulted surgeon), not the raw payload.
     required = [
         ("chart_number",       "Chart number"),
-        ("patient_name",       "Patient name"),
         ("phone",              "Phone"),
         ("email",              "Email"),
         ("address_street",     "Street address"),
@@ -1009,12 +1039,13 @@ def create_manual(payload: ManualSurgeryIn,
         ("address_zip",        "ZIP code"),
         ("primary_insurance",  "Primary insurance"),
         ("primary_member_id",  "Primary member ID"),
-        ("surgeon_primary",    "Surgeon"),
         ("surgery_name",       "Surgery name"),
     ]
     for fname, label in required:
         if not (getattr(payload, fname) or "").strip():
             raise HTTPException(status_code=422, detail=f"{label} is required")
+    if not patient_name:
+        raise HTTPException(status_code=422, detail="Patient name is required")
     if not payload.estimated_minutes or payload.estimated_minutes <= 0:
         raise HTTPException(status_code=422, detail="Estimated minutes is required")
     if not payload.eligible_facilities:
@@ -1026,9 +1057,9 @@ def create_manual(payload: ManualSurgeryIn,
 
     s = Surgery(
         chart_number=payload.chart_number.strip(),
-        patient_name=payload.patient_name.strip(),
-        first_name=payload.first_name,
-        last_name=payload.last_name,
+        patient_name=patient_name,
+        first_name=first_name,
+        last_name=last_name,
         dob=dob,
         phone=payload.phone,
         cell_phone=payload.phone,
@@ -1041,7 +1072,7 @@ def create_manual(payload: ManualSurgeryIn,
         primary_member_id=payload.primary_member_id,
         secondary_insurance=payload.secondary_insurance,
         secondary_member_id=payload.secondary_member_id,
-        surgeon_primary=payload.surgeon_primary,
+        surgeon_primary=surgeon_primary,
         procedures=payload.procedures or [],
         diagnoses=payload.diagnoses or [],
         eligible_facilities=eligible,
@@ -1056,6 +1087,28 @@ def create_manual(payload: ManualSurgeryIn,
         source="manual",
         created_by=current_user.get("email"),
     )
+
+    # Assistant surgeon (free-text, outside-practice). Setting a name
+    # arms the assistant-surgeon workflow.
+    if assistant_name:
+        s.assistant_surgeon_name = assistant_name
+        s.assistant_surgeon_required = True
+
+    # Clearances: persist the multi-select list; a non-empty list marks
+    # clearance as required and not-yet-cleared ("required" is the value
+    # the rest of the app uses for not-cleared, e.g. order_parser).
+    if clearance_types:
+        s.clearance_types = clearance_types
+        s.clearance_required = True
+        s.clearance_status = "required"
+
+    # Devices: persist the multi-select list; back-compat device_kind gets
+    # the first selected device.
+    if device_types:
+        s.device_types = device_types
+        s.device_required = True
+        s.device_kind = device_types[0]
+
     db.add(s); db.flush()
     from app.services.surgery.local_helpers import (
         upsert_patient_directory, maybe_assign_surgery_number,
