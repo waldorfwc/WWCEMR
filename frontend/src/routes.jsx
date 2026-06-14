@@ -29,15 +29,12 @@ import ARDashboard from './pages/ARDashboard'
 import ActiveAR from './pages/ActiveAR'
 import ActiveARDetail from './pages/ActiveARDetail'
 import Admin from './pages/Admin'
-import AdminConsentTemplates from './pages/AdminConsentTemplates'
-import AdminGoogleSync from './pages/AdminGoogleSync'
 import AdminReputationLeaderboard from './pages/AdminReputationLeaderboard'
 import AdminReputationProfiles from './pages/AdminReputationProfiles'
 import AdminReputationReviews from './pages/AdminReputationReviews'
 import AdminTemplates from './pages/AdminTemplates'
 import AdminTraining from './pages/AdminTraining'
 import AdminTrainingCards from './pages/AdminTrainingCards'
-import AdminLarcPharmacies from './pages/admin/LarcPharmacies'
 import AdminPermissions from './pages/admin/AdminPermissions'
 import Appeals from './pages/Appeals'
 import AuditLog from './pages/AuditLog'
@@ -90,7 +87,6 @@ import RecallNav from './components/recall/RecallNav'
 import Recalls from './pages/Recalls'
 import RecallSettings from './pages/RecallSettings'
 import StaffInbox from './pages/StaffInbox'
-import StaffMessageTemplates from './pages/StaffMessageTemplates'
 import Surgery from './pages/Surgery'
 import SurgeryBlockSchedule from './pages/SurgeryBlockSchedule'
 import SurgeryBulkImport from './pages/SurgeryBulkImport'
@@ -285,13 +281,13 @@ export const ROUTES = [
   { path: '/admin',                            element: <Admin />,                         superAdmin: true },
   { path: '/admin/permissions',                element: <AdminPermissions />,              superAdmin: true },
   { path: '/admin/practice-settings',          element: <PracticeSettings />,              superAdmin: true },
-  { path: '/admin/larc-pharmacies',            element: <AdminLarcPharmacies />,           superAdmin: true },
   { path: '/admin/templates',                  element: <AdminTemplates />,                superAdmin: true },
-  { path: '/admin/consent-templates',          element: <AdminConsentTemplates />,         superAdmin: true },
-  { path: '/admin/message-templates',          element: <StaffMessageTemplates />,         superAdmin: true },
+  { path: '/admin/consent-templates', element: <Navigate to="/surgery/settings" replace /> },
+  { path: '/admin/message-templates', element: <Navigate to="/surgery/settings" replace /> },
+  { path: '/admin/google-sync',       element: <Navigate to="/surgery/settings" replace /> },
+  { path: '/admin/larc-pharmacies',   element: <Navigate to="/larc/settings" replace /> },
   { path: '/admin/training',       element: <Navigate to="/training" replace /> },
   { path: '/admin/training/cards', element: <Navigate to="/training/cards" replace /> },
-  { path: '/admin/google-sync',                element: <AdminGoogleSync />,               superAdmin: true },
   // Reputation pages moved to top-level /marketing — keep old admin URLs working.
   { path: '/admin/reputation',             element: <Navigate to="/marketing" replace /> },
   { path: '/admin/reputation/reviews',     element: <Navigate to="/marketing" replace /> },

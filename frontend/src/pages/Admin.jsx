@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CheckSquare, ChevronRight, Edit3, Eye, FileSignature, MessageSquare, Phone, Plus, Settings, Shield, Trash2, Users, X } from 'lucide-react'
+import { CheckSquare, ChevronRight, Edit3, Eye, Phone, Plus, Settings, Shield, Trash2, Users, X } from 'lucide-react'
 import api from '../utils/api'
 
 function Flash({ kind, text }) {
@@ -644,26 +644,6 @@ export default function Admin() {
         </div>
         <div className="flex items-center gap-2">
           <SyncRingCentralButton />
-          <Link to="/admin/templates"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <CheckSquare size={13} /> Templates
-          </Link>
-          <Link to="/admin/consent-templates"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <FileSignature size={13} /> Consent Templates
-          </Link>
-          <Link to="/admin/message-templates"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <MessageSquare size={13} /> Message Templates
-          </Link>
-          <Link to="/admin/training/cards"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <CheckSquare size={13} /> Training
-          </Link>
-          <Link to="/admin/google-sync"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <Settings size={13} /> Google Sync
-          </Link>
           <Link to="/admin/permissions"
                 className="btn-secondary text-sm flex items-center gap-1">
             <Shield size={13} /> Permissions
@@ -671,10 +651,6 @@ export default function Admin() {
           <Link to="/admin/practice-settings"
                 className="btn-secondary text-sm flex items-center gap-1">
             <Settings size={13} /> Practice Settings
-          </Link>
-          <Link to="/admin/larc-pharmacies"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <Settings size={13} /> LARC Pharmacies
           </Link>
           {!adding && (
             <button className="btn-primary text-sm" onClick={() => setAdding(true)}>
