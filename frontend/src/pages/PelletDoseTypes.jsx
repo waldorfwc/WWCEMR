@@ -5,7 +5,7 @@ import { ArrowLeft, Pill, Edit3, Save, X, Shield } from 'lucide-react'
 import api from '../utils/api'
 
 
-export default function PelletDoseTypes() {
+export default function PelletDoseTypes({ embedded = false }) {
   const [editing, setEditing] = useState(null)
 
   const { data: types = [], isLoading } = useQuery({
@@ -15,18 +15,22 @@ export default function PelletDoseTypes() {
 
   return (
     <div>
-      <Link to="/pellets/inventory" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
-        <ArrowLeft size={12}/> Pellet inventory
-      </Link>
-      <h1 className="page-title flex items-center gap-2 mb-1">
-        <Pill size={22} className="text-plum-700"/>
-        Dose type catalog
-      </h1>
-      <p className="text-sm text-gray-500 mb-4">
-        Configure reorder thresholds + order quantity per dose. The
-        <strong> Reorder alert</strong> panel on the inventory dashboard
-        watches on-hand vs. these thresholds.
-      </p>
+      {!embedded && (
+        <>
+          <Link to="/pellets/inventory" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
+            <ArrowLeft size={12}/> Pellet inventory
+          </Link>
+          <h1 className="page-title flex items-center gap-2 mb-1">
+            <Pill size={22} className="text-plum-700"/>
+            Dose type catalog
+          </h1>
+          <p className="text-sm text-gray-500 mb-4">
+            Configure reorder thresholds + order quantity per dose. The
+            <strong> Reorder alert</strong> panel on the inventory dashboard
+            watches on-hand vs. these thresholds.
+          </p>
+        </>
+      )}
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">

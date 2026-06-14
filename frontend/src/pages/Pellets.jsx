@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Pill, Truck, AlertTriangle, Clock, ArrowRightLeft, Plus, X, Save,
-  CheckCircle2, ClipboardList, BookOpen, FileText, Shield, Trash2,
+  CheckCircle2, ClipboardList, Shield, Trash2,
   DollarSign, Paperclip, Upload, Edit3, ShoppingCart, Wrench,
   Download, Printer,
 } from 'lucide-react'
@@ -60,18 +60,6 @@ export default function Pellets() {
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
-          <Link to="/pellets/patients" className="btn-secondary text-sm flex items-center gap-1">
-            <ClipboardList size={13}/> Patients
-          </Link>
-          <Link to="/pellets/counts" className="btn-secondary text-sm flex items-center gap-1">
-            <ClipboardList size={13}/> Daily count
-          </Link>
-          <Link to="/pellets/audit" className="btn-secondary text-sm flex items-center gap-1">
-            <FileText size={13}/> Audit log
-          </Link>
-          <Link to="/pellets/manual" className="btn-secondary text-sm flex items-center gap-1">
-            <BookOpen size={13}/> Manual
-          </Link>
           <button className="btn-secondary text-sm flex items-center gap-1"
                    onClick={() => setDisposeOpen(true)}>
             <Trash2 size={13}/> Dispose

@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Users, Plus, Search, X, Save, Calendar, Clock,
-  AlertTriangle, DollarSign, CheckCircle2, Pill, Package, Star, Trash2,
+  AlertTriangle, DollarSign, CheckCircle2, Pill, Star, Trash2,
   ChevronLeft, ChevronRight, Upload, MoreVertical,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
@@ -112,9 +112,6 @@ export default function PelletPatients() {
           Pellet patients
         </h1>
         <div className="flex gap-2">
-          <Link to="/pellets/inventory" className="btn-secondary text-sm flex items-center gap-1">
-            <Package size={13}/> Inventory
-          </Link>
           <button className="btn-secondary text-sm flex items-center gap-1"
                   onClick={() => setUploading(true)}>
             <Upload size={13}/> Upload ModMed appts
