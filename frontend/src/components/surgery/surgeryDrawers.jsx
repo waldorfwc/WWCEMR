@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom'
 import { X, Search } from 'lucide-react'
 import api, { fmt } from '../../utils/api'
 import SurgeryIntakeForm from './SurgeryIntakeForm'
+import { useConfirm } from '../ui/ConfirmDialog'
+import { useCurrentUser } from '../../hooks/useCurrentUser'
+import { MODULE, TIER } from '../../routes.jsx'
 
 
 export function ManualCreateDrawer({ onClose }) {
@@ -68,6 +71,8 @@ export function ManualCreateDrawer({ onClose }) {
 export function UpdateSurgeryDrawer({ onClose }) {
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const confirm = useConfirm()
+  const { tier } = useCurrentUser()
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [selectedId, setSelectedId] = useState(null)
@@ -126,6 +131,35 @@ export function UpdateSurgeryDrawer({ onClose }) {
     },
   })
 
+  const remove = useMutation({
+    mutationFn: () => api.post(`/surgery/${selectedId}/delete`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-list'] })
+      qc.invalidateQueries({ queryKey: ['surgery-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['surgery-block-days'] })
+      onClose()
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Delete failed'))
+    },
+  })
+
+  const handleDelete = async () => {
+    const ok = await confirm({
+      title: 'Delete Patient',
+      message: `Soft-delete this surgery for ${detail?.patient_name || 'this patient'}? `
+        + 'It will be removed from the surgery system (recoverable by an admin).',
+      confirmLabel: 'Delete patient',
+      danger: true,
+    })
+    if (!ok) return
+    setError(null)
+    remove.mutate()
+  }
+
+  const canDelete = !!selectedId && !!detail && tier(MODULE.SURGERY, TIER.MANAGE)
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30" />
@@ -133,7 +167,19 @@ export function UpdateSurgeryDrawer({ onClose }) {
            onClick={e => e.stopPropagation()}>
         <div className="sticky top-0 bg-white border-b border-border-subtle px-6 py-4 flex items-center justify-between z-10">
           <h2 className="font-serif font-semibold text-ink text-[18px]">Update Surgery</h2>
-          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+          <div className="flex items-center gap-3">
+            {canDelete && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={remove.isPending}
+                className="text-sm px-3 py-1.5 rounded text-white bg-red-700 hover:bg-red-800 disabled:opacity-50"
+              >
+                {remove.isPending ? 'Deleting…' : 'Delete patient'}
+              </button>
+            )}
+            <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+          </div>
         </div>
 
         {/* Patient / surgery search */}
