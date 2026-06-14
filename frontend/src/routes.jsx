@@ -65,6 +65,7 @@ import LarcManual from './pages/LarcManual'
 import LarcOwed from './pages/LarcOwed'
 import LarcPharmacies from './pages/LarcPharmacies'
 import LarcSettings from './pages/LarcSettings'
+import LarcNav from './components/larc/LarcNav'
 import ManagerDashboard from './pages/ManagerDashboard'
 import MissingCharges from './pages/MissingCharges'
 import MyChecklist from './pages/MyChecklist'
@@ -187,20 +188,26 @@ export const ROUTES = [
   ]},
 
   // ── LARC device tracking ───────────────────────────────────────
-  { path: '/larc',                  element: <Larc />,                module: M.LARC, tier: TIER.VIEW,
-      nav: { label: 'Device Tracking', order: 70 } },
-  { path: '/larc/assignments/:id',  element: <LarcAssignment />,      module: M.LARC, tier: TIER.WORK },
-  { path: '/larc/checkouts',        element: <LarcCheckouts />,       module: M.LARC, tier: TIER.VIEW },
-  { path: '/larc/audit',            element: <LarcAudit />,           module: M.LARC, tier: TIER.MANAGE },
-  { path: '/larc/devices',          element: <LarcDevices />,         module: M.LARC, tier: TIER.VIEW },
-  { path: '/larc/devices/:id',      element: <LarcDevice />,          module: M.LARC, tier: TIER.VIEW },
-  { path: '/larc/owed',             element: <LarcOwed />,            module: M.LARC, tier: TIER.VIEW },
-  { path: '/larc/pharmacies',       element: <LarcPharmacies />,      module: M.LARC, tier: TIER.MANAGE },
-  { path: '/larc/device-types',     element: <LarcDeviceTypes />,     module: M.LARC, tier: TIER.MANAGE },
-  { path: '/larc/eod',              element: <LarcEodReport />,       module: M.LARC, tier: TIER.VIEW },
-  { path: '/larc/inventory-count',  element: <LarcInventoryCount />,  module: M.LARC, tier: TIER.WORK },
-  { path: '/larc/manual',           element: <LarcManual />,          module: M.LARC, tier: TIER.VIEW },
-  { path: '/larc/settings',         element: <LarcSettings />,        module: M.LARC, tier: TIER.MANAGE },
+  // Layout route: LarcNav renders the shared top-nav + <Outlet/> for the
+  // child page. Each child carries its own gate. Keep nav on the parent so
+  // the TopNav "Device Tracking" entry persists. Child paths are RELATIVE.
+  { path: '/larc', element: <LarcNav />, module: M.LARC, tier: TIER.VIEW,
+      nav: { label: 'Device Tracking', order: 70 },
+      children: [
+    { index: true,             element: <Larc />,               module: M.LARC, tier: TIER.VIEW },
+    { path: 'devices',         element: <LarcDevices />,         module: M.LARC, tier: TIER.VIEW },
+    { path: 'devices/:id',     element: <LarcDevice />,          module: M.LARC, tier: TIER.VIEW },
+    { path: 'checkouts',       element: <LarcCheckouts />,       module: M.LARC, tier: TIER.VIEW },
+    { path: 'owed',            element: <LarcOwed />,            module: M.LARC, tier: TIER.VIEW },
+    { path: 'audit',           element: <LarcAudit />,           module: M.LARC, tier: TIER.MANAGE },
+    { path: 'pharmacies',      element: <LarcPharmacies />,      module: M.LARC, tier: TIER.MANAGE },
+    { path: 'device-types',    element: <LarcDeviceTypes />,     module: M.LARC, tier: TIER.MANAGE },
+    { path: 'eod',             element: <LarcEodReport />,       module: M.LARC, tier: TIER.VIEW },
+    { path: 'inventory-count', element: <LarcInventoryCount />,  module: M.LARC, tier: TIER.WORK },
+    { path: 'manual',          element: <LarcManual />,          module: M.LARC, tier: TIER.VIEW },
+    { path: 'assignments/:id', element: <LarcAssignment />,      module: M.LARC, tier: TIER.WORK },
+    { path: 'settings',        element: <LarcSettings />,        module: M.LARC, tier: TIER.MANAGE },
+  ]},
 
   // ── Pellets (DEA Schedule III) ─────────────────────────────────
   // The /pellets redirect is itself the nav target — clicking the link
