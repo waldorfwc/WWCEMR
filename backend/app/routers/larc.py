@@ -22,7 +22,7 @@ from typing import Optional
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # Sanity bounds on user-entered money fields. The practice's
@@ -52,6 +52,8 @@ from app.services.larc.workflow import (
     DEVICE_EXPIRY_HOLD_DAYS, LOCATIONS, LOCATION_LABELS,
     PHARMACY_ORDER_SLA_DAYS, assignment_buckets, log_audit, spawn_milestones,
 )
+from app.models.larc_config import LarcConfig
+from app.services.larc.settings import LARC_SETTINGS_DEFAULTS, cfg
 
 router = APIRouter(prefix="/larc", tags=["larc"])
 
@@ -270,8 +272,8 @@ def dashboard(db: Session = Depends(get_db),
                 "suggested_quantity": dt.reorder_quantity,
             })
 
-    # Expiring soon — within DEVICE_EXPIRY_HOLD_DAYS (365 days)
-    horizon = today + timedelta(days=DEVICE_EXPIRY_HOLD_DAYS)
+    # Expiring soon — within device_expiry_hold_days (default 365)
+    horizon = today + timedelta(days=cfg(db, "device_expiry_hold_days"))
     expiring = (db.query(LarcDevice)
                   .options(joinedload(LarcDevice.device_type))
                   .filter(LarcDevice.expiration_date.isnot(None),
@@ -304,6 +306,7 @@ def dashboard(db: Session = Depends(get_db),
             bucket_counts[b] = bucket_counts.get(b, 0) + 1
 
     # Pharmacy-order overdue (faxed >SLA days, not received)
+    sla_days = cfg(db, "pharmacy_order_sla_days")
     overdue_pharmacy = (db.query(LarcAssignment)
                           .options(joinedload(LarcAssignment.device))
                           .filter(LarcAssignment.not_deleted(),
@@ -311,12 +314,12 @@ def dashboard(db: Session = Depends(get_db),
                                   LarcAssignment.request_faxed_at.isnot(None),
                                   LarcAssignment.device_received_at.is_(None),
                                   LarcAssignment.request_faxed_at
-                                      <= now_utc_naive() - timedelta(days=PHARMACY_ORDER_SLA_DAYS))
+                                      <= now_utc_naive() - timedelta(days=sla_days))
                           .order_by(LarcAssignment.request_faxed_at)
                           .limit(20).all())
 
     # Checkout outstanding ack
-    cutoff_ack = now_utc_naive() - timedelta(hours=CHECKOUT_ACK_WINDOW_HOURS)
+    cutoff_ack = now_utc_naive() - timedelta(hours=cfg(db, "checkout_ack_window_hours"))
     unack_checkouts = (db.query(LarcCheckout)
                          .options(joinedload(LarcCheckout.assignment))
                          .filter(LarcCheckout.approval_status == "approved",
@@ -346,7 +349,7 @@ def dashboard(db: Session = Depends(get_db),
                 "chart_number": a.chart_number,
                 "device_type_name": a.device.device_type.name if a.device and a.device.device_type else None,
                 "faxed_on": a.request_faxed_at.isoformat() if a.request_faxed_at else None,
-                "days_overdue": (now_utc_naive() - a.request_faxed_at).days - PHARMACY_ORDER_SLA_DAYS
+                "days_overdue": (now_utc_naive() - a.request_faxed_at).days - sla_days
                                 if a.request_faxed_at else None,
             }
             for a in overdue_pharmacy
@@ -384,6 +387,47 @@ def get_picklists(current_user: dict = Depends(requires_tier(Module.LARC, Tier.V
         "buckets": ALL_BUCKETS,
         "insurance_companies": INSURANCE_COMPANIES,
     }
+
+
+# ─── Config (key/value) ─────────────────────────────────────────────
+# Mirrors surgery_config's /surgery/config GET/PUT. Reads merge stored
+# rows over the registry defaults; writes upsert one row per known key.
+LARC_CONFIG_DEFAULTS = LARC_SETTINGS_DEFAULTS  # alias for the read merge
+
+
+class LarcConfigPayload(BaseModel):
+    device_expiry_hold_days:          Optional[int] = Field(default=None, ge=1, le=3650)
+    assignment_reallocate_after_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    pharmacy_order_sla_days:          Optional[int] = Field(default=None, ge=1, le=365)
+    checkout_ack_window_hours:        Optional[int] = Field(default=None, ge=1, le=720)
+
+
+@router.get("/config")
+def get_larc_config(db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    out = dict(LARC_SETTINGS_DEFAULTS)
+    for r in db.query(LarcConfig).all():
+        out[r.key] = r.value
+    return out
+
+
+@router.put("/config")
+def put_larc_config(payload: LarcConfigPayload,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
+    actor = current_user.get("email") or "system"
+    data = payload.model_dump(exclude_unset=True, mode="json")
+    for k, v in data.items():
+        if k not in LARC_SETTINGS_DEFAULTS:
+            continue
+        row = db.query(LarcConfig).filter(LarcConfig.key == k).first()
+        if row is None:
+            db.add(LarcConfig(key=k, value=v, updated_by=actor))
+        else:
+            row.value = v
+            row.updated_by = actor
+    db.commit()
+    return get_larc_config(db, current_user)   # echo merged config
 
 
 def _device_type_dict(t: LarcDeviceType) -> dict:
@@ -2156,9 +2200,9 @@ def fax_pharmacy(assignment_id: str, payload: FaxPharmacyIn = FaxPharmacyIn(),
                         f"{'inactive' if not ph.is_active else 'missing a fax number'}; "
                         "update the directory or pass a different pharmacy_id"))
     a.request_faxed_at = now_utc_naive()
-    # SLA: expect device within PHARMACY_ORDER_SLA_DAYS
-    from app.services.larc.workflow import PHARMACY_ORDER_SLA_DAYS
-    a.expected_received_by = (now_utc_naive().date() + timedelta(days=PHARMACY_ORDER_SLA_DAYS))
+    # SLA: expect device within pharmacy_order_sla_days
+    a.expected_received_by = (now_utc_naive().date()
+                              + timedelta(days=cfg(db, "pharmacy_order_sla_days")))
     _mark_milestone(a, "request_faxed", status="done", by=by, notes=payload.notes)
     log_audit(db, actor=by, action="request_faxed",
               device=a.device, assignment=a,

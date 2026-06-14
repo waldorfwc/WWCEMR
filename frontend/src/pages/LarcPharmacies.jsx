@@ -6,7 +6,7 @@ import api from '../utils/api'
 import EmptyState from '../components/EmptyState'
 
 
-export default function LarcPharmacies() {
+export default function LarcPharmacies({ embedded = false }) {
   const qc = useQueryClient()
   const [adding, setAdding] = useState(false)
 
@@ -17,23 +17,29 @@ export default function LarcPharmacies() {
 
   return (
     <div>
-      <Link to="/larc" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
-        <ArrowLeft size={12} /> LARC dashboard
-      </Link>
+      {!embedded && (
+        <Link to="/larc" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
+          <ArrowLeft size={12} /> LARC dashboard
+        </Link>
+      )}
       <div className="flex items-baseline justify-between mb-3">
-        <h1 className="page-title flex items-center gap-2">
-          <Building2 size={22} className="text-plum-700" />
-          Pharmacy directory
-        </h1>
-        <button className="btn-primary text-sm flex items-center gap-1"
+        {!embedded && (
+          <h1 className="page-title flex items-center gap-2">
+            <Building2 size={22} className="text-plum-700" />
+            Pharmacy directory
+          </h1>
+        )}
+        <button className="btn-primary text-sm flex items-center gap-1 ml-auto"
                 onClick={() => setAdding(true)}>
           <Plus size={13} /> Add Pharmacy
         </button>
       </div>
-      <p className="text-sm text-gray-500 mb-4">
-        Pharmacies that supply patient-specific LARC orders (Mirena/Skyla/Kyleena/Paragard/Nexplanon).
-        Pick a pharmacy when faxing a request — fax number auto-fills.
-      </p>
+      {!embedded && (
+        <p className="text-sm text-gray-500 mb-4">
+          Pharmacies that supply patient-specific LARC orders (Mirena/Skyla/Kyleena/Paragard/Nexplanon).
+          Pick a pharmacy when faxing a request — fax number auto-fills.
+        </p>
+      )}
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">

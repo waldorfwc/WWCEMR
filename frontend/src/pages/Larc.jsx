@@ -2,9 +2,8 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Activity, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Box,
-  Calendar, Check, ChevronRight, Clock, Plus, Search, Users, Building2,
-  Truck, Package, FileText, X,
+  AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Box,
+  Check, Clock, Plus, Search, Truck, X,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
@@ -128,39 +127,6 @@ export default function Larc() {
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <Link to="/larc/devices" className="btn-secondary text-sm flex items-center gap-1">
-            <Package size={13} /> Devices
-          </Link>
-          <Link to="/larc/checkouts" className="btn-secondary text-sm flex items-center gap-1">
-            <AlertTriangle size={13} /> Pending checkouts
-          </Link>
-          <Link to="/larc/owed" className="btn-secondary text-sm flex items-center gap-1">
-            <Users size={13} /> Owed list
-          </Link>
-          <Link to="/larc/pharmacies" className="btn-secondary text-sm flex items-center gap-1">
-            <Building2 size={13} /> Pharmacies
-          </Link>
-          <Link to="/larc/device-types" className="btn-secondary text-sm flex items-center gap-1">
-            <Box size={13} /> Device types
-          </Link>
-          <Link to="/larc/manual" className="btn-secondary text-sm flex items-center gap-1"
-                title="LARC operating procedures — editable reference for staff">
-            <BookOpen size={13} /> Manual
-          </Link>
-          <Link to="/larc/eod" className="btn-secondary text-sm flex items-center gap-1">
-            <Activity size={13} /> EOD report
-          </Link>
-          <Link to="/larc/inventory-count" className="btn-secondary text-sm flex items-center gap-1">
-            <Activity size={13} /> Physical count
-          </Link>
-          <Link to="/larc/audit" className="btn-secondary text-sm flex items-center gap-1">
-            <FileText size={13} /> Audit log
-          </Link>
-          <Link to="/larc/devices?add=1"
-                className="btn-secondary text-sm flex items-center gap-1"
-                title="Office-purchased devices received into inventory (no patient at this stage)">
-            <Plus size={13} /> Receive Devices into Inventory
-          </Link>
           <button className="btn-secondary text-sm flex items-center gap-1"
                   onClick={() => setReserveInventory(true)}
                   title="Reserve an in-stock device for a patient — allocate the specific device later after benefits + payment">
