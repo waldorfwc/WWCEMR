@@ -644,10 +644,6 @@ export default function Admin() {
         </div>
         <div className="flex items-center gap-2">
           <SyncRingCentralButton />
-          <Link to="/admin/permissions"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <Shield size={13} /> Permissions
-          </Link>
           {!adding && (
             <button className="btn-primary text-sm" onClick={() => setAdding(true)}>
               <Plus size={13} className="inline -mt-0.5" /> Add User

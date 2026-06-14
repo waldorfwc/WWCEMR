@@ -220,9 +220,6 @@ export default function AdminPermissions() {
 
   return (
     <div>
-      <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
-        <ArrowLeft size={12} /> Back to Admin
-      </Link>
       <div className="flex items-baseline justify-between mb-3">
         <div>
           <h1 className="font-serif font-semibold text-ink text-[22px] m-0">
