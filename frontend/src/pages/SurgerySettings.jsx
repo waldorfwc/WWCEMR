@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Settings, Plus, Trash2, Save, Edit3, Search } from 'lucide-react'
+import { ArrowLeft, Settings, Plus, Trash2, Save, Edit3, Search, X } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import LoadingState from '../components/LoadingState'
@@ -13,6 +13,7 @@ const TABS = [
   { id: 'steps',     label: 'Workflow Steps' },
   { id: 'postop',    label: 'Post-Op Schedules' },
   { id: 'capacity',  label: 'Facilities & Capacity' },
+  { id: 'intake',    label: 'Clearances & Devices' },
   { id: 'templates', label: 'Templates' },
   { id: 'consent',   label: 'Consent Templates' },
   { id: 'messages',  label: 'Message Templates' },
@@ -48,6 +49,7 @@ export default function SurgerySettings() {
       {tab === 'steps'     && <StepsTab />}
       {tab === 'postop'    && <PostOpTab />}
       {tab === 'capacity'  && <CapacityTab />}
+      {tab === 'intake'    && <IntakeTab />}
       {tab === 'templates' && <TemplatesTab />}
       {tab === 'consent'  && <AdminConsentTemplates embedded />}
       {tab === 'messages' && <StaffMessageTemplates embedded />}
@@ -853,6 +855,102 @@ function CapacityTab() {
       <FacilitiesSection />
       <CapacityRulesSection />
     </div>
+  )
+}
+
+// ─── Clearances & Devices tab ───────────────────────────────────────
+
+const INTAKE_LISTS = [
+  { key: 'clearance_types',      title: 'Clearance Types',
+    hint: 'Pre-surgical clearance options shown as multi-select chips on the manual intake form.',
+    placeholder: 'e.g. Cardiology' },
+  { key: 'surgery_device_types', title: 'Surgery Device Types',
+    hint: 'Implant / device options (Liletta, Mirena, etc.) shown on the manual intake form.',
+    placeholder: 'e.g. Mirena' },
+  { key: 'assistant_surgeons',   title: 'Assistant Surgeons',
+    hint: 'Assistant-surgeon dropdown options on the manual intake form.',
+    placeholder: 'e.g. Dr. Gillespie' },
+]
+
+function StringListEditor({ title, hint, placeholder, items, onChange }) {
+  const [entry, setEntry] = useState('')
+  function add() {
+    const v = entry.trim()
+    if (!v || items.includes(v)) { setEntry(''); return }
+    onChange([...items, v])
+    setEntry('')
+  }
+  return (
+    <div className="mb-5">
+      <h3 className="text-sm font-medium mb-1">{title}</h3>
+      <p className="text-[11px] text-muted mb-2">{hint}</p>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {items.length === 0 && (
+          <span className="text-[11px] text-muted italic">No entries yet.</span>
+        )}
+        {items.map((it, i) => (
+          <span key={`${it}-${i}`}
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded border bg-plum-50 border-plum-200 text-plum-700">
+            {it}
+            <button type="button"
+                    className="text-plum-700/70 hover:text-red-600"
+                    title="Remove"
+                    onClick={() => onChange(items.filter((_, j) => j !== i))}>
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <input className="input text-sm flex-1"
+               placeholder={placeholder}
+               value={entry}
+               onChange={e => setEntry(e.target.value)}
+               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); add() } }} />
+        <button className="btn-secondary text-xs" disabled={!entry.trim()} onClick={add}>
+          Add
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function IntakeTab() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState({})
+  const save = useMutation({
+    mutationFn: (body) => api.put('/surgery/config', body).then(r => r.data),
+    onSuccess: () => { setDraft({}); qc.invalidateQueries({ queryKey: ['surgery-config'] }) },
+  })
+  if (!data) return <LoadingState />
+  const listFor = (k) => draft[k] ?? (Array.isArray(data[k]) ? data[k] : [])
+  return (
+    <section className="card p-4">
+      <h2 className="font-medium mb-1">Clearances & Devices</h2>
+      <p className="text-[11px] text-muted mb-4">
+        These lists drive the Assistant Surgeon, Clearance Type, and Device
+        selectors on the manual surgery intake form. Keep <code>None</code> as
+        an entry so coordinators can record “not applicable”.
+      </p>
+      {INTAKE_LISTS.map(l => (
+        <StringListEditor key={l.key}
+          title={l.title} hint={l.hint} placeholder={l.placeholder}
+          items={listFor(l.key)}
+          onChange={(next) => setDraft(d => ({ ...d, [l.key]: next }))} />
+      ))}
+      <button className="btn-primary text-xs mt-1"
+              disabled={!Object.keys(draft).length || save.isPending}
+              onClick={() => save.mutate(draft)}>
+        {save.isPending ? 'Saving…' : 'Save Changes'}
+      </button>
+      {save.isError && (
+        <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
+      )}
+    </section>
   )
 }
 
