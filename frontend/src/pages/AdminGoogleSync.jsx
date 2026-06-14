@@ -8,7 +8,7 @@ import {
 import api, { fmt } from '../utils/api'
 
 
-export default function AdminGoogleSync() {
+export default function AdminGoogleSync({ embedded = false }) {
   const qc = useQueryClient()
 
   const { data: status } = useQuery({
@@ -39,18 +39,20 @@ export default function AdminGoogleSync() {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-4">
-        <div>
-          <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
-            <ArrowLeft size={12} /> Back to Admin
-          </Link>
-          <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Google Workspace sync</h1>
-          <p className="text-muted text-[12px] mt-0.5">
-            Auto-creates a user when a Google Workspace account appears, and suspends a
-            user when their Google account is suspended or deleted.
-            Excluded emails are skipped both ways.
-          </p>
-        </div>
-        <button className="btn-primary text-sm flex items-center gap-1"
+        {!embedded && (
+          <div>
+            <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
+              <ArrowLeft size={12} /> Back to Admin
+            </Link>
+            <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Google Workspace sync</h1>
+            <p className="text-muted text-[12px] mt-0.5">
+              Auto-creates a user when a Google Workspace account appears, and suspends a
+              user when their Google account is suspended or deleted.
+              Excluded emails are skipped both ways.
+            </p>
+          </div>
+        )}
+        <button className="btn-primary text-sm flex items-center gap-1 ml-auto"
                 disabled={runNow.isPending || !status?.configured}
                 onClick={() => runNow.mutate()}>
           <RefreshCw size={13} className={runNow.isPending ? 'animate-spin' : ''} />
