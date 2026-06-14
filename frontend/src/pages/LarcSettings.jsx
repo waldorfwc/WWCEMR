@@ -4,11 +4,13 @@ import { ArrowLeft, Settings } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import LoadingState from '../components/LoadingState'
+import { useCurrentUser } from '../hooks/useCurrentUser'
 import LarcDeviceTypes from './LarcDeviceTypes'
 import LarcPharmacies from './LarcPharmacies'
 import AdminConsentTemplates from './AdminConsentTemplates'
+import PracticeSettings from './admin/PracticeSettings'
 
-const TABS = [
+const BASE_TABS = [
   { id: 'thresholds', label: 'Thresholds & Windows' },
   { id: 'types',      label: 'Device Types' },
   { id: 'pharmacies', label: 'Pharmacies' },
@@ -17,6 +19,12 @@ const TABS = [
 
 export default function LarcSettings() {
   const [tab, setTab] = useState('thresholds')
+  const { isSuperAdmin } = useCurrentUser()
+  // Practice Profile is practice-wide identity data (NPI, EIN, DEA) — kept
+  // super-admin only, so the tab only shows for super-admins.
+  const TABS = isSuperAdmin
+    ? [...BASE_TABS, { id: 'practice', label: 'Practice Profile' }]
+    : BASE_TABS
   return (
     <div>
       <div className="mb-4 flex items-center gap-3">
@@ -43,6 +51,7 @@ export default function LarcSettings() {
       {tab === 'types'      && <LarcDeviceTypes embedded />}
       {tab === 'pharmacies' && <LarcPharmacies embedded />}
       {tab === 'consent' && <AdminConsentTemplates embedded category="larc" />}
+      {tab === 'practice' && isSuperAdmin && <PracticeSettings embedded />}
     </div>
   )
 }

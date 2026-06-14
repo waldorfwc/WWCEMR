@@ -648,10 +648,6 @@ export default function Admin() {
                 className="btn-secondary text-sm flex items-center gap-1">
             <Shield size={13} /> Permissions
           </Link>
-          <Link to="/admin/practice-settings"
-                className="btn-secondary text-sm flex items-center gap-1">
-            <Settings size={13} /> Practice Settings
-          </Link>
           {!adding && (
             <button className="btn-primary text-sm" onClick={() => setAdding(true)}>
               <Plus size={13} className="inline -mt-0.5" /> Add User
