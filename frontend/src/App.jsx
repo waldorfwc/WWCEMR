@@ -41,7 +41,7 @@ function guard(route) {
 /** Render ROUTES (and any nested children) as <Route> elements. */
 function renderRoutes(routes) {
   return routes.map(r => (
-    <Route key={r.path} path={r.path} element={guard(r)}>
+    <Route key={r.path || 'index'} index={r.index} path={r.path} element={guard(r)}>
       {r.children ? renderRoutes(r.children) : null}
     </Route>
   ))
