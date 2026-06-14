@@ -80,6 +80,7 @@ import PelletDoseTypes from './pages/PelletDoseTypes'
 import PelletManual from './pages/PelletManual'
 import PelletPatientDetail from './pages/PelletPatientDetail'
 import PelletPatients from './pages/PelletPatients'
+import PelletSettings from './pages/PelletSettings'
 import Pellets from './pages/Pellets'
 import PracticeSettings from './pages/admin/PracticeSettings'
 import Recalls from './pages/Recalls'
@@ -222,6 +223,7 @@ export const ROUTES = [
   { path: '/pellets/patients',        element: <PelletPatients />,       module: M.PELLETS, tier: TIER.VIEW },
   { path: '/pellets/patients/:id',    element: <PelletPatientDetail />,  module: M.PELLETS, tier: TIER.VIEW },
   { path: '/pellets/dose-types',      element: <PelletDoseTypes />,      module: M.PELLETS, tier: TIER.MANAGE },
+  { path: '/pellets/settings',        element: <PelletSettings />,       module: M.PELLETS, tier: TIER.MANAGE },
 
   // ── Chart / documents / patients ───────────────────────────────
   { path: '/documents',         element: <Documents />,    module: M.CHART, tier: TIER.VIEW,
