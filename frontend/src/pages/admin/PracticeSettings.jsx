@@ -5,7 +5,7 @@ import { ArrowLeft, Check, Shield } from 'lucide-react'
 import api from '../../utils/api'
 
 
-export default function PracticeSettings() {
+export default function PracticeSettings({ embedded = false }) {
   const qc = useQueryClient()
   const { data, isLoading, error } = useQuery({
     queryKey: ['admin-practice-settings'],
@@ -74,23 +74,27 @@ export default function PracticeSettings() {
   }
 
   return (
-    <div className="max-w-3xl">
-      <Link to="/admin"
-            className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
-        <ArrowLeft size={12} /> Back to Admin
-      </Link>
-      <div className="mb-4">
-        <h1 className="font-serif font-semibold text-ink text-[22px] m-0">
-          Practice Settings
-        </h1>
-        <p className="text-muted text-[12px] mt-0.5">
-          Practice-wide identity fields used to prefill enrollment forms
-          (LARC pharmacy orders, future consents). Edits save on blur.
-          <span className="inline-flex items-center gap-1 ml-2 text-plum-700">
-            <Shield size={11} /> Super Admin only
-          </span>
-        </p>
-      </div>
+    <div className={embedded ? '' : 'max-w-3xl'}>
+      {!embedded && (
+        <>
+          <Link to="/admin"
+                className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
+            <ArrowLeft size={12} /> Back to Admin
+          </Link>
+          <div className="mb-4">
+            <h1 className="font-serif font-semibold text-ink text-[22px] m-0">
+              Practice Settings
+            </h1>
+            <p className="text-muted text-[12px] mt-0.5">
+              Practice-wide identity fields used to prefill enrollment forms
+              (LARC pharmacy orders, future consents). Edits save on blur.
+              <span className="inline-flex items-center gap-1 ml-2 text-plum-700">
+                <Shield size={11} /> Super Admin only
+              </span>
+            </p>
+          </div>
+        </>
+      )}
 
       {grouped.map(({ group, fields }) => (
         <div key={group} className="card mb-4">

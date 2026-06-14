@@ -82,7 +82,6 @@ import PelletPatientDetail from './pages/PelletPatientDetail'
 import PelletPatients from './pages/PelletPatients'
 import PelletSettings from './pages/PelletSettings'
 import Pellets from './pages/Pellets'
-import PracticeSettings from './pages/admin/PracticeSettings'
 import RecallNav from './components/recall/RecallNav'
 import Recalls from './pages/Recalls'
 import RecallSettings from './pages/RecallSettings'
@@ -280,7 +279,7 @@ export const ROUTES = [
   // ── Admin console — super-admin only ───────────────────────────
   { path: '/admin',                            element: <Admin />,                         superAdmin: true },
   { path: '/admin/permissions',                element: <AdminPermissions />,              superAdmin: true },
-  { path: '/admin/practice-settings',          element: <PracticeSettings />,              superAdmin: true },
+  { path: '/admin/practice-settings',          element: <Navigate to="/larc/settings" replace /> },
   { path: '/admin/templates',                  element: <AdminTemplates />,                superAdmin: true },
   { path: '/admin/consent-templates', element: <Navigate to="/surgery/settings" replace /> },
   { path: '/admin/message-templates', element: <Navigate to="/surgery/settings" replace /> },
