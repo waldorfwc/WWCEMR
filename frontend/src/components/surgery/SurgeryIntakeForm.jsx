@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { X, FileText } from 'lucide-react'
 import api from '../../utils/api'
@@ -35,6 +35,8 @@ const EMPTY_FORM = {
   is_robotic: false,
   is_urgent: false,
   notes: '',
+  consent_template_ids: [],
+  consent_overrides: { added: [], removed: [] },
 }
 
 
@@ -76,6 +78,15 @@ export default function SurgeryIntakeForm({
     queryFn: () => api.get('/surgery/config').then(r => r.data),
     staleTime: 300_000,
   })
+  // Active consent templates — drives the add-picker + id→name resolution.
+  const { data: consentTemplates = [] } = useQuery({
+    queryKey: ['consent-template-picker'],
+    queryFn: () => api.get('/surgery/consent/templates').then(r => r.data),
+    staleTime: 300_000,
+  })
+  const consentTemplateById = {}
+  for (const t of consentTemplates) consentTemplateById[t.id] = t
+
   const insuranceOpts = picks?.insurance_companies || []
   const surgeonOpts   = picks?.surgeons || []
   const procedureOpts = picks?.procedures || []
@@ -88,6 +99,53 @@ export default function SurgeryIntakeForm({
   const [orderFile, setOrderFile] = useState(null)
   const [warnings, setWarnings] = useState([])
   const [extractError, setExtractError] = useState(null)
+  // Last consent match-preview result: warnings keyed by template id (for inline display).
+  const [matchWarnings, setMatchWarnings] = useState({})
+
+  // Auto-pull matched consent templates from procedures/facility/insurance.
+  // Skip the very first effect run so prefilled selections (Update mode) aren't
+  // clobbered on mount; only recompute after the user changes inputs.
+  const autoPullReady = useRef(false)
+  useEffect(() => {
+    if (!autoPullReady.current) {
+      autoPullReady.current = true
+      return
+    }
+    const procedures = (form.procedures || [])
+      .map(p => ({ cpt: (p.cpt || '').trim(), description: (p.description || '').trim() }))
+      .filter(p => p.cpt || p.description)
+    if (!procedures.length) return
+
+    const t = setTimeout(() => {
+      api.post('/surgery/consent/match-preview', {
+        procedures,
+        eligible_facilities: form.eligible_facilities,
+        primary_insurance: form.primary_insurance || null,
+      }).then(r => {
+        const matches = r.data?.matches || []
+        const warnMap = {}
+        for (const m of matches) {
+          if (Array.isArray(m.warnings) && m.warnings.length) warnMap[m.template_id] = m.warnings
+        }
+        setMatchWarnings(warnMap)
+        setForm(f => {
+          const matchedIds = matches.map(m => m.template_id)
+          const added = f.consent_overrides?.added || []
+          const removed = f.consent_overrides?.removed || []
+          const removedSet = new Set(removed)
+          const effective = [...new Set([...matchedIds, ...added])]
+            .filter(id => !removedSet.has(id))
+          return { ...f, consent_template_ids: effective }
+        })
+      }).catch(() => { /* non-blocking: matcher errors don't block intake */ })
+    }, 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    JSON.stringify((form.procedures || []).map(p => [p.cpt, p.description])),
+    JSON.stringify(form.eligible_facilities),
+    form.primary_insurance,
+  ])
 
   const requiredMissing =
     !form.chart_number.trim() || !form.first_name.trim() || !form.last_name.trim()
@@ -209,6 +267,34 @@ export default function SurgeryIntakeForm({
     setForm({ ...form, eligible_facilities: Array.from(set) })
   }
 
+  // Remove a consent: drop from selection, record in overrides.removed, un-add.
+  function removeConsent(id) {
+    setForm(f => {
+      const added = (f.consent_overrides?.added || []).filter(x => x !== id)
+      const removed = [...new Set([...(f.consent_overrides?.removed || []), id])]
+      return {
+        ...f,
+        consent_template_ids: (f.consent_template_ids || []).filter(x => x !== id),
+        consent_overrides: { added, removed },
+      }
+    })
+  }
+
+  // Manually add a consent: add to selection, record in overrides.added, un-remove.
+  function addConsent(id) {
+    if (!id) return
+    setForm(f => {
+      const removed = (f.consent_overrides?.removed || []).filter(x => x !== id)
+      const added = [...new Set([...(f.consent_overrides?.added || []), id])]
+      const ids = [...new Set([...(f.consent_template_ids || []), id])]
+      return {
+        ...f,
+        consent_template_ids: ids,
+        consent_overrides: { added, removed },
+      }
+    })
+  }
+
   // Build the full edited field set the parent will POST/PATCH.
   function buildFields() {
     return {
@@ -247,6 +333,8 @@ export default function SurgeryIntakeForm({
       is_robotic: form.is_robotic,
       is_urgent: form.is_urgent,
       notes: form.notes || null,
+      consent_template_ids: form.consent_template_ids || [],
+      consent_overrides: form.consent_overrides || { added: [], removed: [] },
     }
   }
 
@@ -559,6 +647,71 @@ export default function SurgeryIntakeForm({
             ))}
           </div>
         </div>
+        {/* Consents (auto-matched + manual) */}
+        <div className="col-span-2">
+          <Field label="Consents">
+            {(form.consent_template_ids || []).length === 0 ? (
+              <p className="text-[11px] text-muted">
+                No consents selected — add a procedure to auto-match, or add manually.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {(form.consent_template_ids || []).map(id => {
+                  const tpl = consentTemplateById[id]
+                  const name = tpl?.name || id
+                  const isSupp = tpl?.is_supplemental
+                  const warns = matchWarnings[id] || []
+                  return (
+                    <div key={id}
+                         className="flex items-start gap-2 px-2 py-1.5 rounded border border-border-subtle bg-white">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-sm text-ink">{name}</span>
+                          {isSupp && (
+                            <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-plum-100 text-plum-700">
+                              Supplemental
+                            </span>
+                          )}
+                        </div>
+                        {warns.length > 0 && (
+                          <ul className="text-[11px] text-amber-800 list-disc pl-4 mt-0.5 space-y-0.5">
+                            {warns.map((w, i) => <li key={i}>{w}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                      <button type="button"
+                              className="text-gray-400 hover:text-danger shrink-0 mt-0.5"
+                              title="Remove this consent"
+                              onClick={() => removeConsent(id)}>
+                        <X size={13} />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+            {(() => {
+              const selected = new Set(form.consent_template_ids || [])
+              const addable = consentTemplates.filter(t => !selected.has(t.id))
+              if (!addable.length) return null
+              return (
+                <div className="mt-2">
+                  <select className="input text-sm"
+                          value=""
+                          onChange={e => { addConsent(e.target.value); e.target.value = '' }}>
+                    <option value="">+ Add consent…</option>
+                    {addable.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}{t.is_supplemental ? ' (Supplemental)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )
+            })()}
+          </Field>
+        </div>
+
         <Field label="Estimated minutes *">
           <input className="input text-sm font-mono" type="number" value={form.estimated_minutes}
                  onChange={e => setForm({ ...form, estimated_minutes: e.target.value })} />
