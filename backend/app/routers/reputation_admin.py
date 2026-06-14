@@ -50,7 +50,7 @@ class ProfilePatch(BaseModel):
 
 @router.get("/profiles")
 def list_profiles(db: Session = Depends(get_db),
-                     user: dict = Depends(get_current_user)):
+                     user: dict = Depends(requires_tier(Module.REPUTATION, Tier.VIEW))):
     rows = (db.query(ReputationProfile)
                 .order_by(ReputationProfile.active.desc(),
                            ReputationProfile.display_name.asc())
@@ -61,7 +61,7 @@ def list_profiles(db: Session = Depends(get_db),
 @router.post("/profiles")
 def create_profile(payload: ProfileIn,
                       db: Session = Depends(get_db),
-                      user: dict = Depends(requires_tier(Module.REPUTATION, Tier.WORK))):
+                      user: dict = Depends(requires_tier(Module.REPUTATION, Tier.MANAGE))):
     p = ReputationProfile(
         display_name=payload.display_name.strip(),
         role_label=(payload.role_label or "").strip() or None,
@@ -76,7 +76,7 @@ def create_profile(payload: ProfileIn,
 @router.patch("/profiles/{pid}")
 def update_profile(pid: str, payload: ProfilePatch,
                       db: Session = Depends(get_db),
-                      user: dict = Depends(requires_tier(Module.REPUTATION, Tier.WORK))):
+                      user: dict = Depends(requires_tier(Module.REPUTATION, Tier.MANAGE))):
     p = (db.query(ReputationProfile)
               .filter(ReputationProfile.id == pid).first())
     if p is None:
@@ -97,7 +97,7 @@ def update_profile(pid: str, payload: ProfilePatch,
 
 @router.post("/profiles/{pid}/rotate-token")
 def rotate_token(pid: str, db: Session = Depends(get_db),
-                    user: dict = Depends(requires_tier(Module.REPUTATION, Tier.WORK))):
+                    user: dict = Depends(requires_tier(Module.REPUTATION, Tier.MANAGE))):
     p = (db.query(ReputationProfile)
               .filter(ReputationProfile.id == pid).first())
     if p is None:
@@ -110,6 +110,13 @@ def rotate_token(pid: str, db: Session = Depends(get_db),
 @router.get("/profiles/{pid}/qr.png")
 def profile_qr_png(pid: str, db: Session = Depends(get_db),
                        user: dict = Depends(get_current_user)):
+    # NOTE: intentionally gated only at get_current_user (NOT requires_tier
+    # VIEW). The frontend embeds this as an <img src> and a downloadable
+    # <a href> (AdminReputationProfiles.jsx) — browser-native requests that
+    # cannot attach the Bearer auth header, let alone a tier check. Any
+    # authenticated session may render the QR image; the image itself only
+    # encodes the public qr_token (already exposed by the patient-facing
+    # /api/r flow), so no privileged data leaks. (MK1)
     from fastapi.responses import Response
     from app.services.qr_generator import render_profile_qr_png as _render
     p = (db.query(ReputationProfile)
@@ -125,7 +132,7 @@ def profile_qr_png(pid: str, db: Session = Depends(get_db),
 
 @router.get("/leaderboard")
 def leaderboard(db: Session = Depends(get_db),
-                   user: dict = Depends(get_current_user)):
+                   user: dict = Depends(requires_tier(Module.REPUTATION, Tier.VIEW))):
     """Aggregate points per profile. Done in Python to keep the SQL
     portable across SQLite (tests) and Postgres (prod)."""
     profiles = db.query(ReputationProfile).all()
@@ -161,7 +168,7 @@ def leaderboard(db: Session = Depends(get_db),
 
 @router.get("/reviews")
 def list_reviews(db: Session = Depends(get_db),
-                    user: dict = Depends(get_current_user)):
+                    user: dict = Depends(requires_tier(Module.REPUTATION, Tier.VIEW))):
     rows = (db.query(ReputationReview)
                 .order_by(ReputationReview.submitted_at.desc())
                 .limit(500).all())
@@ -194,7 +201,7 @@ class ReviewPatch(BaseModel):
 
 
 @router.patch("/reviews/{rid}",
-               dependencies=[Depends(requires_tier(Module.REPUTATION, Tier.WORK))])
+               dependencies=[Depends(requires_tier(Module.REPUTATION, Tier.MANAGE))])
 def patch_review(rid: str, payload: ReviewPatch,
                     db: Session = Depends(get_db),
                     user: dict = Depends(get_current_user)):
