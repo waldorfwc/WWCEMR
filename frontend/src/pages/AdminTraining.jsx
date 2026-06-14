@@ -41,7 +41,7 @@ function cap(s) {
 }
 
 
-export default function AdminTraining() {
+export default function AdminTraining({ embedded = false }) {
   const qc = useQueryClient()
   // 'training:authorize' wasn't in the legacy table, so it effectively
   // resolved to super-admin only. Training MANAGE per the backend
@@ -125,9 +125,11 @@ export default function AdminTraining() {
     <div>
       <div className="flex items-baseline justify-between mb-4">
         <div>
-          <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
-            <ArrowLeft size={12} /> Back to Admin
-          </Link>
+          {!embedded && (
+            <Link to="/admin" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-1">
+              <ArrowLeft size={12} /> Back to Admin
+            </Link>
+          )}
           <h1 className="font-serif font-semibold text-ink text-[22px] m-0">Training Matrix</h1>
           <p className="text-muted text-[12px] mt-0.5">
             Each row is a task; each column is a user. Click any cell to authorize a
@@ -136,7 +138,7 @@ export default function AdminTraining() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link to="/admin/training/cards"
+          <Link to="/training/cards"
                  className="btn-primary text-sm flex items-center gap-1"
                  title="Per-task card view — better for authorizing trainers and bulk-certifying groups">
             <GraduationCap size={14}/> Card view

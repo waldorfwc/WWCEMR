@@ -64,9 +64,10 @@ function ChipList({ items }) {
 }
 
 
-function TemplateForm({ initial, onClose, onSave }) {
+function TemplateForm({ initial, lockedCategory = null, onClose, onSave }) {
   const [form, setForm] = useState(() => ({
     name: initial?.name || '',
+    category: initial?.category || lockedCategory || 'surgical',
     boldsign_template_id: initial?.boldsign_template_id || '',
     cpt_codes_text: (initial?.cpt_codes || []).join(', '),
     procedure_match_text: (initial?.procedure_match || []).join(', '),
@@ -108,6 +109,7 @@ function TemplateForm({ initial, onClose, onSave }) {
     e.preventDefault()
     onSave({
       name: form.name,
+      category: form.category,
       boldsign_template_id: form.boldsign_template_id,
       cpt_codes: listFromCommaString(form.cpt_codes_text),
       procedure_match: listFromCommaString(form.procedure_match_text),
@@ -153,6 +155,20 @@ function TemplateForm({ initial, onClose, onSave }) {
                    onChange={e => setForm({ ...form, name: e.target.value })}
                    placeholder="e.g. D&C — MedStar Hospital" />
           </div>
+
+          {!lockedCategory && (
+            <div>
+              <label className="block text-[11px] font-medium text-gray-700 mb-1">
+                Category
+              </label>
+              <select className="input w-full text-[13px]"
+                      value={form.category}
+                      onChange={e => setForm({ ...form, category: e.target.value })}>
+                <option value="surgical">Surgical</option>
+                <option value="larc">LARC</option>
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-[11px] font-medium text-gray-700 mb-1">
@@ -355,11 +371,11 @@ function TemplateForm({ initial, onClose, onSave }) {
 }
 
 
-export default function AdminConsentTemplates() {
+export default function AdminConsentTemplates({ embedded = false, category = null }) {
   const qc = useQueryClient()
   const { data: templates, isLoading } = useQuery({
-    queryKey: ['consent-templates'],
-    queryFn: () => api.get('/consent-templates').then(r => r.data),
+    queryKey: ['consent-templates', category],
+    queryFn: () => api.get('/consent-templates', { params: category ? { category } : {} }).then(r => r.data),
   })
   const [editing, setEditing] = useState(null)   // null | 'new' | template object
   const [filter, setFilter] = useState('')
@@ -416,22 +432,24 @@ export default function AdminConsentTemplates() {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <Link to="/admin" className="text-muted hover:text-plum-700">
-            <ArrowLeft size={16} />
-          </Link>
-          <div>
-            <h1 className="font-serif font-semibold text-ink text-[22px] m-0 flex items-center gap-2">
-              <FileSignature size={22} className="text-plum-700" />
-              Consent Templates
-            </h1>
-            <div className="text-muted text-[12px] mt-0.5">
-              Map each procedure to a BoldSign template. Supplemental forms (Medicaid sterilization, etc.)
-              attach in addition to the primary.
+        {!embedded && (
+          <div className="flex items-center gap-3">
+            <Link to="/admin" className="text-muted hover:text-plum-700">
+              <ArrowLeft size={16} />
+            </Link>
+            <div>
+              <h1 className="font-serif font-semibold text-ink text-[22px] m-0 flex items-center gap-2">
+                <FileSignature size={22} className="text-plum-700" />
+                Consent Templates
+              </h1>
+              <div className="text-muted text-[12px] mt-0.5">
+                Map each procedure to a BoldSign template. Supplemental forms (Medicaid sterilization, etc.)
+                attach in addition to the primary.
+              </div>
             </div>
           </div>
-        </div>
-        <button className="btn-primary text-sm flex items-center gap-1"
+        )}
+        <button className="btn-primary text-sm flex items-center gap-1 ml-auto"
                 onClick={() => setEditing('new')}>
           <Plus size={13} /> New template
         </button>
@@ -518,6 +536,7 @@ export default function AdminConsentTemplates() {
       {editing && (
         <TemplateForm
           initial={editing === 'new' ? null : editing}
+          lockedCategory={category}
           onClose={() => setEditing(null)}
           onSave={(body) => {
             if (editing === 'new') createMut.mutate(body)

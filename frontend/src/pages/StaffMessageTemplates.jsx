@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../utils/api'
 import LoadingState from '../components/LoadingState'
 
-export default function StaffMessageTemplates() {
+export default function StaffMessageTemplates({ embedded = false }) {
   const qc = useQueryClient()
   const [editing, setEditing] = useState(null)   // null | {id?, name, body}
 
@@ -36,11 +36,11 @@ export default function StaffMessageTemplates() {
   const rows = data?.templates || []
 
   return (
-    <div className="p-4 max-w-4xl">
+    <div className={embedded ? '' : 'p-4 max-w-4xl'}>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="page-title">Message Templates</h1>
+        {!embedded && <h1 className="page-title">Message Templates</h1>}
         <button onClick={() => setEditing({ name: '', body: '' })}
-                 className="btn-primary text-sm">+ New</button>
+                 className="btn-primary text-sm ml-auto">+ New</button>
       </div>
 
       {rows.length === 0 ? (

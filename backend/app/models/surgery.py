@@ -811,6 +811,9 @@ class ConsentTemplate(Base):
     min_days_before_surgery = Column(Integer, nullable=True)
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    # 'surgical' | 'larc' — splits consent templates between the Surgery
+    # Settings and LARC Settings module views.
+    category = Column(String(20), nullable=False, default="surgical")
 
     created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     updated_at = Column(DateTime, default=now_utc_naive,
