@@ -187,3 +187,16 @@ def test_activity_unread_only_filter(client, db):
     summaries = {it["summary"] for it in items}
     assert "unread" in summaries
     assert "read" not in summaries
+
+
+def test_todos_includes_incomplete_for_review(client, db):
+    inc = _surgery(db, chart_number="C-INC", status="incomplete")
+    body = client.get("/api/surgery/todos").json()
+    item = next((it for it in body["items"] if it["surgery_id"] == str(inc.id)), None)
+    assert item is not None
+    assert item["state"] == "incomplete"
+    assert item["step_title"] == "Review & complete intake"
+    assert body["incomplete_count"] >= 1
+    # behind_only hides intake-review items
+    bo = client.get("/api/surgery/todos?behind_only=true").json()
+    assert str(inc.id) not in {it["surgery_id"] for it in bo["items"]}

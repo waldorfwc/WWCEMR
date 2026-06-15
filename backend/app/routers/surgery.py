@@ -1629,10 +1629,32 @@ def surgery_todos(behind_only: bool = False, limit: int = 200,
     the global filter. No persistence — recomputed every call.
     """
     rows = (db.query(Surgery)
-              .filter(Surgery.status.in_(["new", "in_progress", "confirmed"]))
+              .filter(Surgery.status.in_(
+                  ["incomplete", "new", "in_progress", "confirmed"]))
               .all())
     items: list[dict] = []
     for s in rows:
+        # Incomplete surgeries aren't in the workflow yet — the scheduler's
+        # action is to review the intake and promote to New (auto on full
+        # fields + order, or via "Mark as New"). Surface that as the to-do.
+        if s.status == "incomplete":
+            if behind_only:
+                continue  # intake-review isn't an "overdue" item
+            items.append({
+                "surgery_id":     str(s.id),
+                "patient_name":   s.patient_name,
+                "chart_number":   s.chart_number,
+                "surgery_number": s.surgery_number,
+                "step_key":       "complete_intake",
+                "step_title":     "Review & complete intake",
+                "state":          "incomplete",
+                "expected_date":  None,
+                "days_behind":    0,
+                "scheduled_date": (s.scheduled_date.isoformat()
+                                   if s.scheduled_date else None),
+                "facility":       s.selected_facility,
+            })
+            continue
         cur = step_engine.current_step(s)
         if cur is None:
             continue  # all steps done / n/a — nothing to action
@@ -1668,16 +1690,17 @@ def surgery_todos(behind_only: bool = False, limit: int = 200,
         items.append(item)
 
     behind_count = sum(1 for it in items if it["state"] == "behind")
+    incomplete_count = sum(1 for it in items if it["state"] == "incomplete")
     open_count = sum(1 for it in items if it["state"] == "open")
 
-    # Sort: behind first (most days_behind first), then open by
-    # expected_date ascending (nulls last).
+    # Sort: behind first (most overdue first), then incomplete (intake review),
+    # then open by expected_date ascending (nulls last).
+    _RANK = {"behind": 0, "incomplete": 1, "open": 2}
+
     def _sort_key(it):
-        is_open = it["state"] != "behind"
-        # behind: sort by -days_behind so the most overdue is first.
-        # open: sort by expected_date asc, nulls last.
+        rank = _RANK.get(it["state"], 2)
         exp = it["expected_date"] or "9999-12-31"
-        return (is_open, -it["days_behind"] if not is_open else 0, exp)
+        return (rank, -it["days_behind"] if it["state"] == "behind" else 0, exp)
 
     items.sort(key=_sort_key)
     items = items[:max(0, int(limit))]
@@ -1685,6 +1708,7 @@ def surgery_todos(behind_only: bool = False, limit: int = 200,
     return {
         "items": items,
         "behind_count": behind_count,
+        "incomplete_count": incomplete_count,
         "open_count": open_count,
     }
 

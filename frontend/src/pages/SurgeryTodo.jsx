@@ -91,6 +91,9 @@ export default function SurgeryTodo() {
                   {todos.open_count} open · <span className={todos.behind_count ? 'text-red-600 font-medium' : ''}>
                     {todos.behind_count} behind
                   </span>
+                  {todos.incomplete_count > 0 && <>
+                    {' · '}<span className="text-amber-700 font-medium">{todos.incomplete_count} to review</span>
+                  </>}
                 </span>
               )}
             </div>
@@ -114,10 +117,12 @@ export default function SurgeryTodo() {
             <ul className="divide-y divide-border-subtle">
               {items.map(it => {
                 const behind = it.state === 'behind'
+                const incomplete = it.state === 'incomplete'
                 return (
                   <li
                     key={it.surgery_id}
-                    className={`px-4 py-3 ${behind ? 'border-l-2 border-l-red-500 bg-red-50/40' : ''}`}
+                    className={`px-4 py-3 ${behind ? 'border-l-2 border-l-red-500 bg-red-50/40'
+                      : incomplete ? 'border-l-2 border-l-amber-500 bg-amber-50/40' : ''}`}
                   >
                     <div className="flex items-baseline justify-between gap-2">
                       <Link
@@ -129,6 +134,11 @@ export default function SurgeryTodo() {
                       {behind && (
                         <span className="shrink-0 inline-flex items-center gap-1 text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded font-semibold">
                           <AlertTriangle size={10} /> {it.days_behind}d behind
+                        </span>
+                      )}
+                      {incomplete && (
+                        <span className="shrink-0 inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                          Needs review
                         </span>
                       )}
                     </div>
