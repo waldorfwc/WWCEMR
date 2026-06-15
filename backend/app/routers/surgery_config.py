@@ -123,6 +123,9 @@ class ConfigPayload(BaseModel):
     preop_valid_days:          Optional[int] = Field(default=None, ge=30, le=730)
     schedule_horizon_days:     Optional[int] = Field(default=None, ge=30, le=730)
     completed_window_days:     Optional[int] = Field(default=None, ge=1, le=365)
+    # cancellation fee (plain scalars, full-replace)
+    cancellation_fee_amount:      Optional[int] = Field(default=None, ge=0, le=100000)
+    cancellation_fee_days_before: Optional[int] = Field(default=None, ge=0, le=365)
     # steps engine
     step_expected_days_hospital: Optional[dict[str, int]] = None
     step_expected_days_office:   Optional[dict[str, int]] = None

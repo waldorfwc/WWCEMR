@@ -174,6 +174,9 @@ const ALERT_FIELDS = [
   { key: 'office_full_threshold',   label: 'Office Full Threshold (Cases)' },
   { key: 'office_lookahead_days',   label: 'Office Alert Lookahead (Days)' },
   { key: 'hospital_lookahead_days', label: 'Hospital Alert Lookahead (Days)' },
+  { key: 'cancellation_fee_amount', label: 'Cancellation Fee ($)' },
+  { key: 'cancellation_fee_days_before', label: 'Cancellation Fee Window (Days Before Surgery)',
+    hint: 'Patients who cancel within this many days of surgery are warned about the fee.' },
 ]
 
 function saveErrorMessage(error) {

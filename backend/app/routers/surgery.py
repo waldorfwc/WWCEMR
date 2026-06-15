@@ -2430,9 +2430,11 @@ class CancelPayload(BaseModel):
 def cancel_surgery(surgery_id: str, payload: CancelPayload,
                     db: Session = Depends(get_db),
                     current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
-    """Cancel / hold / mark unresponsive. Fee logic: $351 only when
-    reason=patient AND surgery is within 14 days of scheduled_date.
-    Anesthesia/hospital/medical cancellations never charge a fee."""
+    """Cancel / hold / mark unresponsive. Fee logic: the configured
+    cancellation fee applies only when reason=patient AND surgery is
+    within the configured cancellation_fee_days_before window of
+    scheduled_date. Anesthesia/hospital/medical cancellations never
+    charge a fee."""
     from app.models.surgery import SurgeryCancellation
 
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
@@ -2455,12 +2457,13 @@ def cancel_surgery(surgery_id: str, payload: CancelPayload,
     fee_required = False
     refund_required = False
     if payload.reason == "patient" and s.scheduled_date:
+        days_before = cfg(db, "cancellation_fee_days_before")
         days_to_surgery = (s.scheduled_date - _date.today()).days
-        if 0 <= days_to_surgery <= 14:
+        if 0 <= days_to_surgery <= days_before:
             fee_required = True
     # If the caller overrides the system-determined fee (waive or impose),
     # require an explicit reason AND MANAGE tier so a WORK-tier user
-    # can't silently waive the $351. (Fable surgery audit M4.)
+    # can't silently waive the cancellation fee. (Fable surgery audit M4.)
     if payload.fee_required is not None and payload.fee_required != fee_required:
         if not (payload.fee_override_reason or "").strip():
             raise HTTPException(

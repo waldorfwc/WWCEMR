@@ -29,6 +29,31 @@ def test_put_config_rejects_unknown_key(client):
     assert "bogus_key" not in body
 
 
+# ─── Cancellation fee config (B1) ───────────────────────────────────
+
+def test_get_config_includes_cancellation_fee_defaults(client):
+    body = client.get("/api/surgery/config").json()
+    assert body["cancellation_fee_amount"] == 351
+    assert body["cancellation_fee_days_before"] == 14
+
+
+def test_put_config_cancellation_fee_round_trip(client):
+    resp = client.put("/api/surgery/config", json={
+        "cancellation_fee_amount": 500,
+        "cancellation_fee_days_before": 21,
+    })
+    assert resp.status_code == 200
+    body = client.get("/api/surgery/config").json()
+    assert body["cancellation_fee_amount"] == 500
+    assert body["cancellation_fee_days_before"] == 21
+
+
+def test_put_config_cancellation_days_out_of_range_returns_422(client):
+    resp = client.put("/api/surgery/config",
+                      json={"cancellation_fee_days_before": 400})
+    assert resp.status_code == 422
+
+
 def test_recipients_empty_by_default(client):
     resp = client.get("/api/surgery/admin/alert-recipients")
     assert resp.status_code == 200

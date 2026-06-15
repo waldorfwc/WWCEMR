@@ -38,6 +38,7 @@ from app.services.surgery.block_schedule import (
 )
 from app.services.surgery.slot_conflict import overlapping_slot
 from app.services.surgery.blackout_conflict import is_date_blacked_out
+from app.services.surgery.settings import cfg
 
 log = logging.getLogger(__name__)
 
@@ -261,6 +262,11 @@ def patient_status(surgery_id: str, db: Session = Depends(get_db),
     procs = s.procedures or []
     proc_names = [p.get("description", "") for p in procs if p.get("description")]
 
+    fee_days_before = cfg(db, "cancellation_fee_days_before")
+    fee_amount = cfg(db, "cancellation_fee_amount")
+    fee_applies = bool(s.scheduled_date) and 0 <= (s.scheduled_date - date.today()).days <= fee_days_before
+    can_cancel = s.status not in ("cancelled", "completed", "unresponsive")
+
     return {
         "patient_first_name": s.first_name or (s.patient_name or "").split(",")[-1].strip().split(" ")[0],
         "procedure_descriptions": proc_names,
@@ -280,6 +286,10 @@ def patient_status(surgery_id: str, db: Session = Depends(get_db),
         "clearance_required": bool(s.clearance_required),
         "sms_consent":   bool(s.sms_consent),
         "cell_phone":    s.cell_phone,
+        "cancellation_fee_amount":      fee_amount,
+        "cancellation_fee_days_before": fee_days_before,
+        "cancellation_fee_applies":     fee_applies,
+        "can_cancel":                   can_cancel,
     }
 
 
@@ -652,7 +662,8 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
                     db: Session = Depends(get_db),
                     _token: str = Depends(require_patient_token)):
     """Patient self-cancels their surgery. Reason is always 'patient'.
-    Within-14-day rule applies the $351 fee per practice policy."""
+    The configured within-N-days window applies the configured fee
+    (cancellation_fee_days_before / cancellation_fee_amount)."""
     from app.models.surgery import SurgeryCancellation, SurgerySlot
 
     s = (db.query(Surgery)
@@ -667,11 +678,9 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
     if s.status in ("cancelled", "completed", "unresponsive"):
         raise HTTPException(status_code=409, detail="This surgery is no longer active.")
 
-    fee_required = False
-    if s.scheduled_date:
-        days_to_surgery = (s.scheduled_date - date.today()).days
-        if 0 <= days_to_surgery <= 14:
-            fee_required = True
+    days_before = cfg(db, "cancellation_fee_days_before")
+    amount = cfg(db, "cancellation_fee_amount")
+    fee_required = bool(s.scheduled_date) and 0 <= (s.scheduled_date - date.today()).days <= days_before
     refund_required = bool(s.amount_paid and float(s.amount_paid) > 0)
 
     # Free the booked slot
@@ -720,6 +729,7 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
         notify_scheduler(db, event_kind="cancelled", surgery=s,
                           event_id=f"{s.id}:{now_utc_naive().isoformat()}",
                           extra={"fee_required": fee_required,
+                                 "fee_amount": amount,
                                  "refund_required": refund_required,
                                  "reason": (payload.reason_text or "").strip() or None})
     except Exception as e:
@@ -768,8 +778,8 @@ def patient_cancel(surgery_id: str, payload: CancelPayload,
 
     msg = "Your surgery has been cancelled."
     if fee_required:
-        msg += (" Per practice policy, cancellations within 14 days of surgery "
-                "incur a $351 fee. Our office will contact you with details.")
+        msg += (f" Per practice policy, cancellations within {days_before} days of surgery "
+                f"incur a ${amount} fee. Our office will contact you with details.")
     if refund_required:
         msg += " Any amount you've already paid will be refunded."
 
