@@ -1011,6 +1011,8 @@ def portal_self_report_labs(surgery_id: str,
     if s is None:
         raise HTTPException(status_code=404, detail="surgery not found")
     _flip_if_unset(s, "labs_self_reported", "labs_self_reported_at")
+    from app.services.surgery.activity import record_activity
+    record_activity(db, s, "labs_reported", "Self-reported labs complete")
     db.commit()
     return {
         "labs_self_reported": s.labs_self_reported,
@@ -1201,7 +1203,9 @@ async def portal_clearance_upload(
     # "approved" rows.
     if (s.clearance_status or "") in ("required", "not_required", ""):
         s.clearance_status = "uploaded"
-        db.commit()
+    from app.services.surgery.activity import record_activity
+    record_activity(db, s, "document_uploaded", f"Uploaded {kind} document")
+    db.commit()
     return {
         "id":               str(doc.id),
         "kind":             doc.kind,
@@ -1239,7 +1243,9 @@ async def portal_fmla_upload(
     # Both payment and upload are required; paid-first path completes here.
     if s.fmla_fee_paid and not s.fmla_status:
         s.fmla_status = "submitted"
-        db.commit()
+    from app.services.surgery.activity import record_activity
+    record_activity(db, s, "document_uploaded", "Uploaded FMLA document")
+    db.commit()
     return {
         "id":          str(doc.id),
         "kind":        doc.kind,

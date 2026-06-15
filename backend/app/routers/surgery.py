@@ -1610,6 +1610,174 @@ def list_deleted_surgeries(search: str = "", db: Session = Depends(get_db),
     } for s in rows]}
 
 
+# ─── To-Do (live, step-derived) ─────────────────────────────────────
+# NB: declared BEFORE GET /{surgery_id} so "todos" isn't captured as a
+# surgery_id by the dynamic route.
+
+@router.get("/todos")
+def surgery_todos(behind_only: bool = False, limit: int = 200,
+                  db: Session = Depends(get_db),
+                  current_user: dict = Depends(
+                      requires_tier(Module.SURGERY, Tier.WORK))):
+    """Live, cross-surgery list of the CURRENT open step per active
+    surgery, derived from the steps engine (so it auto-resolves the moment
+    a step completes). Behind/overdue items float to the top — these are
+    the missed-action alerts.
+
+    Active = status in (new, in_progress, confirmed). Incomplete surgeries
+    have no steps and are excluded. Soft-deleted surgeries are excluded by
+    the global filter. No persistence — recomputed every call.
+    """
+    rows = (db.query(Surgery)
+              .filter(Surgery.status.in_(["new", "in_progress", "confirmed"]))
+              .all())
+    items: list[dict] = []
+    for s in rows:
+        cur = step_engine.current_step(s)
+        if cur is None:
+            continue  # all steps done / n/a — nothing to action
+        behind, hours_overdue = _is_behind_steps(db, s)
+        days_behind = (hours_overdue // 24) if behind else 0
+
+        # Expected completion date for the current step: the step-entry
+        # anchor + the configured expected-days for the step.
+        expected_date = None
+        base = step_engine._entered_at(s)
+        if base is not None:
+            exp_days = step_engine.expected_days_map(db, s).get(cur["key"])
+            if exp_days is not None:
+                base_d = base.date() if hasattr(base, "date") else base
+                expected_date = (base_d + timedelta(days=int(exp_days)))
+
+        item = {
+            "surgery_id":     str(s.id),
+            "patient_name":   s.patient_name,
+            "chart_number":   s.chart_number,
+            "surgery_number": s.surgery_number,
+            "step_key":       cur["key"],
+            "step_title":     cur["title"],
+            "state":          "behind" if behind else "open",
+            "expected_date":  expected_date.isoformat() if expected_date else None,
+            "days_behind":    int(days_behind),
+            "scheduled_date": (s.scheduled_date.isoformat()
+                               if s.scheduled_date else None),
+            "facility":       s.selected_facility,
+        }
+        if behind_only and not behind:
+            continue
+        items.append(item)
+
+    behind_count = sum(1 for it in items if it["state"] == "behind")
+    open_count = sum(1 for it in items if it["state"] == "open")
+
+    # Sort: behind first (most days_behind first), then open by
+    # expected_date ascending (nulls last).
+    def _sort_key(it):
+        is_open = it["state"] != "behind"
+        # behind: sort by -days_behind so the most overdue is first.
+        # open: sort by expected_date asc, nulls last.
+        exp = it["expected_date"] or "9999-12-31"
+        return (is_open, -it["days_behind"] if not is_open else 0, exp)
+
+    items.sort(key=_sort_key)
+    items = items[:max(0, int(limit))]
+
+    return {
+        "items": items,
+        "behind_count": behind_count,
+        "open_count": open_count,
+    }
+
+
+# ─── Activity feed (persisted patient + system events) ──────────────
+# NB: the static /activity/unread-count and /activity/read-all routes are
+# declared BEFORE the dynamic /activity/{activity_id}/read route, and the
+# whole group is BEFORE GET /{surgery_id}, so nothing is shadowed.
+
+@router.get("/activity")
+def list_surgery_activity(unread_only: bool = False, limit: int = 100,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(
+                              requires_tier(Module.SURGERY, Tier.WORK))):
+    """Newest-first activity feed joined to the surgery for patient_name /
+    chart_number. Excludes activity whose surgery is soft-deleted (the
+    join to Surgery picks up the global soft-delete loader criteria)."""
+    from app.models.surgery_activity import SurgeryActivity
+    q = (db.query(SurgeryActivity, Surgery)
+           .join(Surgery, Surgery.id == SurgeryActivity.surgery_id))
+    if unread_only:
+        q = q.filter(SurgeryActivity.read_at.is_(None))
+    q = q.order_by(SurgeryActivity.created_at.desc())
+    pairs = q.limit(max(0, int(limit))).all()
+    items = [{
+        "id":           str(a.id),
+        "surgery_id":   str(a.surgery_id),
+        "patient_name": s.patient_name,
+        "chart_number": s.chart_number,
+        "kind":         a.kind,
+        "summary":      a.summary,
+        "actor":        a.actor,
+        "created_at":   a.created_at.isoformat() if a.created_at else None,
+        "read_at":      a.read_at.isoformat() if a.read_at else None,
+    } for a, s in pairs]
+    return {"items": items}
+
+
+@router.get("/activity/unread-count")
+def surgery_activity_unread_count(db: Session = Depends(get_db),
+                                  current_user: dict = Depends(
+                                      requires_tier(Module.SURGERY, Tier.WORK))):
+    """Unread count for the nav badge. Excludes soft-deleted surgeries via
+    the join to Surgery."""
+    from app.models.surgery_activity import SurgeryActivity
+    count = (db.query(SurgeryActivity)
+               .join(Surgery, Surgery.id == SurgeryActivity.surgery_id)
+               .filter(SurgeryActivity.read_at.is_(None))
+               .count())
+    return {"count": count}
+
+
+@router.post("/activity/read-all")
+def surgery_activity_read_all(db: Session = Depends(get_db),
+                              current_user: dict = Depends(
+                                  requires_tier(Module.SURGERY, Tier.WORK))):
+    """Mark every unread activity row read."""
+    from app.models.surgery_activity import SurgeryActivity
+    who = (current_user.get("email") or "").lower() or None
+    rows = (db.query(SurgeryActivity)
+              .join(Surgery, Surgery.id == SurgeryActivity.surgery_id)
+              .filter(SurgeryActivity.read_at.is_(None))
+              .all())
+    now = now_utc_naive()
+    for a in rows:
+        a.read_at = now
+        a.read_by = who
+    db.commit()
+    return {"ok": True, "marked": len(rows)}
+
+
+@router.post("/activity/{activity_id}/read")
+def surgery_activity_mark_read(activity_id: str, db: Session = Depends(get_db),
+                              current_user: dict = Depends(
+                                  requires_tier(Module.SURGERY, Tier.WORK))):
+    """Stamp read_at / read_by on one activity row."""
+    from app.models.surgery_activity import SurgeryActivity
+    a = (db.query(SurgeryActivity)
+           .filter(SurgeryActivity.id == activity_id)
+           .first())
+    if a is None:
+        raise HTTPException(status_code=404, detail="activity not found")
+    if a.read_at is None:
+        a.read_at = now_utc_naive()
+        a.read_by = (current_user.get("email") or "").lower() or None
+        db.commit()
+    return {
+        "id":      str(a.id),
+        "read_at": a.read_at.isoformat() if a.read_at else None,
+        "read_by": a.read_by,
+    }
+
+
 # ─── Detail + edit + milestone advance ──────────────────────────────
 
 @router.get("/{surgery_id}")

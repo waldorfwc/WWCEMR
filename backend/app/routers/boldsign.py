@@ -221,6 +221,13 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
                                   extra=extra)
             except Exception as e:
                 log.warning("scheduler notify after consent webhook failed: %s", e)
+            from app.services.surgery.activity import record_activity
+            _tmpl = (row.template.name if row.template else "consent")
+            record_activity(
+                db, surgery, event_kind,
+                f"Consent {'signed' if row.status == 'signed' else 'declined'} "
+                f"({_tmpl})")
+            db.commit()
 
     log.info("BoldSign webhook applied: documentId=%s status %s → %s",
               doc_id, before, row.status)

@@ -95,6 +95,7 @@ import SurgeryDetail from './pages/SurgeryDetail'
 import SurgeryDeleted from './pages/SurgeryDeleted'
 import SurgeryFeeSchedule from './pages/SurgeryFeeSchedule'
 import SurgerySettings from './pages/SurgerySettings'
+import SurgeryTodo from './pages/SurgeryTodo'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
 import SurgeryNav from './components/surgery/SurgeryNav'
 import MarketingNav from './components/marketing/MarketingNav'
@@ -196,6 +197,7 @@ export const ROUTES = [
       nav: { label: 'Surgery', order: 60 },
       children: [
     { index: true,            element: <Surgery />,             module: M.SURGERY, tier: TIER.VIEW },
+    { path: 'todo',           element: <SurgeryTodo />,         module: M.SURGERY, tier: TIER.WORK },
     { path: 'settings',       element: <SurgerySettings />,     module: M.SURGERY, tier: TIER.MANAGE },
     { path: 'rules',          element: <Navigate to="/surgery/settings" replace />, module: M.SURGERY, tier: TIER.MANAGE },
     { path: 'block-schedule', element: <SurgeryBlockSchedule />, module: M.SURGERY, tier: TIER.MANAGE },

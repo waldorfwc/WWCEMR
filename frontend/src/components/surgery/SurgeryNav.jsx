@@ -18,11 +18,12 @@ import SurgeryAddMenu from './SurgeryAddMenu'
 function navItems() {
   return [
     { to: '/surgery',                label: 'Overview',       tier: TIER.VIEW,   end: true },
+    { to: '/surgery/todo',           label: 'To-Do',          tier: TIER.WORK, badge: 'activity' },
     { to: '/surgery/calendar',       label: 'Calendar',       tier: TIER.VIEW },
     { to: '/surgery/block-schedule', label: 'Block Schedule', tier: TIER.MANAGE },
     { to: '/surgery/waitlist',       label: 'Waitlist',       tier: TIER.WORK },
     { to: '/surgery/fee-schedule',   label: 'Fee Schedule',   tier: TIER.MANAGE },
-    { to: '/surgery/messages',       label: 'Messages',       tier: TIER.WORK, badge: true },
+    { to: '/surgery/messages',       label: 'Messages',       tier: TIER.WORK, badge: 'messages' },
     { to: '/surgery/settings',       label: 'Settings',       tier: TIER.MANAGE },
   ]
 }
@@ -54,6 +55,23 @@ function MessagesBadge() {
 }
 
 
+function ActivityBadge() {
+  const { data } = useQuery({
+    queryKey: ['surgery-activity-unread'],
+    queryFn: () => api.get('/surgery/activity/unread-count').then(r => r.data),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const count = data?.count || 0
+  if (!count) return null
+  return (
+    <span className="ml-1 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-semibold">
+      {count}
+    </span>
+  )
+}
+
+
 export default function SurgeryNav() {
   const { tier } = useCurrentUser()
   const items = navItems().filter(it => tier(MODULE.SURGERY, it.tier))
@@ -65,7 +83,8 @@ export default function SurgeryNav() {
           {items.map(it => (
             <NavLink key={it.to} to={it.to} end={it.end} className={navClass}>
               {it.label}
-              {it.badge && <MessagesBadge />}
+              {it.badge === 'messages' && <MessagesBadge />}
+              {it.badge === 'activity' && <ActivityBadge />}
             </NavLink>
           ))}
         </nav>
