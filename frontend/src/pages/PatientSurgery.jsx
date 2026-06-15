@@ -211,8 +211,8 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
     return <CancelledScreen status={status} result={cancelResult} />
   }
 
-  // Patient just clicked Cancel — confirm screen
-  if (mode === 'cancel' && status.scheduled_date) {
+  // Patient just clicked Cancel — confirm screen (works with or without a scheduled date)
+  if (mode === 'cancel') {
     return (
       <CancelConfirmScreen
         surgeryId={surgeryId}
@@ -253,32 +253,48 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
     )
   }
 
+  // Subtle "Cancel my surgery" affordance shared across the pre-scheduling
+  // screens. Only offered when the surgery can still be cancelled, and only on
+  // the pre-scheduling branches (the scheduled screen has its own red button).
+  const cancelFooter = status.can_cancel && !status.scheduled_date
+    ? <CancelFooter onCancel={() => setMode('cancel')} />
+    : null
+
   // Has balance due → show payment screen
   if (!status.balance_clear) {
-    return <BalanceDueScreen status={status} token={token} id={surgeryId} />
+    return <>
+      <BalanceDueScreen status={status} token={token} id={surgeryId} />
+      {cancelFooter}
+    </>
   }
 
   // Clearance is required and we don't yet have cardiologist info — collect it.
   // Only ask once: clearance_status starts at 'required' for clearance-needed
   // surgeries; once they've replied we move to 'request_sent'.
   if (status.clearance_required && status.clearance_status === 'required') {
-    return <CardiologistAskScreen
-      surgeryId={surgeryId}
-      headers={headers}
-      status={status}
-      onUpdated={() => loadStatus()}
-    />
+    return <>
+      <CardiologistAskScreen
+        surgeryId={surgeryId}
+        headers={headers}
+        status={status}
+        onUpdated={() => loadStatus()}
+      />
+      {cancelFooter}
+    </>
   }
 
   // Locked out by other status
   if (!status.can_pick_date) {
     return (
-      <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded">
-        <div className="font-semibold mb-1">We can't take a date pick right now.</div>
-        <p className="text-sm">
-          Please call our office at 240-252-2140 — we'll get this sorted with you.
-        </p>
-      </div>
+      <>
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded">
+          <div className="font-semibold mb-1">We can't take a date pick right now.</div>
+          <p className="text-sm">
+            Please call our office at 240-252-2140 — we'll get this sorted with you.
+          </p>
+        </div>
+        {cancelFooter}
+      </>
     )
   }
 
@@ -297,13 +313,27 @@ function ScheduleFlow({ surgeryId, token, onLogout }) {
         endpoint="pick"
         onPicked={(c) => setConfirmation(c)}
       />
+      {cancelFooter}
     </>
   )
 }
 
 
+function CancelFooter({ onCancel }) {
+  return (
+    <div className="mt-4 text-center">
+      <button type="button"
+              onClick={onCancel}
+              className="text-[12px] text-gray-500 hover:text-red-700 hover:underline">
+        Cancel my surgery
+      </button>
+    </div>
+  )
+}
+
+
 function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedule, onCancel, onSmsUpdate }) {
-  // Compute days until surgery to disable patient-facing reschedule within 14 days
+  // Compute days until surgery to disable patient-facing reschedule within the configured fee window
   const daysUntil = (() => {
     if (!status.scheduled_date) return null
     const d = new Date(status.scheduled_date + 'T00:00:00')
@@ -311,7 +341,8 @@ function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedul
     now.setHours(0, 0, 0, 0)
     return Math.round((d - now) / 86_400_000)
   })()
-  const within14Days = daysUntil !== null && daysUntil >= 0 && daysUntil <= 14
+  const feeWindowDays = status.cancellation_fee_days_before
+  const withinFeeWindow = daysUntil !== null && daysUntil >= 0 && daysUntil <= feeWindowDays
 
   return (
     <div className="bg-white rounded-lg border border-border-subtle shadow-sm p-6">
@@ -334,9 +365,9 @@ function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedul
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button type="button"
                 onClick={onReschedule}
-                disabled={within14Days}
+                disabled={withinFeeWindow}
                 className="btn-secondary text-sm py-2 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={within14Days ? 'Within 14 days of surgery — please call us to reschedule' : ''}>
+                title={withinFeeWindow ? `Within ${feeWindowDays} days of surgery — please call us to reschedule` : ''}>
           <RotateCcw size={14} /> Reschedule
         </button>
         <button type="button"
@@ -346,10 +377,10 @@ function AlreadyScheduledScreen({ surgeryId, token, headers, status, onReschedul
         </button>
       </div>
 
-      {within14Days && (
+      {withinFeeWindow && (
         <p className="text-[11px] text-amber-700 mt-2 text-center">
-          Reschedules within 14 days require a call to the office. Cancellations within
-          14 days may incur a $351 fee.
+          Reschedules within {feeWindowDays} days require a call to the office. Cancellations within
+          {' '}{feeWindowDays} days may incur a ${status.cancellation_fee_amount} fee.
         </p>
       )}
 
@@ -433,14 +464,8 @@ function CancelConfirmScreen({ surgeryId, headers, status, onBack, onCancelled }
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState(null)
 
-  const daysUntil = (() => {
-    if (!status.scheduled_date) return null
-    const d = new Date(status.scheduled_date + 'T00:00:00')
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    return Math.round((d - now) / 86_400_000)
-  })()
-  const feeLikely = daysUntil !== null && daysUntil >= 0 && daysUntil <= 14
+  const isScheduled = !!status.scheduled_date
+  const feeApplies = !!status.cancellation_fee_applies
 
   async function submit() {
     setSubmitting(true); setError(null)
@@ -460,18 +485,27 @@ function CancelConfirmScreen({ surgeryId, headers, status, onBack, onCancelled }
         <XCircle size={20} />
         <h1 className="text-lg font-serif font-semibold">Cancel Your Surgery?</h1>
       </div>
-      <p className="text-sm text-gray-700 mb-3">
-        Hi {status.patient_first_name}, you're about to cancel your surgery scheduled
-        for <strong>{fmt(status.scheduled_date)}</strong>. This cannot be undone from
-        this page.
-      </p>
+      {isScheduled ? (
+        <p className="text-sm text-gray-700 mb-3">
+          Hi {status.patient_first_name}, you're about to cancel your surgery scheduled
+          for <strong>{fmt(status.scheduled_date)}</strong>. This cannot be undone from
+          this page.
+        </p>
+      ) : (
+        <p className="text-sm text-gray-700 mb-3">
+          Hi {status.patient_first_name}, you're cancelling your surgery request before
+          it's been scheduled — no cancellation fee applies. This cannot be undone from
+          this page.
+        </p>
+      )}
 
-      {feeLikely && (
+      {feeApplies && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 text-sm p-3 rounded mb-3">
           <div className="font-semibold mb-1">Important — possible cancellation fee</div>
           <p className="text-xs">
-            Cancellations within 14 days of surgery are subject to a <strong>$351 fee</strong>
-            {' '}per practice policy. Our office will be in touch with you about the fee.
+            Cancellations within {status.cancellation_fee_days_before} days of surgery are
+            subject to a <strong>${status.cancellation_fee_amount} fee</strong> per practice
+            policy. Our office will be in touch with you about the fee.
           </p>
         </div>
       )}
@@ -522,7 +556,7 @@ function CancelledScreen({ status, result }) {
       </p>
       {result.fee_required && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 text-sm p-3 rounded mb-3">
-          A <strong>$351 cancellation fee</strong> applies per practice policy.
+          A <strong>${status.cancellation_fee_amount} cancellation fee</strong> applies per practice policy.
           Our office will contact you about the fee.
         </div>
       )}
