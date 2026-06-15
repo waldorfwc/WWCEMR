@@ -45,7 +45,7 @@ def test_day_types_designations(client, db):
 
     # Office block day.
     assert body["2026-06-16"]["type"] == "office_procedures"
-    assert body["2026-06-16"]["label"] == "Office Procedures"
+    assert body["2026-06-16"]["label"] == "Procedures"
     assert body["2026-06-16"]["facilities"] == ["office"]
 
     # Whole-day PTO blackout.
@@ -55,7 +55,7 @@ def test_day_types_designations(client, db):
 
     # Plain working weekday (Thu) — no block, no blackout.
     assert body["2026-06-18"]["type"] == "office_patients"
-    assert body["2026-06-18"]["label"] == "Office Patients"
+    assert body["2026-06-18"]["label"] == "Office"
 
     # Weekend.
     assert body["2026-06-20"]["type"] == "none"
@@ -97,7 +97,7 @@ def test_day_types_mixed_facilities(client, db):
     db.commit()
     body = _types(client)
     assert body["2026-06-19"]["type"] == "mixed"
-    assert body["2026-06-19"]["label"] == "MedStar + Office Procedures"
+    assert body["2026-06-19"]["label"] == "MedStar + Procedures"
     assert body["2026-06-19"]["facilities"] == ["medstar", "office"]
 
 

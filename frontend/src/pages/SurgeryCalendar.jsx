@@ -353,9 +353,9 @@ export function MonthlyCalendar() {
 function DesignationLegend() {
   const items = [
     { type: 'medstar',           label: 'MedStar' },
-    { type: 'crmc',              label: 'Charles Regional' },
-    { type: 'office_procedures', label: 'Office Procedures' },
-    { type: 'office_patients',   label: 'Office Patients' },
+    { type: 'crmc',              label: 'CRMC' },
+    { type: 'office_procedures', label: 'Procedures' },
+    { type: 'office_patients',   label: 'Office' },
     { type: 'blocked',           label: 'Blocked (PTO / Holiday)' },
   ]
   return (

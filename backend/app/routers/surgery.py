@@ -706,8 +706,8 @@ _BLACKOUT_REASON_LABELS = {
 }
 _FACILITY_DESIGNATION = {
     "medstar": ("medstar", "MedStar"),
-    "crmc": ("crmc", "Charles Regional"),
-    "office": ("office_procedures", "Office Procedures"),
+    "crmc": ("crmc", "CRMC"),
+    "office": ("office_procedures", "Procedures"),
 }
 
 
@@ -786,7 +786,7 @@ def calendar_day_types(
                 entry = {"type": dtype, "label": label,
                          "facilities": sorted(facilities), "reason": None}
             elif cur.weekday() <= 4:   # Mon–Fri
-                entry = {"type": "office_patients", "label": "Office Patients",
+                entry = {"type": "office_patients", "label": "Office",
                          "facilities": [], "reason": None}
             else:
                 entry = {"type": "none", "label": None,
