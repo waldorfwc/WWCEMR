@@ -377,6 +377,9 @@ def _handle_session_completed(db, event_type, obj):
         event_type=event_type, before_status=before, after_status="paid",
         detail={"amount_paid": str(amount_paid), "kind": pay.kind},
     ))
+    if s is not None:
+        from app.services.surgery.activity import record_activity
+        record_activity(db, s, "payment_made", f"Paid ${amount_paid:.2f}")
     db.commit()
 
     # Receipt template is balance-specific; FMLA fees get no email here.

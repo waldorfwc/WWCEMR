@@ -103,12 +103,25 @@ def run_escalation_sweep(db: Session) -> dict:
         if (s.escalation_state or {}).get(step_key):
             continue
 
+        days_overdue = hours_overdue // 24
+
+        # Log the overdue step to the in-app activity feed once per overdue
+        # step. Deduped by escalation_state: we mark the step below (via
+        # surgeries_to_mark) on every sweep where we take action, so the
+        # gate above stops a re-log on the next sweep — even when no manager
+        # recipient is available for the email digest.
+        from app.services.surgery.activity import record_activity
+        record_activity(
+            db, s, "step_overdue",
+            f"Overdue: {cur['title']} ({days_overdue}d behind)",
+            actor="system")
+        surgeries_to_mark.append((s, step_key, now_iso))
+
         manager = _resolve_recipient(db, s)
         if not manager:
             log.info("Surgery %s: no escalation recipient available", s.id)
             continue
 
-        days_overdue = hours_overdue // 24
         item = {
             "surgery_id": str(s.id),
             "patient_name": s.patient_name,
@@ -118,7 +131,6 @@ def run_escalation_sweep(db: Session) -> dict:
             "days_overdue": days_overdue,
         }
         grouped.setdefault(manager.email, []).append(item)
-        surgeries_to_mark.append((s, step_key, now_iso))
 
     sent = 0
     for email, items in grouped.items():

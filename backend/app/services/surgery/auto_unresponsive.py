@@ -112,6 +112,12 @@ def mark_unresponsive(db: Session, s: Surgery, *, by: str) -> bool:
     # (audit #26)
     from app.services.patient_portal_auth import bump_portal_token_version
     bump_portal_token_version(db, s)
+    from app.services.surgery.settings import cfg
+    from app.services.surgery.activity import record_activity
+    record_activity(
+        db, s, "auto_unresponsive",
+        f"Auto-marked unresponsive (no activity {cfg(db, 'unresponsive_after_days')}d)",
+        actor="system")
     try:
         db.commit()
     except StaleDataError:

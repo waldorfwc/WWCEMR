@@ -1,5 +1,5 @@
-"""SurgeryActivity model + record_activity helper (B1)."""
-from datetime import date
+"""SurgeryActivity model + helper (B1) + patient-action parity (B2)."""
+from datetime import date, datetime, timedelta
 
 from app.models.surgery import Surgery
 from app.models.surgery_activity import SurgeryActivity
@@ -51,3 +51,22 @@ def test_record_activity_soft_fails(db):
         id = "nope"
 
     record_activity(db, Boom(), "date_picked", "x")
+
+
+# ─── B2 parity ──────────────────────────────────────────────────────
+
+def test_labs_self_report_logs_activity(client, db):
+    """Hitting the patient labs self-report endpoint creates a
+    labs_reported activity row (alongside the existing flag flip)."""
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _surgery(db)
+    token = issue_portal_token(s)
+    r = client.post(f"/api/patient/portal/{s.id}/self-report/labs",
+                    headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    rows = db.query(SurgeryActivity).filter(
+        SurgeryActivity.surgery_id == s.id,
+        SurgeryActivity.kind == "labs_reported").all()
+    assert len(rows) == 1
+    assert rows[0].actor == "patient"
+
