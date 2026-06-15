@@ -1,4 +1,5 @@
-"""SurgeryActivity model + helper (B1) + patient-action parity (B2)."""
+"""SurgeryActivity model + helper (B1), patient-action parity (B2),
+and /surgery/todos (B3)."""
 from datetime import date, datetime, timedelta
 
 from app.models.surgery import Surgery
@@ -69,4 +70,48 @@ def test_labs_self_report_logs_activity(client, db):
         SurgeryActivity.kind == "labs_reported").all()
     assert len(rows) == 1
     assert rows[0].actor == "patient"
+
+
+# ─── B3 /surgery/todos ──────────────────────────────────────────────
+
+def test_todos_behind_and_open(client, db):
+    # Behind: benefits step entered weeks ago.
+    behind = _surgery(
+        db, chart_number="C-BEHIND",
+        updated_at=datetime.utcnow() - timedelta(days=30),
+        created_at=datetime.utcnow() - timedelta(days=40))
+    # On-track: same shape but freshly updated.
+    ontrack = _surgery(
+        db, chart_number="C-OPEN",
+        updated_at=datetime.utcnow(), created_at=datetime.utcnow())
+
+    r = client.get("/api/surgery/todos")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    by_id = {it["surgery_id"]: it for it in body["items"]}
+
+    assert by_id[str(behind.id)]["state"] == "behind"
+    assert by_id[str(behind.id)]["days_behind"] > 0
+    assert by_id[str(ontrack.id)]["state"] == "open"
+    assert by_id[str(ontrack.id)]["days_behind"] == 0
+    assert body["behind_count"] >= 1
+    assert body["open_count"] >= 1
+    # Behind items float to the top.
+    assert body["items"][0]["state"] == "behind"
+
+
+def test_todos_behind_only_filter(client, db):
+    behind = _surgery(
+        db, chart_number="C-B2",
+        updated_at=datetime.utcnow() - timedelta(days=30),
+        created_at=datetime.utcnow() - timedelta(days=40))
+    _surgery(db, chart_number="C-O2", updated_at=datetime.utcnow(),
+             created_at=datetime.utcnow())
+
+    r = client.get("/api/surgery/todos?behind_only=true")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items                                    # not empty
+    assert all(it["state"] == "behind" for it in items)
+    assert str(behind.id) in {it["surgery_id"] for it in items}
 
