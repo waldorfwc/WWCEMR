@@ -18,6 +18,7 @@ import SurgeryAddMenu from './SurgeryAddMenu'
 function navItems() {
   return [
     { to: '/surgery',                label: 'Overview',       tier: TIER.VIEW,   end: true },
+    { to: '/surgery/todo',           label: 'To-Do',          tier: TIER.WORK },
     { to: '/surgery/calendar',       label: 'Calendar',       tier: TIER.VIEW },
     { to: '/surgery/block-schedule', label: 'Block Schedule', tier: TIER.MANAGE },
     { to: '/surgery/waitlist',       label: 'Waitlist',       tier: TIER.WORK },
