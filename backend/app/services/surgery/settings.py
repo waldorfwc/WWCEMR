@@ -33,6 +33,10 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "schedule_horizon_days":   180,    # block_schedule materialization window
     "completed_window_days":    30,    # dashboard "completed last N days"
 
+    # ── cancellation fee (previously hardcoded $351 / 14 days) ──
+    "cancellation_fee_amount":      351,   # dollars charged on a late cancel
+    "cancellation_fee_days_before":  14,   # cancel within N days of surgery → fee
+
     # ── steps engine (consumed by step_engine.py in a later task) ──
     "step_expected_days_hospital": None,   # None → use catalog defaults
     "step_expected_days_office":   None,
