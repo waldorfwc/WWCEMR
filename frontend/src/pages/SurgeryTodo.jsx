@@ -66,7 +66,7 @@ export default function SurgeryTodo() {
   }
 
   const items = todos?.items || []
-  const feed = activity || []
+  const feed = activity?.items || []
 
   return (
     <div>
