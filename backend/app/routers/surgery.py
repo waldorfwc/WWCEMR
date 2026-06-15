@@ -1823,6 +1823,61 @@ def patch_slot(
             "duration_minutes": slot.duration_minutes}
 
 
+def _surgery_intake_complete(db, s) -> bool:
+    """True when an incomplete surgery has every required intake field AND an
+    uploaded order document — the bar for auto-promoting it to 'new'."""
+    def has(v):
+        return bool(v.strip()) if isinstance(v, str) else (v is not None)
+
+    if not all([
+        has(s.chart_number), has(s.patient_name), s.dob is not None,
+        has(s.phone), has(s.email),
+        has(s.address_street), has(s.address_city),
+        has(s.address_state), has(s.address_zip),
+        has(s.primary_insurance), has(s.primary_member_id),
+        has(s.surgeon_primary),
+        s.preop_date is not None,
+        (s.estimated_minutes or 0) > 0,
+    ]):
+        return False
+    procs = s.procedures or []
+    if not any(isinstance(p, dict) and (p.get("cpt") or p.get("description"))
+               for p in procs):
+        return False
+    dxs = s.diagnoses or []
+    if not any(isinstance(d, dict) and (d.get("icd") or d.get("description"))
+               for d in dxs):
+        return False
+    if not (s.eligible_facilities or []):
+        return False
+    # The uploaded surgery order is required for AUTO promotion.
+    return (db.query(SurgeryFile)
+              .filter(SurgeryFile.surgery_id == s.id,
+                      SurgeryFile.kind == "order")
+              .first() is not None)
+
+
+def _maybe_auto_activate(db, s, actor_email=None) -> bool:
+    """Promote an 'incomplete' surgery to 'new' once it's fully complete
+    (all required fields + uploaded order). Returns True if it flipped.
+    The scheduler can still promote manually via PATCH status='new' (which
+    bypasses the order requirement) — this only adds the automatic path."""
+    if s.status != "incomplete" or not _surgery_intake_complete(db, s):
+        return False
+    s.status = "new"
+    try:
+        log_action(
+            db, action="AUTO_ACTIVATE", resource_type="surgery",
+            resource_id=str(s.id), patient_id=s.chart_number or None,
+            user_id=actor_email, user_name=actor_email,
+            description=(f"Surgery {s.surgery_number or s.id} ({s.patient_name}) "
+                         "auto-promoted incomplete→new (all fields + order present)"),
+        )
+    except Exception:
+        pass
+    return True
+
+
 @router.patch("/{surgery_id}")
 def patch_surgery(surgery_id: str, payload: SurgeryPatch,
                    db: Session = Depends(get_db),
@@ -2121,6 +2176,12 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     # progress from those columns — milestones are retired).
     for k, v in data.items():
         setattr(s, k, v)
+
+    # Auto-promote incomplete→new once every required field + the uploaded
+    # order are present. Skipped if the caller already set a status this PATCH
+    # (e.g. the manual "Mark as New" button) — that path stands on its own.
+    if "status" not in data:
+        _maybe_auto_activate(db, s, actor_email=(current_user.get("email") or None))
 
     _commit_or_409(db, surgery_id=surgery_id); db.refresh(s)
 
@@ -3305,6 +3366,12 @@ async def upload_file(
     # explicit decision via PATCH auth_status. (Fable surgery audit H3.)
     if kind == "prior_auth" and s.auth_status in ("sent_request", "sent_records"):
         s.auth_status = "approved"
+
+    # Attaching the order may complete the intake → auto-promote to 'new'.
+    # Flush first so the just-added order row is visible to the completeness
+    # query (the session uses autoflush=False).
+    db.flush()
+    _maybe_auto_activate(db, s, actor_email=(current_user.get("email") or None))
 
     db.commit(); db.refresh(f_row)
     return {
