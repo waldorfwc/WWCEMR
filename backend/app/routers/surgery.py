@@ -693,6 +693,113 @@ def calendar(
     }
 
 
+# ─── Per-day work-assignment designation ────────────────────────────
+# NB: static path — declared near the other /calendar routes and ABOVE
+# the GET /{surgery_id} wildcard so it isn't eaten as a path param.
+
+_BLACKOUT_REASON_LABELS = {
+    "holiday": "Holiday",
+    "pto": "PTO",
+    "facility_closed": "Facility Closed",
+    "equipment_down": "Equipment Down",
+    "other": "Blocked",
+}
+_FACILITY_DESIGNATION = {
+    "medstar": ("medstar", "MedStar"),
+    "crmc": ("crmc", "Charles Regional"),
+    "office": ("office_procedures", "Office Procedures"),
+}
+
+
+@router.get("/calendar/day-types")
+def calendar_day_types(
+    start: str = Query(..., description="YYYY-MM-DD"),
+    end:   str = Query(..., description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
+):
+    """Per-date work-assignment designation across [start, end] (inclusive).
+
+    Precedence per date:
+      1. Whole-day blackout (start_time IS NULL) → type "blocked".
+      2. Else BlockDay(s) → facility tag(s); single → that facility key,
+         multiple → "mixed".
+      3. Else weekday (Mon–Fri) → "office_patients".
+      4. Else weekend → "none".
+    A partial-day blackout (start_time NOT NULL) does NOT override the
+    designation but surfaces a `partial_block_reason` on that date.
+    """
+    try:
+        s = datetime.strptime(start[:10], "%Y-%m-%d").date()
+        e = datetime.strptime(end[:10],   "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail="start/end must be YYYY-MM-DD")
+    if e < s:
+        raise HTTPException(status_code=422, detail="end must be >= start")
+    if (e - s).days > 120:
+        raise HTTPException(status_code=422, detail="range capped at 120 days")
+
+    # Two range queries, bucketed in Python — no per-day querying.
+    block_facilities_by_date: dict[_date, set] = {}
+    for facility, block_date in (db.query(BlockDay.facility, BlockDay.block_date)
+                                   .filter(BlockDay.block_date >= s,
+                                           BlockDay.block_date <= e)
+                                   .all()):
+        block_facilities_by_date.setdefault(block_date, set()).add(facility)
+
+    whole_day_blackout: dict[_date, SurgeryBlackoutDay] = {}
+    partial_reason: dict[_date, str] = {}
+    for b in (db.query(SurgeryBlackoutDay)
+                .filter(SurgeryBlackoutDay.blackout_date >= s,
+                        SurgeryBlackoutDay.blackout_date <= e)
+                .all()):
+        if b.start_time is None:
+            # Prefer the first whole-day blackout seen for the date.
+            whole_day_blackout.setdefault(b.blackout_date, b)
+        else:
+            partial_reason.setdefault(b.blackout_date, b.reason)
+
+    out: dict[str, dict] = {}
+    cur = s
+    while cur <= e:
+        key = str(cur)
+        partial = partial_reason.get(cur)
+
+        bo = whole_day_blackout.get(cur)
+        if bo is not None:
+            label = bo.label or _BLACKOUT_REASON_LABELS.get(bo.reason, "Blocked")
+            entry = {"type": "blocked", "label": label,
+                     "facilities": [], "reason": bo.reason}
+        else:
+            facilities = block_facilities_by_date.get(cur)
+            if facilities:
+                designations = [_FACILITY_DESIGNATION[f] for f in
+                                sorted(facilities) if f in _FACILITY_DESIGNATION]
+                if len(designations) == 1:
+                    dtype, label = designations[0]
+                elif len(designations) > 1:
+                    dtype = "mixed"
+                    label = " + ".join(d[1] for d in designations)
+                else:
+                    # Unknown facility value(s); fall through to none.
+                    dtype, label = "none", None
+                entry = {"type": dtype, "label": label,
+                         "facilities": sorted(facilities), "reason": None}
+            elif cur.weekday() <= 4:   # Mon–Fri
+                entry = {"type": "office_patients", "label": "Office Patients",
+                         "facilities": [], "reason": None}
+            else:
+                entry = {"type": "none", "label": None,
+                         "facilities": [], "reason": None}
+
+        if partial:
+            entry["partial_block_reason"] = partial
+        out[key] = entry
+        cur += timedelta(days=1)
+
+    return out
+
+
 # ─── List ───────────────────────────────────────────────────────────
 
 VALID_GROUPINGS = ["milestone", "status", "facility"]
