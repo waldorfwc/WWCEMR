@@ -1689,6 +1689,95 @@ def surgery_todos(behind_only: bool = False, limit: int = 200,
     }
 
 
+# ─── Activity feed (persisted patient + system events) ──────────────
+# NB: the static /activity/unread-count and /activity/read-all routes are
+# declared BEFORE the dynamic /activity/{activity_id}/read route, and the
+# whole group is BEFORE GET /{surgery_id}, so nothing is shadowed.
+
+@router.get("/activity")
+def list_surgery_activity(unread_only: bool = False, limit: int = 100,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(
+                              requires_tier(Module.SURGERY, Tier.WORK))):
+    """Newest-first activity feed joined to the surgery for patient_name /
+    chart_number. Excludes activity whose surgery is soft-deleted (the
+    join to Surgery picks up the global soft-delete loader criteria)."""
+    from app.models.surgery_activity import SurgeryActivity
+    q = (db.query(SurgeryActivity, Surgery)
+           .join(Surgery, Surgery.id == SurgeryActivity.surgery_id))
+    if unread_only:
+        q = q.filter(SurgeryActivity.read_at.is_(None))
+    q = q.order_by(SurgeryActivity.created_at.desc())
+    pairs = q.limit(max(0, int(limit))).all()
+    items = [{
+        "id":           str(a.id),
+        "surgery_id":   str(a.surgery_id),
+        "patient_name": s.patient_name,
+        "chart_number": s.chart_number,
+        "kind":         a.kind,
+        "summary":      a.summary,
+        "actor":        a.actor,
+        "created_at":   a.created_at.isoformat() if a.created_at else None,
+        "read_at":      a.read_at.isoformat() if a.read_at else None,
+    } for a, s in pairs]
+    return {"items": items}
+
+
+@router.get("/activity/unread-count")
+def surgery_activity_unread_count(db: Session = Depends(get_db),
+                                  current_user: dict = Depends(
+                                      requires_tier(Module.SURGERY, Tier.WORK))):
+    """Unread count for the nav badge. Excludes soft-deleted surgeries via
+    the join to Surgery."""
+    from app.models.surgery_activity import SurgeryActivity
+    count = (db.query(SurgeryActivity)
+               .join(Surgery, Surgery.id == SurgeryActivity.surgery_id)
+               .filter(SurgeryActivity.read_at.is_(None))
+               .count())
+    return {"count": count}
+
+
+@router.post("/activity/read-all")
+def surgery_activity_read_all(db: Session = Depends(get_db),
+                              current_user: dict = Depends(
+                                  requires_tier(Module.SURGERY, Tier.WORK))):
+    """Mark every unread activity row read."""
+    from app.models.surgery_activity import SurgeryActivity
+    who = (current_user.get("email") or "").lower() or None
+    rows = (db.query(SurgeryActivity)
+              .join(Surgery, Surgery.id == SurgeryActivity.surgery_id)
+              .filter(SurgeryActivity.read_at.is_(None))
+              .all())
+    now = now_utc_naive()
+    for a in rows:
+        a.read_at = now
+        a.read_by = who
+    db.commit()
+    return {"ok": True, "marked": len(rows)}
+
+
+@router.post("/activity/{activity_id}/read")
+def surgery_activity_mark_read(activity_id: str, db: Session = Depends(get_db),
+                              current_user: dict = Depends(
+                                  requires_tier(Module.SURGERY, Tier.WORK))):
+    """Stamp read_at / read_by on one activity row."""
+    from app.models.surgery_activity import SurgeryActivity
+    a = (db.query(SurgeryActivity)
+           .filter(SurgeryActivity.id == activity_id)
+           .first())
+    if a is None:
+        raise HTTPException(status_code=404, detail="activity not found")
+    if a.read_at is None:
+        a.read_at = now_utc_naive()
+        a.read_by = (current_user.get("email") or "").lower() or None
+        db.commit()
+    return {
+        "id":      str(a.id),
+        "read_at": a.read_at.isoformat() if a.read_at else None,
+        "read_by": a.read_by,
+    }
+
+
 # ─── Detail + edit + milestone advance ──────────────────────────────
 
 @router.get("/{surgery_id}")

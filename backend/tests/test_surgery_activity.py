@@ -1,5 +1,5 @@
 """SurgeryActivity model + helper (B1), patient-action parity (B2),
-and /surgery/todos (B3)."""
+/surgery/todos (B3) and the activity feed endpoints (B4)."""
 from datetime import date, datetime, timedelta
 
 from app.models.surgery import Surgery
@@ -115,3 +115,75 @@ def test_todos_behind_only_filter(client, db):
     assert all(it["state"] == "behind" for it in items)
     assert str(behind.id) in {it["surgery_id"] for it in items}
 
+
+# ─── B4 activity feed endpoints ─────────────────────────────────────
+
+def test_activity_list_newest_first(client, db):
+    s = _surgery(db)
+    older = SurgeryActivity(surgery_id=s.id, kind="date_picked",
+                            summary="old", actor="patient",
+                            created_at=datetime.utcnow() - timedelta(hours=2))
+    newer = SurgeryActivity(surgery_id=s.id, kind="payment_made",
+                            summary="new", actor="patient",
+                            created_at=datetime.utcnow())
+    db.add_all([older, newer])
+    db.commit()
+
+    r = client.get("/api/surgery/activity")
+    assert r.status_code == 200
+    items = r.json()["items"]
+    assert items[0]["summary"] == "new"
+    assert items[0]["patient_name"] == s.patient_name
+    assert items[0]["chart_number"] == s.chart_number
+
+
+def test_activity_excludes_soft_deleted_surgery(client, db):
+    s = _surgery(db)
+    db.add(SurgeryActivity(surgery_id=s.id, kind="payment_made",
+                           summary="x", actor="patient"))
+    db.commit()
+    s.soft_delete("admin@x.c")
+    db.commit()
+
+    items = client.get("/api/surgery/activity").json()["items"]
+    assert str(s.id) not in {it["surgery_id"] for it in items}
+
+
+def test_activity_unread_count_and_mark_read(client, db):
+    s = _surgery(db)
+    a = SurgeryActivity(surgery_id=s.id, kind="payment_made",
+                        summary="x", actor="patient")
+    b = SurgeryActivity(surgery_id=s.id, kind="date_picked",
+                        summary="y", actor="patient")
+    db.add_all([a, b])
+    db.commit()
+
+    assert client.get(
+        "/api/surgery/activity/unread-count").json()["count"] == 2
+
+    r = client.post(f"/api/surgery/activity/{a.id}/read")
+    assert r.status_code == 200
+    assert client.get(
+        "/api/surgery/activity/unread-count").json()["count"] == 1
+
+    r = client.post("/api/surgery/activity/read-all")
+    assert r.status_code == 200
+    assert client.get(
+        "/api/surgery/activity/unread-count").json()["count"] == 0
+
+
+def test_activity_unread_only_filter(client, db):
+    s = _surgery(db)
+    read_row = SurgeryActivity(surgery_id=s.id, kind="payment_made",
+                               summary="read", actor="patient",
+                               read_at=datetime.utcnow(), read_by="me@x.c")
+    unread_row = SurgeryActivity(surgery_id=s.id, kind="date_picked",
+                                 summary="unread", actor="patient")
+    db.add_all([read_row, unread_row])
+    db.commit()
+
+    items = client.get(
+        "/api/surgery/activity?unread_only=true").json()["items"]
+    summaries = {it["summary"] for it in items}
+    assert "unread" in summaries
+    assert "read" not in summaries
