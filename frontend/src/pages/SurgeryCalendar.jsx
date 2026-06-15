@@ -14,6 +14,39 @@ const FACILITY_BADGE = {
   office:  { label: 'Office',  tone: 'bg-green-100 text-green-700 border-green-200' },
 }
 
+// Per-day work-assignment designation chip tones. MedStar/CRMC/Office Procedures
+// reuse the FACILITY_BADGE tones; Office Patients is neutral; blocked is red.
+const DESIGNATION_TONE = {
+  medstar:           FACILITY_BADGE.medstar.tone,
+  crmc:              FACILITY_BADGE.crmc.tone,
+  office_procedures: FACILITY_BADGE.office.tone,
+  office_patients:   'bg-gray-100 text-gray-600 border-gray-200',
+  blocked:           'bg-red-100 text-red-700 border-red-200',
+  mixed:             'bg-slate-100 text-slate-700 border-slate-200',
+}
+
+/* Small colored chip showing a day's work-assignment designation.
+   `dt` is one entry from the /surgery/calendar/day-types map. Renders
+   nothing for weekend/none days. */
+function DayTypeChip({ dt }) {
+  if (!dt || dt.type === 'none' || !dt.label) return null
+  const tone = DESIGNATION_TONE[dt.type] || DESIGNATION_TONE.mixed
+  return (
+    <div className="flex items-center gap-0.5 mb-1">
+      <span
+        title={dt.label}
+        className={`block w-full text-[9px] uppercase tracking-wide font-semibold truncate border rounded px-1 py-px ${tone}`}>
+        {dt.label}
+      </span>
+      {dt.partial_block_reason && (
+        <span
+          title={`Partial block: ${dt.partial_block_reason}`}
+          className="text-[10px] text-amber-600 font-bold shrink-0 cursor-help">*</span>
+      )}
+    </div>
+  )
+}
+
 const INDICATOR_TONE = {
   green:  'bg-green-500',
   yellow: 'bg-amber-400',
@@ -70,6 +103,15 @@ export function WeeklyCalendar({ compact = false }) {
     queryKey: ['surgery-calendar', start],
     queryFn: () => api.get('/surgery/calendar', {
       params: { start_date: start, days: 7 },
+    }).then(r => r.data),
+    keepPreviousData: true,
+  })
+
+  const weekEnd = useMemo(() => addDays(start, 6), [start])
+  const { data: dayTypes } = useQuery({
+    queryKey: ['surgery-day-types', start, weekEnd],
+    queryFn: () => api.get('/surgery/calendar/day-types', {
+      params: { start, end: weekEnd },
     }).then(r => r.data),
     keepPreviousData: true,
   })
@@ -161,6 +203,7 @@ export function WeeklyCalendar({ compact = false }) {
                     {cell.date.getDate()}
                   </div>
                 </div>
+                <DayTypeChip dt={dayTypes?.[cell.iso]} />
                 {surgeries.length === 0 ? (
                   <div className="text-[11px] text-gray-400 italic">—</div>
                 ) : (
@@ -197,19 +240,16 @@ export function MonthlyCalendar() {
     keepPreviousData: true,
   })
 
-  // Days that are allocated as surgery days (have at least one BlockDay).
-  // Non-surgery days get visually dimmed.
-  const { data: blockDatesData } = useQuery({
-    queryKey: ['surgery-block-dates', gridStart, gridEnd],
-    queryFn: () => api.get('/surgery/admin/block-dates', {
+  // Per-day work-assignment designation (MedStar / CRMC / Office Procedures /
+  // Office Patients / blocked / mixed / none). Drives the cell chip AND the
+  // dimming: weekend/none days are dimmed; every working day shows a chip.
+  const { data: dayTypes } = useQuery({
+    queryKey: ['surgery-day-types', gridStart, gridEnd],
+    queryFn: () => api.get('/surgery/calendar/day-types', {
       params: { start: gridStart, end: gridEnd },
     }).then(r => r.data),
     keepPreviousData: true,
   })
-  const blockDateSet = useMemo(
-    () => new Set(blockDatesData?.dates || []),
-    [blockDatesData]
-  )
 
   // Build day → surgeries map.
   const byDay = useMemo(() => {
@@ -254,31 +294,28 @@ export function MonthlyCalendar() {
           const surgs = byDay[iso] || []
           const isToday = iso === isoDate(new Date())
           const dimMonth = !inSameMonth(iso, anchor)
-          const isSurgeryDay = blockDateSet.has(iso)
-          // Days without a BlockDay get visually dimmed so coordinators
-          // can see at a glance which dates are even bookable.
-          const dim = dimMonth || !isSurgeryDay
+          const dt = dayTypes?.[iso]
+          // Weekend / non-working days (type "none") get dimmed; every other
+          // designation (block day OR plain "office_patients" weekday) is a
+          // working day and renders normally.
+          const isWorkingDay = dt && dt.type !== 'none'
+          const isBlockDay = dt && ['medstar', 'crmc', 'office_procedures', 'mixed'].includes(dt.type)
+          const dim = dimMonth || !isWorkingDay
           return (
             <button key={iso}
                     type="button"
                     onClick={() => setOpenDay(iso)}
-                    title={isSurgeryDay
+                    title={isBlockDay
                       ? `Open ${iso} schedule`
-                      : `${iso} — not a surgery day. Click to add one.`}
+                      : `${iso} — ${dt?.label || 'no surgery day'}. Click to view or add one.`}
                     className={`min-h-[110px] border-r border-b border-border-subtle p-1 text-left ${
                       dim ? 'bg-gray-100 text-gray-400' : 'bg-white'
                     } ${isToday ? 'ring-2 ring-plum-400 ring-inset' : ''}
-                       ${isSurgeryDay
-                         ? 'hover:bg-plum-50/40 cursor-pointer'
-                         : 'hover:bg-plum-50/30 cursor-pointer'} transition-colors`}>
+                       hover:bg-plum-50/40 cursor-pointer transition-colors`}>
               <div className="text-[11px] font-semibold mb-1">
                 {iso.slice(-2)}
-                {!isSurgeryDay && !dimMonth && (
-                  <span className="ml-1 text-[11px] text-gray-400 normal-case font-normal">
-                    no block
-                  </span>
-                )}
               </div>
+              <DayTypeChip dt={dt} />
               {surgs.slice(0, 6).map(s => {
                 const fac = FACILITY_BADGE[s.facility] || { label: s.facility, tone: 'bg-gray-100 text-gray-700 border-gray-200' }
                 return (
@@ -302,9 +339,33 @@ export function MonthlyCalendar() {
         })}
       </div>
 
+      <DesignationLegend />
+
       {openDay && (
         <DayDetailDrawer date={openDay} onClose={() => setOpenDay(null)} />
       )}
+    </div>
+  )
+}
+
+
+/* Maps the 5 day-designation colors to their meaning. */
+function DesignationLegend() {
+  const items = [
+    { type: 'medstar',           label: 'MedStar' },
+    { type: 'crmc',              label: 'Charles Regional' },
+    { type: 'office_procedures', label: 'Office Procedures' },
+    { type: 'office_patients',   label: 'Office Patients' },
+    { type: 'blocked',           label: 'Blocked (PTO / Holiday)' },
+  ]
+  return (
+    <div className="flex flex-wrap gap-2 mt-3 text-[11px] text-gray-600">
+      {items.map(it => (
+        <span key={it.type}
+              className={`inline-flex items-center border rounded px-1.5 py-px uppercase tracking-wide font-semibold text-[9px] ${DESIGNATION_TONE[it.type]}`}>
+          {it.label}
+        </span>
+      ))}
     </div>
   )
 }
@@ -402,6 +463,7 @@ function DayDetailDrawer({ date, onClose }) {
               qc.invalidateQueries({ queryKey: ['surgery-calendar-day', date] })
               qc.invalidateQueries({ queryKey: ['surgery-calendar'] })
               qc.invalidateQueries({ queryKey: ['surgery-block-dates'] })
+              qc.invalidateQueries({ queryKey: ['surgery-day-types'] })
             }}
             onClose={() => setPickerSlot(null)}
           />
