@@ -169,3 +169,89 @@ def test_excluding_already_imported_dup_does_not_create_sticky(client, db):
     })
     assert r.status_code == 200, r.text
     assert db.query(Bai2Exclusion).count() == 0
+
+
+# ──────────────────────────────────────────────────────────────────────
+# B3 — admin list + reinstate
+
+def _make_sticky(client, db, last4="9999", amount="250.00"):
+    csv_bytes = (
+        b"Date,Description,Amount\n"
+        + f"05/03/2026,ACH DEP NEWPAYER HCCLAIMPMT xxxx{last4},{amount}\n".encode()
+    )
+    p = _preview(client, csv_bytes)
+    n = _txn(p, last4)
+    r = client.post("/api/bank-recon/generate", json={
+        "preview_id": p["preview_id"], "csv_filename": "bank.csv",
+        "ext": p["ext"], "bank_name": "PNC x395",
+        "excluded_keys": [n["dedup_key"]],
+    })
+    assert r.status_code == 200, r.text
+    return db.query(Bai2Exclusion).filter(
+        Bai2Exclusion.last_4 == last4).first()
+
+
+def test_list_exclusions_returns_active_row(client, db):
+    e = _make_sticky(client, db)
+    r = client.get("/api/bank-recon/exclusions")
+    assert r.status_code == 200, r.text
+    rows = r.json()["exclusions"]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["id"] == str(e.id)
+    assert row["transaction_date"] == "2026-05-03"
+    assert row["amount"] == 250.00
+    assert row["last_4"] == "9999"
+    assert "reinstated_at" not in row  # active row has no reinstated fields
+
+
+def test_reinstate_flips_row_and_unblocks_reimport(client, db):
+    e = _make_sticky(client, db)
+    eid = str(e.id)
+
+    r = client.post(f"/api/bank-recon/exclusions/{eid}/reinstate")
+    assert r.status_code == 200, r.text
+    assert r.json()["reinstated"] is True
+    db.expire_all()
+    refreshed = db.query(Bai2Exclusion).filter(Bai2Exclusion.id == eid).first()
+    assert refreshed.deleted_at is not None  # soft-deleted == reinstated
+
+    # No longer in the default (active) list.
+    rows = client.get("/api/bank-recon/exclusions").json()["exclusions"]
+    assert rows == []
+    # But visible with include_reinstated.
+    rows2 = client.get(
+        "/api/bank-recon/exclusions?include_reinstated=true").json()["exclusions"]
+    assert len(rows2) == 1
+    assert rows2[0]["reinstated_at"] is not None
+
+    # Re-uploading the same txn now IMPORTS (no longer blocked).
+    csv2 = (
+        b"Date,Description,Amount\n"
+        b"05/03/2026,ACH DEP NEWPAYER HCCLAIMPMT xxxx9999,250.00\n"
+    )
+    p2 = _preview(client, csv2)
+    again = _txn(p2, "9999")
+    assert again["previously_excluded"] is False
+    r2 = client.post("/api/bank-recon/generate", json={
+        "preview_id": p2["preview_id"], "csv_filename": "bank2.csv",
+        "ext": p2["ext"], "bank_name": "PNC x395", "excluded_keys": [],
+    })
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["transactions_included"] == 1
+    assert db.query(Bai2Transaction).filter(
+        Bai2Transaction.last_4 == "9999").count() == 1
+
+
+def test_reinstate_missing_is_404_and_idempotent(client, db):
+    import uuid as _uuid
+    r = client.post(f"/api/bank-recon/exclusions/{_uuid.uuid4()}/reinstate")
+    assert r.status_code == 404
+
+    e = _make_sticky(client, db)
+    eid = str(e.id)
+    r1 = client.post(f"/api/bank-recon/exclusions/{eid}/reinstate")
+    assert r1.json()["reinstated"] is True
+    r2 = client.post(f"/api/bank-recon/exclusions/{eid}/reinstate")
+    assert r2.status_code == 200
+    assert r2.json()["reinstated"] is False  # idempotent

@@ -654,6 +654,71 @@ def restore_import(
     return {"restored": True, "id": str(imp.id)}
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Sticky exclusions — admin review list + reinstate
+
+def _exclusion_to_dict(e: Bai2Exclusion) -> dict:
+    d = {
+        "id": str(e.id),
+        "transaction_date": str(e.transaction_date) if e.transaction_date else None,
+        "amount": float(e.amount or 0),
+        "last_4": e.last_4,
+        "description": e.description,
+        "reason": e.reason,
+        "excluded_by": e.excluded_by,
+        "created_at": str(e.created_at) if e.created_at else None,
+    }
+    if e.deleted_at is not None:
+        d["reinstated_at"] = str(e.deleted_at)
+        d["reinstated_by"] = e.deleted_by
+    return d
+
+
+@router.get("/exclusions")
+def list_exclusions(
+    db: Session = Depends(get_db),
+    include_reinstated: bool = Query(False),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.VIEW)),
+):
+    """List sticky exclusions, newest-first. Active only (deleted_at IS NULL)
+    by default; pass include_reinstated=true to also show reinstated rows
+    (with reinstated_at/by)."""
+    q = db.query(Bai2Exclusion)
+    if not include_reinstated:
+        q = q.filter(Bai2Exclusion.deleted_at.is_(None))
+    rows = q.order_by(desc(Bai2Exclusion.created_at)).all()
+    return {"exclusions": [_exclusion_to_dict(r) for r in rows]}
+
+
+@router.post("/exclusions/{exclusion_id}/reinstate")
+def reinstate_exclusion(
+    exclusion_id: str, db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        requires_tier(Module.BANK_RECON, Tier.MANAGE)),
+):
+    """Reinstate (un-stick) an exclusion by soft-deleting it, so the
+    transaction can import again on the next upload. 404 if missing;
+    idempotent if already reinstated."""
+    from app.services.audit_service import log_action
+    e = db.query(Bai2Exclusion).filter(Bai2Exclusion.id == exclusion_id).first()
+    if not e:
+        raise HTTPException(status_code=404, detail="exclusion not found")
+    if e.is_deleted:
+        return {"reinstated": False, "id": str(e.id), "reason": "already reinstated"}
+    log_action(
+        db, action="BAI2_EXCLUSION_REINSTATED", resource_type="bai2_exclusion",
+        actor=current_user, resource_id=str(e.id),
+        description=(f"Reinstated sticky exclusion "
+                     f"{e.transaction_date} ${e.amount or 0:.2f} "
+                     f"x{e.last_4 or '----'} — will import again on next upload."),
+        defer_commit=True,
+    )
+    e.soft_delete(by_email=current_user.get("email"))
+    db.commit()
+    return {"reinstated": True, "id": str(e.id)}
+
+
 @router.post("/sweep-preview-csvs")
 def sweep_preview_csvs(
     db: Session = Depends(get_db),
