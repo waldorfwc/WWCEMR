@@ -484,6 +484,58 @@ function UpcomingCalendar({ onOpen, location }) {
 }
 
 
+// Reason-coded chip helpers. Status codes come from the API
+// (active_visit_labs_reason / active_visit_mammo_reason). When the reason is
+// null/unknown we fall back to the boolean ✓/✗ so we never crash.
+function labsChipFor(reason, labsOk, labsDays, patient) {
+  switch (reason) {
+    case 'ok':
+      return { label: 'labs ✓',
+               title: `Labs in ${patient.labs_date || ''}`.trim() }
+    case 'not_required':
+      return { label: 'labs n/a', title: 'Labs not required' }
+    case 'none':
+      return { label: 'labs ✗ none', title: 'No labs on file' }
+    case 'missing_values':
+      return { label: 'labs ✗ values', title: 'Missing FSH/TSH/Estradiol' }
+    case 'no_date':
+      return { label: 'labs ✗ no date', title: 'Labs have values but no draw date' }
+    case 'stale':
+      return { label: `labs ✗ >${labsDays}d`,
+               title: `Labs older than ${labsDays} days before the visit` }
+    default:
+      // Null/unknown reason (e.g. no active visit) — fall back to the boolean.
+      return { label: labsOk ? 'labs ✓' : 'labs ✗',
+               title: labsOk
+                 ? `Labs in ${patient.labs_date || ''}`.trim()
+                 : 'Labs missing, incomplete, or stale at the visit' }
+  }
+}
+
+function mammoChipFor(reason, mammoOk, mammoDays, patient) {
+  switch (reason) {
+    case 'ok':
+      return { label: 'mammo ✓',
+               title: `Mammo OK — ${patient.mammo_result || ''} ${patient.mammo_date || ''}`.trim() }
+    case 'not_required':
+      return { label: 'mammo n/a', title: 'Mammogram not required' }
+    case 'none':
+      return { label: 'mammo ✗ none', title: 'No mammogram on file' }
+    case 'unacceptable':
+      return { label: 'mammo ✗ result', title: 'Mammogram result not acceptable' }
+    case 'no_date':
+      return { label: 'mammo ✗ no date', title: 'Mammogram has a result but no date' }
+    case 'stale':
+      return { label: `mammo ✗ >${mammoDays}d`,
+               title: `Mammogram older than ${mammoDays} days before the visit` }
+    default:
+      return { label: mammoOk ? 'mammo ✓' : 'mammo ✗',
+               title: mammoOk
+                 ? `Mammo OK — ${patient.mammo_result || ''} ${patient.mammo_date || ''}`.trim()
+                 : 'Mammo missing, result not acceptable, or stale at the visit' }
+  }
+}
+
 function CalendarVisitCard({ patient, onOpen }) {
   const qc = useQueryClient()
   const [menuOpen, setMenuOpen]               = useState(false)
@@ -526,6 +578,13 @@ function CalendarVisitCard({ patient, onOpen }) {
   const mammoOk = !!patient.active_visit_mammo_ready
   const labsOk  = !!patient.active_visit_labs_ready
 
+  // Reason-coded chip text. Tone stays tied to the *Ok booleans above so
+  // 4 green chips still equals "ready"; the reason only changes the label/title.
+  const labsDays  = patient.labs_valid_days
+  const mammoDays = patient.mammo_valid_days
+  const labsChip = labsChipFor(patient.active_visit_labs_reason, labsOk, labsDays, patient)
+  const mammoChip = mammoChipFor(patient.active_visit_mammo_reason, mammoOk, mammoDays, patient)
+
   return (
     <div className={`relative border rounded transition ${tone}`}>
       <button type="button"
@@ -547,23 +606,17 @@ function CalendarVisitCard({ patient, onOpen }) {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-1 text-[11px] text-gray-600 mt-0.5">
-          {/* Mammogram — meets ready requirement (acceptable result + within 1yr of visit) */}
+          {/* Mammogram — reason-coded; tone tied to active_visit_mammo_ready */}
           <span className={`px-1 rounded ${
             mammoOk ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'
-          }`} title={mammoOk
-                    ? `Mammo OK — ${patient.mammo_result || ''} ${patient.mammo_date || ''}`.trim()
-                    : 'Mammo missing, result not acceptable, or older than 1yr at the visit'}>
-            {mammoOk ? 'mammo ✓' : 'mammo ✗'}
+          }`} title={mammoChip.title}>
+            {mammoChip.label}
           </span>
-          {/* Labs — meets ready requirement (3 values within 14d of visit, or not required) */}
+          {/* Labs — reason-coded; tone tied to active_visit_labs_ready */}
           <span className={`px-1 rounded ${
             labsOk ? 'bg-green-200 text-green-800' : 'bg-red-100 text-red-700'
-          }`} title={labsOk
-                    ? (patient.labs_not_required
-                        ? 'Labs not required'
-                        : `Labs in ${patient.labs_date || ''}`.trim())
-                    : 'Labs missing, incomplete, or older than 14d at the visit'}>
-            {labsOk ? 'labs ✓' : 'labs ✗'}
+          }`} title={labsChip.title}>
+            {labsChip.label}
           </span>
           {/* Payment */}
           {paid && (
