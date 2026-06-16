@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.models.bai2 import Bai2Import, Bai2Transaction
+from app.models.bai2_exclusion import Bai2Exclusion
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_super_admin, requires_tier
@@ -98,6 +99,26 @@ def _prior_identities(db: Session) -> set:
 def _identity(t) -> tuple:
     """Identity tuple for a parsed candidate (ParsedTransaction)."""
     return (t.transaction_date, _q2(t.amount), (t.last_4 or ""))
+
+
+def _exclusion_key(d, amt, l4) -> str:
+    """Stable sha256 key for a sticky exclusion identity. Mirrors the
+    (date, amount, last_4) identity so re-excluding the same bank
+    transaction upserts the same row."""
+    import hashlib
+    raw = f"{d}|{_q2(amt)}|{l4 or ''}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _active_exclusion_identities(db: Session) -> set:
+    """Set of (transaction_date, _q2(amount), last_4 or "") over ACTIVE
+    sticky exclusions (deleted_at IS NULL — reinstated rows don't block)."""
+    rows = db.query(
+        Bai2Exclusion.transaction_date,
+        Bai2Exclusion.amount,
+        Bai2Exclusion.last_4,
+    ).filter(Bai2Exclusion.deleted_at.is_(None)).all()
+    return {(d, _q2(a), (l4 or "")) for (d, a, l4) in rows}
 
 
 # ──────────────────────────────────────────────────────────────────────
