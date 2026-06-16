@@ -1837,6 +1837,21 @@ _PAYMENT_KIND_LABELS = {
 }
 
 
+def _stripe_only_filter():
+    """SQLAlchemy predicate restricting to payments that actually came from
+    Stripe. Manual offsets (kind='manual_offset' — ModMed Pay / check / cash)
+    are recorded as paid SurgeryPayment rows but carry NO Stripe identifier;
+    they're already in ModMed, so they must NOT appear in the posting queue.
+    A genuine Stripe-collected payment always resolves to a payment-intent
+    (or at least a checkout-session) id."""
+    from app.models.stripe_payment import SurgeryPayment
+    return (
+        SurgeryPayment.kind != "manual_offset",
+        or_(SurgeryPayment.stripe_payment_intent_id.isnot(None),
+            SurgeryPayment.stripe_checkout_session_id.isnot(None)),
+    )
+
+
 def _payment_posting_dict(p, s) -> dict:
     """One row for the Payment Posting tab: the paid Stripe payment joined
     to its surgery (MRN/name/type). `s` may be None if the surgery was
@@ -1878,7 +1893,7 @@ def list_payment_postings(
     from app.models.stripe_payment import SurgeryPayment
     q = (db.query(SurgeryPayment, Surgery)
            .outerjoin(Surgery, Surgery.id == SurgeryPayment.surgery_id)
-           .filter(SurgeryPayment.status == "paid"))
+           .filter(SurgeryPayment.status == "paid", *_stripe_only_filter()))
     if posted == "posted":
         q = q.filter(SurgeryPayment.posted_to_modmed_at.isnot(None))
     elif posted == "unposted":
@@ -1911,6 +1926,12 @@ def mark_payment_posted(
     if p.status != "paid":
         raise HTTPException(status_code=409,
             detail="only paid payments can be marked posted")
+    is_stripe = (p.kind != "manual_offset"
+                 and (p.stripe_payment_intent_id or p.stripe_checkout_session_id))
+    if not is_stripe:
+        raise HTTPException(status_code=409,
+            detail="only Stripe payments are posted to ModMed; manual offsets "
+                   "originate in ModMed and need no posting")
     if p.posted_to_modmed_at is not None:
         raise HTTPException(status_code=409, detail="already marked posted")
     email = (current_user.get("email") or "").lower() or None
