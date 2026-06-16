@@ -344,6 +344,9 @@ export default function SurgeryDetail() {
         </div>
       </div>
 
+      {/* Device requests (auto-created in Device Tracking on scheduling) */}
+      <DeviceRequestsSection surgery={s} />
+
       {/* Grouped surgery sections (Phase L1) */}
       <GroupedSurgeryBody surgery={s} />
 
@@ -1490,6 +1493,61 @@ function Field({ label, children }) {
 function jumpTo(kind) {
   const el = document.getElementById(`milestone-${kind}`)
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+
+const SOURCE_FLOW_BADGE = {
+  in_stock:         { label: 'Allocate from stock', tone: 'bg-green-100 text-green-700' },
+  pharmacy_order:   { label: 'Order / enrollment',   tone: 'bg-amber-100 text-amber-700' },
+  office_procedure: { label: 'Office procedure',     tone: 'bg-blue-100 text-blue-700' },
+}
+
+
+function DeviceRequestsSection({ surgery }) {
+  const requests = surgery.device_requests || []
+
+  if (requests.length === 0) {
+    if (!surgery.device_required) return null
+    return (
+      <div className="card mb-4">
+        <h2 className="text-sm font-semibold text-gray-800 mb-1.5 flex items-center gap-1.5">
+          <Package size={14} className="text-plum-700" /> Device Requests
+        </h2>
+        <p className="text-[12px] text-gray-400 italic">
+          Device requests are created automatically when the surgery is scheduled.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="card mb-4">
+      <h2 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+        <Package size={14} className="text-plum-700" /> Device Requests
+      </h2>
+      <ul className="divide-y divide-gray-100">
+        {requests.map(r => {
+          const badge = SOURCE_FLOW_BADGE[r.source_flow] || { label: r.source_flow, tone: 'bg-gray-100 text-gray-700' }
+          return (
+            <li key={r.id} className="flex items-center gap-2 flex-wrap py-2 first:pt-0 last:pb-0">
+              <span className="text-sm font-medium text-gray-800">{r.device_type}</span>
+              <span className={`text-[11px] px-1.5 py-0.5 rounded ${badge.tone}`}>{badge.label}</span>
+              <span className="text-[11px] uppercase tracking-wide bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">
+                {(r.status || '').replace(/_/g, ' ')}
+              </span>
+              {r.requested_by_provider && (
+                <span className="text-[11px] text-gray-500">· {r.requested_by_provider}</span>
+              )}
+              <Link to={`/larc/assignments/${r.id}`}
+                    className="text-[11px] text-plum-700 hover:underline ml-auto">
+                Open in Device Tracking →
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
 }
 
 

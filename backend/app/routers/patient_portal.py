@@ -655,6 +655,14 @@ def portal_claim_slot(
         )
     except SelfScheduleError as e:
         raise HTTPException(status_code=e.status_code, detail=str(e))
+    # Surgery is now scheduled — create any linked LARC device requests.
+    # Soft-fail: a bridge error must never break the patient's confirmation.
+    try:
+        from app.services.surgery.device_requests import sync_surgery_device_requests
+        sync_surgery_device_requests(db, s, actor_email="system:patient-portal")
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("device-request sync failed (portal claim): %s", e)
     return {"ok": True, **result}
 
 

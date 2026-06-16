@@ -311,7 +311,29 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "created_at": s.created_at.isoformat() if s.created_at else None,
         "updated_at": s.updated_at.isoformat() if s.updated_at else None,
     }
+    out["device_requests"] = _surgery_device_requests(db, s)
     return out
+
+
+def _surgery_device_requests(db: Session, s: Surgery) -> list[dict]:
+    """Active LARC device requests created from this surgery (B4)."""
+    from app.models.larc import LarcAssignment, LarcDeviceType
+    rows = (db.query(LarcAssignment, LarcDeviceType)
+              .outerjoin(LarcDeviceType,
+                         LarcDeviceType.id == LarcAssignment.device_type_id)
+              .filter(LarcAssignment.linked_surgery_id == s.id,
+                      LarcAssignment.is_active.is_(True))
+              .all())
+    return [
+        {
+            "id": str(a.id),
+            "device_type": (dt.name if dt else None),
+            "source_flow": a.source_flow,
+            "status": a.status,
+            "requested_by_provider": a.requested_by_provider,
+        }
+        for a, dt in rows
+    ]
 
 
 # ─── Dashboard ──────────────────────────────────────────────────────
@@ -4175,6 +4197,14 @@ def scheduler_pick_date(surgery_id: str, payload: SchedulerPickIn,
         )
     except DatePickerError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    # Surgery is now scheduled — create any linked LARC device requests.
+    # Soft-fail: a bridge error must never break the scheduling response.
+    try:
+        from app.services.surgery.device_requests import sync_surgery_device_requests
+        sync_surgery_device_requests(db, s, actor_email=current_user.get("email"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("device-request sync failed (pick-date)")
     return {
         "ok": True,
         **result,

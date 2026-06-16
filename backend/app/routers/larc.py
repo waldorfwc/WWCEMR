@@ -180,6 +180,8 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "pharmacy_id": str(a.pharmacy_id) if a.pharmacy_id else None,
         "source_flow": a.source_flow,
         "linked_surgery_id": str(a.linked_surgery_id) if a.linked_surgery_id else None,
+        "requested_by_provider": a.requested_by_provider,
+        "from_surgery": a.linked_surgery_id is not None,
         "status": a.status,
         "sub_flag": a.sub_flag,
         "is_active": bool(a.is_active),

@@ -242,6 +242,10 @@ class LarcAssignment(Base, SoftDeleteMixin):
     # at scheduling time. Lets the surgery detail page show the linked
     # device + its status.
     linked_surgery_id = Column(GUID(), nullable=True)
+    # The provider (surgeon) who requested the device — captured when the
+    # request originates from a scheduled surgery. Distinct from created_by
+    # (the staff/system that scheduled).
+    requested_by_provider = Column(String(200), nullable=True)
 
     # Source flow + workflow state
     source_flow = Column(String(20), default="in_stock", nullable=False)

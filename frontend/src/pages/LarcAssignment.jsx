@@ -68,6 +68,19 @@ export default function LarcAssignment() {
               {a.patient_dob && <> · DOB {fmt.date(a.patient_dob)}</>}
               {a.patient_phone && <> · {a.patient_phone}</>}
             </div>
+            {a.from_surgery && (
+              <div className="text-[11px] text-indigo-700 mt-1 flex items-center gap-1.5 flex-wrap">
+                <span className="uppercase tracking-wide bg-indigo-100 px-1.5 py-0.5 rounded">From surgery</span>
+                <span className="text-gray-600">
+                  Requested by {a.requested_by_provider || '—'} · {a.created_at ? fmt.date(a.created_at) : '—'}
+                </span>
+                {a.linked_surgery_id && (
+                  <Link to={`/surgery/${a.linked_surgery_id}`} className="text-plum-700 hover:underline">
+                    View surgery →
+                  </Link>
+                )}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded ${
