@@ -58,6 +58,66 @@ def test_list_includes_all_paid_kinds(client, db):
     assert kinds == {"patient_balance", "fmla_fee", "cancellation_fee"}
 
 
+def test_manual_offset_payments_are_excluded(client, db):
+    """ModMed Pay / check / cash are stored as paid SurgeryPayment rows with
+    kind='manual_offset' and NO Stripe id — they're already in ModMed, so
+    they must not appear in the posting queue."""
+    s = Surgery(chart_number="MRN9", patient_name="Cash, Carl", status="new")
+    db.add(s); db.flush()
+    db.add(SurgeryPayment(
+        surgery_id=s.id, kind="manual_offset",
+        amount_requested=Decimal("200"), amount_paid=Decimal("200"),
+        status="paid", requested_by="reception@x.com", paid_at=now_utc_naive(),
+    ))  # no stripe_payment_intent_id / checkout_session_id
+    db.commit()
+    body = client.get("/api/surgery/payment-postings").json()
+    assert body["items"] == []
+    assert body["unposted_count"] == 0
+
+
+def test_paid_payment_without_any_stripe_id_is_excluded(client, db):
+    """Defensive: a paid row that somehow carries no Stripe identifier at all
+    is treated as not-from-Stripe and excluded, regardless of kind."""
+    s = Surgery(chart_number="MRN8", patient_name="Ghost, Greg", status="new")
+    db.add(s); db.flush()
+    db.add(SurgeryPayment(
+        surgery_id=s.id, kind="patient_balance",
+        amount_requested=Decimal("100"), amount_paid=Decimal("100"),
+        status="paid", requested_by="reception@x.com", paid_at=now_utc_naive(),
+    ))
+    db.commit()
+    assert client.get("/api/surgery/payment-postings").json()["items"] == []
+
+
+def test_stripe_payment_with_only_session_id_is_included(client, db):
+    """A checkout-session id (no resolved payment-intent yet) still counts as
+    a Stripe payment."""
+    s = Surgery(chart_number="MRN7", patient_name="Sess, Sue", status="new")
+    db.add(s); db.flush()
+    db.add(SurgeryPayment(
+        surgery_id=s.id, kind="patient_balance",
+        stripe_checkout_session_id="cs_test_7",
+        amount_requested=Decimal("300"), amount_paid=Decimal("300"),
+        status="paid", requested_by="reception@x.com", paid_at=now_utc_naive(),
+    ))
+    db.commit()
+    body = client.get("/api/surgery/payment-postings").json()
+    assert [it["chart_number"] for it in body["items"]] == ["MRN7"]
+    assert body["items"][0]["confirmation"] == "cs_test_7"
+
+
+def test_manual_offset_cannot_be_marked_posted(client, db):
+    s = Surgery(chart_number="MRN6", patient_name="Cash, Cathy", status="new")
+    db.add(s); db.flush()
+    p = SurgeryPayment(
+        surgery_id=s.id, kind="manual_offset",
+        amount_requested=Decimal("75"), amount_paid=Decimal("75"),
+        status="paid", requested_by="reception@x.com", paid_at=now_utc_naive())
+    db.add(p); db.commit()
+    r = client.post(f"/api/surgery/payment-postings/{p.id}/post", json={"initials": "XY"})
+    assert r.status_code == 409
+
+
 def test_unpaid_payments_are_excluded(client, db):
     s, p = _seed_paid_payment(db)
     p.status = "requested"; p.paid_at = None
