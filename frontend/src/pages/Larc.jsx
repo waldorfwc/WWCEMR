@@ -387,7 +387,15 @@ export default function Larc() {
                   className="hover:bg-plum-50 cursor-pointer"
                   onClick={() => navigate(`/larc/assignments/${a.id}`)}>
                 <td className="table-td">
-                  <div className="font-medium">{a.patient_name}</div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium">{a.patient_name}</span>
+                    {a.from_surgery && (
+                      <span className="text-[10px] uppercase tracking-wide bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded"
+                            title="Auto-created from a scheduled surgery">
+                        From surgery
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[10px] text-gray-500 font-mono">{a.chart_number}</div>
                 </td>
                 <td className="table-td text-[12px]">
