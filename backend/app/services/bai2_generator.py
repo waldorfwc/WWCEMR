@@ -147,6 +147,21 @@ class FilterOptions:
     skip_zero: bool = True
 
 
+def _is_pending(row, date_raw) -> bool:
+    """A bank row is pending (not final) if the date cell carries a PENDING
+    marker (e.g. 'PENDING - 05/05/2026') or any status-like column says
+    PENDING. Pending rows are dropped silently at parse — not imported and
+    not counted — because only FINAL/posted transactions belong in a BAI2
+    file. A pending deposit that later clears shows up again (posted) in a
+    subsequent export and is imported then."""
+    if "PENDING" in str(date_raw or "").upper():
+        return True
+    for k, v in row.items():
+        if k and "status" in k.lower() and "PENDING" in str(v or "").upper():
+            return True
+    return False
+
+
 # ─────────────────────────────────────────────────────────────────────
 # CSV parsing + filtering — pure function, no DB
 
@@ -213,6 +228,10 @@ def _filter_rows(rows, filters: FilterOptions,
         for k in r.keys():
             if k and 'date' in k.lower():
                 date_raw = r[k]; break
+
+        # Drop pending (non-final) rows entirely — not imported, not counted.
+        if _is_pending(r, date_raw):
+            continue
 
         amt = _parse_amount(amt_raw)
         dt = _parse_date(date_raw) or today
