@@ -121,6 +121,39 @@ def _active_exclusion_identities(db: Session) -> set:
     return {(d, _q2(a), (l4 or "")) for (d, a, l4) in rows}
 
 
+def _upsert_sticky_exclusions(db: Session, txns, *, reason, excluded_by,
+                              source_import_id) -> None:
+    """For each parsed candidate the user excluded that was otherwise
+    importable, UPSERT a Bai2Exclusion by exclusion_key. If a row exists
+    (including soft-deleted/reinstated), reactivate it and refresh
+    description/reason/excluded_by; else insert. Flushes but does NOT
+    commit — the caller commits with the import row in one transaction."""
+    for t in txns:
+        key = _exclusion_key(t.transaction_date, t.amount, t.last_4)
+        existing = (db.query(Bai2Exclusion)
+                      .filter(Bai2Exclusion.exclusion_key == key)
+                      .first())
+        if existing is not None:
+            existing.deleted_at = None
+            existing.deleted_by = None
+            existing.description = t.formatted_text
+            existing.reason = reason
+            existing.excluded_by = excluded_by
+            existing.source_import_id = source_import_id
+        else:
+            db.add(Bai2Exclusion(
+                exclusion_key=key,
+                transaction_date=t.transaction_date,
+                amount=Decimal(str(t.amount)),
+                last_4=t.last_4 or None,
+                description=t.formatted_text,
+                reason=reason,
+                excluded_by=excluded_by,
+                source_import_id=source_import_id,
+            ))
+    db.flush()
+
+
 # ──────────────────────────────────────────────────────────────────────
 # Step 1: PREVIEW — upload CSV, parse, return transactions for review
 
@@ -168,11 +201,16 @@ async def preview_csv(
     # while letting through genuinely-new transactions that merely share a
     # posting date with a prior import (late posts, cleared-after-pending).
     prior = _prior_identities(db)
+    # Sticky exclusions: identities the user previously excluded that are
+    # still active (not reinstated). These are flagged "previously excluded"
+    # and auto-blocked at /generate, same as already_imported dupes.
+    sticky = _active_exclusion_identities(db)
 
     txns = []
     already_imported_keys = []
     for t in parsed.transactions:
         already = _identity(t) in prior
+        prev_excluded = _identity(t) in sticky
         if already:
             already_imported_keys.append(t.dedup_key)
         txns.append({
@@ -184,6 +222,7 @@ async def preview_csv(
             "method": t.method,
             "last_4": t.last_4,
             "already_imported": already,
+            "previously_excluded": prev_excluded,
         })
 
     # Persist the filter snapshot so /generate consumes exactly what the
@@ -225,6 +264,7 @@ async def preview_csv(
             "skipped_duplicate_in_file": parsed.skipped_duplicate_in_file,
             "skipped_always_drop": parsed.skipped_always_drop,
             "already_imported_count": sum(1 for t in txns if t["already_imported"]),
+            "previously_excluded_count": sum(1 for t in txns if t["previously_excluded"]),
         },
         "transactions": txns,
     }
@@ -244,6 +284,7 @@ class GenerateRequest(BaseModel):
     bank_name: str = "PNC x395"
     account_full: Optional[str] = None
     excluded_keys: List[str] = []      # dedup_keys the user unchecked
+    exclusion_reason: Optional[str] = None  # optional note stored on sticky exclusions
     skip_withdrawals: bool = True
     skip_modmed: bool = True
     skip_stripe: bool = True
@@ -290,6 +331,7 @@ def generate_bai2(payload: GenerateRequest,
     if prior is not None:
         return {**_import_to_dict(prior),
                 "skipped_user_excluded": 0,
+                "skipped_sticky": 0,
                 "deduped": True}
 
     try:
@@ -329,16 +371,39 @@ def generate_bai2(payload: GenerateRequest,
     # exclusion still wins. (Within-file dedup + dedup_key formula
     # unchanged — that's the storage unique-constraint identity.)
     prior = _prior_identities(db)
+    # Sticky exclusions block import too (auto-skipped); to re-include, a
+    # manager reinstates the exclusion via the admin list.
+    sticky = _active_exclusion_identities(db)
 
     new_txns = [
         t for t in parsed.transactions
-        if t.dedup_key not in excluded and _identity(t) not in prior
+        if t.dedup_key not in excluded
+        and _identity(t) not in prior
+        and _identity(t) not in sticky
     ]
     skipped_user_excluded = sum(1 for t in parsed.transactions if t.dedup_key in excluded)
     skipped_prior = sum(
         1 for t in parsed.transactions
         if t.dedup_key not in excluded and _identity(t) in prior
     )
+    # Skipped because a still-active sticky exclusion matches (and the user
+    # didn't already account for it via excluded_keys, and it isn't a prior
+    # dupe — those are counted under their own buckets).
+    skipped_sticky = sum(
+        1 for t in parsed.transactions
+        if t.dedup_key not in excluded
+        and _identity(t) not in prior
+        and _identity(t) in sticky
+    )
+
+    # Persist NEW sticky exclusions: the user excluded an otherwise-importable
+    # transaction (not a prior dupe). UPSERT by exclusion_key — reactivate a
+    # soft-deleted/reinstated row, else insert. We compute source_import_id
+    # below after the import row exists, so collect the candidates here.
+    to_persist = [
+        t for t in parsed.transactions
+        if t.dedup_key in excluded and _identity(t) not in prior
+    ]
 
     if not new_txns:
         imp = Bai2Import(
@@ -358,10 +423,20 @@ def generate_bai2(payload: GenerateRequest,
             notes=(
                 f"No BAI2 generated — {skipped_user_excluded} excluded by user"
                 + (f", {skipped_prior} duplicates of prior imports" if skipped_prior else "")
+                + (f", {skipped_sticky} previously excluded" if skipped_sticky else "")
             ),
         )
-        db.add(imp); db.commit(); db.refresh(imp)
-        return {**_import_to_dict(imp), "skipped_user_excluded": skipped_user_excluded}
+        db.add(imp); db.flush()
+        _upsert_sticky_exclusions(
+            db, to_persist,
+            reason=payload.exclusion_reason,
+            excluded_by=current_user.get('email'),
+            source_import_id=imp.id,
+        )
+        db.commit(); db.refresh(imp)
+        return {**_import_to_dict(imp),
+                "skipped_user_excluded": skipped_user_excluded,
+                "skipped_sticky": skipped_sticky}
 
     dates = [t.transaction_date for t in new_txns]
     start, end = min(dates), max(dates)
@@ -391,9 +466,23 @@ def generate_bai2(payload: GenerateRequest,
         skipped_prior_imports=skipped_prior,
         total_amount=total_amount,
         generated_by=current_user.get('email'),
-        notes=(f"User excluded {skipped_user_excluded} transactions" if skipped_user_excluded else None),
+        notes=(
+            ("; ".join(filter(None, [
+                (f"User excluded {skipped_user_excluded} transactions"
+                 if skipped_user_excluded else None),
+                (f"{skipped_sticky} previously excluded"
+                 if skipped_sticky else None),
+            ]))) or None
+        ),
     )
     db.add(imp); db.flush()
+
+    _upsert_sticky_exclusions(
+        db, to_persist,
+        reason=payload.exclusion_reason,
+        excluded_by=current_user.get('email'),
+        source_import_id=imp.id,
+    )
 
     for t in new_txns:
         db.add(Bai2Transaction(
@@ -426,7 +515,9 @@ def generate_bai2(payload: GenerateRequest,
             detail=("These transactions were already imported by another "
                     "request. Refresh and review the recent imports list."))
 
-    return {**_import_to_dict(imp), "skipped_user_excluded": skipped_user_excluded}
+    return {**_import_to_dict(imp),
+            "skipped_user_excluded": skipped_user_excluded,
+            "skipped_sticky": skipped_sticky}
 
 
 # ──────────────────────────────────────────────────────────────────────
