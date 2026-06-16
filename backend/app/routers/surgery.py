@@ -1824,6 +1824,139 @@ def surgery_activity_mark_read(activity_id: str, db: Session = Depends(get_db),
     }
 
 
+# ─── Payment Posting (manual reconciliation to ModMed) ──────────────
+# Lists paid Stripe payments so staff can confirm each has been posted
+# (transferred) into ModMed. Marking records the staffer's typed initials
+# plus the authenticated user's email + timestamp; a manager can reverse.
+
+_PAYMENT_KIND_LABELS = {
+    "patient_balance": "Patient Balance",
+    "fmla_fee":        "FMLA Fee",
+    "cancellation_fee": "Cancellation Fee",
+    "no_show_fee":     "No-Show Fee",
+}
+
+
+def _payment_posting_dict(p, s) -> dict:
+    """One row for the Payment Posting tab: the paid Stripe payment joined
+    to its surgery (MRN/name/type). `s` may be None if the surgery was
+    hard-removed — fall back to blanks rather than crash."""
+    procs = getattr(s, "procedures", None) or []
+    proc_summary = ", ".join(
+        (p.get("description") or p.get("name") or "").strip()
+        for p in procs if (p.get("description") or p.get("name"))
+    ) or None
+    return {
+        "id":             str(p.id),
+        "surgery_id":     str(p.surgery_id),
+        "surgery_number": getattr(s, "surgery_number", None),
+        "chart_number":   getattr(s, "chart_number", None),
+        "patient_name":   getattr(s, "patient_name", None),
+        "procedure_summary": proc_summary,
+        "kind":           p.kind,
+        "kind_label":     _PAYMENT_KIND_LABELS.get(p.kind, p.kind),
+        "amount_paid":    float(p.amount_paid or 0),
+        "paid_at":        p.paid_at.isoformat() if p.paid_at else None,
+        # Stripe payment intent is the durable confirmation id; fall back to
+        # the checkout session id if the intent never populated.
+        "confirmation":   p.stripe_payment_intent_id or p.stripe_checkout_session_id,
+        "posted":         p.posted_to_modmed_at is not None,
+        "posted_at":      p.posted_to_modmed_at.isoformat() if p.posted_to_modmed_at else None,
+        "posted_by":      p.posted_to_modmed_by,
+        "posted_initials": p.posted_to_modmed_initials,
+    }
+
+
+@router.get("/payment-postings")
+def list_payment_postings(
+    posted: str = Query("all", pattern="^(all|posted|unposted)$"),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
+):
+    """Paid Stripe payments for the Payment Posting reconciliation tab,
+    newest paid first. `posted` filters: all | posted | unposted."""
+    from app.models.stripe_payment import SurgeryPayment
+    q = (db.query(SurgeryPayment, Surgery)
+           .outerjoin(Surgery, Surgery.id == SurgeryPayment.surgery_id)
+           .filter(SurgeryPayment.status == "paid"))
+    if posted == "posted":
+        q = q.filter(SurgeryPayment.posted_to_modmed_at.isnot(None))
+    elif posted == "unposted":
+        q = q.filter(SurgeryPayment.posted_to_modmed_at.is_(None))
+    rows = q.order_by(desc(SurgeryPayment.paid_at)).all()
+    items = [_payment_posting_dict(p, s) for (p, s) in rows]
+    return {
+        "items": items,
+        "unposted_count": sum(1 for it in items if not it["posted"]),
+    }
+
+
+class _PostPayload(BaseModel):
+    initials: str = Field(min_length=1, max_length=10)
+
+
+@router.post("/payment-postings/{payment_id}/post")
+def mark_payment_posted(
+    payment_id: str,
+    payload: _PostPayload,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
+):
+    """Mark a paid payment as transferred/posted into ModMed. Records the
+    typed initials and stamps the authenticated user's email + time."""
+    from app.models.stripe_payment import SurgeryPayment
+    p = db.query(SurgeryPayment).filter(SurgeryPayment.id == payment_id).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail="payment not found")
+    if p.status != "paid":
+        raise HTTPException(status_code=409,
+            detail="only paid payments can be marked posted")
+    if p.posted_to_modmed_at is not None:
+        raise HTTPException(status_code=409, detail="already marked posted")
+    email = (current_user.get("email") or "").lower() or None
+    p.posted_to_modmed_at = now_utc_naive()
+    p.posted_to_modmed_by = email
+    p.posted_to_modmed_initials = payload.initials.strip()[:10]
+    p.posting_unmarked_at = None
+    p.posting_unmarked_by = None
+    db.commit()
+    log_action(db, action="SURGERY_PAYMENT_POSTED", resource_type="surgery_payment",
+               actor=current_user, resource_id=payment_id,
+               patient_id=(p.stripe_customer_id or None),
+               description=f"Marked Stripe payment posted to ModMed "
+                           f"(initials {p.posted_to_modmed_initials})")
+    s = db.query(Surgery).filter(Surgery.id == p.surgery_id).first()
+    return _payment_posting_dict(p, s)
+
+
+@router.post("/payment-postings/{payment_id}/unpost")
+def unmark_payment_posted(
+    payment_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE)),
+):
+    """Reverse a posting mark (manager-only correction). Clears the posted
+    stamp and records who un-marked it and when."""
+    from app.models.stripe_payment import SurgeryPayment
+    p = db.query(SurgeryPayment).filter(SurgeryPayment.id == payment_id).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail="payment not found")
+    if p.posted_to_modmed_at is None:
+        raise HTTPException(status_code=409, detail="not marked posted")
+    email = (current_user.get("email") or "").lower() or None
+    p.posted_to_modmed_at = None
+    p.posted_to_modmed_by = None
+    p.posted_to_modmed_initials = None
+    p.posting_unmarked_at = now_utc_naive()
+    p.posting_unmarked_by = email
+    db.commit()
+    log_action(db, action="SURGERY_PAYMENT_UNPOSTED", resource_type="surgery_payment",
+               actor=current_user, resource_id=payment_id,
+               description="Reversed ModMed posting mark on Stripe payment")
+    s = db.query(Surgery).filter(Surgery.id == p.surgery_id).first()
+    return _payment_posting_dict(p, s)
+
+
 # ─── Detail + edit + milestone advance ──────────────────────────────
 
 @router.get("/{surgery_id}")

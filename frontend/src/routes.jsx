@@ -94,6 +94,7 @@ import SurgeryCalendar from './pages/SurgeryCalendar'
 import SurgeryDetail from './pages/SurgeryDetail'
 import SurgeryDeleted from './pages/SurgeryDeleted'
 import SurgeryFeeSchedule from './pages/SurgeryFeeSchedule'
+import SurgeryPaymentPosting from './pages/SurgeryPaymentPosting'
 import SurgerySettings from './pages/SurgerySettings'
 import SurgeryTodo from './pages/SurgeryTodo'
 import SurgeryWaitlist from './pages/SurgeryWaitlist'
@@ -205,6 +206,7 @@ export const ROUTES = [
     { path: 'calendar',       element: <SurgeryCalendar />,     module: M.SURGERY, tier: TIER.VIEW },
     { path: 'bulk-import',    element: <SurgeryBulkImport />,   module: M.SURGERY, tier: TIER.MANAGE },
     { path: 'fee-schedule',   element: <SurgeryFeeSchedule />,  module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'payment-posting', element: <SurgeryPaymentPosting />, module: M.SURGERY, tier: TIER.WORK },
     { path: 'messages',       element: <StaffInbox />,          module: M.SURGERY, tier: TIER.WORK },
     { path: 'deleted',        element: <SurgeryDeleted />,      module: M.SURGERY, tier: TIER.MANAGE },
     { path: ':id',            element: <SurgeryDetail />,       module: M.SURGERY, tier: TIER.VIEW },

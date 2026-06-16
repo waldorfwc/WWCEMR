@@ -91,6 +91,17 @@ class SurgeryPayment(Base):
     checkout_url                = Column(Text, nullable=True)
     # Last known Stripe object as a debugging breadcrumb.
     last_event_payload          = Column(JSON, nullable=True)
+    # ── Payment posting (manual reconciliation to ModMed) ──────────────
+    # Staff confirm a paid Stripe payment has been posted/transferred into
+    # ModMed. The initials are what the staffer typed into the box; the
+    # email is the authenticated user the system recorded (the source of
+    # truth for "who posted it"). A non-null posted_to_modmed_at means
+    # "posted". A manager can reverse it; the reversal is stamped.
+    posted_to_modmed_at         = Column(DateTime, nullable=True)
+    posted_to_modmed_by         = Column(String(200), nullable=True)
+    posted_to_modmed_initials   = Column(String(10),  nullable=True)
+    posting_unmarked_at         = Column(DateTime, nullable=True)
+    posting_unmarked_by         = Column(String(200), nullable=True)
 
 
 class SurgeryPaymentHistory(Base):
