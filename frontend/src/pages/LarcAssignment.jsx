@@ -1191,6 +1191,20 @@ function BilledBody({ a }) {
     )
   }
 
+  // Billing can only happen after the device is inserted/consumed — the
+  // backend rejects /bill otherwise ("Can only bill an inserted assignment").
+  // Guide the user to the prerequisite step instead of letting them submit a
+  // claim # that will 409.
+  if (a.status !== 'inserted') {
+    const verb = a.source_flow === 'office_procedure' ? 'consumed' : 'inserted'
+    return (
+      <div className="text-[11px] text-gray-600">
+        Mark the device <span className="font-medium">{verb}</span> first — once it’s {verb},
+        you can record the ModMed claim # here to close the assignment.
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-2 text-[12px]">
       <div className="text-[11px] text-gray-600">
