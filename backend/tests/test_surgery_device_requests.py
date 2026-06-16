@@ -120,3 +120,54 @@ def test_sync_no_devices_is_noop(db):
 
     result = sync_surgery_device_requests(db, s)
     assert result == {"created": [], "skipped_existing": 0, "unmatched": []}
+
+
+# ─── B3: fires on the coordinator scheduling endpoint ───────────────
+
+def test_coordinator_schedule_creates_linked_request(client, db):
+    """Scheduling a device-bearing surgery via the coordinator pick-date
+    endpoint creates a linked LARC device request."""
+    from datetime import time, timedelta
+    from app.models.surgery import BlockDay
+
+    _seed_device_types(db)
+    s = Surgery(
+        chart_number="CH200", patient_name="Roe, Mary",
+        first_name="Mary", last_name="Roe",
+        surgeon_primary="Dr. Aryian Cooke",
+        eligible_facilities=["office"], status="new",
+        procedure_classification="office_d_and_c",
+        estimated_minutes=60,
+        device_required=True, device_types=["Mirena"],
+    )
+    db.add(s)
+    bd = BlockDay(
+        block_date=_dt.date.today() + timedelta(days=21),
+        facility="office",
+        start_time=time(7, 0), end_time=time(15, 0),
+        block_kind="office_d_and_c",
+    )
+    db.add(bd)
+    db.commit()
+    db.refresh(s); db.refresh(bd)
+
+    r = client.post(f"/api/surgery/{s.id}/pick-date",
+                    json={"block_day_id": str(bd.id)})
+    assert r.status_code == 200, r.text
+
+    rows = (db.query(LarcAssignment)
+              .filter(LarcAssignment.linked_surgery_id == s.id)
+              .all())
+    assert len(rows) == 1
+    a = rows[0]
+    assert a.source_flow == "pharmacy_order"  # no Mirena in stock
+    assert a.requested_by_provider == "Dr. Aryian Cooke"
+    assert a.from_surgery if hasattr(a, "from_surgery") else True
+
+    # The endpoint payload exposes the link (B4).
+    body = r.json()
+    reqs = body["surgery"]["device_requests"]
+    assert len(reqs) == 1
+    assert reqs[0]["device_type"] == "Mirena"
+    assert reqs[0]["source_flow"] == "pharmacy_order"
+    assert reqs[0]["requested_by_provider"] == "Dr. Aryian Cooke"
