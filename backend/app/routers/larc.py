@@ -1700,7 +1700,7 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
                                LarcCheckout.outcome.is_(None),
                                LarcCheckout.approval_status.in_(
                                    ["approved", "auto_approved"]))
-                       .order_by(LarcCheckout.created_at.desc())
+                       .order_by(LarcCheckout.requested_at.desc())
                        .first())
     if open_checkout:
         from decimal import Decimal as _Dec
