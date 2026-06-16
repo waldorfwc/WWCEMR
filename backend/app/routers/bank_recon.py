@@ -68,6 +68,39 @@ def _import_to_dict(imp: Bai2Import) -> dict:
 
 
 # ──────────────────────────────────────────────────────────────────────
+# Identity-based auto-exclusion (date + amount + last_4)
+#
+# A candidate is auto-excluded only when its (transaction_date, amount,
+# last_4) matches a transaction ALREADY stored in a prior BAI2 file. This
+# catches re-worded duplicates (the bank rewrites the same deposit between
+# exports) WITHOUT dropping a genuinely-new transaction that merely shares
+# a posting date with a prior import — e.g. a late-posting deposit, or one
+# that was pending in an earlier file and has since cleared.
+
+def _q2(a) -> Decimal:
+    """Normalize a money value to a 2-dp Decimal so float vs Decimal and
+    representation noise (123.4 vs 123.40 vs 123.400001) compare equal."""
+    return Decimal(str(a if a is not None else 0)).quantize(Decimal("0.01"))
+
+
+def _prior_identities(db: Session) -> set:
+    """Set of (transaction_date, _q2(amount), last_4 or "") over ALL stored
+    Bai2Transaction rows (across every import, deleted or not — the rows
+    persist so the same bank transaction can't be re-posted)."""
+    rows = db.query(
+        Bai2Transaction.transaction_date,
+        Bai2Transaction.amount,
+        Bai2Transaction.last_4,
+    ).all()
+    return {(d, _q2(a), (l4 or "")) for (d, a, l4) in rows}
+
+
+def _identity(t) -> tuple:
+    """Identity tuple for a parsed candidate (ParsedTransaction)."""
+    return (t.transaction_date, _q2(t.amount), (t.last_4 or ""))
+
+
+# ──────────────────────────────────────────────────────────────────────
 # Step 1: PREVIEW — upload CSV, parse, return transactions for review
 
 @router.post("/preview")
@@ -107,11 +140,38 @@ async def preview_csv(
     )
     parsed = parse_csv_from_bytes(content, filters)
 
+    # Identity-based auto-exclusion: a candidate is "already imported" only
+    # when its (date, amount, last_4) matches a transaction already stored
+    # in a prior BAI2 file. This catches re-worded duplicates (the bank
+    # rewrites the same deposit between exports — ACH DEP… vs …HCCLAIMPMT…)
+    # while letting through genuinely-new transactions that merely share a
+    # posting date with a prior import (late posts, cleared-after-pending).
+    prior = _prior_identities(db)
+
+    txns = []
+    already_imported_keys = []
+    for t in parsed.transactions:
+        already = _identity(t) in prior
+        if already:
+            already_imported_keys.append(t.dedup_key)
+        txns.append({
+            "dedup_key": t.dedup_key,
+            "date": str(t.transaction_date),
+            "description": t.description,
+            "formatted_text": t.formatted_text,
+            "amount": t.amount,
+            "method": t.method,
+            "last_4": t.last_4,
+            "already_imported": already,
+        })
+
     # Persist the filter snapshot so /generate consumes exactly what the
     # user approved. Without this, the client could (legitimately or
     # via a stale tab) re-send different skip_* flags to /generate and
     # the system would generate a different transaction set than the
-    # user reviewed. (Fable cross-cutting audit #12.)
+    # user reviewed. (Fable cross-cutting audit #12.) The
+    # already_imported_keys list records the identity decision the user
+    # previewed so /generate enforces the same set.
     snapshot = {
         "preview_id": preview_id,
         "ext": ext,
@@ -122,58 +182,13 @@ async def preview_csv(
             "skip_zero": skip_zero,
         },
         "candidate_dedup_keys": [t.dedup_key for t in parsed.transactions],
-        "covered_by_prior_import": [
-            t.dedup_key for t in parsed.transactions
-            if any(s <= t.transaction_date <= e
-                    for (s, e) in [
-                        (s, e) for (s, e) in db.query(
-                            Bai2Import.date_range_start,
-                            Bai2Import.date_range_end).all()
-                        if s and e])
-        ],
+        "already_imported_keys": already_imported_keys,
     }
     save_blob_with_key(
         key=f"bank-recon-csv/{preview_id}.snapshot.json",
         body=json.dumps(snapshot).encode("utf-8"),
         content_type="application/json",
     )
-
-    # Mark each transaction with whether its dedup_key already exists in DB
-    keys = [t.dedup_key for t in parsed.transactions]
-    already_in_db = set()
-    if keys:
-        already_in_db = {
-            row[0]
-            for row in db.query(Bai2Transaction.dedup_key)
-            .filter(Bai2Transaction.dedup_key.in_(keys)).all()
-        }
-
-    # Overlap guard: flag transactions whose date is already covered by a
-    # prior import's date range. The bank re-words the same deposit between
-    # exports (ACH DEP… vs …HCCLAIMPMT…), so the dedup_key alone misses
-    # these overlap-day re-imports — date coverage is the reliable signal.
-    prior_ranges = [
-        (s, e) for (s, e) in
-        db.query(Bai2Import.date_range_start, Bai2Import.date_range_end).all()
-        if s and e
-    ]
-    def _date_covered(d):
-        return any(s <= d <= e for (s, e) in prior_ranges)
-
-    txns = []
-    for t in parsed.transactions:
-        covered = _date_covered(t.transaction_date)
-        txns.append({
-            "dedup_key": t.dedup_key,
-            "date": str(t.transaction_date),
-            "description": t.description,
-            "formatted_text": t.formatted_text,
-            "amount": t.amount,
-            "method": t.method,
-            "last_4": t.last_4,
-            "already_imported": t.dedup_key in already_in_db,
-            "date_already_covered": covered,
-        })
 
     return {
         "preview_id": preview_id,
@@ -189,9 +204,6 @@ async def preview_csv(
             "skipped_duplicate_in_file": parsed.skipped_duplicate_in_file,
             "skipped_always_drop": parsed.skipped_always_drop,
             "already_imported_count": sum(1 for t in txns if t["already_imported"]),
-            "date_covered_count": sum(
-                1 for t in txns
-                if t["date_already_covered"] and not t["already_imported"]),
         },
         "transactions": txns,
     }
@@ -287,33 +299,24 @@ def generate_bai2(payload: GenerateRequest,
 
     excluded = set(payload.excluded_keys or [])
 
-    # Enforce the snapshot's covered-by-prior-import set (Fable #12).
-    # The preview shows these as warnings; at generate time they are
-    # blocked outright unless the user explicitly excluded them or the
-    # /preview flagged none.
-    covered_keys = set((snapshot or {}).get("covered_by_prior_import") or [])
-
-    # Cross-import dedup
-    keys = [t.dedup_key for t in parsed.transactions]
-    already = set()
-    if keys:
-        already = {
-            row[0]
-            for row in db.query(Bai2Transaction.dedup_key)
-            .filter(Bai2Transaction.dedup_key.in_(keys)).all()
-        }
-    # Combine dedup_key + date-coverage signals so a re-worded bank
-    # description doesn't slip through.
-    already |= covered_keys
+    # Identity-based auto-exclusion: a candidate is a prior duplicate only
+    # when its (date, amount, last_4) matches a transaction already stored
+    # in a prior BAI2 file. This catches re-worded duplicates while letting
+    # through genuinely-new transactions that merely share a posting date
+    # with a prior import. Everything not a true duplicate (and not manually
+    # excluded by the user) is imported, regardless of date. Manual
+    # exclusion still wins. (Within-file dedup + dedup_key formula
+    # unchanged — that's the storage unique-constraint identity.)
+    prior = _prior_identities(db)
 
     new_txns = [
         t for t in parsed.transactions
-        if t.dedup_key not in excluded and t.dedup_key not in already
+        if t.dedup_key not in excluded and _identity(t) not in prior
     ]
     skipped_user_excluded = sum(1 for t in parsed.transactions if t.dedup_key in excluded)
     skipped_prior = sum(
         1 for t in parsed.transactions
-        if t.dedup_key not in excluded and t.dedup_key in already
+        if t.dedup_key not in excluded and _identity(t) in prior
     )
 
     if not new_txns:
