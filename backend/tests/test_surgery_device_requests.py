@@ -171,3 +171,45 @@ def test_coordinator_schedule_creates_linked_request(client, db):
     assert reqs[0]["device_type"] == "Mirena"
     assert reqs[0]["source_flow"] == "pharmacy_order"
     assert reqs[0]["requested_by_provider"] == "Dr. Aryian Cooke"
+
+
+# ─── B4: LARC assignment dict surfaces the surgery origin ───────────
+
+def test_larc_assignment_dict_exposes_from_surgery(client, db):
+    liletta, _, _ = _seed_device_types(db)
+    s = _make_surgery(db, device_types=["Liletta"])
+    sync_surgery_device_requests(db, s, actor_email="staff@x.com")
+    a = (db.query(LarcAssignment)
+           .filter(LarcAssignment.linked_surgery_id == s.id)
+           .first())
+
+    r = client.get(f"/api/larc/assignments/{a.id}")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["from_surgery"] is True
+    assert body["linked_surgery_id"] == str(s.id)
+    assert body["requested_by_provider"] == "Dr. Aryian Cooke"
+
+    # list direction too
+    rl = client.get("/api/larc/assignments")
+    assert rl.status_code == 200
+    row = next(x for x in rl.json()["assignments"] if x["id"] == str(a.id))
+    assert row["from_surgery"] is True
+    assert row["requested_by_provider"] == "Dr. Aryian Cooke"
+
+
+def test_larc_assignment_dict_non_surgery_origin(client, db):
+    """A normally-created assignment (no surgery link) reports from_surgery False."""
+    _seed_device_types(db)
+    dt = db.query(LarcDeviceType).filter(LarcDeviceType.name == "Mirena").first()
+    r = client.post("/api/larc/assignments", json={
+        "chart_number": "CH900",
+        "patient_name": "Solo, Pat",
+        "source_flow": "pharmacy_order",
+        "device_type_id": str(dt.id),
+    })
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["from_surgery"] is False
+    assert body["linked_surgery_id"] is None
+    assert body["requested_by_provider"] is None
