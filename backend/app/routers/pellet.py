@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date as _date, datetime, timedelta
 from app.utils.dt import now_utc_naive
 from decimal import Decimal
-from typing import Annotated, Optional
+from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -361,6 +361,61 @@ def list_dose_types(db: Session = Depends(get_db),
                 packs = doses // min_pack
         out.append(_dose_type_dict(t, on_hand_packs=packs, on_hand_doses=doses))
     return out
+
+
+class DoseTypeIn(BaseModel):
+    hormone: Literal["estradiol", "testosterone"]
+    dose_mg: float = Field(gt=0, le=1000)
+    label:   Optional[str] = None              # auto-generated from hormone+dose if blank
+    reorder_threshold_packs: Optional[int] = Field(default=None, ge=0)
+    reorder_qty_packs:       Optional[int] = Field(default=None, ge=0)
+    typical_cost_per_dose:   Optional[float] = Field(default=None, ge=0)
+    pack_sizes:              Optional[list[int]] = None
+    notes:                   Optional[str] = None
+    is_active:               bool = True
+
+
+@router.post("/dose-types", status_code=201)
+def create_dose_type(payload: DoseTypeIn,
+                     override_reason: Optional[str] = None,
+                     db: Session = Depends(get_db),
+                     current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    """Add a new pellet dose type. testosterone is DEA Schedule III →
+    is_controlled auto-set. Unique on (hormone, dose_mg)."""
+    from app.services.pellet.lock import ensure_unlocked_or_override
+    ensure_unlocked_or_override(db, current_user=current_user,
+                                override_reason=override_reason,
+                                action_label="dose-type create")
+    dose_val = round(float(payload.dose_mg), 2)
+    existing = (db.query(PelletDoseType)
+                  .filter(PelletDoseType.hormone == payload.hormone,
+                          PelletDoseType.dose_mg == dose_val).first())
+    if existing:
+        raise HTTPException(status_code=409,
+                            detail=f"A {payload.hormone} {dose_val:g}mg dose already exists.")
+    # Trim/validate pack sizes to positive ints.
+    packs = [int(x) for x in (payload.pack_sizes or []) if int(x) > 0]
+    label = (payload.label or "").strip() or f"{payload.hormone.title()} {dose_val:g}mg"
+    t = PelletDoseType(
+        hormone=payload.hormone,
+        dose_mg=dose_val,
+        label=label,
+        is_controlled=(payload.hormone == "testosterone"),
+        reorder_threshold_packs=payload.reorder_threshold_packs,
+        reorder_qty_packs=payload.reorder_qty_packs,
+        typical_cost_per_dose=payload.typical_cost_per_dose,
+        pack_sizes=packs,
+        notes=(payload.notes or None),
+        is_active=bool(payload.is_active),
+    )
+    db.add(t); db.commit(); db.refresh(t)
+    _audit(db, actor=(current_user.get("email") or "system"),
+           action="dose_type_created",
+           summary=f"Created dose type {t.label}",
+           detail={"hormone": t.hormone, "dose_mg": float(t.dose_mg),
+                   "is_controlled": t.is_controlled})
+    db.commit()
+    return _dose_type_dict(t)
 
 
 class DoseTypePatch(BaseModel):

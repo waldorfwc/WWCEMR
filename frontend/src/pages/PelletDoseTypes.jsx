@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, Pill, Edit3, Save, X, Shield } from 'lucide-react'
+import { ArrowLeft, Pill, Edit3, Save, X, Shield, Plus } from 'lucide-react'
 import api from '../utils/api'
 
 
 export default function PelletDoseTypes({ embedded = false }) {
   const [editing, setEditing] = useState(null)
+  const [adding, setAdding] = useState(false)
 
   const { data: types = [], isLoading } = useQuery({
     queryKey: ['pellet-dose-types'],
@@ -31,6 +32,13 @@ export default function PelletDoseTypes({ embedded = false }) {
           </p>
         </>
       )}
+
+      <div className="flex justify-end mb-2">
+        <button onClick={() => setAdding(true)}
+                className="btn-primary text-sm flex items-center gap-1">
+          <Plus size={13}/> Add Dose Type
+        </button>
+      </div>
 
       <div className="card !p-0 overflow-hidden">
         <table className="w-full text-sm">
@@ -94,6 +102,133 @@ export default function PelletDoseTypes({ embedded = false }) {
       {editing && (
         <EditDrawer dose={editing} onClose={() => setEditing(null)} />
       )}
+      {adding && (
+        <AddDrawer onClose={() => setAdding(false)} />
+      )}
+    </div>
+  )
+}
+
+
+function AddDrawer({ onClose }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState({
+    hormone: 'estradiol',
+    dose_mg: '',
+    label: '',
+    reorder_threshold_packs: '',
+    reorder_qty_packs: '',
+    typical_cost_per_dose: '',
+    pack_sizes: '',
+    notes: '',
+  })
+  const upd = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const dose = form.dose_mg === '' ? null : Number(form.dose_mg)
+  const labelPreview = form.label.trim()
+    || (dose ? `${form.hormone[0].toUpperCase()}${form.hormone.slice(1)} ${dose}mg` : '')
+  const valid = dose !== null && !isNaN(dose) && dose > 0
+
+  const create = useMutation({
+    mutationFn: () => api.post('/pellets/dose-types', {
+      hormone: form.hormone,
+      dose_mg: dose,
+      label: form.label.trim() || null,
+      reorder_threshold_packs: form.reorder_threshold_packs === '' ? null : Number(form.reorder_threshold_packs),
+      reorder_qty_packs: form.reorder_qty_packs === '' ? null : Number(form.reorder_qty_packs),
+      typical_cost_per_dose: form.typical_cost_per_dose === '' ? null : Number(form.typical_cost_per_dose),
+      pack_sizes: form.pack_sizes
+        ? form.pack_sizes.split(',').map(s => Number(s.trim())).filter(n => !isNaN(n) && n > 0)
+        : [],
+      notes: form.notes || null,
+    }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-dose-types'] })
+      qc.invalidateQueries({ queryKey: ['pellet-dashboard'] })
+      onClose()
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Could not add dose type'),
+  })
+
+  const controlled = form.hormone === 'testosterone'
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30"/>
+      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
+          <h2 className="font-serif font-semibold text-ink text-[16px]">Add Dose Type</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18}/></button>
+        </div>
+        <div className="p-5 space-y-3 text-sm">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Hormone</label>
+              <select className="input text-sm w-full" value={form.hormone}
+                      onChange={e => upd('hormone', e.target.value)}>
+                <option value="estradiol">Estradiol</option>
+                <option value="testosterone">Testosterone</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Dose (mg)</label>
+              <input type="number" step="0.01" min="0" className="input text-sm w-full"
+                     value={form.dose_mg} onChange={e => upd('dose_mg', e.target.value)} />
+            </div>
+          </div>
+          {controlled && (
+            <div className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 flex items-center gap-1">
+              <Shield size={11}/> Testosterone is DEA Schedule III — it will be tracked as controlled.
+            </div>
+          )}
+          <div>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Label</label>
+            <input className="input text-sm w-full" placeholder={labelPreview || 'auto-generated'}
+                   value={form.label} onChange={e => upd('label', e.target.value)} />
+            {!form.label.trim() && labelPreview && (
+              <p className="text-[11px] text-gray-400 mt-0.5">Will be saved as “{labelPreview}”.</p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Reorder ≤ packs</label>
+              <input type="number" min="0" className="input text-sm w-full"
+                     value={form.reorder_threshold_packs}
+                     onChange={e => upd('reorder_threshold_packs', e.target.value)} />
+            </div>
+            <div>
+              <label className="text-[11px] uppercase text-gray-500 block mb-1">Order qty packs</label>
+              <input type="number" min="0" className="input text-sm w-full"
+                     value={form.reorder_qty_packs}
+                     onChange={e => upd('reorder_qty_packs', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Pack sizes (comma-separated)</label>
+            <input className="input text-sm w-full" placeholder="6, 12, 30"
+                   value={form.pack_sizes} onChange={e => upd('pack_sizes', e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Typical cost per dose ($)</label>
+            <input type="number" step="0.01" className="input text-sm w-full font-mono"
+                   value={form.typical_cost_per_dose}
+                   onChange={e => upd('typical_cost_per_dose', e.target.value)} />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
+            <input className="input text-sm w-full" value={form.notes}
+                   onChange={e => upd('notes', e.target.value)} />
+          </div>
+        </div>
+        <div className="sticky bottom-0 bg-white border-t border-border-subtle px-5 py-3 flex justify-end gap-2">
+          <button className="text-sm text-muted hover:underline" onClick={onClose}>Cancel</button>
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  disabled={!valid || create.isPending}
+                  onClick={() => create.mutate()}>
+            <Save size={13}/> {create.isPending ? 'Adding…' : 'Add dose type'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
