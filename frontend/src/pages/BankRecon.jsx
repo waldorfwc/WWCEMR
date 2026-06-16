@@ -5,6 +5,8 @@ import {
   FileText, AlertTriangle, CheckCircle2, X,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
+import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 
 // ─────────────────────────────────────────────────────────────────────
@@ -12,6 +14,8 @@ import api, { fmt } from '../utils/api'
 
 export default function BankRecon() {
   const qc = useQueryClient()
+  const { tier } = useCurrentUser()
+  const canManage = tier(MODULE.BANK_RECON, TIER.MANAGE)
   const [bankName, setBankName] = useState(() => localStorage.getItem('bai2_bank') || 'PNC x395')
   const [skipWithdrawals, setSkipWithdrawals] = useState(true)
   const [skipModmed, setSkipModmed] = useState(true)
@@ -48,9 +52,9 @@ export default function BankRecon() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setPreview(res.data)
-      // Default-exclude rows that are already-imported
+      // Default-exclude rows that are already-imported or previously excluded (sticky)
       const auto = new Set(res.data.transactions
-        .filter(t => t.already_imported)
+        .filter(t => t.already_imported || t.previously_excluded)
         .map(t => t.dedup_key))
       setExcludedKeys(auto)
     } catch (err) {
@@ -75,7 +79,7 @@ export default function BankRecon() {
   function selectOnlyNew() {
     if (!preview) return
     const auto = new Set(preview.transactions
-      .filter(t => t.already_imported)
+      .filter(t => t.already_imported || t.previously_excluded)
       .map(t => t.dedup_key))
     setExcludedKeys(auto)
   }
@@ -178,6 +182,7 @@ export default function BankRecon() {
           <div className="flex flex-wrap gap-3 mb-3 text-[11px] text-gray-600">
             <Stat label="To review" val={preview.stats.transactions_to_review} />
             <Stat label="Already imported" val={preview.stats.already_imported_count} cls="text-amber-700" />
+            <Stat label="Previously excluded" val={preview.stats.previously_excluded_count} cls="text-indigo-700" />
             <Stat label="Withdrawals" val={preview.stats.skipped_withdrawal} cls="text-gray-500" />
             <Stat label="ModMed" val={preview.stats.skipped_modmed} cls="text-gray-500" />
             <Stat label="Stripe" val={preview.stats.skipped_stripe} cls="text-gray-500" />
@@ -211,7 +216,7 @@ export default function BankRecon() {
                   const excluded = excludedKeys.has(t.dedup_key)
                   return (
                     <tr key={t.dedup_key}
-                        className={`border-t border-border-subtle ${t.already_imported ? 'bg-amber-50/40' : ''} ${excluded ? 'opacity-50' : ''}`}>
+                        className={`border-t border-border-subtle ${(t.already_imported || t.previously_excluded) ? 'bg-amber-50/40' : ''} ${excluded ? 'opacity-50' : ''}`}>
                       <td className="px-2 py-1 text-center">
                         <input
                           type="checkbox"
@@ -232,6 +237,11 @@ export default function BankRecon() {
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
                                 title="Already in a prior BAI file (same date, amount & last-4). Re-worded duplicates are caught too.">
                             already imported
+                          </span>
+                        ) : t.previously_excluded ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700"
+                                title="You excluded this before — it stays out until reinstated in the Excluded list below.">
+                            previously excluded
                           </span>
                         ) : (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">new</span>
@@ -270,6 +280,98 @@ export default function BankRecon() {
 
       {/* HISTORY */}
       <HistoryList imports={history?.imports || []} />
+
+      {/* EXCLUDED TRANSACTIONS (sticky) */}
+      <ExclusionsList canManage={canManage} />
+    </div>
+  )
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// Excluded transactions — sticky exclusions admin review list
+
+function ExclusionsList({ canManage }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+
+  const { data: exclusions = [] } = useQuery({
+    queryKey: ['bank-recon-exclusions'],
+    queryFn: () => api.get('/bank-recon/exclusions').then(r => r.data),
+  })
+
+  const reinstate = useMutation({
+    mutationFn: (id) => api.post(`/bank-recon/exclusions/${id}/reinstate`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['bank-recon-exclusions'] })
+      qc.invalidateQueries({ queryKey: ['bai2-imports'] })
+    },
+  })
+
+  function handleReinstate(id) {
+    if (!window.confirm('Reinstate this transaction? It will be importable again on the next upload.')) return
+    reinstate.mutate(id)
+  }
+
+  return (
+    <div className="card">
+      <button
+        className="flex items-center justify-between w-full text-left"
+        onClick={() => setOpen(o => !o)}
+      >
+        <h2 className="text-sm font-semibold text-gray-700 flex items-center gap-1">
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          Excluded Transactions
+        </h2>
+        <span className="text-[10px] text-gray-400">{exclusions.length} sticky</span>
+      </button>
+
+      {open && (
+        exclusions.length === 0 ? (
+          <div className="mt-3 text-xs text-gray-400 italic">No sticky exclusions.</div>
+        ) : (
+          <div className="mt-3 overflow-x-auto border border-border-subtle rounded">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Date</th>
+                  <th className="px-2 py-1.5 text-right text-[11px] uppercase text-gray-500">Amount</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Last 4</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Description</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Reason</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">Excluded By</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] uppercase text-gray-500">When</th>
+                  {canManage && <th className="px-2 py-1.5 w-8"></th>}
+                </tr>
+              </thead>
+              <tbody>
+                {exclusions.map(x => (
+                  <tr key={x.id} className="border-t border-border-subtle">
+                    <td className="px-2 py-1 text-xs whitespace-nowrap">{fmt.date(x.transaction_date)}</td>
+                    <td className="px-2 py-1 text-xs font-mono text-right">{fmt.currency(x.amount)}</td>
+                    <td className="px-2 py-1 text-xs font-mono">{x.last_4 || '—'}</td>
+                    <td className="px-2 py-1 text-[11px] text-gray-600 truncate max-w-[280px]">{x.description || '—'}</td>
+                    <td className="px-2 py-1 text-[11px] text-gray-600">{x.reason || '—'}</td>
+                    <td className="px-2 py-1 text-[11px] text-gray-500">{x.excluded_by ? x.excluded_by.split('@')[0] : '—'}</td>
+                    <td className="px-2 py-1 text-[11px] text-gray-500 whitespace-nowrap">{fmt.date(x.created_at)}</td>
+                    {canManage && (
+                      <td className="px-2 py-1 text-right">
+                        <button
+                          className="btn-secondary text-xs"
+                          onClick={() => handleReinstate(x.id)}
+                          disabled={reinstate.isPending}
+                        >
+                          Reinstate
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
     </div>
   )
 }
