@@ -50,7 +50,7 @@ export default function BankRecon() {
       setPreview(res.data)
       // Default-exclude rows that are already-imported
       const auto = new Set(res.data.transactions
-        .filter(t => t.already_imported || t.date_already_covered)
+        .filter(t => t.already_imported)
         .map(t => t.dedup_key))
       setExcludedKeys(auto)
     } catch (err) {
@@ -75,7 +75,7 @@ export default function BankRecon() {
   function selectOnlyNew() {
     if (!preview) return
     const auto = new Set(preview.transactions
-      .filter(t => t.already_imported || t.date_already_covered)
+      .filter(t => t.already_imported)
       .map(t => t.dedup_key))
     setExcludedKeys(auto)
   }
@@ -178,7 +178,6 @@ export default function BankRecon() {
           <div className="flex flex-wrap gap-3 mb-3 text-[11px] text-gray-600">
             <Stat label="To review" val={preview.stats.transactions_to_review} />
             <Stat label="Already imported" val={preview.stats.already_imported_count} cls="text-amber-700" />
-            <Stat label="Date already imported" val={preview.stats.date_covered_count} cls="text-amber-700" />
             <Stat label="Withdrawals" val={preview.stats.skipped_withdrawal} cls="text-gray-500" />
             <Stat label="ModMed" val={preview.stats.skipped_modmed} cls="text-gray-500" />
             <Stat label="Stripe" val={preview.stats.skipped_stripe} cls="text-gray-500" />
@@ -212,7 +211,7 @@ export default function BankRecon() {
                   const excluded = excludedKeys.has(t.dedup_key)
                   return (
                     <tr key={t.dedup_key}
-                        className={`border-t border-border-subtle ${(t.already_imported || t.date_already_covered) ? 'bg-amber-50/40' : ''} ${excluded ? 'opacity-50' : ''}`}>
+                        className={`border-t border-border-subtle ${t.already_imported ? 'bg-amber-50/40' : ''} ${excluded ? 'opacity-50' : ''}`}>
                       <td className="px-2 py-1 text-center">
                         <input
                           type="checkbox"
@@ -230,11 +229,9 @@ export default function BankRecon() {
                       </td>
                       <td className="px-2 py-1 text-xs">
                         {t.already_imported ? (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">already imported</span>
-                        ) : t.date_already_covered ? (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700"
-                                title="This date was already imported in a prior file — likely a re-worded duplicate. Unchecked by default.">
-                            date already imported
+                                title="Already in a prior BAI file (same date, amount & last-4). Re-worded duplicates are caught too.">
+                            already imported
                           </span>
                         ) : (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">new</span>
