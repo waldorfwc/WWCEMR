@@ -50,6 +50,10 @@ const THRESHOLD_FIELDS = [
     hint: 'Upper bound on pellets in a suggested dose combination.' },
   { key: 'dose_suggest_max_results', label: 'Max Dose Suggestions',
     hint: 'How many dose combinations to offer.' },
+  { key: 'labs_valid_days', label: 'Labs Valid (Days)',
+    hint: 'Labs must be drawn within this many days of the visit.' },
+  { key: 'mammo_valid_days', label: 'Mammogram Valid (Days)',
+    hint: 'Mammogram must be within this many days of the visit.' },
 ]
 
 function saveErrorMessage(error) {
