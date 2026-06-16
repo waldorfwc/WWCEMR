@@ -470,6 +470,13 @@ def _apply_lightweight_migrations():
         # Surgery soft-delete (recoverable remove from the surgery system).
         ("surgeries", "deleted_at", "DATETIME"),
         ("surgeries", "deleted_by", "VARCHAR(200)"),
+        # Payment posting — manual reconciliation of paid Stripe payments
+        # into ModMed (Surgery "Payment Posting" tab).
+        ("surgery_payments", "posted_to_modmed_at",       "DATETIME"),
+        ("surgery_payments", "posted_to_modmed_by",       "VARCHAR(200)"),
+        ("surgery_payments", "posted_to_modmed_initials", "VARCHAR(10)"),
+        ("surgery_payments", "posting_unmarked_at",       "DATETIME"),
+        ("surgery_payments", "posting_unmarked_by",       "VARCHAR(200)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

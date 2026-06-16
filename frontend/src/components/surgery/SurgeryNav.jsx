@@ -23,6 +23,7 @@ function navItems() {
     { to: '/surgery/block-schedule', label: 'Block Schedule', tier: TIER.MANAGE },
     { to: '/surgery/waitlist',       label: 'Waitlist',       tier: TIER.WORK },
     { to: '/surgery/fee-schedule',   label: 'Fee Schedule',   tier: TIER.MANAGE },
+    { to: '/surgery/payment-posting', label: 'Payment Posting', tier: TIER.WORK },
     { to: '/surgery/messages',       label: 'Messages',       tier: TIER.WORK, badge: 'messages' },
     { to: '/surgery/settings',       label: 'Settings',       tier: TIER.MANAGE },
   ]
