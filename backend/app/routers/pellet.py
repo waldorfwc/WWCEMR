@@ -3211,6 +3211,8 @@ class PelletConfigPayload(BaseModel):
     stale_visit_days:         Optional[int] = Field(default=None, ge=1, le=365)
     dose_suggest_max_pellets: Optional[int] = Field(default=None, ge=1, le=50)
     dose_suggest_max_results: Optional[int] = Field(default=None, ge=1, le=50)
+    labs_valid_days:          Optional[int] = Field(default=None, ge=1, le=3650)
+    mammo_valid_days:         Optional[int] = Field(default=None, ge=1, le=3650)
 
 
 @router.get("/config")

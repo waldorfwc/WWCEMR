@@ -16,6 +16,8 @@ PELLET_SETTINGS_DEFAULTS: dict[str, Any] = {
     "stale_visit_days":         7,    # pellet/stale_sweep.STALE_DAYS
     "dose_suggest_max_pellets": 12,   # pellet/dose_suggest.MAX_PELLETS
     "dose_suggest_max_results": 6,    # pellet/dose_suggest.MAX_RESULTS
+    "labs_valid_days":          14,   # labs must be drawn within N days of the visit
+    "mammo_valid_days":         365,  # mammo must be within N days of the visit
 }
 
 

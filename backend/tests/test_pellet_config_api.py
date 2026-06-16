@@ -10,7 +10,10 @@ from app.services.pellet.stale_sweep import sweep_stale_visits
 def test_get_pellet_config_returns_defaults(client):
     r = client.get("/api/pellets/config")
     assert r.status_code == 200
-    assert r.json()["stale_visit_days"] == 7
+    body = r.json()
+    assert body["stale_visit_days"] == 7
+    assert body["labs_valid_days"] == 14
+    assert body["mammo_valid_days"] == 365
 
 
 def test_put_pellet_config_roundtrips(client):
@@ -18,10 +21,22 @@ def test_put_pellet_config_roundtrips(client):
     assert client.get("/api/pellets/config").json()["stale_visit_days"] == 14
 
 
+def test_put_pellet_config_roundtrips_labs_mammo_windows(client):
+    assert client.put("/api/pellets/config",
+                      json={"labs_valid_days": 30, "mammo_valid_days": 180}).status_code == 200
+    body = client.get("/api/pellets/config").json()
+    assert body["labs_valid_days"] == 30
+    assert body["mammo_valid_days"] == 180
+
+
 def test_put_pellet_config_rejects_out_of_range(client):
     assert client.put("/api/pellets/config", json={"stale_visit_days": 0}).status_code == 422
     assert client.put("/api/pellets/config", json={"stale_visit_days": 99999}).status_code == 422
     assert client.put("/api/pellets/config", json={"dose_suggest_max_pellets": 99}).status_code == 422
+    assert client.put("/api/pellets/config", json={"labs_valid_days": 0}).status_code == 422
+    assert client.put("/api/pellets/config", json={"labs_valid_days": 4000}).status_code == 422
+    assert client.put("/api/pellets/config", json={"mammo_valid_days": 0}).status_code == 422
+    assert client.put("/api/pellets/config", json={"mammo_valid_days": 4000}).status_code == 422
 
 
 def test_stale_visit_days_override_changes_sweep(client, db):
