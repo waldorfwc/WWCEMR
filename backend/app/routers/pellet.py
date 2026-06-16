@@ -56,7 +56,7 @@ from app.services.pellet.workflow import (
     spawn_milestones, default_price_for, patient_buckets,
 )
 from app.services.pellet import appt_import, dose_suggest
-from app.services.pellet.settings import PELLET_SETTINGS_DEFAULTS
+from app.services.pellet.settings import PELLET_SETTINGS_DEFAULTS, cfg
 from app.models.pellet_config import PelletConfig
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
@@ -3407,29 +3407,51 @@ def _has_lab_value(v) -> bool:
     return bool(v) and str(v).strip().lower() != "pending"
 
 
-def _mammo_ready(p, ref_date) -> bool:
-    if not p.mammo_result or p.mammo_result not in ACCEPTABLE_MAMMO_RESULTS:
-        return False
-    if p.mammo_result == MAMMO_NOT_REQUIRED:
-        return True   # testosterone-only: no mammo, no date check
-    if not p.mammo_date or not ref_date:
-        return False
-    return p.mammo_date >= ref_date - timedelta(days=365)
-
-
-def _labs_ready(p, ref_date) -> bool:
+def _labs_status(p, ref_date, labs_days: int = 14) -> str:
+    """Reason code for labs readiness as of ref_date:
+    "not_required" | "none" | "missing_values" | "no_date" | "stale" | "ok"."""
     if p.labs_not_required:
-        return True
-    if not (_has_lab_value(p.labs_fsh)
-            and _has_lab_value(p.labs_tsh)
-            and _has_lab_value(p.labs_estradiol)):
-        return False
+        return "not_required"
+    has_values = (_has_lab_value(p.labs_fsh)
+                  and _has_lab_value(p.labs_tsh)
+                  and _has_lab_value(p.labs_estradiol))
+    if not has_values:
+        # No labs at all (no date AND no values) vs. partial/missing values.
+        if not p.labs_date and not (p.labs_fsh or p.labs_tsh or p.labs_estradiol):
+            return "none"
+        return "missing_values"
     if not p.labs_date or not ref_date:
-        return False
-    return p.labs_date >= ref_date - timedelta(days=14)
+        return "no_date"
+    if p.labs_date < ref_date - timedelta(days=labs_days):
+        return "stale"
+    return "ok"
 
 
-def _visit_ready(p, active) -> bool:
+def _mammo_status(p, ref_date, mammo_days: int = 365) -> str:
+    """Reason code for mammo readiness as of ref_date:
+    "not_required" | "none" | "unacceptable" | "no_date" | "stale" | "ok"."""
+    if p.mammo_result == MAMMO_NOT_REQUIRED:
+        return "not_required"
+    if not p.mammo_result:
+        return "none"
+    if p.mammo_result not in ACCEPTABLE_MAMMO_RESULTS:
+        return "unacceptable"
+    if not p.mammo_date or not ref_date:
+        return "no_date"
+    if p.mammo_date < ref_date - timedelta(days=mammo_days):
+        return "stale"
+    return "ok"
+
+
+def _mammo_ready(p, ref_date, mammo_days: int = 365) -> bool:
+    return _mammo_status(p, ref_date, mammo_days) in {"ok", "not_required"}
+
+
+def _labs_ready(p, ref_date, labs_days: int = 14) -> bool:
+    return _labs_status(p, ref_date, labs_days) in {"ok", "not_required"}
+
+
+def _visit_ready(p, active, labs_days: int = 14, mammo_days: int = 365) -> bool:
     if not active or not active.scheduled_date:
         return False
     if active.status == "inserted":
@@ -3439,11 +3461,13 @@ def _visit_ready(p, active) -> bool:
     if not _active_visit_bagged(active):
         return False
     ref = active.scheduled_date
-    return _mammo_ready(p, ref) and _labs_ready(p, ref)
+    return (_mammo_ready(p, ref, mammo_days)
+            and _labs_ready(p, ref, labs_days))
 
 
 def _patient_view_extras(p: PelletPatient, today: _date,
-                            active_months: int = DEFAULT_PELLET_ACTIVE_MONTHS) -> dict:
+                            active_months: int = DEFAULT_PELLET_ACTIVE_MONTHS,
+                            labs_days: int = 14, mammo_days: int = 365) -> dict:
     """Compute view-related fields on a patient: last visit date, days-
     since, next scheduled, recall_due_date / recall_is_due, active visit
     state. Cheap — relies on p.visits being already loaded."""
@@ -3524,13 +3548,20 @@ def _patient_view_extras(p: PelletPatient, today: _date,
         "active_visit_bagged": _active_visit_bagged(active),
         "active_visit_bagged_at": _active_visit_bagged_at(active),
         # "Ready to insert" — see _visit_ready. Sub-flags drive the tooltip.
-        "active_visit_ready": _visit_ready(p, active),
+        "active_visit_ready": _visit_ready(p, active, labs_days, mammo_days),
         "active_visit_mammo_ready": (
-            _mammo_ready(p, active.scheduled_date)
+            _mammo_ready(p, active.scheduled_date, mammo_days)
             if active and active.scheduled_date else False),
         "active_visit_labs_ready": (
-            _labs_ready(p, active.scheduled_date)
+            _labs_ready(p, active.scheduled_date, labs_days)
             if active and active.scheduled_date else False),
+        # Reason codes (why ✗) — None when there is no active visit.
+        "active_visit_mammo_reason": (
+            _mammo_status(p, active.scheduled_date, mammo_days)
+            if active and active.scheduled_date else None),
+        "active_visit_labs_reason": (
+            _labs_status(p, active.scheduled_date, labs_days)
+            if active and active.scheduled_date else None),
         "active_visit_doses_pulled": (
             sum(1 for d in (active.doses or [])
                   if d.status in ("pulled", "added"))
@@ -3545,8 +3576,11 @@ def _patient_view_extras(p: PelletPatient, today: _date,
 
 
 def _patient_dict(p: PelletPatient, include_visits: bool = False,
-                    view_extras: Optional[dict] = None) -> dict:
+                    view_extras: Optional[dict] = None,
+                    labs_days: int = 14, mammo_days: int = 365) -> dict:
     out = {
+        "labs_valid_days":  labs_days,
+        "mammo_valid_days": mammo_days,
         "id":                str(p.id),
         "chart_number":      p.chart_number,
         "patient_name":      p.patient_name,
@@ -3700,7 +3734,9 @@ def create_patient(payload: PatientIn,
             summary=f"Enrolled {p.patient_name} (chart {p.chart_number}, {p.patient_type})",
             detail={"chart_number": p.chart_number, "patient_type": p.patient_type})
     db.commit(); db.refresh(p)
-    return _patient_dict(p, include_visits=True)
+    return _patient_dict(p, include_visits=True,
+                         labs_days=cfg(db, "labs_valid_days"),
+                         mammo_days=cfg(db, "mammo_valid_days"))
 
 
 PATIENT_VIEWS = ["roster", "last_visits", "upcoming", "recall_due",
@@ -3795,9 +3831,12 @@ def list_patients(
     rows = q.all()
     today = _date.today()
     active_months = _get_active_months_cutoff(db)
+    labs_days = cfg(db, "labs_valid_days")
+    mammo_days = cfg(db, "mammo_valid_days")
 
     # Compute view-extras for each patient once
-    decorated = [(p, _patient_view_extras(p, today, active_months)) for p in rows]
+    decorated = [(p, _patient_view_extras(p, today, active_months,
+                                          labs_days, mammo_days)) for p in rows]
 
     # Apply derived status filter (active = seen in last N months)
     if status == "active":
@@ -3871,7 +3910,8 @@ def list_patients(
         "total": total, "page": page, "view": view,
         # include_visits=False — the table consumes view_extras instead,
         # which is precomputed on the server and ~10× smaller per row.
-        "patients": [_patient_dict(p, include_visits=False, view_extras=x)
+        "patients": [_patient_dict(p, include_visits=False, view_extras=x,
+                                   labs_days=labs_days, mammo_days=mammo_days)
                       for (p, x) in paged],
     }
 
@@ -3904,7 +3944,9 @@ def get_patient(patient_id: str,
            detail={"patient_id": str(p.id), "chart_number": p.chart_number},
            summary=f"Viewed patient chart {p.chart_number or p.id}")
     db.commit()
-    out = _patient_dict(p, include_visits=False)
+    out = _patient_dict(p, include_visits=False,
+                        labs_days=cfg(db, "labs_valid_days"),
+                        mammo_days=cfg(db, "mammo_valid_days"))
     out["visits"] = [_visit_dict(v) for v in (p.visits or [])]
     out["mammos"] = [_mammo_dict(m) for m in (p.mammos or [])]
     out["labs"]   = [_lab_dict(l)   for l in (p.labs   or [])]
@@ -3948,7 +3990,9 @@ def patch_patient(patient_id: str, payload: PatientPatch,
     for k, v in data.items():
         setattr(p, k, v)
     db.commit(); db.refresh(p)
-    return _patient_dict(p)
+    return _patient_dict(p,
+                         labs_days=cfg(db, "labs_valid_days"),
+                         mammo_days=cfg(db, "mammo_valid_days"))
 
 
 # Prerequisite verification — mammogram + labs
@@ -4173,7 +4217,9 @@ def delete_patient_note(patient_id: str, note_id: str,
 def _patient_dict_with_history(db: Session, p: PelletPatient) -> dict:
     """Lightweight helper used by POST/PATCH endpoints that don't load
     relationships up-front."""
-    out = _patient_dict(p)
+    out = _patient_dict(p,
+                        labs_days=cfg(db, "labs_valid_days"),
+                        mammo_days=cfg(db, "mammo_valid_days"))
     out["mammos"] = [_mammo_dict(m) for m in (p.mammos or [])]
     out["labs"]   = [_lab_dict(l)   for l in (p.labs   or [])]
     out["notes"]  = [_note_dict(n)  for n in (p.patient_notes or [])]
