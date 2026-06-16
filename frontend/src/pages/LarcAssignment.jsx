@@ -213,7 +213,7 @@ function LarcMilestoneCard({ m, assignment }) {
 
 function milestoneInline(m, a) {
   switch (m.kind) {
-    case 'benefits_verified':              return <BenefitsBody a={a} />
+    case 'benefits_verified':              return <BenefitsSummary a={a} />
     case 'patient_responsibility_modmed':  return <ResponsibilityModmedBody a={a} />
     case 'enrollment_sent':                return <EnrollmentSentBody a={a} />
     case 'enrollment_signed':              return <EnrollmentSignedBody a={a} />
@@ -233,6 +233,39 @@ function milestoneInline(m, a) {
 
 
 /* ── Milestone bodies ───────────────────────────────────────────── */
+
+// Read-only summary shown on the "Benefits Verified" milestone. The editable
+// calculator lives in the always-visible "Benefits Calculator" card at the top
+// of the page (single source of truth) — this just reflects the saved result.
+function BenefitsSummary({ a }) {
+  const done = !!a.benefits_verified_at
+  return (
+    <div className="text-[12px] text-gray-700 space-y-1">
+      {done ? (
+        <>
+          <div>
+            Patient responsibility:{' '}
+            <strong className="font-mono">
+              {a.patient_responsibility != null ? `$${a.patient_responsibility}` : '—'}
+            </strong>
+          </div>
+          {a.primary_insurance && (
+            <div className="text-gray-500">Insurance: {a.primary_insurance}</div>
+          )}
+          <div className="text-[11px] text-gray-500">
+            Verified {fmt.date(a.benefits_verified_at)}
+          </div>
+        </>
+      ) : (
+        <div className="text-gray-500">Not yet calculated.</div>
+      )}
+      <div className="text-[11px] text-gray-400">
+        Edit in the <strong>Benefits Calculator</strong> card at the top of this page.
+      </div>
+    </div>
+  )
+}
+
 
 function BenefitsBody({ a }) {
   const qc = useQueryClient()
