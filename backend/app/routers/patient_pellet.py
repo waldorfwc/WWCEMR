@@ -122,6 +122,27 @@ def upload_mammo(file: UploadFile = File(...),
     return {"ok": True, "status": "pending_verification"}
 
 
+@router.post("/consent")
+def request_consent(p: PelletPatient = Depends(require_pellet_token),
+                    db: Session = Depends(get_db)):
+    import app.services.boldsign_envelopes as be
+    existing = (db.query(PelletConsent)
+                  .filter(PelletConsent.pellet_patient_id == p.id,
+                          PelletConsent.status == "signed")
+                  .order_by(PelletConsent.signed_at.desc()).first())
+    if existing and existing.is_valid:
+        return {"ok": True, "status": "already_valid"}
+    tid = cfg(db, "consent_template_id")
+    if not tid:
+        raise HTTPException(status_code=409, detail="consent template not configured")
+    env_id = be._create_pellet_envelope(p, tid)
+    db.add(PelletConsent(pellet_patient_id=p.id, boldsign_envelope_id=env_id,
+                         template_id=tid, status="sent"))
+    record_pellet_activity(db, p, "consent_sent", "Consent envelope sent")
+    db.commit()
+    return {"ok": True, "status": "sent", "envelope_id": env_id}
+
+
 class LabsIn(BaseModel):
     completed: bool
     drawn_date: Optional[str] = None

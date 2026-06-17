@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models.larc import LarcEnrollmentEnvelope
+from app.models.pellet_portal import PelletConsent
 from app.models.surgery import Surgery, SurgeryConsentEnvelope
 from app.services import boldsign_envelopes as bs
 from app.services.larc import enrollment_sender as larc_es
@@ -101,6 +102,30 @@ def _verify_signature(body: bytes, signature: str) -> bool:
     return False
 
 
+def _apply_pellet_signed(db, envelope_id: str) -> None:
+    """Mark a matching PelletConsent as signed (1-yr validity) + record a
+    consent_signed activity. No-op when the envelope id isn't a pellet
+    consent, so callers can invoke it unconditionally."""
+    from datetime import timedelta
+    from app.models.pellet_portal import PelletConsent
+    from app.models.pellet import PelletPatient
+    from app.services.pellet.activity import record_pellet_activity
+    from app.utils.dt import now_utc_naive
+    c = (db.query(PelletConsent)
+           .filter(PelletConsent.boldsign_envelope_id == envelope_id).first())
+    if c is None or c.status == "signed":
+        return
+    c.signed_at = now_utc_naive()
+    c.expires_at = c.signed_at + timedelta(days=365)
+    c.status = "signed"
+    db.commit()
+    p = db.query(PelletPatient).filter(PelletPatient.id == c.pellet_patient_id).first()
+    if p:
+        record_pellet_activity(db, p, "consent_signed", "Patient signed insertion consent",
+                               actor="patient")
+        db.commit()
+
+
 @router.post("/webhook")
 async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
     """Receive a BoldSign document-status event. Returns 200 on
@@ -170,6 +195,18 @@ async def boldsign_webhook(request: Request, db: Session = Depends(get_db)):
              .filter(SurgeryConsentEnvelope.boldsign_envelope_id == doc_id)
              .first())
     if row is None:
+        # Not a surgery envelope — it may be a pellet insertion consent.
+        # _apply_pellet_signed is a no-op for non-pellet ids, and only acts
+        # on a completed/signed event.
+        raw_status = (data.get("status") or data.get("Status") or "").lower()
+        if raw_status in ("completed", "signed"):
+            pc = (db.query(PelletConsent)
+                    .filter(PelletConsent.boldsign_envelope_id == doc_id)
+                    .first())
+            if pc is not None:
+                _apply_pellet_signed(db, doc_id)
+                log.info("BoldSign pellet consent signed: documentId=%s", doc_id)
+                return {"received": True, "applied": True, "kind": "pellet_consent"}
         log.warning("BoldSign webhook for unknown documentId %s — ignoring", doc_id)
         return {"received": True, "applied": False, "reason": "no matching envelope"}
 
