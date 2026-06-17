@@ -17,7 +17,7 @@ from app.services.request_context import (
 from app.database import init_db
 from app import soft_delete as _soft_delete  # noqa: F401  (registers global Surgery soft-delete filter)
 from app.routers import imports, claims, patients, denials, appeals, eob, audit
-from app.routers import ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts, admin_cleanup
+from app.routers import ar, documents, intake, chart, fax, auth, dashboard, fax_batch, admin_users, admin_groups, service_lines, claim_adjustments, service_line_adjustments, charge_imports, claim_id_bootstrap, era_posting, adjustment_codes, transaction_detail_imports, active_ar, active_ar_filter_presets, bank_recon, checklist, recalls, recall_filter_presets, training, surgery, surgery_config, patient_surgery, patient_portal, patient_pellet, boldsign, consent_templates, surgery_filter_presets, larc, pellet, billing_documents, missing_charges, personal_tasks, code_helper, insurance_contacts, admin_cleanup
 from app.routers import google_sync as google_sync_router
 from app.routers import admin_tiers, admin_practice_settings
 from app.permissions.catalog import Module, Tier
@@ -293,6 +293,7 @@ app.include_router(surgery.router, prefix="/api",
 app.include_router(patient_surgery.router, prefix="/api")
 # Patient portal — durable session-based sign-in (DOB + last4 -> SMS challenge -> JWT)
 app.include_router(patient_portal.router, prefix="/api")
+app.include_router(patient_pellet.router, prefix="/api")
 # Staff portal-preview token — issues a short-lived read-only portal JWT for coordinators
 app.include_router(portal_preview.router)
 # BoldSign Connect webhook — no auth (BoldSign POSTs from outside;
