@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.pellet import PelletPatient
+from app.models.pellet_payment import PelletSubscription
 from app.models.pellet_portal import PelletConsent, PelletPortalUpload
 from app.services.pellet import portal_auth
 from app.services.pellet import payments as pelletpay
@@ -214,3 +215,23 @@ def pay_package(payload: PackageIn, p: PelletPatient = Depends(require_pellet_to
                                               count=payload.count, amount=amount,
                                               actor="patient")
     return {"checkout_url": row.checkout_url}
+
+
+@router.post("/payment/subscribe")
+def subscribe(p: PelletPatient = Depends(require_pellet_token),
+              db: Session = Depends(get_db)):
+    if not cfg(db, "enable_subscription"):
+        raise HTTPException(status_code=409, detail="subscription disabled")
+    monthly = cfg(db, "subscription_monthly_amount")
+    if not monthly:
+        raise HTTPException(status_code=409, detail="subscription not configured")
+    if not pelletpay.is_configured():
+        raise HTTPException(status_code=503, detail="payments not configured")
+    existing = (db.query(PelletSubscription)
+                  .filter(PelletSubscription.pellet_patient_id == p.id,
+                          PelletSubscription.status == "active").first())
+    if existing:
+        raise HTTPException(status_code=409, detail="already subscribed")
+    from decimal import Decimal as _D
+    row = pelletpay.create_subscription(db, p, monthly_amount=_D(str(monthly)))
+    return {"ok": True, "subscription_id": row.stripe_subscription_id, "status": row.status}

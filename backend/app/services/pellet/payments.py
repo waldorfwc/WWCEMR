@@ -142,3 +142,32 @@ def create_insertion_checkout(db: Session, p, *, kind: str, count: int,
         description=label, requested_by=actor, checkout_url=session.url)
     db.add(pay_row); db.commit(); db.refresh(pay_row)
     return pay_row
+
+
+def _create_stripe_subscription(*, customer_id: str, monthly_amount: Decimal,
+                                patient_id: str):
+    """Create an inline recurring Price + a Subscription for the customer.
+    Returns (subscription_obj, price_id)."""
+    s = _client()
+    price = s.Price.create(
+        currency="usd", unit_amount=_amount_cents(monthly_amount),
+        recurring={"interval": "month"},
+        product_data={"name": "Pellet Subscription"})
+    sub = s.Subscription.create(
+        customer=customer_id, items=[{"price": price.id}],
+        metadata={"pellet_patient_id": patient_id, "pellet_kind": "subscription"},
+        expand=["latest_invoice"])
+    return sub, price.id
+
+
+def create_subscription(db: Session, p, *, monthly_amount: Decimal) -> PelletSubscription:
+    customer_id = _get_or_create_pellet_customer(db, p)
+    sub_obj, price_id = _create_stripe_subscription(
+        customer_id=customer_id, monthly_amount=monthly_amount, patient_id=str(p.id))
+    row = PelletSubscription(
+        pellet_patient_id=p.id, stripe_subscription_id=sub_obj.id,
+        stripe_price_id=price_id, stripe_customer_id=customer_id,
+        monthly_amount=monthly_amount, accrued_credit=Decimal("0"),
+        status=(sub_obj.status if sub_obj.status in ("active", "past_due") else "active"))
+    db.add(row); db.commit(); db.refresh(row)
+    return row
