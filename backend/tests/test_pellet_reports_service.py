@@ -119,3 +119,34 @@ def test_prerequisites_labs_staleness_uses_visit_date_not_today(db):
     assert out["by_blocker"]["labs"] == 1
     assert out["by_blocker"]["mammo"] == 0
     assert out["by_blocker"]["consent"] == 0
+
+
+def test_billing_backlog(db):
+    from decimal import Decimal
+    p = _patient(db)
+    _visit(db, p, status="inserted", inserted_at=datetime(2026, 6, 1),
+           price_amount=Decimal("500.00"), billed_at=None)
+    _visit(db, p, status="inserted", inserted_at=datetime(2026, 6, 2),
+           price_amount=Decimal("400.00"), billed_at=datetime(2026, 6, 3))  # already billed
+    _visit(db, p, status="new")   # not inserted
+    out = rpt.billing_backlog(db, location=None, provider=None)
+    assert out["count"] == 1
+    assert out["total_amount"] == 500.0
+
+
+def test_inventory_health(db):
+    from datetime import date as _d
+    from app.models.pellet import PelletDoseType, PelletLot, PelletStock
+    dt_type = PelletDoseType(hormone="estradiol", dose_mg=12.5, label="Estradiol 12.5mg",
+                             reorder_thresholds_by_location={"white_plains": 20})
+    db.add(dt_type); db.flush()
+    lot = PelletLot(dose_type_id=dt_type.id, qualgen_lot_number="QG-1",
+                    expiration_date=_d(2026, 7, 1), doses_originally_received=5)
+    db.add(lot); db.flush()
+    db.add(PelletStock(lot_id=lot.id, location="white_plains", doses_on_hand=5, status="active"))
+    db.commit()
+    out = rpt.inventory_health(db, location=None, today=_d(2026, 6, 15))
+    assert out["total_on_hand"] == 5
+    assert out["by_location"]["white_plains"] == 5
+    assert out["expiring_lots"] == 1
+    assert out["below_reorder"] == 1

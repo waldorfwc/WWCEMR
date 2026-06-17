@@ -173,3 +173,59 @@ def prerequisites(db: Session, *, location: Optional[str] = None,
             for b in blockers:
                 by_blocker[b] += 1
     return {"total": total, "by_blocker": by_blocker}
+
+
+def billing_backlog(db: Session, *, location: Optional[str] = None,
+                    provider: Optional[str] = None) -> dict:
+    """Snapshot: inserted visits not yet billed."""
+    rows = (_visit_base(db, location, provider)
+            .filter(PelletVisit.status == "inserted",
+                    PelletVisit.billed_at.is_(None)).all())
+    total = round(sum(float(v.price_amount or 0) for v in rows), 2)
+    return {"count": len(rows), "total_amount": total}
+
+
+def inventory_health(db: Session, *, location: Optional[str] = None,
+                     today: Optional[date] = None) -> dict:
+    """Snapshot: on-hand doses per location, lots expiring <=90 days, and dose
+    types below their reorder threshold."""
+    from app.models.pellet import PelletDoseType, PelletLot, PelletStock
+    from app.utils.dt import now_utc_naive
+    today = today or now_utc_naive().date()
+    horizon = today + timedelta(days=90)
+
+    sq = db.query(PelletStock).filter(PelletStock.status == "active")
+    if location:
+        sq = sq.filter(PelletStock.location == location)
+    stocks = sq.all()
+
+    by_location: dict = {}
+    expiring_lot_ids: set = set()
+    onhand_by_loc_type: dict = {}   # (location, dose_type_id) -> doses
+    lots = {l.id: l for l in db.query(PelletLot).all()}
+    for s in stocks:
+        by_location[s.location] = by_location.get(s.location, 0) + int(s.doses_on_hand or 0)
+        lot = lots.get(s.lot_id)
+        if lot and (s.doses_on_hand or 0) > 0 and lot.expiration_date <= horizon:
+            expiring_lot_ids.add(s.lot_id)
+        if lot:
+            key = (s.location, lot.dose_type_id)
+            onhand_by_loc_type[key] = onhand_by_loc_type.get(key, 0) + int(s.doses_on_hand or 0)
+
+    below = 0
+    dose_types = {d.id: d for d in db.query(PelletDoseType).all()}
+    for d in dose_types.values():
+        thresholds = d.reorder_thresholds_by_location or {}
+        for loc, thr in thresholds.items():
+            if location and loc != location:
+                continue
+            if thr is None:
+                continue
+            on_hand = onhand_by_loc_type.get((loc, d.id), 0)
+            if on_hand < int(thr):
+                below += 1
+
+    return {"total_on_hand": sum(by_location.values()),
+            "by_location": by_location,
+            "expiring_lots": len(expiring_lot_ids),
+            "below_reorder": below}
