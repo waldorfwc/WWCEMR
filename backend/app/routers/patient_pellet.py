@@ -3,15 +3,22 @@ Phase 1: login/verify; dashboard + requirements added in T4. Mirrors
 patient_portal.py."""
 from __future__ import annotations
 
+import json
 from datetime import date
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.pellet import PelletPatient
+from app.models.pellet_portal import PelletConsent, PelletPortalUpload
 from app.services.pellet import portal_auth
+from app.services.pellet.activity import record_pellet_activity
+from app.services.pellet.settings import cfg
+from app.services.storage import save_blob
+from app.utils.dt import now_utc_naive
 
 router = APIRouter(prefix="/pellet-portal", tags=["pellet-portal"])
 
@@ -69,3 +76,72 @@ def require_pellet_token(authorization: str = Header(None),
     if int(claims.get("ppv", 0)) != int(p.portal_token_version or 0):
         raise HTTPException(status_code=401, detail="Token revoked")
     return p
+
+
+def _requirements(db, p) -> list[dict]:
+    consent = (db.query(PelletConsent)
+                 .filter(PelletConsent.pellet_patient_id == p.id,
+                         PelletConsent.status == "signed")
+                 .order_by(PelletConsent.signed_at.desc()).first())
+    consent_ok = bool(consent and consent.is_valid)
+    return [
+        {"key": "mammo", "label": "Mammogram",
+         "status": "done" if p.mammo_verified
+                   else ("pending" if p.mammo_submitted_at else "todo")},
+        {"key": "labs", "label": "Labs",
+         "status": "done" if (p.labs_verified or p.labs_not_required)
+                   else ("pending" if p.labs_self_reported_at else "todo")},
+        {"key": "consent", "label": "Insertion Consent",
+         "status": "done" if consent_ok else "todo"},
+    ]
+
+
+@router.get("/dashboard")
+def dashboard(p: PelletPatient = Depends(require_pellet_token),
+              db: Session = Depends(get_db)):
+    return {
+        "patient": {"patient_name": p.patient_name, "chart_number": p.chart_number},
+        "requirements": _requirements(db, p),
+    }
+
+
+@router.post("/mammo")
+def upload_mammo(file: UploadFile = File(...),
+                 p: PelletPatient = Depends(require_pellet_token),
+                 db: Session = Depends(get_db)):
+    raw = file.file.read()
+    if not raw:
+        raise HTTPException(status_code=422, detail="empty file")
+    path = save_blob(prefix="pellet-mammo", body=raw, filename=file.filename or "mammo")
+    db.add(PelletPortalUpload(pellet_patient_id=p.id, kind="mammo",
+                              filename=file.filename, storage_path=path,
+                              content_type=file.content_type))
+    p.mammo_submitted_at = now_utc_naive()
+    record_pellet_activity(db, p, "mammo_uploaded", "Patient uploaded a mammogram")
+    db.commit()
+    return {"ok": True, "status": "pending_verification"}
+
+
+class LabsIn(BaseModel):
+    completed: bool
+    drawn_date: Optional[str] = None
+
+
+@router.post("/labs")
+def self_report_labs(payload: LabsIn,
+                     p: PelletPatient = Depends(require_pellet_token),
+                     db: Session = Depends(get_db)):
+    if not payload.completed:
+        raise HTTPException(status_code=422, detail="completed must be true")
+    drawn = None
+    if payload.drawn_date:
+        try:
+            drawn = date.fromisoformat(payload.drawn_date)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="bad drawn_date")
+    p.labs_self_reported_at = now_utc_naive()
+    record_pellet_activity(db, p, "labs_self_reported",
+                           "Patient self-reported labs complete",
+                           detail=json.dumps({"drawn_date": drawn.isoformat() if drawn else None}))
+    db.commit()
+    return {"ok": True, "status": "pending_verification"}
