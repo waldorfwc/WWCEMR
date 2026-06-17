@@ -1960,8 +1960,8 @@ function ProcedureListEditor({ s, onPatch }) {
       <div className="flex items-center gap-1">
         <select className="input text-[10px] flex-1" value={picked} onChange={e => setPicked(e.target.value)}>
           <option value="">+ Add from list…</option>
-          {picks.procedures.map(p => (
-            <option key={p.cpt} value={p.cpt}>{p.cpt} — {p.description}</option>
+          {picks.procedures.map((p, i) => (
+            <option key={`${p.cpt}-${i}`} value={p.cpt}>{p.cpt} — {p.description}</option>
           ))}
         </select>
         <button className="text-[10px] btn-secondary px-1.5 py-0.5" onClick={addFromPicklist} disabled={!picked}>Add</button>
