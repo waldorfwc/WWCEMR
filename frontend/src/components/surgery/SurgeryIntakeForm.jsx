@@ -90,7 +90,6 @@ export default function SurgeryIntakeForm({
 
   const insuranceOpts = picks?.insurance_companies || []
   const surgeonOpts   = picks?.surgeons || []
-  const procedureOpts = picks?.procedures || []
   const surgeryTypeOpts = picks?.surgery_types || []
   const assistantOpts = config?.assistant_surgeons || ['None']
   const clearanceOpts = config?.clearance_types || ['None']
