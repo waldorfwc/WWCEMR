@@ -25,13 +25,18 @@ def _secret() -> str:
     return settings.secret_key
 
 
-def issue_portal_token(p: PelletPatient) -> str:
+def issue_portal_token(p: PelletPatient, *, viewer: str | None = None,
+                       ttl_minutes: int | None = None) -> str:
+    exp = (now_utc_naive() + timedelta(minutes=ttl_minutes)) if ttl_minutes \
+          else (now_utc_naive() + timedelta(days=_TOKEN_TTL_DAYS))
     payload = {
         "pellet_patient_id": str(p.id),
         "ppv": int(p.portal_token_version or 0),
-        "exp": now_utc_naive() + timedelta(days=_TOKEN_TTL_DAYS),
+        "exp": exp,
         "scope": "pellet_portal",
     }
+    if viewer:
+        payload["viewer"] = viewer
     return jwt.encode(payload, _secret(), algorithm=_ALGO)
 
 

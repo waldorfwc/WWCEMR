@@ -57,6 +57,8 @@ from app.services.pellet.workflow import (
     spawn_milestones, default_price_for, patient_buckets,
 )
 from app.services.pellet import appt_import, dose_suggest
+from app.services.pellet import portal_auth as pellet_portal_auth
+from app.services.audit_service import log_action
 from app.services.pellet import scheduling as pelletsched
 from app.models.pellet_schedule import PelletAvailabilityTemplate, PelletSlot
 from app.services.pellet.settings import PELLET_SETTINGS_DEFAULTS, cfg
@@ -4061,6 +4063,25 @@ def patch_patient(patient_id: str, payload: PatientPatch,
     return _patient_dict(p,
                          labs_days=cfg(db, "labs_valid_days"),
                          mammo_days=cfg(db, "mammo_valid_days"))
+
+
+@router.post("/patients/{patient_id}/portal-preview-token")
+def portal_preview_token(patient_id: str, db: Session = Depends(get_db),
+                         current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
+    p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail="patient not found")
+    email = (current_user.get("email") or "").lower().strip() or None
+    token = pellet_portal_auth.issue_portal_token(p, viewer=f"staff:{email}", ttl_minutes=60)
+    # HIPAA: record the impersonation so we always know which staff member
+    # previewed the pellet portal as that patient and when. Read-only
+    # enforcement happens in require_pellet_token; this is the audit trail.
+    log_action(db, action="IMPERSONATE", resource_type="pellet_patient",
+               resource_id=str(p.id), patient_id=p.chart_number or None,
+               user_id=email, user_name=current_user.get("name") or email,
+               description=(f"Staff issued a read-only pellet-portal preview for "
+                            f"{p.patient_name or p.chart_number}"))
+    return {"token": token, "pellet_patient_id": str(p.id)}
 
 
 # Prerequisite verification — mammogram + labs

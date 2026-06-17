@@ -8,7 +8,7 @@ from datetime import date
 from datetime import date as _date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -68,7 +68,7 @@ def verify(payload: VerifyIn, db: Session = Depends(get_db)):
     }
 
 
-def require_pellet_token(authorization: str = Header(None),
+def require_pellet_token(request: Request, authorization: str = Header(None),
                          db: Session = Depends(get_db)) -> PelletPatient:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing token")
@@ -81,6 +81,9 @@ def require_pellet_token(authorization: str = Header(None),
         raise HTTPException(status_code=401, detail="Unknown patient")
     if int(claims.get("ppv", 0)) != int(p.portal_token_version or 0):
         raise HTTPException(status_code=401, detail="Token revoked")
+    # Staff preview tokens are read-only — coordinators view, they don't act.
+    if (claims.get("viewer") or "").startswith("staff:") and request.method != "GET":
+        raise HTTPException(status_code=403, detail="Preview mode is read-only.")
     return p
 
 
