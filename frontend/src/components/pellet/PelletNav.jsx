@@ -23,6 +23,7 @@ function navItems() {
     { to: '/pellets/counts',    label: 'Counts',    tier: TIER.WORK },
     { to: '/pellets/audit',     label: 'Audit',     tier: TIER.VIEW },
     { to: '/pellets/manual',    label: 'Manual',    tier: TIER.VIEW },
+    { to: '/pellets/schedule',  label: 'Scheduling', tier: TIER.MANAGE },
     { to: '/pellets/settings',  label: 'Settings',  tier: TIER.MANAGE },
   ]
 }

@@ -111,20 +111,100 @@ function PaymentRow({ payment }) {
   return <Link to="payments" className="block">{inner}</Link>
 }
 
-function LockedRow({ icon: Icon, title }) {
+const LOCATION_LABELS = {
+  white_plains: 'White Plains',
+  brandywine:   'Brandywine',
+  arlington:    'Arlington',
+}
+
+// Render a YYYY-MM-DD (or ISO) date as MM/DD/YYYY in local time without the
+// negative-UTC-offset day-slip bug.
+function fmtSchedDate(val) {
+  if (!val) return ''
+  const m = String(val).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+  }
+  const d = new Date(val)
+  return Number.isNaN(d.getTime()) ? String(val) : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+}
+
+function SchedulingRow({ scheduling }) {
+  const booked = scheduling?.booked || []
+  const canSchedule = !!scheduling?.can_schedule
+  const reason = scheduling?.reason
+
+  // Already booked → show the next booked date + location (read-only chip).
+  if (booked.length > 0) {
+    const next = [...booked].sort((a, b) => (a.slot_date || '') < (b.slot_date || '') ? -1 : 1)[0]
+    return (
+      <div className="bg-white rounded-2xl border border-plum-100 p-5 shadow-sm flex items-center gap-4">
+        <div className="w-11 h-11 rounded-xl bg-plum-50 grid place-items-center text-plum-700 shrink-0">
+          <CalendarDays size={18} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-serif text-[15px] text-plum-ink font-semibold leading-tight">
+            Scheduling
+          </div>
+          <div className="mt-1.5">
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide
+                               px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 size={12} /> Booked · {fmtSchedDate(next.slot_date)}
+              {next.location ? ` · ${LOCATION_LABELS[next.location] || next.location}` : ''}
+            </span>
+          </div>
+        </div>
+        <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-plum-700 shrink-0">
+          <span className="opacity-80">Manage</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Eligible but not booked → actionable CTA to the Schedule page.
+  if (canSchedule) {
+    return (
+      <Link to="schedule" className="block">
+        <div className="bg-white rounded-2xl border border-plum-100 p-5 shadow-sm flex items-center gap-4
+                        hover:shadow-md transition group">
+          <div className="w-11 h-11 rounded-xl bg-plum-50 grid place-items-center text-plum-700 shrink-0">
+            <CalendarDays size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="font-serif text-[15px] text-plum-ink font-semibold leading-tight">
+              Scheduling
+            </div>
+            <div className="mt-1.5">
+              <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide
+                                 px-2 py-0.5 rounded-full bg-plum-50 text-plum-600 border border-plum-100">
+                Ready To Book
+              </span>
+            </div>
+          </div>
+          <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-plum-700
+                            group-hover:text-plum-900 shrink-0">
+            Schedule <ChevronRight size={14} />
+          </div>
+        </div>
+      </Link>
+    )
+  }
+
+  // Not eligible yet → greyed with the gate reason.
   return (
     <div className="bg-white/60 rounded-2xl border border-plum-100 p-5 shadow-sm flex items-center gap-4 opacity-70">
       <div className="w-11 h-11 rounded-xl bg-plum-50 grid place-items-center text-plum-400 shrink-0">
-        <Icon size={18} />
+        <CalendarDays size={18} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="font-serif text-[15px] text-plum-500 font-semibold leading-tight">
-          {title}
+          Scheduling
         </div>
         <div className="mt-1.5">
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide
                              px-2 py-0.5 rounded-full bg-plum-50 text-plum-400 border border-plum-100">
-            <Lock size={11} /> Coming Soon
+            <Lock size={11} /> {reason || 'Finish The Steps Above First'}
           </span>
         </div>
       </div>
@@ -151,7 +231,7 @@ export default function PelletDashboard() {
     )
   }
 
-  const { patient, requirements = [], payment } = data
+  const { patient, requirements = [], payment, scheduling } = data
   const name = patient?.patient_name?.split(',').reverse().join(' ').trim() || 'there'
 
   return (
@@ -183,7 +263,7 @@ export default function PelletDashboard() {
         ))}
 
         <PaymentRow payment={payment} />
-        <LockedRow icon={CalendarDays} title="Scheduling" />
+        <SchedulingRow scheduling={scheduling} />
       </section>
 
       <div className="text-[11px] text-plum-600/70 text-center pt-6 mt-6 border-t border-plum-100">
