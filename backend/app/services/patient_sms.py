@@ -316,7 +316,7 @@ def send_patient_sms(
     per_num = (db.query(PatientSms)
                   .filter(PatientSms.to_phone == phone,
                           PatientSms.status == "sent",
-                          PatientSms.created_at >= one_hour_ago)
+                          PatientSms.sent_at >= one_hour_ago)
                   .count())
     if per_num >= _PER_NUMBER_HOURLY:
         return _record(db,
@@ -329,7 +329,7 @@ def send_patient_sms(
             sent_by=sent_by, context=context, segments=None, twilio_sid=None)
     glob = (db.query(PatientSms)
               .filter(PatientSms.status == "sent",
-                      PatientSms.created_at >= one_hour_ago)
+                      PatientSms.sent_at >= one_hour_ago)
               .count())
     if glob >= _GLOBAL_HOURLY:
         return _record(db,
