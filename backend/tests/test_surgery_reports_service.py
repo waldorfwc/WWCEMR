@@ -148,3 +148,17 @@ def test_rows_to_csv_has_header_and_rows():
     lines = [ln for ln in csv_text.splitlines() if ln.strip()]
     assert lines[0] == "a,b"
     assert len(lines) == 3
+
+
+def test_rows_for_utilization_bucket_filters_facility(db):
+    from datetime import date, time
+    from app.models.surgery import BlockDay
+    df, dt = date(2026, 6, 1), date(2026, 6, 30)
+    db.add(BlockDay(facility="office", block_date=date(2026, 6, 10),
+                    block_kind="office", start_time=time(7, 30), end_time=time(16, 0)))
+    db.add(BlockDay(facility="medstar", block_date=date(2026, 6, 11),
+                    block_kind="robotic", start_time=time(7, 30), end_time=time(16, 0)))
+    db.commit()
+    rows = rpt.rows_for(db, "utilization", date_from=df, date_to=dt,
+                        facility=None, surgeon=None, bucket="office")
+    assert len(rows) == 1 and rows[0]["facility"] == "office"

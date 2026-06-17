@@ -286,8 +286,11 @@ def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
         rules = capacity_rules(db)
         q = db.query(BlockDay).filter(BlockDay.block_date >= date_from,
                                       BlockDay.block_date <= date_to)
-        if facility:
-            q = q.filter(BlockDay.facility == facility)
+        # `facility` is the filter-bar selection; `bucket` is the clicked facility
+        # row in the utilization tile — both narrow to one facility.
+        fac = bucket or facility
+        if fac:
+            q = q.filter(BlockDay.facility == fac)
         out = []
         for bd in q.order_by(BlockDay.block_date).all():
             booked = (db.query(func.count(SurgerySlot.id))
