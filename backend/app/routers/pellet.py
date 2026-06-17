@@ -3273,6 +3273,12 @@ class PelletConfigPayload(BaseModel):
     require_labs:             Optional[bool] = None
     require_consent:          Optional[bool] = None
     consent_template_id:      Optional[str] = None
+    insertion_price:            Optional[float] = Field(default=None, gt=0, le=50_000)
+    package_discount_tiers:     Optional[list] = None
+    subscription_monthly_amount: Optional[float] = Field(default=None, ge=0, le=50_000)
+    enable_single:              Optional[bool] = None
+    enable_package:             Optional[bool] = None
+    enable_subscription:        Optional[bool] = None
 
 
 @router.get("/config")
