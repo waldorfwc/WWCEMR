@@ -18,6 +18,7 @@ from app.models.pellet_portal import PelletPortalAuthAttempt
 _ALGO = "HS256"
 _TOKEN_TTL_DAYS = 30
 _CODE_TTL_MIN = 10
+_MAX_ATTEMPTS = 5     # burn the challenge after this many wrong codes
 
 
 def _secret() -> str:
@@ -50,12 +51,21 @@ def _send_sms(phone: str, body: str) -> None:
     send_sms(phone, body)
 
 
+def _digits(s: str | None) -> str:
+    return "".join(c for c in (s or "") if c.isdigit())
+
+
 def match_patient(db: Session, dob: date, last4: str) -> PelletPatient | None:
-    q = (db.query(PelletPatient)
-           .filter(PelletPatient.patient_dob == dob)
-           .filter(PelletPatient.patient_phone.like(f"%{last4}")))
-    rows = q.all()
-    return rows[0] if len(rows) == 1 else None
+    # Normalize last4 to exactly 4 digits — never interpolate raw input into a
+    # SQL LIKE (a '%'/'_' would broaden the match on this unauthenticated
+    # endpoint). Compare digit-normalized phones in Python so formatted numbers
+    # like "(301) 555-1234" still match. Mirrors the surgery portal.
+    last4 = _digits(last4)[-4:]
+    if len(last4) != 4:
+        return None
+    rows = db.query(PelletPatient).filter(PelletPatient.patient_dob == dob).all()
+    matches = [r for r in rows if _digits(r.patient_phone).endswith(last4)]
+    return matches[0] if len(matches) == 1 else None
 
 
 def issue_challenge(db: Session, p: PelletPatient, purpose: str = "login") -> str:
@@ -79,6 +89,12 @@ def verify_code(db: Session, challenge_token: str, code: str) -> PelletPatient |
     if att is None or (att.expires_at and att.expires_at < now_utc_naive()):
         return None
     if hashlib.sha256(code.encode()).hexdigest() != att.code_hash:
+        # Wrong code: count the attempt and burn the challenge after too many,
+        # so a 6-digit code can't be brute-forced within its 10-min TTL.
+        att.attempts = (att.attempts or 0) + 1
+        if att.attempts >= _MAX_ATTEMPTS:
+            att.consumed_at = now_utc_naive()
+        db.commit()
         return None
     att.consumed_at = now_utc_naive()
     db.commit()

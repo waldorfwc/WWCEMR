@@ -27,7 +27,11 @@ def login(payload: LoginIn, db: Session = Depends(get_db)):
         dob = date.fromisoformat(payload.dob)
     except ValueError:
         raise HTTPException(status_code=422, detail="bad dob")
-    p = portal_auth.match_patient(db, dob, payload.last4.strip()[-4:])
+    last4 = "".join(c for c in (payload.last4 or "") if c.isdigit())[-4:]
+    if len(last4) != 4:
+        raise HTTPException(status_code=422,
+                            detail="Enter the last 4 digits of your phone")
+    p = portal_auth.match_patient(db, dob, last4)
     if p is None:
         raise HTTPException(status_code=404, detail="No matching record found")
     ct = portal_auth.issue_challenge(db, p, purpose="login")

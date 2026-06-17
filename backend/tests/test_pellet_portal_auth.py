@@ -46,3 +46,33 @@ def test_verify_bad_code(client, db, patient, monkeypatch):
 def test_require_token_rejects_missing(client):
     # A protected route doesn't exist yet (T4), but decode rejects bad tokens.
     assert portal_auth.decode_portal_token("garbage") is None
+
+
+def test_login_rejects_non_digit_last4(client, db, patient):
+    # A LIKE-wildcard like "%" must not be accepted as last4 (no SQL wildcard
+    # broadening on this unauthenticated endpoint).
+    r = client.post("/api/pellet-portal/login", json={"dob": "1980-05-01", "last4": "%"})
+    assert r.status_code == 422
+
+
+def test_match_patient_normalizes_formatted_phone(db, patient):
+    # Stored phone with formatting still matches on digit-normalized last4.
+    patient.patient_phone = "(301) 555-1234"
+    db.commit()
+    assert portal_auth.match_patient(db, date(1980, 5, 1), "1234") is not None
+    # A wildcard never matches (treated as non-4-digits).
+    assert portal_auth.match_patient(db, date(1980, 5, 1), "%") is None
+
+
+def test_verify_burns_challenge_after_max_attempts(client, db, patient, monkeypatch):
+    monkeypatch.setattr(portal_auth, "_send_sms", lambda *a, **k: None)
+    ct = client.post("/api/pellet-portal/login",
+                     json={"dob": "1980-05-01", "last4": "1234"}).json()["challenge_token"]
+    # 5 wrong attempts burn the challenge…
+    for _ in range(portal_auth._MAX_ATTEMPTS):
+        assert portal_auth.verify_code(db, ct, "000000") is None
+    # …so even the (unknown) right code can't be used afterward.
+    from app.models.pellet_portal import PelletPortalAuthAttempt
+    att = db.query(PelletPortalAuthAttempt).filter(
+        PelletPortalAuthAttempt.challenge_token == ct).first()
+    assert att.consumed_at is not None
