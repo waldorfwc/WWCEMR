@@ -30,6 +30,8 @@ PELLET_SETTINGS_DEFAULTS: dict[str, Any] = {
     "enable_single":            True,
     "enable_package":           True,
     "enable_subscription":      True,
+    "slot_minutes":             60,
+    "schedule_horizon_days":    120,
 }
 
 
