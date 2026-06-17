@@ -18,6 +18,13 @@ import Consent from './pages/portal/Consent'
 import PortalDocuments from './pages/portal/Documents'
 import Messages from './pages/portal/Messages'
 import PreviewPortal from './pages/portal/PreviewPortal'
+import PelletPortalLogin from './pages/pellet-portal/PelletPortalLogin'
+import PelletPortalVerify from './pages/pellet-portal/PelletPortalVerify'
+import PelletPortalShell from './pages/pellet-portal/PelletPortalShell'
+import PelletDashboard from './pages/pellet-portal/PelletDashboard'
+import PelletMammo from './pages/pellet-portal/PelletMammo'
+import PelletLabs from './pages/pellet-portal/PelletLabs'
+import PelletConsent from './pages/pellet-portal/PelletConsent'
 import ReviewForm from './pages/reputation/ReviewForm'
 import ReputationEmbed from './pages/reputation/Embed'
 
@@ -112,6 +119,16 @@ export default function App() {
           <Route path="consent" element={<Consent />} />
           <Route path="documents" element={<PortalDocuments />} />
           <Route path="messages" element={<Messages />} />
+        </Route>
+        {/* Pellet patient portal — own auth, own shell */}
+        <Route path="/pellet-portal" element={<Navigate to="/pellet-portal/login" replace />} />
+        <Route path="/pellet-portal/login" element={<PelletPortalLogin />} />
+        <Route path="/pellet-portal/verify" element={<PelletPortalVerify />} />
+        <Route path="/pellet-portal/home" element={<PelletPortalShell />}>
+          <Route index element={<PelletDashboard />} />
+          <Route path="mammo" element={<PelletMammo />} />
+          <Route path="labs" element={<PelletLabs />} />
+          <Route path="consent" element={<PelletConsent />} />
         </Route>
         {/* Reputation review form — public, no staff auth */}
         <Route path="/r/:token" element={<ReviewForm />} />
