@@ -4280,6 +4280,22 @@ def delete_patient_note(patient_id: str, note_id: str,
     return
 
 
+@router.post("/patients/{patient_id}/consume-insertion")
+def consume_insertion_endpoint(patient_id: str, db: Session = Depends(get_db),
+                               current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    from app.services.pellet import payments as pelletpay
+    p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail="patient not found")
+    try:
+        src = pelletpay.consume_insertion(db, p, by=(current_user.get("email") or None))
+    except pelletpay.InsufficientCredit:
+        raise HTTPException(status_code=409, detail="no insertion credit available")
+    db.commit()
+    return {"ok": True, "drawn_from": src,
+            "available_insertions": pelletpay.available_insertions(db, p)}
+
+
 def _patient_dict_with_history(db: Session, p: PelletPatient) -> dict:
     """Lightweight helper used by POST/PATCH endpoints that don't load
     relationships up-front."""

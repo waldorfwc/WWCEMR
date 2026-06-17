@@ -104,6 +104,7 @@ def dashboard(p: PelletPatient = Depends(require_pellet_token),
     return {
         "patient": {"patient_name": p.patient_name, "chart_number": p.chart_number},
         "requirements": _requirements(db, p),
+        "payment": _payment_summary(db, p),
     }
 
 
@@ -235,3 +236,23 @@ def subscribe(p: PelletPatient = Depends(require_pellet_token),
     from decimal import Decimal as _D
     row = pelletpay.create_subscription(db, p, monthly_amount=_D(str(monthly)))
     return {"ok": True, "subscription_id": row.stripe_subscription_id, "status": row.status}
+
+
+def _payment_summary(db, p) -> dict:
+    sub = (db.query(PelletSubscription)
+             .filter(PelletSubscription.pellet_patient_id == p.id,
+                     PelletSubscription.status == "active").first())
+    return {
+        "credit_balance": pelletpay.credit_balance(db, p),
+        "available_insertions": pelletpay.available_insertions(db, p),
+        "insertion_price": float(pelletpay.insertion_price(db)),
+        "subscription": ({"status": sub.status,
+                          "monthly_amount": float(sub.monthly_amount),
+                          "accrued_credit": float(sub.accrued_credit)} if sub else None),
+    }
+
+
+@router.get("/payment/status")
+def payment_status(p: PelletPatient = Depends(require_pellet_token),
+                   db: Session = Depends(get_db)):
+    return _payment_summary(db, p)
