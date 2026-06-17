@@ -18,6 +18,10 @@ PELLET_SETTINGS_DEFAULTS: dict[str, Any] = {
     "dose_suggest_max_results": 6,    # pellet/dose_suggest.MAX_RESULTS
     "labs_valid_days":          14,   # labs must be drawn within N days of the visit
     "mammo_valid_days":         365,  # mammo must be within N days of the visit
+    "consent_template_id":      None,   # BoldSign template id for the insertion consent
+    "require_mammo":            True,
+    "require_labs":             True,
+    "require_consent":          True,
 }
 
 

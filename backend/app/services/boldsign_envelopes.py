@@ -317,6 +317,58 @@ def _create_envelope(s: Surgery, template: ConsentTemplate) -> str:
     return doc_id
 
 
+def _create_pellet_envelope(p, template_id: str) -> str:
+    """Create a BoldSign envelope from a template for a pellet patient.
+
+    Mirrors _create_envelope's _http()/_headers()/role-schema conventions
+    (templateId as query param; title/message/roles in the JSON body; role
+    fields signerName/signerEmail/signerType/signerRole/signerOrder/roleIndex).
+    A pellet patient has no Surgery row, so there is no per-role prefill
+    introspection — just the single Patient signer. Returns the BoldSign
+    documentId."""
+    if not _is_configured():
+        raise BoldSignEnvelopeError("BoldSign API key not configured")
+    payload = {
+        "title": (
+            f"WWC — Pellet Insertion Consent — {p.patient_name or 'Patient'}"
+        ),
+        "message": (
+            "Please review and electronically sign your pellet insertion "
+            "consent for Waldorf Women's Care."
+        ),
+        "roles": [{
+            "signerName": p.patient_name or "Patient",
+            "signerEmail": p.patient_email or "",
+            "signerType": "Signer",
+            "signerRole": "Patient",
+            "signerOrder": 1,
+            "roleIndex": 1,
+        }],
+        "enableSigningOrder": False,
+    }
+    with _http() as c:
+        r = c.post(
+            "/v1/template/send",
+            params={"templateId": template_id},
+            json=payload,
+        )
+    if r.status_code >= 300:
+        raise BoldSignEnvelopeError(
+            f"BoldSign send failed: {r.status_code} {r.text[:300]}"
+        )
+    body = r.json()
+    doc_id = (
+        body.get("documentId")
+        or body.get("documentid")
+        or body.get("DocumentId")
+    )
+    if not doc_id:
+        raise BoldSignEnvelopeError(
+            f"BoldSign response missing documentId: {body!r}"
+        )
+    return doc_id
+
+
 def _matches_from_stored_ids(db: Session, s: Surgery,
                              stored_ids: list) -> list[TemplateMatch]:
     """Build TemplateMatch rows for a curated consent_template_ids selection,

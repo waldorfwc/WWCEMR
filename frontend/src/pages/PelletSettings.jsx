@@ -9,6 +9,7 @@ import PelletDoseTypes from './PelletDoseTypes'
 const TABS = [
   { id: 'thresholds', label: 'Thresholds & Windows' },
   { id: 'types',      label: 'Dose Types' },
+  { id: 'portal',     label: 'Patient Portal' },
 ]
 
 export default function PelletSettings() {
@@ -37,6 +38,7 @@ export default function PelletSettings() {
       </div>
       {tab === 'thresholds' && <ThresholdsTab />}
       {tab === 'types'      && <PelletDoseTypes embedded />}
+      {tab === 'portal'     && <PatientPortalTab />}
     </div>
   )
 }
@@ -90,6 +92,72 @@ function ThresholdsTab() {
               {f.hint && <p className="text-[11px] text-muted mt-0.5">{f.hint}</p>}
             </label>
           ))}
+        </div>
+        <button className="btn-primary text-xs mt-4"
+                disabled={!Object.keys(draft).length || save.isPending}
+                onClick={() => save.mutate(draft)}>
+          {save.isPending ? 'Saving…' : 'Save Changes'}
+        </button>
+        {save.isError && (
+          <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ─── Patient Portal tab ─────────────────────────────────────────────
+
+const PORTAL_TOGGLES = [
+  { key: 'require_mammo', label: 'Require Mammogram',
+    hint: 'Patients must upload a current mammogram before the insertion visit.' },
+  { key: 'require_labs', label: 'Require Labs',
+    hint: 'Patients must self-report (or have on file) current labs.' },
+  { key: 'require_consent', label: 'Require Consent',
+    hint: 'Patients must sign the insertion consent before the visit.' },
+]
+
+function PatientPortalTab() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['pellet-config'],
+    queryFn: () => api.get('/pellets/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState({})
+  const save = useMutation({
+    mutationFn: (body) => api.put('/pellets/config', body).then(r => r.data),
+    onSuccess: () => { setDraft({}); qc.invalidateQueries({ queryKey: ['pellet-config'] }) },
+  })
+  if (!data) return <LoadingState />
+  const bool = (k) => draft[k] ?? data[k] ?? true
+  const str = (k) => draft[k] ?? data[k] ?? ''
+  return (
+    <div className="space-y-6">
+      <section className="card p-4">
+        <h2 className="font-medium mb-3">Patient Portal Requirements</h2>
+        <div className="space-y-3">
+          {PORTAL_TOGGLES.map(f => (
+            <label key={f.key} className="flex items-start gap-2 text-[13px]">
+              <input type="checkbox" className="mt-0.5"
+                     checked={bool(f.key)}
+                     onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.checked }))} />
+              <span>
+                <span className="font-medium">{f.label}</span>
+                {f.hint && <p className="text-[11px] text-muted mt-0.5">{f.hint}</p>}
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="mt-4">
+          <label className="block text-[13px]">
+            <span className="font-medium">Consent Template ID</span>
+            <input type="text" className="input mt-1 w-full max-w-md"
+                   value={str('consent_template_id')}
+                   onChange={e => setDraft(d => ({ ...d, consent_template_id: e.target.value }))} />
+            <p className="text-[11px] text-muted mt-0.5">
+              The BoldSign template id used for the insertion consent. Leave blank if none.
+            </p>
+          </label>
         </div>
         <button className="btn-primary text-xs mt-4"
                 disabled={!Object.keys(draft).length || save.isPending}

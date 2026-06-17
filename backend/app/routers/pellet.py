@@ -47,6 +47,7 @@ from app.models.pellet import (
     DISPOSAL_REASONS, ORDER_STATUSES, PAYMENT_METHODS, PELLET_LOCATIONS,
     PATIENT_TYPES, VISIT_KINDS,
 )
+from app.models.pellet_portal import PelletActivity
 from fastapi import UploadFile, File, Form
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
@@ -3268,6 +3269,10 @@ class PelletConfigPayload(BaseModel):
     dose_suggest_max_results: Optional[int] = Field(default=None, ge=1, le=50)
     labs_valid_days:          Optional[int] = Field(default=None, ge=1, le=3650)
     mammo_valid_days:         Optional[int] = Field(default=None, ge=1, le=3650)
+    require_mammo:            Optional[bool] = None
+    require_labs:             Optional[bool] = None
+    require_consent:          Optional[bool] = None
+    consent_template_id:      Optional[str] = None
 
 
 @router.get("/config")
@@ -6014,3 +6019,61 @@ def advance_milestone(visit_id: str, milestone_id: str,
                     "status": m.status, "notes": payload.notes})
     db.commit(); db.refresh(v)
     return _visit_dict(v)
+
+
+# ─── Patient-action feed (pellet portal) ───
+@router.get("/activity")
+def pellet_activity(unread_only: bool = False, limit: int = 100,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
+    q = (db.query(PelletActivity, PelletPatient)
+           .join(PelletPatient, PelletPatient.id == PelletActivity.pellet_patient_id))
+    if unread_only:
+        q = q.filter(PelletActivity.read_at.is_(None))
+    pairs = q.order_by(PelletActivity.created_at.desc()).limit(max(0, int(limit))).all()
+    return {"items": [{
+        "id": str(a.id), "pellet_patient_id": str(a.pellet_patient_id),
+        "patient_name": p.patient_name, "chart_number": p.chart_number,
+        "kind": a.kind, "summary": a.summary, "actor": a.actor,
+        "created_at": a.created_at.isoformat() if a.created_at else None,
+        "handled_at": a.handled_at.isoformat() if a.handled_at else None,
+        "read_at": a.read_at.isoformat() if a.read_at else None,
+    } for a, p in pairs]}
+
+
+@router.get("/activity/unread-count")
+def pellet_activity_unread(db: Session = Depends(get_db),
+                           current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
+    n = db.query(PelletActivity).filter(PelletActivity.read_at.is_(None)).count()
+    return {"count": n}
+
+
+@router.post("/activity/read-all")
+def pellet_activity_read_all(db: Session = Depends(get_db),
+                             current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    by = (current_user.get("email") or "").lower() or None
+    (db.query(PelletActivity).filter(PelletActivity.read_at.is_(None))
+       .update({"read_at": now_utc_naive(), "read_by": by}))
+    db.commit(); return {"ok": True}
+
+
+@router.post("/activity/{activity_id}/verify")
+def pellet_activity_verify(activity_id: str, db: Session = Depends(get_db),
+                           current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    a = db.query(PelletActivity).filter(PelletActivity.id == activity_id).first()
+    if a is None:
+        raise HTTPException(status_code=404, detail="activity not found")
+    p = db.query(PelletPatient).filter(PelletPatient.id == a.pellet_patient_id).first()
+    by = (current_user.get("email") or "").lower() or None
+    now = now_utc_naive()
+    if a.kind in ("mammo_uploaded", "labs_self_reported") and p is None:
+        raise HTTPException(status_code=409, detail="patient record missing")
+    if a.kind == "mammo_uploaded":
+        p.mammo_verified = True; p.mammo_verified_by = by; p.mammo_verified_at = now
+    elif a.kind == "labs_self_reported":
+        p.labs_verified = True; p.labs_verified_by = by; p.labs_verified_at = now
+    a.handled_at = now; a.handled_by = by
+    if a.read_at is None:
+        a.read_at = now; a.read_by = by
+    db.commit()
+    return {"ok": True, "kind": a.kind}

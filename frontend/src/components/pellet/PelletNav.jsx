@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import api from '../../utils/api'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { MODULE, TIER } from '../../routes.jsx'
 
@@ -16,6 +18,7 @@ import { MODULE, TIER } from '../../routes.jsx'
 function navItems() {
   return [
     { to: '/pellets',           label: 'Patients',  tier: TIER.VIEW, end: true },
+    { to: '/pellets/activity',  label: 'Patient Activity', tier: TIER.VIEW, badge: 'activity' },
     { to: '/pellets/inventory', label: 'Inventory', tier: TIER.VIEW },
     { to: '/pellets/counts',    label: 'Counts',    tier: TIER.WORK },
     { to: '/pellets/audit',     label: 'Audit',     tier: TIER.VIEW },
@@ -34,6 +37,23 @@ function navClass({ isActive }) {
 }
 
 
+function PelletActivityBadge() {
+  const { data } = useQuery({
+    queryKey: ['pellet-activity-unread'],
+    queryFn: () => api.get('/pellets/activity/unread-count').then(r => r.data),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
+  const count = data?.count || 0
+  if (!count) return null
+  return (
+    <span className="ml-1 bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-semibold">
+      {count}
+    </span>
+  )
+}
+
+
 export default function PelletNav() {
   const { tier } = useCurrentUser()
   const items = navItems().filter(it => tier(MODULE.PELLETS, it.tier))
@@ -49,6 +69,7 @@ export default function PelletNav() {
           {items.map(it => (
             <NavLink key={it.to} to={it.to} end={it.end} className={navClass}>
               {it.label}
+              {it.badge === 'activity' && <PelletActivityBadge />}
             </NavLink>
           ))}
         </nav>

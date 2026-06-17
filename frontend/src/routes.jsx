@@ -74,6 +74,7 @@ import PatientChart from './pages/PatientChart'
 import PatientDetail from './pages/PatientDetail'
 import Patients from './pages/Patients'
 import PelletNav from './components/pellet/PelletNav'
+import PelletActivity from './pages/PelletActivity'
 import PelletAudit from './pages/PelletAudit'
 import PelletCountDetail from './pages/PelletCountDetail'
 import PelletCounts from './pages/PelletCounts'
@@ -242,6 +243,7 @@ export const ROUTES = [
       nav: { label: 'Pellets', order: 80 },
       children: [
     { index: true,          element: <PelletPatients />,      module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'activity',     element: <PelletActivity />,      module: M.PELLETS, tier: TIER.VIEW },
     { path: 'inventory',    element: <Pellets />,             module: M.PELLETS, tier: TIER.VIEW },
     { path: 'counts',       element: <PelletCounts />,        module: M.PELLETS, tier: TIER.WORK },
     { path: 'counts/:id',   element: <PelletCountDetail />,   module: M.PELLETS, tier: TIER.WORK },
