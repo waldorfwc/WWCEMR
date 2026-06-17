@@ -373,6 +373,9 @@ class Surgery(Base, SoftDeleteMixin):
     # from "staff-marked" unresponsive without an audit-log lookup.
     last_patient_activity_at = Column(DateTime, nullable=True)
     auto_unresponsive_at     = Column(DateTime, nullable=True)
+    # Set when status transitions to 'completed' (post-op closed).
+    # Used by the surgery reports aggregation tiles (cycle-time, completed count).
+    completed_at = Column(DateTime, nullable=True)
 
     milestones = relationship("SurgeryMilestone", back_populates="surgery",
                               cascade="all, delete-orphan",
