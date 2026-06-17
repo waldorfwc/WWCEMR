@@ -1263,6 +1263,7 @@ class ManualSurgeryIn(BaseModel):
     is_robotic: bool = False
     is_urgent: bool = False
     notes: Optional[str] = None
+    procedure_classification: Optional[str] = None   # explicit override from a catalog type
 
 
 @router.post("/manual", status_code=201)
@@ -1278,11 +1279,15 @@ def create_manual(payload: ManualSurgeryIn,
         eligible = ["medstar"]
     selected = eligible[0] if len(eligible) == 1 else None
 
-    # Procedure classification
+    # Procedure classification — prefer an explicit value (from a catalog type),
+    # otherwise derive from CPTs / robotic / facility as before.
     cpts = {(p.get("cpt") or "").strip() for p in payload.procedures if p.get("cpt")}
     ROBOTIC = {"58545", "58571", "58572", "58573", "58574", "58575"}
     MAJOR   = {"49320", "58146", "58660", "58662", "58550", "58552", "58553", "58554"}
-    if payload.is_robotic or (cpts & ROBOTIC):
+    explicit = (payload.procedure_classification or "").strip()
+    if explicit in ("minor", "major", "office", "robotic_180", "robotic_240"):
+        classification = explicit
+    elif payload.is_robotic or (cpts & ROBOTIC):
         classification = "robotic_240" if (payload.estimated_minutes or 0) >= 240 else "robotic_180"
     elif cpts & MAJOR:
         classification = "major"
