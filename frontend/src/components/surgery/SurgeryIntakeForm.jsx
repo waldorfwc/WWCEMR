@@ -27,6 +27,7 @@ const EMPTY_FORM = {
   clearance_types: ['None'],
   device_types: ['None'],
   surgery_name: '',
+  procedure_classification: '',
   procedures: [{ cpt: '', description: '' }],
   diagnoses:  [{ icd: '', description: '' }],
   eligible_facilities: ['medstar'],
@@ -89,7 +90,7 @@ export default function SurgeryIntakeForm({
 
   const insuranceOpts = picks?.insurance_companies || []
   const surgeonOpts   = picks?.surgeons || []
-  const procedureOpts = picks?.procedures || []
+  const surgeryTypeOpts = picks?.surgery_types || []
   const assistantOpts = config?.assistant_surgeons || ['None']
   const clearanceOpts = config?.clearance_types || ['None']
   const deviceOpts    = config?.surgery_device_types || ['None']
@@ -237,18 +238,36 @@ export default function SurgeryIntakeForm({
     if (file) extract.mutate(file)
   }
 
-  function pickSurgery(label) {
-    // The dropdown is keyed by description; auto-fill the first procedure row
-    // with the matching CPT + description so coordinators don't double-enter.
-    const match = procedureOpts.find(p => p.description === label)
-    setForm(f => ({
-      ...f,
-      surgery_name: label,
-      procedures: match
-        ? [{ cpt: match.cpt, description: match.description },
-           ...f.procedures.slice(1)]
-        : f.procedures,
-    }))
+  function pickSurgery(typeId) {
+    // The dropdown is keyed by the surgery type id. Selecting a type auto-fills
+    // the procedures (all its CPTs), eligible locations, classification, and
+    // force-includes the type's consent templates (via consent_overrides.added
+    // so the match-preview effect keeps them selected).
+    const type = surgeryTypeOpts.find(t => t.id === typeId)
+    if (!type) {
+      setForm(f => ({ ...f, surgery_name: '' }))
+      return
+    }
+    const cptRows = (type.cpts || []).map(c => ({ cpt: c.cpt, description: c.description }))
+    setForm(f => {
+      const added = [...new Set([...(f.consent_overrides?.added || []),
+                                 ...(type.consent_template_ids || [])])]
+      const removed = (f.consent_overrides?.removed || [])
+        .filter(id => !(type.consent_template_ids || []).includes(id))
+      const consent = [...new Set([...(f.consent_template_ids || []),
+                                   ...(type.consent_template_ids || [])])]
+      return {
+        ...f,
+        surgery_name: type.name,
+        procedures: cptRows.length ? cptRows : f.procedures,
+        eligible_facilities: (type.eligible_facilities && type.eligible_facilities.length)
+          ? type.eligible_facilities
+          : f.eligible_facilities,
+        procedure_classification: type.classification || f.procedure_classification,
+        consent_template_ids: consent,
+        consent_overrides: { added, removed },
+      }
+    })
   }
 
   function toggleArray(key, value) {
@@ -319,6 +338,7 @@ export default function SurgeryIntakeForm({
       clearance_types: form.clearance_types,
       device_types: form.device_types,
       surgery_name: form.surgery_name,
+      procedure_classification: form.procedure_classification || null,
       preop_date: form.preop_date,
       procedures: (form.procedures || [])
         .map(p => ({ cpt: (p.cpt || '').trim() || null,
@@ -511,13 +531,12 @@ export default function SurgeryIntakeForm({
         </Field>
         <div className="col-span-2">
           <Field label="Surgery name *">
-            <select className="input text-sm" value={form.surgery_name}
+            <select className="input text-sm"
+                     value={surgeryTypeOpts.find(t => t.name === form.surgery_name)?.id || ''}
                      onChange={e => pickSurgery(e.target.value)}>
-              <option value="">— select a surgery —</option>
-              {procedureOpts.map(p => (
-                <option key={p.cpt} value={p.description}>
-                  {p.description} ({p.cpt})
-                </option>
+              <option value="">Select a surgery…</option>
+              {surgeryTypeOpts.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
           </Field>

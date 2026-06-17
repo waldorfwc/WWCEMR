@@ -16,6 +16,7 @@ from app.models.user import User, UserGroup
 # db fixture runs create_all — leaving their tables missing in tests. Import
 # here so every test DB has them.
 from app.models import state_transition as _state_transition  # noqa: F401
+from app.models import surgery_type as _surgery_type  # noqa: F401
 from app.routers.auth import get_current_user
 from app.routers.patient_surgery import require_patient_token
 

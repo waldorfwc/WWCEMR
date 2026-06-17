@@ -36,7 +36,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, surgery_activity, larc, larc_config, billing_document, missing_charge, pellet, pellet_config, recall_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier, bai2, bai2_exclusion, pellet_portal, pellet_payment, pellet_schedule, cron_run  # noqa
+    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, surgery_activity, larc, larc_config, billing_document, missing_charge, pellet, pellet_config, recall_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier, bai2, bai2_exclusion, pellet_portal, pellet_payment, pellet_schedule, cron_run, surgery_type  # noqa
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
     # Default groups already exist in production; the legacy seed code is
@@ -54,12 +54,14 @@ def init_db():
             seed_default_facilities, seed_default_templates,
             seed_default_email_templates, seed_default_sms_templates,
         )
+        from app.services.surgery.surgery_type_seed import seed_surgery_types
         db = SessionLocal()
         try:
             seed_default_facilities(db)
             seed_default_templates(db)
             seed_default_email_templates(db)
             seed_default_sms_templates(db)
+            seed_surgery_types(db)
         finally:
             db.close()
     except Exception:

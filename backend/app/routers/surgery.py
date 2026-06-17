@@ -1263,6 +1263,7 @@ class ManualSurgeryIn(BaseModel):
     is_robotic: bool = False
     is_urgent: bool = False
     notes: Optional[str] = None
+    procedure_classification: Optional[str] = None   # explicit override from a catalog type
 
 
 @router.post("/manual", status_code=201)
@@ -1278,11 +1279,15 @@ def create_manual(payload: ManualSurgeryIn,
         eligible = ["medstar"]
     selected = eligible[0] if len(eligible) == 1 else None
 
-    # Procedure classification
+    # Procedure classification — prefer an explicit value (from a catalog type),
+    # otherwise derive from CPTs / robotic / facility as before.
     cpts = {(p.get("cpt") or "").strip() for p in payload.procedures if p.get("cpt")}
     ROBOTIC = {"58545", "58571", "58572", "58573", "58574", "58575"}
     MAJOR   = {"49320", "58146", "58660", "58662", "58550", "58552", "58553", "58554"}
-    if payload.is_robotic or (cpts & ROBOTIC):
+    explicit = (payload.procedure_classification or "").strip()
+    if explicit in ("minor", "major", "office", "robotic_180", "robotic_240"):
+        classification = explicit
+    elif payload.is_robotic or (cpts & ROBOTIC):
         classification = "robotic_240" if (payload.estimated_minutes or 0) >= 240 else "robotic_180"
     elif cpts & MAJOR:
         classification = "major"
@@ -1541,11 +1546,87 @@ def consent_templates_picker(
 
 # ─── Picklists (must be declared BEFORE /{surgery_id} so it isn't eaten as a path-param) ─
 
+class SurgeryTypePayload(BaseModel):
+    name: str
+    cpts: list[dict] = []
+    classification: str = "minor"
+    eligible_facilities: list[str] = []
+    consent_template_ids: list[str] = []
+    active: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+
+class SurgeryTypeReorderPayload(BaseModel):
+    ordered_ids: list[str] = []
+
+
 @router.get("/picklists")
-def get_picklists(current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
+def get_picklists(db: Session = Depends(get_db),
+                  current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW))):
     """Return the curated dropdown options for SurgeryDetail editing."""
     from app.services.surgery.picklists import all_picklists
-    return all_picklists()
+    from app.services.surgery import surgery_types as st_svc
+    base = all_picklists()
+    types = st_svc.list_types(db)
+    base["surgery_types"] = st_svc.as_picklist(types)
+    # Back-compat: flatten the catalog's CPT rows into the legacy `procedures`
+    # shape, de-duplicated by (cpt, description), preserving catalog order.
+    seen = set()
+    flat = []
+    for t in base["surgery_types"]:
+        for c in t["cpts"]:
+            key = (c.get("cpt", ""), c.get("description", ""))
+            if key not in seen:
+                seen.add(key)
+                flat.append({"cpt": key[0], "description": key[1]})
+    base["procedures"] = flat
+    return base
+
+
+@router.get("/admin/surgery-types")
+def list_surgery_types(include_inactive: bool = False,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    from app.services.surgery import surgery_types as st_svc
+    return st_svc.as_picklist(st_svc.list_types(db, include_inactive=include_inactive))
+
+
+@router.post("/admin/surgery-types", status_code=201)
+def create_surgery_type(payload: SurgeryTypePayload,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    from app.services.surgery import surgery_types as st_svc
+    row = st_svc.create_type(db, payload.model_dump())
+    return st_svc.as_picklist([row])[0]
+
+
+# Registered before the `/{type_id}` parameter routes so the literal `reorder`
+# path can never be captured as a `type_id` by a future POST wildcard.
+@router.post("/admin/surgery-types/reorder")
+def reorder_surgery_types(payload: SurgeryTypeReorderPayload,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    from app.services.surgery import surgery_types as st_svc
+    st_svc.reorder(db, payload.ordered_ids)
+    return {"ok": True}
+
+
+@router.put("/admin/surgery-types/{type_id}")
+def update_surgery_type(type_id: str, payload: SurgeryTypePayload,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    from app.services.surgery import surgery_types as st_svc
+    row = st_svc.update_type(db, type_id, payload.model_dump())
+    return st_svc.as_picklist([row])[0]
+
+
+@router.delete("/admin/surgery-types/{type_id}")
+def delete_surgery_type(type_id: str,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    from app.services.surgery import surgery_types as st_svc
+    st_svc.set_active(db, type_id, False)
+    return {"ok": True}
 
 
 # Must be registered BEFORE the `/{surgery_id}` wildcard below — otherwise
