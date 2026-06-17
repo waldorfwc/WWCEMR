@@ -24,6 +24,7 @@ function navItems() {
     { to: '/surgery/waitlist',       label: 'Waitlist',       tier: TIER.WORK },
     { to: '/surgery/fee-schedule',   label: 'Fee Schedule',   tier: TIER.MANAGE },
     { to: '/surgery/payment-posting', label: 'Payment Posting', tier: TIER.WORK },
+    { to: '/surgery/reports',         label: 'Reports',         tier: TIER.VIEW },
     { to: '/surgery/messages',       label: 'Messages',       tier: TIER.WORK, badge: 'messages' },
     { to: '/surgery/settings',       label: 'Settings',       tier: TIER.MANAGE },
   ]

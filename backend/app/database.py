@@ -483,6 +483,8 @@ def _apply_lightweight_migrations():
         ("pellet_patients", "portal_token_version", "INTEGER"),
         ("pellet_patients", "mammo_submitted_at",   "DATETIME"),
         ("pellet_patients", "labs_self_reported_at", "DATETIME"),
+        # Surgery Reports — completion timestamp (backs "completed" + cycle-time tiles)
+        ("surgeries", "completed_at", "DATETIME"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
@@ -496,6 +498,15 @@ def _apply_lightweight_migrations():
         sql_type = _adapt_coltype_for_dialect(coltype, dialect)
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {sql_type}"))
+
+    # Backfill completed_at for surgeries already marked completed (approximate
+    # with updated_at) so historical reports aren't empty. Idempotent — only
+    # fills nulls, safe to re-run on every boot.
+    if "surgeries" in existing_tables:
+        with engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE surgeries SET completed_at = updated_at "
+                "WHERE status = 'completed' AND completed_at IS NULL"))
 
     # Dropped columns. SQLAlchemy never drops columns on create_all(), so
     # retired fields linger. ALTER TABLE ... DROP COLUMN is supported by
