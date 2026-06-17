@@ -1595,6 +1595,17 @@ def create_surgery_type(payload: SurgeryTypePayload,
     return st_svc.as_picklist([row])[0]
 
 
+# Registered before the `/{type_id}` parameter routes so the literal `reorder`
+# path can never be captured as a `type_id` by a future POST wildcard.
+@router.post("/admin/surgery-types/reorder")
+def reorder_surgery_types(payload: SurgeryTypeReorderPayload,
+                          db: Session = Depends(get_db),
+                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
+    from app.services.surgery import surgery_types as st_svc
+    st_svc.reorder(db, payload.ordered_ids)
+    return {"ok": True}
+
+
 @router.put("/admin/surgery-types/{type_id}")
 def update_surgery_type(type_id: str, payload: SurgeryTypePayload,
                         db: Session = Depends(get_db),
@@ -1610,15 +1621,6 @@ def delete_surgery_type(type_id: str,
                         current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
     from app.services.surgery import surgery_types as st_svc
     st_svc.set_active(db, type_id, False)
-    return {"ok": True}
-
-
-@router.post("/admin/surgery-types/reorder")
-def reorder_surgery_types(payload: SurgeryTypeReorderPayload,
-                          db: Session = Depends(get_db),
-                          current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.MANAGE))):
-    from app.services.surgery import surgery_types as st_svc
-    st_svc.reorder(db, payload.ordered_ids)
     return {"ok": True}
 
 
