@@ -9,15 +9,16 @@ import StaffMessageTemplates from './StaffMessageTemplates'
 import AdminGoogleSync from './AdminGoogleSync'
 
 const TABS = [
-  { id: 'alerts',    label: 'Alerts & Windows' },
-  { id: 'steps',     label: 'Workflow Steps' },
-  { id: 'postop',    label: 'Post-Op Schedules' },
-  { id: 'capacity',  label: 'Facilities & Capacity' },
-  { id: 'intake',    label: 'Clearances & Devices' },
-  { id: 'templates', label: 'Templates' },
-  { id: 'consent',   label: 'Consent Templates' },
-  { id: 'messages',  label: 'Message Templates' },
-  { id: 'gsync',     label: 'Google Sync' },
+  { id: 'alerts',         label: 'Alerts & Windows' },
+  { id: 'steps',          label: 'Workflow Steps' },
+  { id: 'postop',         label: 'Post-Op Schedules' },
+  { id: 'capacity',       label: 'Facilities & Capacity' },
+  { id: 'intake',         label: 'Clearances & Devices' },
+  { id: 'surgery-types',  label: 'Surgery Types' },
+  { id: 'templates',      label: 'Templates' },
+  { id: 'consent',        label: 'Consent Templates' },
+  { id: 'messages',       label: 'Message Templates' },
+  { id: 'gsync',          label: 'Google Sync' },
 ]
 
 export default function SurgerySettings() {
@@ -45,15 +46,16 @@ export default function SurgerySettings() {
           </button>
         ))}
       </div>
-      {tab === 'alerts'    && <AlertsTab />}
-      {tab === 'steps'     && <StepsTab />}
-      {tab === 'postop'    && <PostOpTab />}
-      {tab === 'capacity'  && <CapacityTab />}
-      {tab === 'intake'    && <IntakeTab />}
-      {tab === 'templates' && <TemplatesTab />}
-      {tab === 'consent'  && <AdminConsentTemplates embedded />}
-      {tab === 'messages' && <StaffMessageTemplates embedded />}
-      {tab === 'gsync'    && <AdminGoogleSync embedded />}
+      {tab === 'alerts'        && <AlertsTab />}
+      {tab === 'steps'         && <StepsTab />}
+      {tab === 'postop'        && <PostOpTab />}
+      {tab === 'capacity'      && <CapacityTab />}
+      {tab === 'intake'        && <IntakeTab />}
+      {tab === 'surgery-types' && <SurgeryTypesTab />}
+      {tab === 'templates'     && <TemplatesTab />}
+      {tab === 'consent'       && <AdminConsentTemplates embedded />}
+      {tab === 'messages'      && <StaffMessageTemplates embedded />}
+      {tab === 'gsync'         && <AdminGoogleSync embedded />}
     </div>
   )
 }
@@ -1035,6 +1037,370 @@ function PayerInsuranceMapEditor({ value, onChange }) {
               onClick={() => setRows([...rows, ['', '']])}>
         + Add Mapping
       </button>
+    </div>
+  )
+}
+
+// ─── Surgery Types tab ──────────────────────────────────────────────
+
+const FACILITY_OPTIONS = [
+  { code: 'medstar',              label: 'MedStar' },
+  { code: 'crmc',                 label: 'CRMC' },
+  { code: 'office',               label: 'Office' },
+  { code: 'wwc_office_white_plains', label: 'WWC Office White Plains' },
+]
+
+const CLASSIFICATION_OPTIONS = [
+  { value: 'minor',  label: 'Minor' },
+  { value: 'major',  label: 'Major' },
+  { value: 'office', label: 'Office' },
+]
+
+function classificationLabel(val) {
+  return CLASSIFICATION_OPTIONS.find(o => o.value === val)?.label ?? val
+}
+
+function facilityLabel(code) {
+  return FACILITY_OPTIONS.find(o => o.code === code)?.label ?? code
+}
+
+const EMPTY_SURGERY_TYPE = {
+  name: '',
+  cpts: [{ cpt: '', description: '' }],
+  classification: 'minor',
+  eligible_facilities: [],
+  consent_template_ids: [],
+  active: true,
+}
+
+function SurgeryTypesTab() {
+  const qc = useQueryClient()
+
+  const typesQ = useQuery({
+    queryKey: ['surgery-types-admin'],
+    queryFn: () => api.get('/surgery/admin/surgery-types?include_inactive=true').then(r => r.data),
+  })
+
+  const consentQ = useQuery({
+    queryKey: ['consent-templates'],
+    queryFn: () => api.get('/consent-templates').then(r => r.data),
+  })
+
+  const saveType = useMutation({
+    mutationFn: ({ id, body }) =>
+      (id ? api.put(`/surgery/admin/surgery-types/${id}`, body)
+          : api.post('/surgery/admin/surgery-types', body)).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-types-admin'] })
+      qc.invalidateQueries({ queryKey: ['surgery-picklists'] })
+    },
+    onError: (e) => alert(saveErrorMessage(e)),
+  })
+
+  const removeType = useMutation({
+    mutationFn: (id) => api.delete(`/surgery/admin/surgery-types/${id}`).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['surgery-types-admin'] })
+      qc.invalidateQueries({ queryKey: ['surgery-picklists'] })
+    },
+    onError: (e) => alert(saveErrorMessage(e)),
+  })
+
+  const [editing, setEditing] = useState(null)   // null | { id: string|null, ...fields }
+  const [editorState, setEditorState] = useState(EMPTY_SURGERY_TYPE)
+
+  function openNew() {
+    setEditing({ id: null })
+    setEditorState({ ...EMPTY_SURGERY_TYPE, cpts: [{ cpt: '', description: '' }] })
+  }
+
+  function openEdit(t) {
+    setEditing({ id: t.id })
+    setEditorState({
+      name: t.name || '',
+      cpts: t.cpts?.length ? t.cpts.map(c => ({ cpt: c.cpt || '', description: c.description || '' }))
+                           : [{ cpt: '', description: '' }],
+      classification: t.classification || 'minor',
+      eligible_facilities: t.eligible_facilities || [],
+      consent_template_ids: t.consent_template_ids || [],
+      active: t.active ?? true,
+    })
+  }
+
+  function closeEditor() { setEditing(null) }
+
+  function handleSave() {
+    if (!editorState.name.trim()) { alert('Name is required.'); return }
+    const body = {
+      ...editorState,
+      name: editorState.name.trim(),
+      cpts: editorState.cpts.filter(c => c.cpt.trim()),
+    }
+    saveType.mutate(
+      { id: editing?.id || null, body },
+      { onSuccess: () => closeEditor() },
+    )
+  }
+
+  function setCptRow(i, field, val) {
+    setEditorState(s => ({
+      ...s,
+      cpts: s.cpts.map((c, j) => j === i ? { ...c, [field]: val } : c),
+    }))
+  }
+
+  function addCptRow() {
+    setEditorState(s => ({ ...s, cpts: [...s.cpts, { cpt: '', description: '' }] }))
+  }
+
+  function removeCptRow(i) {
+    setEditorState(s => ({ ...s, cpts: s.cpts.filter((_, j) => j !== i) }))
+  }
+
+  function toggleFacility(code) {
+    setEditorState(s => {
+      const already = s.eligible_facilities.includes(code)
+      return {
+        ...s,
+        eligible_facilities: already
+          ? s.eligible_facilities.filter(f => f !== code)
+          : [...s.eligible_facilities, code],
+      }
+    })
+  }
+
+  function toggleConsent(id) {
+    setEditorState(s => {
+      const already = s.consent_template_ids.includes(id)
+      return {
+        ...s,
+        consent_template_ids: already
+          ? s.consent_template_ids.filter(x => x !== id)
+          : [...s.consent_template_ids, id],
+      }
+    })
+  }
+
+  const types = typesQ.data || []
+  const consents = consentQ.data || []
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-lg border border-border-subtle">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-border-subtle flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900">Surgery Types</h2>
+            <p className="text-[12px] text-gray-500 mt-0.5">
+              Catalog of surgery types shown in the intake picklist. Inactive types are hidden from intake.
+            </p>
+          </div>
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  onClick={openNew}
+                  disabled={!!editing}>
+            <Plus size={12} /> Add Surgery Type
+          </button>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-[11px] uppercase text-gray-500">
+              <tr>
+                <th className="text-left px-5 py-2 w-[26%]">Name</th>
+                <th className="text-left px-3 py-2 w-[18%]">CPTs</th>
+                <th className="text-left px-3 py-2 w-[14%]">Classification</th>
+                <th className="text-left px-3 py-2 w-[22%]">Locations</th>
+                <th className="text-center px-3 py-2 w-[8%]">Active</th>
+                <th className="text-right px-5 py-2 w-[120px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {typesQ.isLoading && (
+                <tr><td colSpan={6} className="px-5 py-6 text-gray-400 text-[12px]">Loading…</td></tr>
+              )}
+              {!typesQ.isLoading && types.length === 0 && (
+                <tr><td colSpan={6} className="px-5 py-6 text-gray-400 text-[12px] italic">
+                  No surgery types yet — click <strong>Add Surgery Type</strong> to start.
+                </td></tr>
+              )}
+              {types.map(t => {
+                const dimmed = !t.active
+                return (
+                  <tr key={t.id}
+                      className={`border-t border-border-subtle ${
+                        dimmed ? 'opacity-60 hover:bg-gray-50' : 'hover:bg-gray-50'
+                      }`}>
+                    <td className="px-5 py-3 align-middle font-medium text-gray-900">{t.name}</td>
+                    <td className="px-3 py-3 align-middle text-[12px] text-gray-600 font-mono">
+                      {t.cpts?.length ? t.cpts.map(c => c.cpt).join(', ') : <span className="italic text-gray-400">—</span>}
+                    </td>
+                    <td className="px-3 py-3 align-middle text-[12px] text-gray-600">
+                      {classificationLabel(t.classification)}
+                    </td>
+                    <td className="px-3 py-3 align-middle text-[12px] text-gray-600">
+                      {t.eligible_facilities?.length
+                        ? t.eligible_facilities.map(f => facilityLabel(f)).join(', ')
+                        : <span className="text-gray-400">All</span>}
+                    </td>
+                    <td className="px-3 py-3 align-middle text-center">
+                      <span className={`inline-block w-2 h-2 rounded-full ${t.active ? 'bg-green-500' : 'bg-gray-300'}`}
+                            title={t.active ? 'Active' : 'Inactive'} />
+                    </td>
+                    <td className="px-5 py-3 align-middle text-right">
+                      <div className="inline-flex items-center gap-1">
+                        <button className="text-[11px] px-2 py-1 rounded border border-border-subtle hover:bg-plum-50 flex items-center gap-1 disabled:opacity-30"
+                                onClick={() => openEdit(t)}
+                                disabled={!!editing}
+                                title="Edit">
+                          <Edit3 size={11} /> Edit
+                        </button>
+                        <button className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-600 hover:bg-red-50 flex items-center gap-1 disabled:opacity-30"
+                                onClick={() => {
+                                  if (window.confirm(`Remove "${t.name}"? This will deactivate it.`))
+                                    removeType.mutate(t.id)
+                                }}
+                                disabled={!!editing || removeType.isPending}
+                                title="Remove">
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Editor panel — shown below table when adding/editing */}
+      {editing && (
+        <section className="card p-5">
+          <h2 className="font-medium mb-4">
+            {editing.id ? 'Edit Surgery Type' : 'New Surgery Type'}
+          </h2>
+
+          {/* Name */}
+          <div className="mb-4">
+            <label className="block text-[13px] font-medium mb-1">Name</label>
+            <input className="input w-full max-w-md"
+                   placeholder="e.g. Laparoscopic Hysterectomy"
+                   value={editorState.name}
+                   autoFocus
+                   onChange={e => setEditorState(s => ({ ...s, name: e.target.value }))} />
+          </div>
+
+          {/* Classification */}
+          <div className="mb-4">
+            <label className="block text-[13px] font-medium mb-1">Classification</label>
+            <select className="input w-48"
+                    value={editorState.classification}
+                    onChange={e => setEditorState(s => ({ ...s, classification: e.target.value }))}>
+              {CLASSIFICATION_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* CPTs */}
+          <div className="mb-4">
+            <label className="block text-[13px] font-medium mb-1">CPT Codes</label>
+            <div className="space-y-2">
+              {editorState.cpts.map((c, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input className="input w-28 font-mono text-sm"
+                         placeholder="58571"
+                         value={c.cpt}
+                         onChange={e => setCptRow(i, 'cpt', e.target.value)} />
+                  <input className="input flex-1 text-sm"
+                         placeholder="Description"
+                         value={c.description}
+                         onChange={e => setCptRow(i, 'description', e.target.value)} />
+                  <button type="button"
+                          className="text-gray-400 hover:text-red-600"
+                          title="Remove CPT"
+                          onClick={() => removeCptRow(i)}
+                          disabled={editorState.cpts.length === 1}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <button type="button"
+                    className="text-xs text-plum-700 hover:underline mt-2"
+                    onClick={addCptRow}>
+              + Add CPT
+            </button>
+          </div>
+
+          {/* Eligible Locations */}
+          <div className="mb-4">
+            <label className="block text-[13px] font-medium mb-1">
+              Eligible Locations <span className="font-normal text-muted">(none checked = all)</span>
+            </label>
+            <div className="flex flex-wrap gap-4">
+              {FACILITY_OPTIONS.map(f => (
+                <label key={f.code} className="text-[13px] flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox"
+                         className="h-4 w-4 rounded border-gray-300 text-plum-600 focus:ring-plum-500"
+                         checked={editorState.eligible_facilities.includes(f.code)}
+                         onChange={() => toggleFacility(f.code)} />
+                  {f.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Consent Templates */}
+          <div className="mb-4">
+            <label className="block text-[13px] font-medium mb-1">Consent Templates</label>
+            {consents.length === 0 ? (
+              <p className="text-[12px] text-muted italic">No consent templates configured.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {consents.map(ct => (
+                  <label key={ct.id} className="text-[13px] flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox"
+                           className="h-4 w-4 rounded border-gray-300 text-plum-600 focus:ring-plum-500"
+                           checked={editorState.consent_template_ids.includes(ct.id)}
+                           onChange={() => toggleConsent(ct.id)} />
+                    {ct.name}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Active */}
+          <div className="mb-5">
+            <label className="text-[13px] flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox"
+                     className="h-4 w-4 rounded border-gray-300 text-plum-600 focus:ring-plum-500"
+                     checked={editorState.active}
+                     onChange={e => setEditorState(s => ({ ...s, active: e.target.checked }))} />
+              <span className="font-medium">Active</span>
+            </label>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            <button className="btn-primary text-sm"
+                    onClick={handleSave}
+                    disabled={saveType.isPending}>
+              {saveType.isPending ? 'Saving…' : 'Save Surgery Type'}
+            </button>
+            <button className="btn-secondary text-sm"
+                    onClick={closeEditor}
+                    disabled={saveType.isPending}>
+              Cancel
+            </button>
+            {saveType.isError && (
+              <span className="text-xs text-red-700">{saveErrorMessage(saveType.error)}</span>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
