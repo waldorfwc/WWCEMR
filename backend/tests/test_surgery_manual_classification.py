@@ -26,8 +26,11 @@ _BASE = dict(
 
 
 def test_explicit_classification_wins(client):
-    body = dict(_BASE, surgery_name="Diagnostic hysteroscopy",
-                procedures=[{"cpt": "58555", "description": "Diagnostic hysteroscopy"}],
+    # Genuine conflict: 49320 is a MAJOR CPT at a non-office facility, so the
+    # legacy derivation would produce "major". The explicit "office" must win.
+    body = dict(_BASE, surgery_name="Diagnostic laparoscopy",
+                eligible_facilities=["medstar"],
+                procedures=[{"cpt": "49320", "description": "Diagnostic laparoscopy"}],
                 procedure_classification="office")
     r = client.post("/api/surgery/manual", json=body)
     assert r.status_code == 201, r.text
