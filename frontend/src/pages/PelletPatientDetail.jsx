@@ -5,7 +5,7 @@ import {
   ArrowLeft, User, Plus, CheckCircle2, Circle, Edit3, Save, X,
   DollarSign, Calendar, Pill, Shield, Send, ExternalLink, Trash2,
   PackageOpen, AlertTriangle, History, MessageSquare, Clock, RotateCcw,
-  Replace,
+  Replace, Eye,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
@@ -48,6 +48,16 @@ export default function PelletPatientDetail() {
     queryFn: () => api.get(`/pellets/patients/${id}`).then(r => r.data),
   })
 
+  async function viewAsPatient() {
+    try {
+      const { data } = await api.post(`/pellets/patients/${id}/portal-preview-token`)
+      window.open(`/pellet-portal/home?staff_token=${encodeURIComponent(data.token)}`,
+                  '_blank', 'noopener,noreferrer')
+    } catch (e) {
+      alert(e?.response?.data?.detail || 'Could not start preview.')
+    }
+  }
+
   if (isLoading) return <LoadingState />
   if (!p) return <div className="p-6 text-red-600">Patient not found.</div>
 
@@ -87,6 +97,11 @@ export default function PelletPatientDetail() {
                 <ExternalLink size={11}/> Open in ModMed
               </a>
             )}
+            <button type="button" onClick={viewAsPatient}
+                    className="text-xs px-2 py-1 rounded border bg-white border-border-subtle text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+                    title="Open this patient's portal in a new tab (read-only)">
+              <Eye size={11} /> View as Patient
+            </button>
             <TypeBadge patient={p} qc={qc} />
             <StatusBadge patient={p} qc={qc} />
           </div>

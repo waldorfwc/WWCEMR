@@ -1,9 +1,24 @@
+import { useEffect } from 'react'
 import { Outlet, Navigate, Link, useLocation, useNavigate } from 'react-router-dom'
-import { getPelletSession, clearPelletSession } from '../../lib/pellet-portal-api'
+import { getPelletSession, setPelletSession, clearPelletSession } from '../../lib/pellet-portal-api'
 import logoFull from '../../assets/wwc-logo-full.png'
 
 export default function PelletPortalShell() {
-  const { token } = getPelletSession()
+  // Capture a staff preview token from the query param on first load.
+  const staffToken = new URLSearchParams(window.location.search).get('staff_token')
+  if (staffToken) {
+    setPelletSession({ token: staffToken })
+  }
+  useEffect(() => {
+    if (staffToken) {
+      const params = new URLSearchParams(window.location.search)
+      params.delete('staff_token')
+      const qs = params.toString()
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''))
+    }
+  }, [staffToken])
+
+  const token = getPelletSession().token || staffToken
   const loc = useLocation()
   const nav = useNavigate()
 
