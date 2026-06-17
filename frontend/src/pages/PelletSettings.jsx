@@ -11,6 +11,7 @@ const TABS = [
   { id: 'types',      label: 'Dose Types' },
   { id: 'portal',     label: 'Patient Portal' },
   { id: 'payments',   label: 'Payments' },
+  { id: 'portalinfo', label: 'Portal Info' },
 ]
 
 export default function PelletSettings() {
@@ -41,6 +42,7 @@ export default function PelletSettings() {
       {tab === 'types'      && <PelletDoseTypes embedded />}
       {tab === 'portal'     && <PatientPortalTab />}
       {tab === 'payments'   && <PaymentsTab />}
+      {tab === 'portalinfo' && <PortalInfoTab />}
     </div>
   )
 }
@@ -98,6 +100,46 @@ function ThresholdsTab() {
         <button className="btn-primary text-xs mt-4"
                 disabled={!Object.keys(draft).length || save.isPending}
                 onClick={() => save.mutate(draft)}>
+          {save.isPending ? 'Saving…' : 'Save Changes'}
+        </button>
+        {save.isError && (
+          <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ─── Portal Info tab ────────────────────────────────────────────────
+
+function PortalInfoTab() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['pellet-config'],
+    queryFn: () => api.get('/pellets/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState(null)
+  const save = useMutation({
+    mutationFn: (body) => api.put('/pellets/config', body).then(r => r.data),
+    onSuccess: () => { setDraft(null); qc.invalidateQueries({ queryKey: ['pellet-config'] }) },
+  })
+  if (!data) return <LoadingState />
+  const value = draft ?? data.portal_info_text ?? ''
+  const dirty = draft != null && draft !== (data.portal_info_text ?? '')
+  return (
+    <div className="space-y-6">
+      <section className="card p-4">
+        <h2 className="font-medium mb-1">Portal Info</h2>
+        <p className="text-[11px] text-muted mb-3">
+          Shown to patients on the portal's Rules &amp; Info page (markdown).
+        </p>
+        <textarea className="input text-[12px] w-full font-mono" rows={16}
+                  value={value}
+                  onChange={e => setDraft(e.target.value)}
+                  placeholder="Markdown supported: # headings · **bold** · *italic* · - lists · | tables | · `code` · > quotes" />
+        <button className="btn-primary text-xs mt-4"
+                disabled={!dirty || save.isPending}
+                onClick={() => save.mutate({ portal_info_text: value })}>
           {save.isPending ? 'Saving…' : 'Save Changes'}
         </button>
         {save.isError && (
