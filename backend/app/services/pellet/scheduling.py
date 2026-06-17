@@ -67,7 +67,7 @@ def materialize_pellet_slots(db: Session, *, days_ahead: int | None = None,
     slots (booked/blocked/addon included)."""
     horizon = days_ahead if days_ahead is not None else int(cfg(db, "schedule_horizon_days"))
     default_min = int(cfg(db, "slot_minutes"))
-    start = today or datetime.utcnow().date()
+    start = today or now_utc_naive().date()
     end = start + timedelta(days=horizon)
     created = 0
     existing = {(s.location, s.slot_date, s.start_time)
