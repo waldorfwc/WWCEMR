@@ -150,3 +150,21 @@ def test_inventory_health(db):
     assert out["by_location"]["white_plains"] == 5
     assert out["expiring_lots"] == 1
     assert out["below_reorder"] == 1
+
+
+def test_rows_for_status_funnel_bucket(db):
+    p = _patient(db)
+    _visit(db, p, status="cancelled")
+    _visit(db, p, status="cancelled")
+    _visit(db, p, status="new")
+    rows = rpt.rows_for(db, "status_funnel", date_from=date(2026, 6, 1),
+                        date_to=date(2026, 6, 30), location=None, provider=None,
+                        bucket="cancelled", today=date(2026, 6, 15))
+    assert len(rows) == 2 and all(r["status"] == "cancelled" for r in rows)
+    assert {"visit_id", "chart_number", "patient_name", "status"} <= set(rows[0])
+
+
+def test_rows_to_csv_has_header_and_rows():
+    csv_text = rpt.rows_to_csv([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
+    lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+    assert lines[0] == "a,b" and len(lines) == 3

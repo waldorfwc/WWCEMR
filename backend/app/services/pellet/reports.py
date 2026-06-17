@@ -3,6 +3,8 @@ data, parameterized by an optional location + provider filter and (for period
 tiles) a date range. No persistence; computed on request."""
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date, datetime, time, timedelta
 from typing import Optional
 
@@ -229,3 +231,160 @@ def inventory_health(db: Session, *, location: Optional[str] = None,
             "by_location": by_location,
             "expiring_lots": len(expiring_lot_ids),
             "below_reorder": below}
+
+
+def _visit_row(v) -> dict:
+    p = v.patient
+    return {
+        "visit_id": str(v.id),
+        "chart_number": getattr(p, "chart_number", None),
+        "patient_name": getattr(p, "patient_name", None),
+        "scheduled_date": v.scheduled_date.strftime("%m/%d/%Y") if v.scheduled_date else None,
+        "inserted_at": v.inserted_at.strftime("%m/%d/%Y") if v.inserted_at else None,
+        "location": v.location,
+        "provider": v.provider,
+        "status": v.status,
+        "visit_kind": v.visit_kind,
+    }
+
+
+def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
+             location: Optional[str] = None, provider: Optional[str] = None,
+             bucket: Optional[str] = None, today: Optional[date] = None) -> list[dict]:
+    from app.utils.dt import now_utc_naive
+
+    if tile == "status_funnel":
+        q = _visit_base(db, location, provider)
+        if bucket:
+            q = q.filter(PelletVisit.status == bucket)
+        return [_visit_row(v) for v in q.order_by(PelletVisit.scheduled_date).all()]
+
+    if tile == "insertions":
+        rows = _inserted_in_range_q(db, date_from, date_to, location, provider).all()
+        if bucket:
+            rows = [v for v in rows if (v.visit_kind or "unspecified") == bucket]
+        out = []
+        for v in rows:
+            r = _visit_row(v)
+            r["price_amount"] = float(v.price_amount or 0)
+            out.append(r)
+        return out
+
+    if tile == "billing_backlog":
+        rows = (_visit_base(db, location, provider)
+                .filter(PelletVisit.status == "inserted",
+                        PelletVisit.billed_at.is_(None)).all())
+        out = []
+        for v in rows:
+            r = _visit_row(v)
+            r["price_amount"] = float(v.price_amount or 0)
+            out.append(r)
+        return out
+
+    if tile == "prerequisites":
+        today = today or now_utc_naive().date()
+        horizon = today + timedelta(days=14)
+        q = (_visit_base(db, location, provider)
+             .filter(PelletVisit.scheduled_date.isnot(None),
+                     PelletVisit.scheduled_date >= today,
+                     PelletVisit.scheduled_date <= horizon,
+                     PelletVisit.status.in_(("new", "in_progress"))))
+        out = []
+        for v in q.order_by(PelletVisit.scheduled_date).all():
+            p = v.patient
+            if p is None:
+                continue
+            ref = v.scheduled_date or today
+            blockers = []
+            if not _mammo_ok(db, p, ref):
+                blockers.append("mammo")
+            if not _labs_ok(db, p, ref):
+                blockers.append("labs")
+            if not _consent_ok(db, p.id):
+                blockers.append("consent")
+            if not blockers:
+                continue
+            if bucket and bucket not in blockers:
+                continue
+            r = _visit_row(v)
+            r["blockers"] = blockers
+            out.append(r)
+        return out
+
+    if tile == "recall_due":
+        today = today or now_utc_naive().date()
+        soon = today + timedelta(days=30)
+        out = []
+        patients = (db.query(PelletPatient)
+                    .filter(PelletPatient.status == "active").all())
+        for p in patients:
+            visits = list(p.visits or [])
+            if not visits:
+                continue
+            latest = max(visits, key=lambda v: (v.created_at or datetime.min))
+            if location and latest.location != location:
+                continue
+            if provider and latest.provider != provider:
+                continue
+            dates = [d for d in (_effective_visit_date(v) for v in visits) if d]
+            if not dates or _has_open_visit(visits):
+                continue
+            last_dt = max(dates)
+            interval = p.recall_interval_months or 4
+            due = last_dt + timedelta(days=interval * 30)
+            kind = "overdue" if due < today else ("due_soon" if due <= soon else None)
+            if kind is None:
+                continue
+            if bucket and bucket != kind:
+                continue
+            out.append({
+                "patient_id": str(p.id),
+                "chart_number": p.chart_number,
+                "patient_name": p.patient_name,
+                "last_inserted_at": last_dt.strftime("%m/%d/%Y"),
+                "due_date": due.strftime("%m/%d/%Y"),
+                "recall_interval_months": p.recall_interval_months or 4,
+                "bucket": kind,
+            })
+        return out
+
+    if tile == "inventory_health":
+        from app.models.pellet import PelletDoseType, PelletLot, PelletStock
+        sq = db.query(PelletStock).filter(PelletStock.status == "active",
+                                          PelletStock.doses_on_hand > 0)
+        if location:
+            sq = sq.filter(PelletStock.location == location)
+        lots = {l.id: l for l in db.query(PelletLot).all()}
+        types = {d.id: d for d in db.query(PelletDoseType).all()}
+        out = []
+        for s in sq.all():
+            lot = lots.get(s.lot_id)
+            dose = types.get(lot.dose_type_id) if lot else None
+            out.append({
+                "location": s.location,
+                "lot_number": lot.qualgen_lot_number if lot else None,
+                "dose_type": (dose.label if dose else None),
+                "doses_on_hand": int(s.doses_on_hand or 0),
+                "expiration_date": (lot.expiration_date.strftime("%m/%d/%Y")
+                                    if lot and lot.expiration_date else None),
+            })
+        return out
+
+    raise ValueError(f"unknown tile: {tile}")
+
+
+VALID_TILES = ("status_funnel", "insertions", "recall_due", "prerequisites",
+               "billing_backlog", "inventory_health")
+
+
+def rows_to_csv(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    fields = list(rows[0].keys())
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: ("; ".join(map(str, v)) if isinstance(v, list) else v)
+                    for k, v in r.items()})
+    return buf.getvalue()
