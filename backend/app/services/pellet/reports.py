@@ -113,22 +113,26 @@ def recall_due(db: Session, *, location: Optional[str] = None,
     return {"overdue": overdue, "due_soon": due_soon, "total": overdue + due_soon}
 
 
-def _mammo_ok(db, p, today) -> bool:
+def _mammo_ok(db, p, ref: date) -> bool:
+    """Mammo readiness as of the visit's `ref` date. Mirrors pellet.py
+    _mammo_status staleness rule: stale when mammo_date < ref - N days."""
     from app.services.pellet.settings import cfg
     if not cfg(db, "require_mammo"):
         return True
     if not (p.mammo_verified and p.mammo_date):
         return False
-    return (today - p.mammo_date).days <= int(cfg(db, "mammo_valid_days"))
+    return p.mammo_date >= ref - timedelta(days=int(cfg(db, "mammo_valid_days")))
 
 
-def _labs_ok(db, p, today) -> bool:
+def _labs_ok(db, p, ref: date) -> bool:
+    """Labs readiness as of the visit's `ref` date. Mirrors pellet.py
+    _labs_status staleness rule: stale when labs_date < ref - N days."""
     from app.services.pellet.settings import cfg
     if not cfg(db, "require_labs") or p.labs_not_required:
         return True
     if not (p.labs_verified and p.labs_date):
         return False
-    return (today - p.labs_date).days <= int(cfg(db, "labs_valid_days"))
+    return p.labs_date >= ref - timedelta(days=int(cfg(db, "labs_valid_days")))
 
 
 def _consent_ok(db, patient_id) -> bool:
@@ -156,10 +160,11 @@ def prerequisites(db: Session, *, location: Optional[str] = None,
         p = v.patient
         if p is None:
             continue
+        ref = v.scheduled_date or today
         blockers = []
-        if not _mammo_ok(db, p, today):
+        if not _mammo_ok(db, p, ref):
             blockers.append("mammo")
-        if not _labs_ok(db, p, today):
+        if not _labs_ok(db, p, ref):
             blockers.append("labs")
         if not _consent_ok(db, p.id):
             blockers.append("consent")

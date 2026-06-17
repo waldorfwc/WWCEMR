@@ -97,3 +97,25 @@ def test_prerequisites_blockers(db):
     assert out["total"] == 1
     assert out["by_blocker"]["mammo"] == 1
     assert out["by_blocker"]["consent"] == 1
+
+
+def test_prerequisites_labs_staleness_uses_visit_date_not_today(db):
+    """Labs staleness is measured against the visit's scheduled_date (matching
+    pellet.py _labs_status), not `today`. Labs drawn 10 days before `today` are
+    fresh vs today but stale vs a visit 6 days out (labs_valid_days=14)."""
+    from app.models.pellet_portal import PelletConsent
+    from app.utils.dt import now_utc_naive
+    today = date(2026, 6, 15)
+    p = _patient(db, chart_number="PRSTALE", mammo_verified=True,
+                 mammo_date=date(2026, 6, 1), labs_verified=True,
+                 labs_date=date(2026, 6, 5), labs_not_required=False)
+    db.add(PelletConsent(pellet_patient_id=p.id, status="signed",
+                         expires_at=now_utc_naive() + timedelta(days=300)))
+    # Visit 6 days out: ref - 14d = 2026-06-07; labs_date 06-05 < 06-07 => stale.
+    _visit(db, p, status="new", scheduled_date=date(2026, 6, 21))
+    db.commit()
+    out = rpt.prerequisites(db, location=None, provider=None, today=today)
+    assert out["total"] == 1
+    assert out["by_blocker"]["labs"] == 1
+    assert out["by_blocker"]["mammo"] == 0
+    assert out["by_blocker"]["consent"] == 0
