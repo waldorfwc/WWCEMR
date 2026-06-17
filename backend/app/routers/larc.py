@@ -2688,6 +2688,41 @@ def mark_billed(assignment_id: str, payload: BilledIn,
     return _assignment_dict(a, include_milestones=True)
 
 
+@router.post("/assignments/{assignment_id}/close-out")
+def close_out(assignment_id: str,
+              db: Session = Depends(get_db),
+              current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Close out an inserted PATIENT-OWNED assignment without a claim number.
+    WWC does not bill insurance for patient-owned devices, so they can't go
+    through /bill; this reaches the same terminal 'billed' state (claim null)
+    so the assignment + device drop off the active Device Tracking list."""
+    a = _load_assignment(db, assignment_id)
+    _block_if_closed_or_billed(a, action="close out")
+    if a.status != "inserted":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Can only close out an inserted assignment (current status: {a.status})")
+    if not (a.device and (a.device.ownership or "wwc_owned") == "patient_owned"):
+        raise HTTPException(
+            status_code=409,
+            detail="Only patient-owned devices are closed out without a claim; "
+                   "bill this device via /bill.")
+    by = current_user.get("email") or "system"
+    a.claim_number = None
+    a.billed_at = now_utc_naive()
+    a.billed_by = by
+    a.status = "billed"
+    _mark_milestone(a, "billed", status="done", by=by)
+    if a.device:
+        a.device.status = "billed"
+    log_audit(db, actor=by, action="closed_no_claim",
+              device=a.device, assignment=a,
+              summary=f"Closed patient-owned device for {a.patient_name} (no claim)",
+              detail={"ownership": (a.device.ownership if a.device else None)})
+    db.commit(); db.refresh(a)
+    return _assignment_dict(a, include_milestones=True)
+
+
 # ─── Printable device label (PDF with QR) ─────────────────────────
 
 @router.get("/devices/{device_id}/label.pdf")
