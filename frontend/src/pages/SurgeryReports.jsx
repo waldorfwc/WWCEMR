@@ -38,7 +38,7 @@ function resolvePreset(preset) {
 
 // ─── Status row order for Status Funnel tile ────────────────────────────────
 
-const STATUS_ORDER = ['incomplete', 'new', 'in_progress', 'confirmed', 'completed', 'hold', 'unresponsive']
+const STATUS_ORDER = ['incomplete', 'new', 'in_progress', 'confirmed', 'completed', 'hold', 'unresponsive', 'cancelled']
 
 // ─── Facility display labels ─────────────────────────────────────────────────
 
