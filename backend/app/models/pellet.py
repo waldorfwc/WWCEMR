@@ -469,6 +469,11 @@ class PelletPatient(Base):
     # Per-visit modmed_link still lives on PelletVisit for appointment links.
     modmed_link     = Column(Text, nullable=True)
 
+    # Pellet patient portal (Phase 1)
+    portal_token_version = Column(Integer, default=0, nullable=True)
+    mammo_submitted_at = Column(DateTime, nullable=True)
+    labs_self_reported_at = Column(DateTime, nullable=True)
+
     # Prerequisites — verified yes/no + date + result
     mammo_verified  = Column(Boolean, default=False, nullable=False)
     mammo_date      = Column(Date, nullable=True)
