@@ -6203,3 +6203,18 @@ def materialize_endpoint(db: Session = Depends(get_db),
                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
     rep = pelletsched.materialize_pellet_slots(db); db.commit()
     return rep
+
+
+@router.post("/slots/{slot_id}/complete")
+def complete_slot(slot_id: str, db: Session = Depends(get_db),
+                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    from app.services.pellet import payments as pelletpay
+    try:
+        visit = pelletsched.complete_booking(db, slot_id=slot_id,
+                                             by=(current_user.get("email") or "staff"))
+    except pelletsched.SlotUnavailable as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except pelletpay.InsufficientCredit:
+        raise HTTPException(status_code=409, detail="no insertion credit to draw down")
+    db.commit()
+    return {"ok": True, "visit_id": str(visit.id), "status": visit.status}
