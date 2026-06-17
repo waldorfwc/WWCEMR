@@ -117,6 +117,10 @@ def can_schedule(db: Session, patient) -> tuple[bool, str]:
 
 
 def book_slot(db: Session, *, slot_id: str, patient, by: str) -> PelletVisit:
+    # Lock the PATIENT row first so two concurrent bookings for the same
+    # patient on different slots can't both pass the credit gate (each would
+    # otherwise see open_bookings=0). Serializes the gate per patient.
+    db.query(PelletPatient).filter(PelletPatient.id == patient.id).with_for_update().first()
     slot = (db.query(PelletSlot).filter(PelletSlot.id == slot_id)
               .with_for_update().first())
     if slot is None or slot.status != "open":
@@ -173,7 +177,10 @@ def complete_booking(db: Session, *, slot_id: str, by: str) -> PelletVisit:
     if slot is None or slot.status != "booked" or not slot.pellet_visit_id:
         raise SlotUnavailable("no active booking on this slot")
     visit = db.query(PelletVisit).filter(PelletVisit.id == slot.pellet_visit_id).first()
-    patient = db.query(PelletPatient).filter(PelletPatient.id == visit.patient_id).first()
+    patient = (db.query(PelletPatient).filter(PelletPatient.id == visit.patient_id).first()
+               if visit else None)
+    if visit is None or patient is None:
+        raise SlotUnavailable("booking's visit/patient record is missing")
     pay.consume_insertion(db, patient, by=by, reason="pellet insertion completed")
     visit.status = "inserted"
     visit.inserted_at = now_utc_naive()
