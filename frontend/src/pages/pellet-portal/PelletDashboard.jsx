@@ -70,6 +70,47 @@ function RequirementRow({ req }) {
   return <Link to={meta.to} className="block">{inner}</Link>
 }
 
+function PaymentRow({ payment }) {
+  const available = payment?.available_insertions ?? 0
+  const ready = available > 0
+
+  const inner = (
+    <div className={`bg-white rounded-2xl border border-plum-100 p-5 shadow-sm flex items-center gap-4
+                      ${ready ? '' : 'hover:shadow-md transition group'}`}>
+      <div className="w-11 h-11 rounded-xl bg-plum-50 grid place-items-center text-plum-700 shrink-0">
+        <CreditCard size={18} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="font-serif text-[15px] text-plum-ink font-semibold leading-tight">
+          Payment
+        </div>
+        <div className="mt-1.5">
+          {ready ? (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide
+                               px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <CheckCircle2 size={12} /> {available} Insertion{available === 1 ? '' : 's'} Available
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide
+                               px-2 py-0.5 rounded-full bg-plum-50 text-plum-600 border border-plum-100">
+              To Do
+            </span>
+          )}
+        </div>
+      </div>
+      {!ready && (
+        <div className="inline-flex items-center gap-1 text-[12px] font-semibold text-plum-700
+                          group-hover:text-plum-900 shrink-0">
+          Pay <ChevronRight size={14} />
+        </div>
+      )}
+    </div>
+  )
+
+  if (ready) return inner
+  return <Link to="payments" className="block">{inner}</Link>
+}
+
 function LockedRow({ icon: Icon, title }) {
   return (
     <div className="bg-white/60 rounded-2xl border border-plum-100 p-5 shadow-sm flex items-center gap-4 opacity-70">
@@ -110,7 +151,7 @@ export default function PelletDashboard() {
     )
   }
 
-  const { patient, requirements = [] } = data
+  const { patient, requirements = [], payment } = data
   const name = patient?.patient_name?.split(',').reverse().join(' ').trim() || 'there'
 
   return (
@@ -141,7 +182,7 @@ export default function PelletDashboard() {
           <RequirementRow key={req.key} req={req} />
         ))}
 
-        <LockedRow icon={CreditCard} title="Payment" />
+        <PaymentRow payment={payment} />
         <LockedRow icon={CalendarDays} title="Scheduling" />
       </section>
 
