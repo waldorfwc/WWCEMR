@@ -54,12 +54,14 @@ def init_db():
             seed_default_facilities, seed_default_templates,
             seed_default_email_templates, seed_default_sms_templates,
         )
+        from app.services.surgery.surgery_type_seed import seed_surgery_types
         db = SessionLocal()
         try:
             seed_default_facilities(db)
             seed_default_templates(db)
             seed_default_email_templates(db)
             seed_default_sms_templates(db)
+            seed_surgery_types(db)
         finally:
             db.close()
     except Exception:
