@@ -59,3 +59,41 @@ def test_providers_lists_distinct(db):
     _visit(db, p, provider="Smith, Pat, NP")
     _visit(db, p, provider="Cooke, Aryian, MD")
     assert rpt.providers(db) == ["Cooke, Aryian, MD", "Smith, Pat, NP"]
+
+
+def test_recall_due_overdue_and_due_soon(db):
+    from app.models.pellet import PelletPatient, PelletVisit
+    today = date(2026, 6, 15)
+    p1 = _patient(db, chart_number="R1", recall_interval_months=4)
+    _visit(db, p1, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=200))
+    p2 = _patient(db, chart_number="R2", recall_interval_months=4)
+    _visit(db, p2, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=110))
+    p3 = _patient(db, chart_number="R3", recall_interval_months=4)
+    _visit(db, p3, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=10))
+    p4 = _patient(db, chart_number="R4", recall_interval_months=4)
+    _visit(db, p4, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=200))
+    _visit(db, p4, status="new", scheduled_date=date(2026, 6, 20))
+    out = rpt.recall_due(db, location=None, provider=None, today=today)
+    assert out["overdue"] == 1
+    assert out["due_soon"] == 1
+    assert out["total"] == 2
+
+
+def test_prerequisites_blockers(db):
+    from app.models.pellet import PelletPatient
+    today = date(2026, 6, 15)
+    p = _patient(db, chart_number="PR1", mammo_verified=False, labs_verified=False,
+                 labs_not_required=False)
+    _visit(db, p, status="new", scheduled_date=date(2026, 6, 20))
+    p2 = _patient(db, chart_number="PR2", mammo_verified=True, mammo_date=date(2026, 6, 1),
+                  labs_verified=True, labs_date=date(2026, 6, 10))
+    from app.models.pellet_portal import PelletConsent
+    from app.utils.dt import now_utc_naive
+    db.add(PelletConsent(pellet_patient_id=p2.id, status="signed",
+                         expires_at=now_utc_naive() + timedelta(days=300)))
+    _visit(db, p2, status="new", scheduled_date=date(2026, 6, 18))
+    db.commit()
+    out = rpt.prerequisites(db, location=None, provider=None, today=today)
+    assert out["total"] == 1
+    assert out["by_blocker"]["mammo"] == 1
+    assert out["by_blocker"]["consent"] == 1
