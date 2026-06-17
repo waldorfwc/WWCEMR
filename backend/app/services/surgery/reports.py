@@ -103,3 +103,74 @@ def not_ready(db: Session, *, facility: Optional[str] = None,
             for k in blocked:
                 by_blocker[k] += 1
     return {"total": total, "by_blocker": by_blocker}
+
+
+def _stripe_only_predicates():
+    """Restrict to genuine Stripe payments — mirrors surgery.py _stripe_only_filter.
+    Manual offsets (kind='manual_offset') originate in ModMed and carry no Stripe
+    id, so they're never in the posting backlog."""
+    from sqlalchemy import or_
+    from app.models.stripe_payment import SurgeryPayment
+    return (
+        SurgeryPayment.kind != "manual_offset",
+        or_(SurgeryPayment.stripe_payment_intent_id.isnot(None),
+            SurgeryPayment.stripe_checkout_session_id.isnot(None)),
+    )
+
+
+def posting_backlog(db: Session, *, facility: Optional[str] = None,
+                    surgeon: Optional[str] = None) -> dict:
+    """Snapshot: paid Stripe payments not yet posted to ModMed."""
+    from app.models.stripe_payment import SurgeryPayment
+    from app.utils.dt import now_utc_naive
+    q = (db.query(SurgeryPayment)
+         .outerjoin(Surgery, Surgery.id == SurgeryPayment.surgery_id)
+         .filter(SurgeryPayment.status == "paid",
+                 SurgeryPayment.posted_to_modmed_at.is_(None),
+                 *_stripe_only_predicates()))
+    if facility:
+        q = q.filter(Surgery.selected_facility == facility)
+    if surgeon:
+        q = q.filter(Surgery.surgeon_primary == surgeon)
+    rows = q.all()
+    total = round(sum(float(p.amount_paid or 0) for p in rows), 2)
+    paids = [p.paid_at for p in rows if p.paid_at]
+    oldest_age = ((now_utc_naive() - min(paids)).days if paids else None)
+    return {"count": len(rows), "total_amount": total, "oldest_age_days": oldest_age}
+
+
+def _block_day_capacity(rule: dict) -> int:
+    """Max cases a block day can hold: fixed-slot facilities use the slot count,
+    option-based facilities use the largest option max."""
+    if rule.get("slot_times"):
+        return len(rule["slot_times"])
+    opts = rule.get("options") or []
+    return max((int(o.get("max", 0)) for o in opts), default=0)
+
+
+def utilization(db: Session, *, date_from: date, date_to: date,
+                facility: Optional[str] = None) -> dict:
+    """Period: booked slots vs capacity across block days in range, per facility."""
+    from app.models.surgery import BlockDay, SurgerySlot
+    from app.services.surgery.block_schedule import capacity_rules
+    rules = capacity_rules(db)
+    q = db.query(BlockDay).filter(BlockDay.block_date >= date_from,
+                                  BlockDay.block_date <= date_to)
+    if facility:
+        q = q.filter(BlockDay.facility == facility)
+    by_fac: dict = {}
+    for bd in q.all():
+        booked = (db.query(func.count(SurgerySlot.id))
+                  .filter(SurgerySlot.block_day_id == bd.id).scalar() or 0)
+        cap = _block_day_capacity(rules.get(bd.facility) or {})
+        agg = by_fac.setdefault(bd.facility, {"booked": 0, "capacity": 0})
+        agg["booked"] += int(booked)
+        agg["capacity"] += cap
+    for fac, agg in by_fac.items():
+        agg["pct"] = (round(agg["booked"] / agg["capacity"] * 100, 1)
+                      if agg["capacity"] else 0.0)
+    tot_b = sum(a["booked"] for a in by_fac.values())
+    tot_c = sum(a["capacity"] for a in by_fac.values())
+    return {"booked": tot_b, "capacity": tot_c,
+            "overall_pct": round(tot_b / tot_c * 100, 1) if tot_c else 0.0,
+            "by_facility": by_fac}

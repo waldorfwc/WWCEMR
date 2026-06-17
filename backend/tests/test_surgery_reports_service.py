@@ -85,3 +85,47 @@ def test_not_ready_blockers(db):
     assert out["total"] == 1
     assert out["by_blocker"]["benefits"] == 1
     assert out["by_blocker"].get("labs", 0) == 1
+
+
+def test_posting_backlog(db):
+    from datetime import datetime
+    from decimal import Decimal
+    from app.models.stripe_payment import SurgeryPayment
+    s = _surg(db, status="confirmed")
+    db.add(SurgeryPayment(surgery_id=s.id, kind="deposit", status="paid",
+                          amount_requested=Decimal("400.00"),
+                          amount_paid=Decimal("400.00"), stripe_payment_intent_id="pi_1",
+                          paid_at=datetime(2026, 6, 1), posted_to_modmed_at=None,
+                          requested_by="staff@example.com"))
+    db.add(SurgeryPayment(surgery_id=s.id, kind="manual_offset", status="paid",
+                          amount_requested=Decimal("999.00"),
+                          amount_paid=Decimal("999.00"), paid_at=datetime(2026, 6, 2),
+                          posted_to_modmed_at=None,
+                          requested_by="staff@example.com"))   # excluded (manual offset)
+    db.add(SurgeryPayment(surgery_id=s.id, kind="deposit", status="paid",
+                          amount_requested=Decimal("100.00"),
+                          amount_paid=Decimal("100.00"), stripe_payment_intent_id="pi_2",
+                          paid_at=datetime(2026, 6, 3), posted_to_modmed_at=datetime(2026, 6, 4),
+                          requested_by="staff@example.com"))  # already posted
+    db.commit()
+    out = rpt.posting_backlog(db, facility=None, surgeon=None)
+    assert out["count"] == 1
+    assert out["total_amount"] == 400.0
+
+
+def test_utilization_booked_vs_capacity(db):
+    from datetime import date, time
+    from app.models.surgery import BlockDay, SurgerySlot
+    df, dt = date(2026, 6, 1), date(2026, 6, 30)
+    s = _surg(db, status="confirmed", selected_facility="office")
+    bd = BlockDay(facility="office", block_date=date(2026, 6, 10),
+                  block_kind="office", start_time=time(7, 30), end_time=time(16, 0))
+    db.add(bd); db.flush()
+    db.add(SurgerySlot(block_day_id=bd.id, surgery_id=s.id,
+                       start_time=time(7, 30),
+                       duration_minutes=60, procedure_kind="office"))
+    db.commit()
+    out = rpt.utilization(db, date_from=df, date_to=dt, facility=None)
+    assert out["by_facility"]["office"]["capacity"] == 7
+    assert out["by_facility"]["office"]["booked"] == 1
+    assert out["overall_pct"] == round(1 / 7 * 100, 1)
