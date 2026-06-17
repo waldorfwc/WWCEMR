@@ -163,6 +163,27 @@ def _pellet_stale_sweep():
         logging.getLogger(__name__).warning("Pellet stale sweep error: %s", exc)
 
 
+def _pellet_slot_materialize():
+    """Nightly: roll the pellet scheduling horizon forward — materialize open
+    slots from active availability templates for the configured horizon.
+    Idempotent (unique location+date+start_time), so re-running is safe."""
+    db = SessionLocal()
+    try:
+        from app.services.pellet.scheduling import materialize_pellet_slots
+        rep = materialize_pellet_slots(db)
+        db.commit()
+        import logging
+        logging.getLogger(__name__).info(
+            "Pellet slot materialization: %d created (horizon %dd)",
+            rep.get("created", 0), rep.get("horizon_days", 0))
+    except Exception as exc:
+        db.rollback()
+        import logging
+        logging.getLogger(__name__).warning("Pellet slot materialization error: %s", exc)
+    finally:
+        db.close()
+
+
 def _larc_sweeps():
     """Daily: expiry hold, stale-assignment reallocation, pharmacy SLA logging."""
     if _is_weekend_today():
@@ -276,6 +297,9 @@ def start_scheduler() -> BackgroundScheduler:
     # Pellet stale-visit auto-cancel — nightly at 00:30
     sched.add_job(_pellet_stale_sweep, "cron", hour=0, minute=30,
                   id="pellet_stale_sweep", max_instances=1, coalesce=True)
+    # Pellet scheduling — roll the slot horizon forward nightly at 2 AM.
+    sched.add_job(_pellet_slot_materialize, "cron", hour=2, minute=0,
+                  id="pellet_slot_materialize", max_instances=1, coalesce=True)
     # Missing-charges provider emails — Monday 8 AM weekly
     sched.add_job(_missing_charges_weekly_emails, "cron",
                   day_of_week="mon", hour=8, minute=0,
