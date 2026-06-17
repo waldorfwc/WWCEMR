@@ -10,6 +10,7 @@ const TABS = [
   { id: 'thresholds', label: 'Thresholds & Windows' },
   { id: 'types',      label: 'Dose Types' },
   { id: 'portal',     label: 'Patient Portal' },
+  { id: 'payments',   label: 'Payments' },
 ]
 
 export default function PelletSettings() {
@@ -39,6 +40,7 @@ export default function PelletSettings() {
       {tab === 'thresholds' && <ThresholdsTab />}
       {tab === 'types'      && <PelletDoseTypes embedded />}
       {tab === 'portal'     && <PatientPortalTab />}
+      {tab === 'payments'   && <PaymentsTab />}
     </div>
   )
 }
@@ -102,6 +104,136 @@ function ThresholdsTab() {
           <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
         )}
       </section>
+    </div>
+  )
+}
+
+// ─── Payments tab ───────────────────────────────────────────────────
+
+const PAY_TOGGLES = [
+  { key: 'enable_single', label: 'Enable Single Insertion',
+    hint: 'Patients can pay for one insertion at the standard price.' },
+  { key: 'enable_package', label: 'Enable Packages',
+    hint: 'Patients can buy multiple insertions up front at a discount.' },
+  { key: 'enable_subscription', label: 'Enable Subscription',
+    hint: 'Patients can pay a recurring monthly amount toward an insertion.' },
+]
+
+function PaymentsTab() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['pellet-config'],
+    queryFn: () => api.get('/pellets/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState({})
+  const save = useMutation({
+    mutationFn: (body) => api.put('/pellets/config', body).then(r => r.data),
+    onSuccess: () => { setDraft({}); qc.invalidateQueries({ queryKey: ['pellet-config'] }) },
+  })
+  if (!data) return <LoadingState />
+
+  const num = (k) => draft[k] ?? data[k] ?? ''
+  const bool = (k) => draft[k] ?? data[k] ?? false
+  const tiers = draft.package_discount_tiers ?? data.package_discount_tiers ?? []
+
+  const setTiers = (next) =>
+    setDraft(d => ({ ...d, package_discount_tiers: next }))
+  const updateTier = (i, key, value) =>
+    setTiers(tiers.map((t, idx) => idx === i ? { ...t, [key]: Number(value) } : t))
+  const addTier = () =>
+    setTiers([...tiers, { count: 2, percent_off: 0 }])
+  const removeTier = (i) =>
+    setTiers(tiers.filter((_, idx) => idx !== i))
+
+  return (
+    <div className="space-y-6">
+      <section className="card p-4">
+        <h2 className="font-medium mb-3">Pricing</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="block text-[13px]">
+            <span className="font-medium">Insertion Price ($)</span>
+            <input type="number" className="input mt-1 w-32"
+                   value={num('insertion_price')}
+                   onChange={e => setDraft(d => ({ ...d, insertion_price: Number(e.target.value) }))} />
+            <p className="text-[11px] text-muted mt-0.5">Standard price for a single insertion.</p>
+          </label>
+          <label className="block text-[13px]">
+            <span className="font-medium">Subscription Monthly Amount ($)</span>
+            <input type="number" className="input mt-1 w-32"
+                   value={num('subscription_monthly_amount')}
+                   onChange={e => setDraft(d => ({ ...d, subscription_monthly_amount: Number(e.target.value) }))} />
+            <p className="text-[11px] text-muted mt-0.5">Recurring monthly charge. Leave at 0 if unused.</p>
+          </label>
+        </div>
+      </section>
+
+      <section className="card p-4">
+        <h2 className="font-medium mb-3">Payment Methods</h2>
+        <div className="space-y-3">
+          {PAY_TOGGLES.map(f => (
+            <label key={f.key} className="flex items-start gap-2 text-[13px]">
+              <input type="checkbox" className="mt-0.5"
+                     checked={bool(f.key)}
+                     onChange={e => setDraft(d => ({ ...d, [f.key]: e.target.checked }))} />
+              <span>
+                <span className="font-medium">{f.label}</span>
+                {f.hint && <p className="text-[11px] text-muted mt-0.5">{f.hint}</p>}
+              </span>
+            </label>
+          ))}
+        </div>
+      </section>
+
+      <section className="card p-4">
+        <h2 className="font-medium mb-3">Package Discount Tiers</h2>
+        <p className="text-[11px] text-muted mb-3">
+          Each tier applies its percent discount when the package count is at or above the tier count.
+        </p>
+        <table className="text-[13px] mb-3">
+          <thead>
+            <tr className="text-left text-muted">
+              <th className="pr-4 pb-1 font-medium">Count</th>
+              <th className="pr-4 pb-1 font-medium">Percent Off</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {tiers.map((t, i) => (
+              <tr key={i}>
+                <td className="pr-4 py-1">
+                  <input type="number" className="input w-24"
+                         value={t.count ?? ''}
+                         onChange={e => updateTier(i, 'count', e.target.value)} />
+                </td>
+                <td className="pr-4 py-1">
+                  <input type="number" className="input w-24"
+                         value={t.percent_off ?? ''}
+                         onChange={e => updateTier(i, 'percent_off', e.target.value)} />
+                </td>
+                <td className="py-1">
+                  <button type="button"
+                          className="text-xs text-red-700 hover:underline"
+                          onClick={() => removeTier(i)}>
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <button type="button" className="btn-secondary text-xs" onClick={addTier}>
+          Add Tier
+        </button>
+      </section>
+
+      <button className="btn-primary text-xs"
+              disabled={!Object.keys(draft).length || save.isPending}
+              onClick={() => save.mutate(draft)}>
+        {save.isPending ? 'Saving…' : 'Save Changes'}
+      </button>
+      {save.isError && (
+        <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
+      )}
     </div>
   )
 }

@@ -3273,6 +3273,12 @@ class PelletConfigPayload(BaseModel):
     require_labs:             Optional[bool] = None
     require_consent:          Optional[bool] = None
     consent_template_id:      Optional[str] = None
+    insertion_price:            Optional[float] = Field(default=None, gt=0, le=50_000)
+    package_discount_tiers:     Optional[list] = None
+    subscription_monthly_amount: Optional[float] = Field(default=None, ge=0, le=50_000)
+    enable_single:              Optional[bool] = None
+    enable_package:             Optional[bool] = None
+    enable_subscription:        Optional[bool] = None
 
 
 @router.get("/config")
@@ -4272,6 +4278,22 @@ def delete_patient_note(patient_id: str, note_id: str,
         raise HTTPException(status_code=404, detail="note not found")
     db.delete(n); db.commit()
     return
+
+
+@router.post("/patients/{patient_id}/consume-insertion")
+def consume_insertion_endpoint(patient_id: str, db: Session = Depends(get_db),
+                               current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    from app.services.pellet import payments as pelletpay
+    p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail="patient not found")
+    try:
+        src = pelletpay.consume_insertion(db, p, by=(current_user.get("email") or None))
+    except pelletpay.InsufficientCredit:
+        raise HTTPException(status_code=409, detail="no insertion credit available")
+    db.commit()
+    return {"ok": True, "drawn_from": src,
+            "available_insertions": pelletpay.available_insertions(db, p)}
 
 
 def _patient_dict_with_history(db: Session, p: PelletPatient) -> dict:

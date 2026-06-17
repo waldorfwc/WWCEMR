@@ -30,6 +30,7 @@ from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
 from app.routers.patient_surgery import require_patient_token
 from app.services import stripe_payments as svc
+from app.services.pellet import payments as pelletpay
 from app.services.audit_service import log_action
 from app.services.patient_email import send_patient_email
 
@@ -292,8 +293,14 @@ async def stripe_webhook(
                      event_id)
             return {"received": True, "deduped": True}
 
-    if event_type == "checkout.session.completed":
+    if event_type == "checkout.session.completed" and pelletpay._is_pellet_event(obj):
+        pelletpay.handle_pellet_checkout_completed(db, obj); db.commit()
+    elif event_type == "checkout.session.completed":
         _handle_session_completed(db, event_type, obj)
+    elif event_type == "invoice.paid":
+        pelletpay.handle_pellet_invoice_paid(db, obj); db.commit()
+    elif event_type in ("customer.subscription.deleted", "customer.subscription.updated"):
+        pelletpay.handle_pellet_subscription_event(db, event_type, obj); db.commit()
     elif event_type == "charge.refunded":
         _handle_refund(db, event_type, obj)
     elif event_type == "payment_intent.payment_failed":

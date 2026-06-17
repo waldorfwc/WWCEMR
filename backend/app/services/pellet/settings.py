@@ -22,6 +22,14 @@ PELLET_SETTINGS_DEFAULTS: dict[str, Any] = {
     "require_mammo":            True,
     "require_labs":             True,
     "require_consent":          True,
+    "insertion_price":          400.00,
+    "package_discount_tiers":   [{"count": 2, "percent_off": 5},
+                                 {"count": 3, "percent_off": 10},
+                                 {"count": 4, "percent_off": 15}],
+    "subscription_monthly_amount": None,
+    "enable_single":            True,
+    "enable_package":           True,
+    "enable_subscription":      True,
 }
 
 
