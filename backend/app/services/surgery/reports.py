@@ -13,7 +13,7 @@ from app.models.surgery import Surgery
 
 
 def _base_query(db: Session, facility: Optional[str], surgeon: Optional[str]):
-    q = db.query(Surgery)
+    q = db.query(Surgery).filter(Surgery.deleted_at.is_(None))  # exclude soft-deleted
     if facility:
         q = q.filter(Surgery.selected_facility == facility)
     if surgeon:

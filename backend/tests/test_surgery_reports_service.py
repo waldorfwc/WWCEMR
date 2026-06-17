@@ -55,3 +55,12 @@ def test_cycle_time_lead_and_reschedule(db):
     assert out["avg_lead_days"] == 10.0
     assert out["reschedule_rate"] == 0.5
     assert out["avg_reschedules"] == 1.0
+
+
+def test_status_funnel_excludes_soft_deleted(db):
+    from app.utils.dt import now_utc_naive
+    _surg(db, status="new")
+    d = _surg(db, status="new")
+    d.deleted_at = now_utc_naive(); db.commit()
+    out = rpt.status_funnel(db, facility=None, surgeon=None)
+    assert out["by_status"]["new"] == 1   # soft-deleted row not counted
