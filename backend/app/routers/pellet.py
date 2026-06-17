@@ -6066,6 +6066,8 @@ def pellet_activity_verify(activity_id: str, db: Session = Depends(get_db),
     p = db.query(PelletPatient).filter(PelletPatient.id == a.pellet_patient_id).first()
     by = (current_user.get("email") or "").lower() or None
     now = now_utc_naive()
+    if a.kind in ("mammo_uploaded", "labs_self_reported") and p is None:
+        raise HTTPException(status_code=409, detail="patient record missing")
     if a.kind == "mammo_uploaded":
         p.mammo_verified = True; p.mammo_verified_by = by; p.mammo_verified_at = now
     elif a.kind == "labs_self_reported":
