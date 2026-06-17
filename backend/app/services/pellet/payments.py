@@ -171,3 +171,76 @@ def create_subscription(db: Session, p, *, monthly_amount: Decimal) -> PelletSub
         status=(sub_obj.status if sub_obj.status in ("active", "past_due") else "active"))
     db.add(row); db.commit(); db.refresh(row)
     return row
+
+
+# ─── Webhook handlers (T5) ──────────────────────────────────────────
+
+def _is_pellet_event(obj: dict) -> bool:
+    return bool((obj.get("metadata") or {}).get("pellet_patient_id"))
+
+
+def handle_pellet_checkout_completed(db: Session, obj: dict) -> None:
+    if (obj.get("payment_status") or "").lower() not in ("paid", "no_payment_required"):
+        return
+    row = (db.query(PelletPayment)
+             .filter(PelletPayment.stripe_checkout_session_id == obj.get("id"))
+             .with_for_update().first())
+    if row is None or row.status == "paid":
+        return     # unknown or already processed → idempotent
+    row.status = "paid"
+    row.paid_at = now_utc_naive()
+    row.stripe_payment_intent_id = obj.get("payment_intent")
+    row.last_event_payload = obj
+    n = row.insertions_purchased or int((obj.get("metadata") or {}).get("insertions", 1))
+    db.add(PelletInsertionCredit(pellet_patient_id=row.pellet_patient_id, delta=n,
+                                 source=row.kind, reason=f"{row.kind} purchase",
+                                 payment_id=row.id))
+    from app.models.pellet import PelletPatient
+    from app.services.pellet.activity import record_pellet_activity
+    p = db.query(PelletPatient).filter(PelletPatient.id == row.pellet_patient_id).first()
+    if p:
+        record_pellet_activity(db, p, "payment_made",
+                               f"Paid ${float(row.amount):.2f} ({row.kind}, +{n} insertion(s))")
+
+
+def handle_pellet_invoice_paid(db: Session, obj: dict) -> None:
+    sub_id = obj.get("subscription")
+    if not sub_id:
+        return
+    # Idempotency: skip if we already recorded this invoice.
+    inv_id = obj.get("id")
+    if inv_id and (db.query(PelletPayment)
+                     .filter(PelletPayment.stripe_invoice_id == inv_id).first()):
+        return
+    sub = (db.query(PelletSubscription)
+             .filter(PelletSubscription.stripe_subscription_id == sub_id)
+             .with_for_update().first())
+    if sub is None:
+        return
+    sub.accrued_credit = _money(Decimal(sub.accrued_credit) + Decimal(sub.monthly_amount))
+    sub.status = "active"
+    db.add(PelletPayment(pellet_patient_id=sub.pellet_patient_id,
+                         kind="subscription_invoice", stripe_invoice_id=inv_id,
+                         amount=sub.monthly_amount, insertions_purchased=0,
+                         status="paid", requested_by="stripe", paid_at=now_utc_naive(),
+                         last_event_payload=obj))
+    from app.models.pellet import PelletPatient
+    from app.services.pellet.activity import record_pellet_activity
+    p = db.query(PelletPatient).filter(PelletPatient.id == sub.pellet_patient_id).first()
+    if p:
+        record_pellet_activity(db, p, "payment_made",
+                               f"Subscription payment ${float(sub.monthly_amount):.2f}")
+
+
+def handle_pellet_subscription_event(db: Session, event_type: str, obj: dict) -> None:
+    sub = (db.query(PelletSubscription)
+             .filter(PelletSubscription.stripe_subscription_id == obj.get("id"))
+             .first())
+    if sub is None:
+        return
+    if event_type == "customer.subscription.deleted":
+        sub.status = "canceled"; sub.canceled_at = now_utc_naive()
+    else:  # updated
+        st = (obj.get("status") or "").lower()
+        if st in ("active", "past_due", "canceled"):
+            sub.status = st
