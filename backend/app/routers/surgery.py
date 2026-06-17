@@ -2353,14 +2353,12 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
         # Block transitions that bypass dedicated pipelines. Going to
         # 'cancelled' must run cancel_surgery (SurgeryCancellation row,
         # BoldSign envelope void, slot release, audit log, calendar
-        # delete). 'completed' is a post-op terminal state that no
-        # caller in the codebase sets via PATCH today; keep it locked
-        # behind a dedicated endpoint when one is built.
-        if data["status"] in ("cancelled", "completed"):
+        # delete). 'completed' is a post-op terminal state that is set
+        # directly via PATCH; completed_at is stamped below.
+        if data["status"] == "cancelled":
             raise HTTPException(status_code=409,
                 detail=("cannot set status via PATCH — use "
-                        f"POST /surgery/{{id}}/cancel for 'cancelled'; "
-                        "'completed' is not yet reachable via API"))
+                        f"POST /surgery/{{id}}/cancel for 'cancelled'"))
         # Hold/unresponsive transitions also need the cancellation
         # pipeline so the slot is released, BoldSign envelopes are
         # voided, and a SurgeryCancellation audit row is written. Going
@@ -2625,6 +2623,12 @@ def patch_surgery(surgery_id: str, payload: SurgeryPatch,
     # progress from those columns — milestones are retired).
     for k, v in data.items():
         setattr(s, k, v)
+
+    # Stamp/clear the surgery-level completion timestamp used by reports.
+    if s.status == "completed" and s.completed_at is None:
+        s.completed_at = now_utc_naive()
+    elif s.status != "completed" and s.completed_at is not None:
+        s.completed_at = None
 
     # Auto-promote incomplete→new once every required field + the uploaded
     # order are present. Skipped if the caller already set a status this PATCH
