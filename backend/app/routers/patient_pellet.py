@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.pellet import PelletPatient
-from app.models.pellet import PELLET_LOCATIONS, PelletVisit
-from app.models.pellet_payment import PelletSubscription
+from app.models.pellet import PELLET_LOCATIONS, PelletVisit, PelletVisitDose, PelletDoseType
+from app.models.pellet_payment import PelletPayment, PelletSubscription
 from app.models.pellet_portal import PelletConsent, PelletPortalUpload
 from app.models.pellet_schedule import PelletSlot
 from app.services.pellet import portal_auth
@@ -332,3 +332,81 @@ def _payment_summary(db, p) -> dict:
 def payment_status(p: PelletPatient = Depends(require_pellet_token),
                    db: Session = Depends(get_db)):
     return _payment_summary(db, p)
+
+
+_RECEIPT_KIND_LABELS = {"single": "Single Insertion", "package": "Package",
+                        "subscription_invoice": "Subscription", "manual": "Manual"}
+
+
+@router.get("/receipts")
+def receipts(p: PelletPatient = Depends(require_pellet_token),
+             db: Session = Depends(get_db)):
+    rows = (db.query(PelletPayment)
+              .filter(PelletPayment.pellet_patient_id == p.id,
+                      PelletPayment.status == "paid")
+              .order_by(PelletPayment.paid_at.desc())
+              .all())
+    return {"items": [{
+        "id": str(r.id), "kind": r.kind,
+        "kind_label": _RECEIPT_KIND_LABELS.get(r.kind, r.kind),
+        "amount": float(r.amount or 0),
+        "paid_at": r.paid_at.isoformat() if r.paid_at else None,
+        "status": r.status,
+        "has_receipt": bool(r.stripe_payment_intent_id or r.stripe_invoice_id),
+    } for r in rows]}
+
+
+@router.get("/receipts/{payment_id}/receipt-url")
+def receipt_url(payment_id: str, p: PelletPatient = Depends(require_pellet_token),
+                db: Session = Depends(get_db)):
+    row = db.query(PelletPayment).filter(PelletPayment.id == payment_id).first()
+    if row is None or str(row.pellet_patient_id) != str(p.id):
+        raise HTTPException(status_code=404, detail="receipt not found")
+    if not pelletpay.is_configured():
+        raise HTTPException(status_code=404, detail="receipt unavailable")
+    url = None
+    try:
+        s = pelletpay._client()
+        if row.stripe_invoice_id:
+            inv = s.Invoice.retrieve(row.stripe_invoice_id)
+            url = getattr(inv, "hosted_invoice_url", None) or (
+                inv.get("hosted_invoice_url") if isinstance(inv, dict) else None)
+        elif row.stripe_payment_intent_id:
+            pi = s.PaymentIntent.retrieve(row.stripe_payment_intent_id, expand=["latest_charge"])
+            ch = getattr(pi, "latest_charge", None) or (
+                pi.get("latest_charge") if isinstance(pi, dict) else None)
+            url = getattr(ch, "receipt_url", None) or (
+                ch.get("receipt_url") if isinstance(ch, dict) else None)
+    except Exception:
+        url = None
+    if not url:
+        raise HTTPException(status_code=404, detail="receipt unavailable")
+    return {"url": url}
+
+
+@router.get("/info")
+def portal_info(p: PelletPatient = Depends(require_pellet_token),
+                db: Session = Depends(get_db)):
+    return {"info_text": cfg(db, "portal_info_text")}
+
+
+@router.get("/appointments")
+def appointments(p: PelletPatient = Depends(require_pellet_token),
+                 db: Session = Depends(get_db)):
+    visits = (db.query(PelletVisit)
+                .filter(PelletVisit.patient_id == p.id)
+                .order_by(PelletVisit.created_at.desc())
+                .all())
+    labels = {str(d.id): d.label for d in db.query(PelletDoseType).all()}
+    out = []
+    for v in visits:
+        doses = db.query(PelletVisitDose).filter(PelletVisitDose.visit_id == v.id).all()
+        out.append({
+            "id": str(v.id), "visit_kind": v.visit_kind, "status": v.status,
+            "scheduled_date": v.scheduled_date.isoformat() if v.scheduled_date else None,
+            "location": v.location, "provider": v.provider,
+            "inserted_at": v.inserted_at.isoformat() if v.inserted_at else None,
+            "doses": [{"label": labels.get(str(d.dose_type_id), "—"),
+                       "quantity": d.quantity} for d in doses],
+        })
+    return {"items": out}

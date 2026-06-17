@@ -32,6 +32,14 @@ PELLET_SETTINGS_DEFAULTS: dict[str, Any] = {
     "enable_subscription":      True,
     "slot_minutes":             60,
     "schedule_horizon_days":    120,
+    "portal_info_text": (
+        "## Pellet Therapy — What to Know\n\n"
+        "- **Mammogram:** must be within the last 1 year.\n"
+        "- **Labs:** must be drawn within the last 14 days.\n"
+        "- **Payment:** pellets must be paid for before you can schedule an insertion.\n\n"
+        "### Refund Policy\n\n"
+        "Replace this with the practice's refund policy."
+    ),
 }
 
 

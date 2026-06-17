@@ -27,6 +27,9 @@ import PelletLabs from './pages/pellet-portal/PelletLabs'
 import PelletConsent from './pages/pellet-portal/PelletConsent'
 import PelletPayments from './pages/pellet-portal/PelletPayments'
 import PelletSchedule from './pages/pellet-portal/PelletSchedule'
+import PelletAppointments from './pages/pellet-portal/PelletAppointments'
+import PelletReceipts from './pages/pellet-portal/PelletReceipts'
+import PelletInfo from './pages/pellet-portal/PelletInfo'
 import ReviewForm from './pages/reputation/ReviewForm'
 import ReputationEmbed from './pages/reputation/Embed'
 
@@ -133,6 +136,9 @@ export default function App() {
           <Route path="consent" element={<PelletConsent />} />
           <Route path="payments" element={<PelletPayments />} />
           <Route path="schedule" element={<PelletSchedule />} />
+          <Route path="appointments" element={<PelletAppointments />} />
+          <Route path="receipts" element={<PelletReceipts />} />
+          <Route path="info" element={<PelletInfo />} />
         </Route>
         {/* Reputation review form — public, no staff auth */}
         <Route path="/r/:token" element={<ReviewForm />} />
