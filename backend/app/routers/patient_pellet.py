@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from datetime import date as _date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
@@ -13,10 +14,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.pellet import PelletPatient
+from app.models.pellet import PELLET_LOCATIONS, PelletVisit
 from app.models.pellet_payment import PelletSubscription
 from app.models.pellet_portal import PelletConsent, PelletPortalUpload
+from app.models.pellet_schedule import PelletSlot
 from app.services.pellet import portal_auth
 from app.services.pellet import payments as pelletpay
+from app.services.pellet import scheduling as pelletsched
 from app.services.pellet.activity import record_pellet_activity
 from app.services.pellet.settings import cfg
 from app.services.storage import save_blob
@@ -105,6 +109,7 @@ def dashboard(p: PelletPatient = Depends(require_pellet_token),
         "patient": {"patient_name": p.patient_name, "chart_number": p.chart_number},
         "requirements": _requirements(db, p),
         "payment": _payment_summary(db, p),
+        "scheduling": _scheduling_summary(db, p),
     }
 
 
@@ -236,6 +241,74 @@ def subscribe(p: PelletPatient = Depends(require_pellet_token),
     from decimal import Decimal as _D
     row = pelletpay.create_subscription(db, p, monthly_amount=_D(str(monthly)))
     return {"ok": True, "subscription_id": row.stripe_subscription_id, "status": row.status}
+
+
+@router.get("/schedule/locations")
+def schedule_locations(p: PelletPatient = Depends(require_pellet_token)):
+    return {"locations": PELLET_LOCATIONS}
+
+
+@router.get("/schedule/slots")
+def open_slots(location: str, p: PelletPatient = Depends(require_pellet_token),
+               db: Session = Depends(get_db)):
+    today = _date.today()
+    rows = (db.query(PelletSlot)
+              .filter(PelletSlot.location == location, PelletSlot.status == "open",
+                      PelletSlot.slot_date >= today)
+              .order_by(PelletSlot.slot_date, PelletSlot.start_time).limit(200).all())
+    ok, reason = pelletsched.can_schedule(db, p)
+    return {"can_schedule": ok, "reason": reason, "items": [{
+        "id": str(s.id), "location": s.location, "provider": s.provider,
+        "slot_date": s.slot_date.isoformat(),
+        "start_time": s.start_time.strftime("%H:%M"),
+        "end_time": s.end_time.strftime("%H:%M"),
+    } for s in rows]}
+
+
+@router.post("/schedule/slots/{slot_id}/book")
+def book(slot_id: str, p: PelletPatient = Depends(require_pellet_token),
+         db: Session = Depends(get_db)):
+    try:
+        visit = pelletsched.book_slot(db, slot_id=slot_id, patient=p, by="patient")
+    except (pelletsched.SlotUnavailable, pelletsched.NotEligible) as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    db.commit()
+    from app.services.pellet.activity import record_pellet_activity
+    record_pellet_activity(db, p, "booked",
+                           f"Booked {visit.location} on {visit.scheduled_date.strftime('%m/%d/%Y')}")
+    db.commit()
+    return {"ok": True, "visit_id": str(visit.id),
+            "scheduled_date": visit.scheduled_date.isoformat(), "location": visit.location}
+
+
+@router.post("/schedule/slots/{slot_id}/cancel")
+def cancel(slot_id: str, p: PelletPatient = Depends(require_pellet_token),
+           db: Session = Depends(get_db)):
+    s = db.query(PelletSlot).filter(PelletSlot.id == slot_id).first()
+    if s is None or s.status != "booked":
+        raise HTTPException(status_code=409, detail="no active booking")
+    v = db.query(PelletVisit).filter(PelletVisit.id == s.pellet_visit_id).first()
+    if not v or str(v.patient_id) != str(p.id):
+        raise HTTPException(status_code=403, detail="not your booking")
+    pelletsched.cancel_booking(db, slot_id=slot_id, by="patient"); db.commit()
+    return {"ok": True}
+
+
+def _scheduling_summary(db, p) -> dict:
+    ok, reason = pelletsched.can_schedule(db, p)
+    booked = (db.query(PelletSlot).join(PelletVisit, PelletVisit.id == PelletSlot.pellet_visit_id)
+                .filter(PelletVisit.patient_id == p.id, PelletSlot.status == "booked")
+                .order_by(PelletSlot.slot_date).all())
+    return {"can_schedule": ok, "reason": reason, "booked": [{
+        "slot_id": str(s.id), "location": s.location,
+        "slot_date": s.slot_date.isoformat(),
+        "start_time": s.start_time.strftime("%H:%M")} for s in booked]}
+
+
+@router.get("/schedule/my")
+def my_bookings(p: PelletPatient = Depends(require_pellet_token),
+                db: Session = Depends(get_db)):
+    return {"items": _scheduling_summary(db, p)["booked"]}
 
 
 def _payment_summary(db, p) -> dict:
