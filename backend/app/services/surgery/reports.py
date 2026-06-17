@@ -10,6 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.surgery import Surgery
+from app.services.surgery.step_engine import _state
 
 
 def _base_query(db: Session, facility: Optional[str], surgeon: Optional[str]):
@@ -74,3 +75,31 @@ def cycle_time(db: Session, *, date_from: date, date_to: date,
     avg_resch = round(sum(resch) / n, 2) if n else 0.0
     return {"n": n, "avg_lead_days": avg_lead,
             "reschedule_rate": rate, "avg_reschedules": avg_resch}
+
+
+_BLOCKER_KEYS = ("benefits", "consents", "prior_auth", "clearance", "device", "labs")
+
+
+def not_ready(db: Session, *, facility: Optional[str] = None,
+              surgeon: Optional[str] = None, today: Optional[date] = None) -> dict:
+    """Snapshot: surgeries scheduled in the next 14 days that are not fully
+    ready, broken down by blocking step. A step blocks when its step-engine
+    state is 'todo' or 'in_progress'."""
+    from app.utils.dt import now_utc_naive
+    today = today or now_utc_naive().date()
+    horizon = today + timedelta(days=14)
+    rows = (_base_query(db, facility, surgeon)
+            .filter(Surgery.scheduled_date.isnot(None),
+                    Surgery.scheduled_date >= today,
+                    Surgery.scheduled_date <= horizon,
+                    Surgery.status.notin_(("cancelled", "completed")))
+            .all())
+    by_blocker = {k: 0 for k in _BLOCKER_KEYS}
+    total = 0
+    for s in rows:
+        blocked = [k for k in _BLOCKER_KEYS if _state(s, k) in ("todo", "in_progress")]
+        if blocked:
+            total += 1
+            for k in blocked:
+                by_blocker[k] += 1
+    return {"total": total, "by_blocker": by_blocker}

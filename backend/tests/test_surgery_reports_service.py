@@ -64,3 +64,24 @@ def test_status_funnel_excludes_soft_deleted(db):
     d.deleted_at = now_utc_naive(); db.commit()
     out = rpt.status_funnel(db, facility=None, surgeon=None)
     assert out["by_status"]["new"] == 1   # soft-deleted row not counted
+
+
+def test_not_ready_blockers(db):
+    from datetime import date, datetime
+    today = date(2026, 6, 15)
+    # Inside window, benefits not verified -> blocker on "benefits".
+    _surg(db, status="confirmed", scheduled_date=date(2026, 6, 20),
+          benefits_verified_at=None)
+    # Inside window but fully ready -> excluded.
+    _surg(db, status="confirmed", scheduled_date=date(2026, 6, 18),
+          benefits_verified_at=datetime(2026, 6, 1), consent_status="not_required",
+          auth_status="not_required", clearance_required=False, device_required=False,
+          labs_sent_to_hospital=True)
+    # Outside window (>14 days) -> excluded.
+    _surg(db, status="confirmed", scheduled_date=date(2026, 7, 30))
+    # Completed -> excluded.
+    _surg(db, status="completed", scheduled_date=date(2026, 6, 19))
+    out = rpt.not_ready(db, facility=None, surgeon=None, today=today)
+    assert out["total"] == 1
+    assert out["by_blocker"]["benefits"] == 1
+    assert out["by_blocker"].get("labs", 0) == 1
