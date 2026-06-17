@@ -1181,11 +1181,20 @@ function BilledBody({ a }) {
     onSuccess: () => invalidateLarcLists(qc, a.id),
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
+  const closeOut = useMutation({
+    mutationFn: () => api.post(`/larc/assignments/${a.id}/close-out`).then(r => r.data),
+    onSuccess: () => invalidateLarcLists(qc, a.id),
+    onError: (e) => alert(e?.response?.data?.detail || 'Close-out failed'),
+  })
+  const isPatientOwned = (a.device_ownership || 'wwc_owned') === 'patient_owned'
 
   if (a.status === 'billed') {
     return (
       <div className="text-[11px] text-green-700">
-        ✓ Billed under claim #{a.claim_number} on {a.billed_at && fmt.date(a.billed_at)}
+        {a.claim_number
+          ? <>✓ Billed under claim #{a.claim_number}</>
+          : <>✓ Closed — patient-owned (no claim)</>}
+        {' '}on {a.billed_at && fmt.date(a.billed_at)}
         {a.billed_by && ` by ${a.billed_by.split('@')[0]}`}
       </div>
     )
@@ -1199,8 +1208,24 @@ function BilledBody({ a }) {
     const verb = a.source_flow === 'office_procedure' ? 'consumed' : 'inserted'
     return (
       <div className="text-[11px] text-gray-600">
-        Mark the device <span className="font-medium">{verb}</span> first — once it’s {verb},
+        Mark the device <span className="font-medium">{verb}</span> first — once it's {verb},
         you can record the ModMed claim # here to close the assignment.
+      </div>
+    )
+  }
+
+  if (isPatientOwned) {
+    return (
+      <div className="space-y-2 text-[12px]">
+        <div className="text-[11px] text-gray-600">
+          Patient (or their pharmacy plan) paid for this device — WWC bills nothing.
+          Close it out to remove it from the active list.
+        </div>
+        <button className="btn-primary text-[11px]"
+                onClick={() => closeOut.mutate()}
+                disabled={closeOut.isPending}>
+          {closeOut.isPending ? 'Closing...' : 'Close Out — Patient Paid (No Claim)'}
+        </button>
       </div>
     )
   }
@@ -1216,7 +1241,7 @@ function BilledBody({ a }) {
         <button className="btn-primary text-[11px]"
                 onClick={() => save.mutate()}
                 disabled={!claim.trim() || save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save & close'}
+          {save.isPending ? 'Saving...' : 'Save & close'}
         </button>
       </div>
     </div>
