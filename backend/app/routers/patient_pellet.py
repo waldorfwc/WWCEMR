@@ -15,6 +15,7 @@ from app.database import get_db
 from app.models.pellet import PelletPatient
 from app.models.pellet_portal import PelletConsent, PelletPortalUpload
 from app.services.pellet import portal_auth
+from app.services.pellet import payments as pelletpay
 from app.services.pellet.activity import record_pellet_activity
 from app.services.pellet.settings import cfg
 from app.services.storage import save_blob
@@ -166,3 +167,50 @@ def self_report_labs(payload: LabsIn,
                            detail=json.dumps({"drawn_date": drawn.isoformat() if drawn else None}))
     db.commit()
     return {"ok": True, "status": "pending_verification"}
+
+
+@router.get("/payment/options")
+def payment_options(p: PelletPatient = Depends(require_pellet_token),
+                    db: Session = Depends(get_db)):
+    return {
+        "insertion_price": float(pelletpay.insertion_price(db)),
+        "package_tiers": cfg(db, "package_discount_tiers") or [],
+        "subscription_monthly_amount": cfg(db, "subscription_monthly_amount"),
+        "enable_single": bool(cfg(db, "enable_single")),
+        "enable_package": bool(cfg(db, "enable_package")),
+        "enable_subscription": bool(cfg(db, "enable_subscription")),
+        "available_insertions": pelletpay.available_insertions(db, p),
+    }
+
+
+@router.post("/payment/single")
+def pay_single(p: PelletPatient = Depends(require_pellet_token),
+               db: Session = Depends(get_db)):
+    if not cfg(db, "enable_single"):
+        raise HTTPException(status_code=409, detail="single payment disabled")
+    if not pelletpay.is_configured():
+        raise HTTPException(status_code=503, detail="payments not configured")
+    row = pelletpay.create_insertion_checkout(db, p, kind="single", count=1,
+                                              amount=pelletpay.insertion_price(db),
+                                              actor="patient")
+    return {"checkout_url": row.checkout_url}
+
+
+class PackageIn(BaseModel):
+    count: int
+
+
+@router.post("/payment/package")
+def pay_package(payload: PackageIn, p: PelletPatient = Depends(require_pellet_token),
+                db: Session = Depends(get_db)):
+    if not cfg(db, "enable_package"):
+        raise HTTPException(status_code=409, detail="package payment disabled")
+    if payload.count < 2:
+        raise HTTPException(status_code=422, detail="package count must be >= 2")
+    if not pelletpay.is_configured():
+        raise HTTPException(status_code=503, detail="payments not configured")
+    amount = pelletpay.package_price(db, payload.count)
+    row = pelletpay.create_insertion_checkout(db, p, kind="package",
+                                              count=payload.count, amount=amount,
+                                              actor="patient")
+    return {"checkout_url": row.checkout_url}
