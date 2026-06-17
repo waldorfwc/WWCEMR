@@ -2021,7 +2021,7 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
               <label className="flex items-center gap-1 cursor-pointer">
                 <input type="radio" checked={mode === 'unscheduled'}
                         onChange={() => setMode('unscheduled')} />
-                <span>Unscheduled (found in cabinet)</span>
+                <span>Unscheduled</span>
               </label>
             </div>
             {mode === 'order' ? (
@@ -2144,15 +2144,13 @@ function ReceiveDrawer({ types, prefillOrderId, onClose }) {
                     <div className="grid grid-cols-3 gap-1">
                       <div>
                         <label className="text-[11px] uppercase text-gray-500 block mb-1">Pack</label>
-                        <select className="input text-[12px] w-full"
-                                 value={l.pack_size}
-                                 onChange={e => {
-                                   const p = Number(e.target.value)
-                                   updLot(i, { pack_size: p,
-                                                doses_received: p * (l.packs_received || 1) })
-                                 }}>
-                          {[6, 12, 30].map(p => <option key={p} value={p}>{p}</option>)}
-                        </select>
+                        <input type="number" min="1" className="input text-[12px] w-full"
+                                value={l.pack_size}
+                                onChange={e => {
+                                  const p = Number(e.target.value) || 0
+                                  updLot(i, { pack_size: p,
+                                               doses_received: p * (l.packs_received || 1) })
+                                }} />
                       </div>
                       <div>
                         <label className="text-[11px] uppercase text-gray-500 block mb-1">#packs</label>
