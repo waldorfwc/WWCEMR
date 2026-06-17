@@ -115,6 +115,9 @@ def _checklist_morning_digest():
     from app.services.checklist_notifications import send_morning_digest, send_team_summary
     db = SessionLocal()
     try:
+        from app.services.cron_lock import claim_cron_run
+        if not claim_cron_run(db, "checklist_morning_digest", date.today().isoformat()):
+            return
         users = db.query(User).filter(User.groups.any()).all()
         sent_users = 0
         sent_tasks = 0
@@ -141,6 +144,9 @@ def _checklist_eod_nudge():
     from app.services.checklist_notifications import send_eod_overdue_nudge
     db = SessionLocal()
     try:
+        from app.services.cron_lock import claim_cron_run
+        if not claim_cron_run(db, "checklist_eod_nudge", date.today().isoformat()):
+            return
         users = db.query(User).filter(User.groups.any()).all()
         for u in users:
             tasks = my_today(db, u.email, date.today())
@@ -313,8 +319,12 @@ def start_scheduler() -> BackgroundScheduler:
 
 
 def _missing_charges_weekly_emails():
+    from datetime import date
     db = SessionLocal()
     try:
+        from app.services.cron_lock import claim_cron_run
+        if not claim_cron_run(db, "missing_charges_weekly", date.today().isoformat()):
+            return
         from app.services.missing_charges_email import send_provider_emails
         report = send_provider_emails(db, triggered_by="system:weekly-cron")
         log.info("Missing-charges weekly email run: %d providers, %d sent, %d skipped",
@@ -325,8 +335,12 @@ def _missing_charges_weekly_emails():
 
 def _reminder_job():
     """Phase I — daily patient surgery reminders at 8 AM."""
+    from datetime import date
     db = SessionLocal()
     try:
+        from app.services.cron_lock import claim_cron_run
+        if not claim_cron_run(db, "surgery_reminder", date.today().isoformat()):
+            return
         from app.services.surgery.reminders import run_reminder_sweep
         run_reminder_sweep(db)
     finally:
