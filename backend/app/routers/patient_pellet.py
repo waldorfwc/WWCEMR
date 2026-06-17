@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.pellet import PelletPatient
-from app.models.pellet import PELLET_LOCATIONS, PelletVisit
+from app.models.pellet import PELLET_LOCATIONS, PelletVisit, PelletVisitDose, PelletDoseType
 from app.models.pellet_payment import PelletSubscription
 from app.models.pellet_portal import PelletConsent, PelletPortalUpload
 from app.models.pellet_schedule import PelletSlot
@@ -332,3 +332,31 @@ def _payment_summary(db, p) -> dict:
 def payment_status(p: PelletPatient = Depends(require_pellet_token),
                    db: Session = Depends(get_db)):
     return _payment_summary(db, p)
+
+
+@router.get("/info")
+def portal_info(p: PelletPatient = Depends(require_pellet_token),
+                db: Session = Depends(get_db)):
+    return {"info_text": cfg(db, "portal_info_text")}
+
+
+@router.get("/appointments")
+def appointments(p: PelletPatient = Depends(require_pellet_token),
+                 db: Session = Depends(get_db)):
+    visits = (db.query(PelletVisit)
+                .filter(PelletVisit.patient_id == p.id)
+                .order_by(PelletVisit.created_at.desc())
+                .all())
+    labels = {str(d.id): d.label for d in db.query(PelletDoseType).all()}
+    out = []
+    for v in visits:
+        doses = db.query(PelletVisitDose).filter(PelletVisitDose.visit_id == v.id).all()
+        out.append({
+            "id": str(v.id), "visit_kind": v.visit_kind, "status": v.status,
+            "scheduled_date": v.scheduled_date.isoformat() if v.scheduled_date else None,
+            "location": v.location, "provider": v.provider,
+            "inserted_at": v.inserted_at.isoformat() if v.inserted_at else None,
+            "doses": [{"label": labels.get(str(d.dose_type_id), "—"),
+                       "quantity": d.quantity} for d in doses],
+        })
+    return {"items": out}

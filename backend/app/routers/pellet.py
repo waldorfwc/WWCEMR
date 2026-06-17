@@ -3283,6 +3283,7 @@ class PelletConfigPayload(BaseModel):
     enable_single:              Optional[bool] = None
     enable_package:             Optional[bool] = None
     enable_subscription:        Optional[bool] = None
+    portal_info_text:           Optional[str] = None
 
 
 @router.get("/config")
