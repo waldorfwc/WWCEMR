@@ -129,3 +129,22 @@ def test_utilization_booked_vs_capacity(db):
     assert out["by_facility"]["office"]["capacity"] == 7
     assert out["by_facility"]["office"]["booked"] == 1
     assert out["overall_pct"] == round(1 / 7 * 100, 1)
+
+
+def test_rows_for_status_funnel_bucket(db):
+    from datetime import date
+    _surg(db, status="hold")
+    _surg(db, status="hold")
+    _surg(db, status="new")
+    rows = rpt.rows_for(db, "status_funnel", date_from=date(2026, 6, 1),
+                        date_to=date(2026, 6, 30), facility=None, surgeon=None,
+                        bucket="hold", today=date(2026, 6, 15))
+    assert len(rows) == 2 and all(r["status"] == "hold" for r in rows)
+    assert {"surgery_id", "chart_number", "patient_name", "status"} <= set(rows[0])
+
+
+def test_rows_to_csv_has_header_and_rows():
+    csv_text = rpt.rows_to_csv([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
+    lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+    assert lines[0] == "a,b"
+    assert len(lines) == 3

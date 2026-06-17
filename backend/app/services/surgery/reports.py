@@ -3,6 +3,8 @@ data, parameterized by an optional facility + surgeon filter and (for period
 tiles) a date range. No persistence; computed on request."""
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date, datetime, time, timedelta
 from typing import Optional
 
@@ -174,3 +176,148 @@ def utilization(db: Session, *, date_from: date, date_to: date,
     return {"booked": tot_b, "capacity": tot_c,
             "overall_pct": round(tot_b / tot_c * 100, 1) if tot_c else 0.0,
             "by_facility": by_fac}
+
+
+# ---------------------------------------------------------------------------
+# Drill-down rows + CSV
+# ---------------------------------------------------------------------------
+
+# Frontend renders labels via STATUS_LABEL; keep a backend copy for CSV/rows.
+STATUS_LABEL = {
+    "incomplete": "Incomplete", "new": "New", "in_progress": "Benefits Check",
+    "confirmed": "Pre-Surgery", "completed": "Post-Surgery", "hold": "Hold",
+    "cancelled": "Canceled", "unresponsive": "Unresponsive",
+}
+
+
+def _surg_row(s) -> dict:
+    return {
+        "surgery_id": str(s.id),
+        "surgery_number": s.surgery_number,
+        "chart_number": s.chart_number,
+        "patient_name": s.patient_name,
+        "surgeon_primary": s.surgeon_primary,
+        "selected_facility": s.selected_facility,
+        "scheduled_date": s.scheduled_date.strftime("%m/%d/%Y") if s.scheduled_date else None,
+        "status": s.status,
+        "status_label": STATUS_LABEL.get(s.status, s.status),
+    }
+
+
+def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
+             facility: Optional[str] = None, surgeon: Optional[str] = None,
+             bucket: Optional[str] = None, today: Optional[date] = None) -> list[dict]:
+    """Underlying rows for a clicked tile; `bucket` narrows to a sub-segment."""
+    from app.utils.dt import now_utc_naive
+    if tile == "status_funnel":
+        q = _base_query(db, facility, surgeon)
+        if bucket:
+            q = q.filter(Surgery.status == bucket)
+        return [_surg_row(s) for s in q.order_by(Surgery.scheduled_date).all()]
+
+    if tile == "completed":
+        rows = _completed_in_range_q(db, date_from, date_to, facility, surgeon).all()
+        if bucket:
+            rows = [s for s in rows if (s.procedure_classification or "unspecified") == bucket]
+        out = []
+        for s in rows:
+            r = _surg_row(s)
+            r["classification"] = s.procedure_classification
+            r["completed_at"] = s.completed_at.strftime("%m/%d/%Y") if s.completed_at else None
+            out.append(r)
+        return out
+
+    if tile == "cycle_time":
+        out = []
+        for s in _completed_in_range_q(db, date_from, date_to, facility, surgeon).all():
+            r = _surg_row(s)
+            r["lead_days"] = ((s.scheduled_date - s.created_at.date()).days
+                              if s.scheduled_date and s.created_at else None)
+            r["reschedule_count"] = int(s.reschedule_count or 0)
+            out.append(r)
+        return out
+
+    if tile == "not_ready":
+        today = today or now_utc_naive().date()
+        horizon = today + timedelta(days=14)
+        q = (_base_query(db, facility, surgeon)
+             .filter(Surgery.scheduled_date.isnot(None),
+                     Surgery.scheduled_date >= today,
+                     Surgery.scheduled_date <= horizon,
+                     Surgery.status.notin_(("cancelled", "completed"))))
+        out = []
+        for s in q.order_by(Surgery.scheduled_date).all():
+            blockers = [k for k in _BLOCKER_KEYS if _state(s, k) in ("todo", "in_progress")]
+            if not blockers:
+                continue
+            if bucket and bucket not in blockers:
+                continue
+            r = _surg_row(s)
+            r["blockers"] = blockers
+            out.append(r)
+        return out
+
+    if tile == "posting_backlog":
+        from app.models.stripe_payment import SurgeryPayment
+        q = (db.query(SurgeryPayment, Surgery)
+             .outerjoin(Surgery, Surgery.id == SurgeryPayment.surgery_id)
+             .filter(SurgeryPayment.status == "paid",
+                     SurgeryPayment.posted_to_modmed_at.is_(None),
+                     *_stripe_only_predicates()))
+        if facility:
+            q = q.filter(Surgery.selected_facility == facility)
+        if surgeon:
+            q = q.filter(Surgery.surgeon_primary == surgeon)
+        out = []
+        for p, s in q.all():
+            out.append({
+                "payment_id": str(p.id),
+                "chart_number": getattr(s, "chart_number", None),
+                "patient_name": getattr(s, "patient_name", None),
+                "amount_paid": float(p.amount_paid or 0),
+                "paid_at": p.paid_at.strftime("%m/%d/%Y") if p.paid_at else None,
+                "confirmation": p.stripe_payment_intent_id or p.stripe_checkout_session_id,
+            })
+        return out
+
+    if tile == "utilization":
+        from app.models.surgery import BlockDay, SurgerySlot
+        from app.services.surgery.block_schedule import capacity_rules
+        rules = capacity_rules(db)
+        q = db.query(BlockDay).filter(BlockDay.block_date >= date_from,
+                                      BlockDay.block_date <= date_to)
+        if facility:
+            q = q.filter(BlockDay.facility == facility)
+        out = []
+        for bd in q.order_by(BlockDay.block_date).all():
+            booked = (db.query(func.count(SurgerySlot.id))
+                      .filter(SurgerySlot.block_day_id == bd.id).scalar() or 0)
+            out.append({
+                "facility": bd.facility,
+                "block_date": bd.block_date.strftime("%m/%d/%Y"),
+                "block_kind": bd.block_kind,
+                "booked": int(booked),
+                "capacity": _block_day_capacity(rules.get(bd.facility) or {}),
+            })
+        return out
+
+    raise ValueError(f"unknown tile: {tile}")
+
+
+VALID_TILES = ("status_funnel", "not_ready", "completed", "cycle_time",
+               "posting_backlog", "utilization")
+
+
+def rows_to_csv(rows: list[dict]) -> str:
+    """Serialize flat dict rows to CSV text. List-valued cells are joined with
+    '; '. Empty input yields an empty string."""
+    if not rows:
+        return ""
+    fields = list(rows[0].keys())
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: ("; ".join(map(str, v)) if isinstance(v, list) else v)
+                    for k, v in r.items()})
+    return buf.getvalue()
