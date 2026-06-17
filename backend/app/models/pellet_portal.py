@@ -4,7 +4,7 @@ uploads. Mirrors the surgery portal's SurgeryActivity + auth-attempt patterns
 but keyed off PelletPatient. (Pellet Patient Portal — Phase 1.)"""
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -64,7 +64,7 @@ class PelletPortalAuthAttempt(Base):
     challenge_token = Column(String(80), nullable=False)
     code_hash = Column(String(120), nullable=False)
     purpose = Column(String(20), nullable=False, default="login")
-    attempts = Column(String(4), nullable=True)
+    attempts = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=now_utc_naive, nullable=False)
     expires_at = Column(DateTime, nullable=True)
     consumed_at = Column(DateTime, nullable=True)
