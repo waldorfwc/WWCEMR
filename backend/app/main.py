@@ -305,7 +305,9 @@ app.include_router(consent_templates.router, prefix="/api",
 # User-scoped saved filter presets for the surgery dashboard
 app.include_router(surgery_filter_presets.router, prefix="/api",
                    dependencies=[Depends(requires_tier(Module.SURGERY, Tier.VIEW))])
-# Surgery reports — summary + drill-down rows/CSV; endpoints self-gate on SURGERY:VIEW
+# Surgery reports — summary + drill-down rows/CSV; gated here at SURGERY:VIEW.
+# Safe to register after surgery.router: its paths (/surgery/reports/...) are
+# multi-segment and can't be swallowed by surgery.router's /{surgery_id} catch-all.
 app.include_router(surgery_reports.router, prefix="/api",
                    dependencies=[Depends(requires_tier(Module.SURGERY, Tier.VIEW))])
 # LARC device inventory + tracking

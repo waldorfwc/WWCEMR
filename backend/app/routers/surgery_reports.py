@@ -10,19 +10,19 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.permissions.catalog import Module, Tier
-from app.permissions.dependencies import requires_tier
 from app.services.surgery import reports as rpt
 from app.utils.dt import now_utc_naive
 
 router = APIRouter(prefix="/surgery/reports", tags=["surgery-reports"])
 
 
-def _parse_range(from_: Optional[str], to_: Optional[str]) -> tuple[date, date]:
-    """Default to the current month (1st → today) when omitted."""
+def _parse_range(from_: Optional[date], to_: Optional[date]) -> tuple[date, date]:
+    """Default to the current month (1st → today) when omitted. FastAPI
+    parses/validates the ISO date params, so a bad string yields a 422
+    before we get here."""
     today = now_utc_naive().date()
-    df = date.fromisoformat(from_) if from_ else today.replace(day=1)
-    dt = date.fromisoformat(to_) if to_ else today
+    df = from_ or today.replace(day=1)
+    dt = to_ or today
     return df, dt
 
 
@@ -36,12 +36,11 @@ def _isoize(completed: dict) -> dict:
 
 @router.get("/summary")
 def reports_summary(
-    from_: Optional[str] = Query(None, alias="from"),
-    to: Optional[str] = None,
+    from_: Optional[date] = Query(None, alias="from"),
+    to: Optional[date] = None,
     facility: Optional[str] = None,
     surgeon: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     df, dt = _parse_range(from_, to)
     return {
@@ -60,21 +59,20 @@ def reports_summary(
 @router.get("/{tile}/rows")
 def reports_rows(
     tile: str,
-    from_: Optional[str] = Query(None, alias="from"),
-    to: Optional[str] = None,
+    from_: Optional[date] = Query(None, alias="from"),
+    to: Optional[date] = None,
     facility: Optional[str] = None,
     surgeon: Optional[str] = None,
     bucket: Optional[str] = None,
-    format: Optional[str] = None,
+    output_format: Optional[str] = Query(None, alias="format"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
 ):
     if tile not in rpt.VALID_TILES:
         raise HTTPException(status_code=404, detail="unknown report tile")
     df, dt = _parse_range(from_, to)
     rows = rpt.rows_for(db, tile, date_from=df, date_to=dt, facility=facility,
                         surgeon=surgeon, bucket=bucket)
-    if (format or "").lower() == "csv":
+    if (output_format or "").lower() == "csv":
         csv_text = rpt.rows_to_csv(rows)
         filename = f"surgery-{tile}-{df.isoformat()}_{dt.isoformat()}.csv"
         return StreamingResponse(
