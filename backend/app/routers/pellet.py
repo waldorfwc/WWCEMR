@@ -10,7 +10,7 @@ DEA compliance:
 """
 from __future__ import annotations
 
-from datetime import date as _date, datetime, timedelta
+from datetime import date as _date, datetime, timedelta, time as _time
 from app.utils.dt import now_utc_naive
 from decimal import Decimal
 from typing import Annotated, Literal, Optional
@@ -57,6 +57,8 @@ from app.services.pellet.workflow import (
     spawn_milestones, default_price_for, patient_buckets,
 )
 from app.services.pellet import appt_import, dose_suggest
+from app.services.pellet import scheduling as pelletsched
+from app.models.pellet_schedule import PelletAvailabilityTemplate, PelletSlot
 from app.services.pellet.settings import PELLET_SETTINGS_DEFAULTS, cfg
 from app.models.pellet_config import PelletConfig
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
@@ -6099,3 +6101,105 @@ def pellet_activity_verify(activity_id: str, db: Session = Depends(get_db),
         a.read_at = now; a.read_by = by
     db.commit()
     return {"ok": True, "kind": a.kind}
+
+
+# ---------------------------------------------------------------------------
+# Staff availability admin (Phase-3 T4)
+# ---------------------------------------------------------------------------
+def _parse_hhmm(s: str):
+    hh, mm = s.split(":")
+    return _time(int(hh), int(mm))
+
+
+class AvailTemplateIn(BaseModel):
+    location: str
+    recurrence_kind: str
+    weekday: Optional[int] = None
+    nth_in_month: Optional[list] = None
+    day_of_month: Optional[int] = None
+    specific_dates: Optional[list] = None
+    start_time: str
+    end_time: str
+    slot_minutes: Optional[int] = None
+    provider: Optional[str] = None
+    effective_from: Optional[str] = None
+    effective_through: Optional[str] = None
+
+
+@router.get("/availability/templates")
+def list_avail_templates(db: Session = Depends(get_db),
+                         current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
+    rows = db.query(PelletAvailabilityTemplate).order_by(PelletAvailabilityTemplate.location).all()
+    return {"items": [{
+        "id": str(t.id), "location": t.location, "recurrence_kind": t.recurrence_kind,
+        "weekday": t.weekday, "nth_in_month": t.nth_in_month, "day_of_month": t.day_of_month,
+        "specific_dates": t.specific_dates,
+        "start_time": t.start_time.strftime("%H:%M"), "end_time": t.end_time.strftime("%H:%M"),
+        "slot_minutes": t.slot_minutes, "provider": t.provider, "active": t.active,
+    } for t in rows]}
+
+
+@router.post("/availability/templates", status_code=201)
+def create_avail_template(payload: AvailTemplateIn, db: Session = Depends(get_db),
+                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    t = PelletAvailabilityTemplate(
+        location=payload.location, recurrence_kind=payload.recurrence_kind,
+        weekday=payload.weekday, nth_in_month=payload.nth_in_month,
+        day_of_month=payload.day_of_month, specific_dates=payload.specific_dates,
+        start_time=_parse_hhmm(payload.start_time), end_time=_parse_hhmm(payload.end_time),
+        slot_minutes=payload.slot_minutes, provider=payload.provider,
+        effective_from=_date.fromisoformat(payload.effective_from) if payload.effective_from else None,
+        effective_through=_date.fromisoformat(payload.effective_through) if payload.effective_through else None,
+        active=True, created_by=current_user.get("email"))
+    db.add(t); db.commit()
+    rep = pelletsched.materialize_pellet_slots(db); db.commit()
+    return {"id": str(t.id), "materialized": rep}
+
+
+@router.delete("/availability/templates/{template_id}", status_code=204)
+def delete_avail_template(template_id: str, db: Session = Depends(get_db),
+                          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    t = db.query(PelletAvailabilityTemplate).filter(PelletAvailabilityTemplate.id == template_id).first()
+    if t is None:
+        raise HTTPException(status_code=404, detail="template not found")
+    t.active = False
+    db.commit()
+
+
+class AdhocSlotIn(BaseModel):
+    location: str
+    slot_date: str
+    start_time: str
+    end_time: str
+    provider: Optional[str] = None
+
+
+@router.post("/availability/slots", status_code=201)
+def add_adhoc_slot(payload: AdhocSlotIn, db: Session = Depends(get_db),
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    db.add(PelletSlot(location=payload.location,
+                      slot_date=_date.fromisoformat(payload.slot_date),
+                      start_time=_parse_hhmm(payload.start_time),
+                      end_time=_parse_hhmm(payload.end_time), provider=payload.provider,
+                      status="open", is_addon=True, created_by=current_user.get("email")))
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/availability/slots/{slot_id}/block")
+def block_slot(slot_id: str, db: Session = Depends(get_db),
+               current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    s = db.query(PelletSlot).filter(PelletSlot.id == slot_id).first()
+    if s is None:
+        raise HTTPException(status_code=404, detail="slot not found")
+    if s.status == "booked":
+        raise HTTPException(status_code=409, detail="cancel the booking first")
+    s.status = "blocked"; db.commit()
+    return {"ok": True, "status": s.status}
+
+
+@router.post("/availability/materialize")
+def materialize_endpoint(db: Session = Depends(get_db),
+                         current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    rep = pelletsched.materialize_pellet_slots(db); db.commit()
+    return rep
