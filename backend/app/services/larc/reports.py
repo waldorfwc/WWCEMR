@@ -125,3 +125,67 @@ def insertion_outcomes(db: Session, *, date_from: date, date_to: date,
     rate = round((fu + fused) / attempts, 2) if attempts else 0.0
     return {"success": success, "failed_unused": fu, "failed_used": fused,
             "total": attempts, "failure_rate": rate}
+
+
+def billing_backlog(db: Session, *, location: Optional[str] = None,
+                    device_type_id: Optional[str] = None) -> dict:
+    """Snapshot: inserted assignments not yet billed."""
+    n = (_assignment_base(db, location, device_type_id)
+         .filter(LarcAssignment.status == "inserted",
+                 LarcAssignment.billed_at.is_(None)).count())
+    return {"count": n}
+
+
+def owed_patients(db: Session, *, location: Optional[str] = None,
+                  device_type_id: Optional[str] = None) -> dict:
+    """Snapshot: open owed-patient rows + failed-used assignments awaiting a
+    replacement (the 'failed_replacement_unrequested' state)."""
+    from app.models.larc import LarcOwedPatient
+    oq = db.query(LarcOwedPatient).filter(LarcOwedPatient.resolved_at.is_(None))
+    if device_type_id:
+        oq = oq.filter(LarcOwedPatient.original_device_type_id == device_type_id)
+    owed_count = oq.count()
+    awaiting = (_assignment_base(db, location, device_type_id)
+                .filter(LarcAssignment.status == "failed_used",
+                        LarcAssignment.replacement_assignment_id.is_(None)).count())
+    return {"owed_count": owed_count, "awaiting_replacement": awaiting,
+            "total": owed_count + awaiting}
+
+
+def _instock_devices_q(db, location, device_type_id):
+    q = db.query(LarcDevice).filter(LarcDevice.status.in_(("unassigned", "received")))
+    if location:
+        q = q.filter(LarcDevice.location == location)
+    if device_type_id:
+        q = q.filter(LarcDevice.device_type_id == device_type_id)
+    return q
+
+
+def inventory_health(db: Session, *, location: Optional[str] = None,
+                     device_type_id: Optional[str] = None,
+                     today: Optional[date] = None) -> dict:
+    """Snapshot: in-stock devices by type, expiring <=90 days, and device types
+    below their reorder threshold."""
+    today = today or now_utc_naive().date()
+    horizon = today + timedelta(days=90)
+    devices = _instock_devices_q(db, location, device_type_id).all()
+    types = {t.id: t for t in db.query(LarcDeviceType).all()}
+    by_type: dict = {}
+    expiring = 0
+    onhand_by_type: dict = {}
+    for d in devices:
+        name = types[d.device_type_id].name if d.device_type_id in types else "Unknown"
+        by_type[name] = by_type.get(name, 0) + 1
+        onhand_by_type[d.device_type_id] = onhand_by_type.get(d.device_type_id, 0) + 1
+        if d.expiration_date and d.expiration_date <= horizon:
+            expiring += 1
+    below = 0
+    for tid, t in types.items():
+        if t.reorder_threshold is None:
+            continue
+        if device_type_id and tid != device_type_id:
+            continue
+        if onhand_by_type.get(tid, 0) < int(t.reorder_threshold):
+            below += 1
+    return {"total_on_hand": len(devices), "by_type": by_type,
+            "expiring": expiring, "below_reorder": below}

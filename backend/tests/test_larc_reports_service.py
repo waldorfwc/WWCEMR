@@ -89,3 +89,38 @@ def test_insertion_outcomes(db):
     assert out["success"] == 1 and out["failed_unused"] == 1 and out["failed_used"] == 1
     assert out["total"] == 3
     assert out["failure_rate"] == round(2 / 3, 2)
+
+
+def test_billing_backlog(db):
+    t = _dtype(db)
+    _assignment(db, t, status="inserted", chart="B1", billed_at=None)
+    _assignment(db, t, status="inserted", chart="B2", billed_at=datetime(2026, 6, 3))
+    _assignment(db, t, status="new", chart="B3")
+    out = rpt.billing_backlog(db, location=None, device_type_id=None)
+    assert out["count"] == 1
+
+
+def test_owed_patients(db):
+    from app.models.larc import LarcOwedPatient
+    t = _dtype(db)
+    a = _assignment(db, t, chart="OW1")
+    db.add(LarcOwedPatient(chart_number="OW1", patient_name="Pt OW1",
+                           original_assignment_id=a.id, original_device_type_id=t.id))
+    db.add(LarcOwedPatient(chart_number="OW2", patient_name="Pt OW2",
+                           original_assignment_id=a.id, original_device_type_id=t.id,
+                           resolved_at=datetime(2026, 6, 1)))
+    db.commit()
+    out = rpt.owed_patients(db, location=None, device_type_id=None)
+    assert out["owed_count"] == 1
+
+
+def test_inventory_health(db):
+    from datetime import date as _d
+    t = _dtype(db, "Liletta", "larc", reorder=5)
+    _device(db, t, status="unassigned", our_id="D1", location="white_plains",
+            expires=_d(2026, 7, 1))
+    _device(db, t, status="inserted", our_id="D2")
+    out = rpt.inventory_health(db, location=None, device_type_id=None, today=_d(2026, 6, 15))
+    assert out["total_on_hand"] == 1
+    assert out["expiring"] == 1
+    assert out["below_reorder"] == 1
