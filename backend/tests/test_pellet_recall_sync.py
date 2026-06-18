@@ -81,3 +81,12 @@ def test_sync_ignores_wwe_entries(db):
     materialize_pellet_recalls(db)
     wwe = db.query(RecallEntry).filter(RecallEntry.recall_type == "Est - Well-Woman Exam").one()
     assert wwe.status == "active"
+
+
+def test_cron_job_runs(db, monkeypatch):
+    import app.services.fax_poller as fp
+    # Allow the lock (3-arg: db, job_name, run_key) + use the test session.
+    monkeypatch.setattr(fp, "claim_cron_run",
+                        lambda *a, **k: True, raising=False)
+    monkeypatch.setattr(fp, "SessionLocal", lambda: db, raising=False)
+    fp._pellet_recall_sync()
