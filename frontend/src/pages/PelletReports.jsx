@@ -1,8 +1,10 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Download, X } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Download, X, RefreshCw } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import LoadingState from '../components/LoadingState'
+import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 // ─── Date preset helpers ────────────────────────────────────────────────────
 
@@ -232,6 +234,16 @@ export default function PelletReports() {
     enabled: !!(from && to),
   })
 
+  // Recall sync (Module.PELLETS / Tier.WORK) — refreshes the Recall Due tile.
+  const queryClient = useQueryClient()
+  const { tier } = useCurrentUser()
+  const canSync = tier(MODULE.PELLETS, TIER.WORK)
+  const syncMut = useMutation({
+    mutationFn: () => api.post('/pellets/recall/sync').then(r => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['pellet-report-summary'] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Recall sync failed.'),
+  })
+
   // Provider list from loaded summary
   const providers = data?.providers || []
 
@@ -434,10 +446,23 @@ export default function PelletReports() {
                 </div>
               )}
             </div>
-            <div className="mt-3 pt-2 border-t border-plum-200 text-[11px] text-muted">
-              {s.recall_due?.last_synced_at
-                ? `Last synced ${s.recall_due.last_synced_at}`
-                : 'Never synced — run the recall sync'}
+            <div className="mt-3 pt-2 border-t border-plum-200 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-muted">
+                {s.recall_due?.last_synced_at
+                  ? `Last synced ${s.recall_due.last_synced_at}`
+                  : 'Never synced — run the recall sync'}
+              </span>
+              {canSync && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); syncMut.mutate() }}
+                  disabled={syncMut.isPending}
+                  className="inline-flex items-center gap-1 rounded-md border border-plum-200 px-2 py-1 text-[11px] font-semibold text-plum-700 hover:bg-plum-50 disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={syncMut.isPending ? 'animate-spin' : ''} />
+                  {syncMut.isPending ? 'Syncing…' : 'Sync Now'}
+                </button>
+              )}
             </div>
           </Tile>
 
