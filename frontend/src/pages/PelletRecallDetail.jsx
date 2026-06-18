@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Phone, X, Clock, Lock } from 'lucide-react'
 import api, { fmt } from '../utils/api'
@@ -11,6 +11,15 @@ function Card({ children, className = '' }) {
       {children}
     </div>
   )
+}
+
+// Insertion-history dates arrive already formatted as MM/DD/YYYY per the API
+// contract, but tolerate a raw ISO (YYYY-MM-DD…) value too — fmt.date only
+// parses ISO heads and would blank an already-formatted string, so pass those
+// straight through.
+function displayDate(val) {
+  if (val == null || val === '') return '—'
+  return /^\d{4}-\d{2}-\d{2}/.test(String(val)) ? fmt.date(val) : String(val)
 }
 
 function Field({ label, val }) {
@@ -31,6 +40,7 @@ export default function PelletRecallDetail({ recallId, onClose }) {
   const [notes, setNotes] = useState('')
   const [dialState, setDialState] = useState(null)   // null | 'ringing' | 'connected' | 'error'
   const [dialMsg, setDialMsg] = useState(null)
+  const dialResetTimer = useRef(null)
 
   // ── Data fetch ──────────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery({
@@ -70,15 +80,18 @@ export default function PelletRecallDetail({ recallId, onClose }) {
     return () => {
       cancelled = true
       if (timer) clearTimeout(timer)
+      if (dialResetTimer.current) clearTimeout(dialResetTimer.current)
+      // Best-effort release on unmount — this is the single source of the
+      // DELETE so handleClose (which only unmounts via the parent) doesn't
+      // double-fire it.
       api.delete(`/pellets/recall/${recallId}/claim`).catch(() => {})
-      onClose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recallId])
 
-  // ── Close wrapper (release claim, then call onClose) ───────────────────────
+  // ── Close wrapper — unmounts the modal via the parent. The claim release
+  // happens in the effect cleanup that the unmount triggers. ────────────────
   function handleClose() {
-    api.delete(`/pellets/recall/${recallId}/claim`).catch(() => {})
     onClose()
   }
 
@@ -89,12 +102,12 @@ export default function PelletRecallDetail({ recallId, onClose }) {
     onSuccess: (d) => {
       setDialState('connected')
       setDialMsg(d.message || 'Pick up your phone — RC is connecting you.')
-      setTimeout(() => { setDialState(null); setDialMsg(null) }, 8000)
+      dialResetTimer.current = setTimeout(() => { setDialState(null); setDialMsg(null) }, 8000)
     },
     onError: (err) => {
       setDialState('error')
       setDialMsg(err?.response?.data?.detail || 'Dial failed')
-      setTimeout(() => { setDialState(null); setDialMsg(null) }, 6000)
+      dialResetTimer.current = setTimeout(() => { setDialState(null); setDialMsg(null) }, 6000)
     },
   })
 
@@ -210,7 +223,7 @@ export default function PelletRecallDetail({ recallId, onClose }) {
                         {insertionHistory.map((row, i) => (
                           <tr key={i} className="text-gray-700">
                             <td className="py-1.5 pr-3 font-mono whitespace-nowrap">
-                              {row.date || '—'}
+                              {displayDate(row.date)}
                             </td>
                             <td className="py-1.5 pr-3">{row.location || '—'}</td>
                             <td className="py-1.5 pr-3">{row.provider || '—'}</td>
@@ -292,9 +305,6 @@ export default function PelletRecallDetail({ recallId, onClose }) {
                             {fmt.dateTime(h.occurred_at)}
                           </span>
                         </div>
-                        {h.outcome && h.event_type !== 'outcome' && (
-                          <div className="text-plum-700">{h.outcome}</div>
-                        )}
                         {h.notes && (
                           <div className="text-gray-700 mt-0.5 whitespace-pre-wrap">{h.notes}</div>
                         )}
