@@ -36,6 +36,8 @@ def materialize_pellet_recalls(db: Session) -> dict:
         x = _patient_view_extras(p, today)
         if not x.get("recall_is_due"):
             continue
+        # Mark seen BEFORE the suppressed check so the completion sweep below
+        # never flips a suppressed-but-still-due entry to "completed".
         seen.add(p.chart_number)
         e = existing.get(p.chart_number)
         if e is not None and e.status == "suppressed":

@@ -51,6 +51,29 @@ def test_sync_completes_entry_when_no_longer_due(db):
     assert e.status == "completed"
 
 
+def test_sync_reactivates_completed_entry_when_due_again(db):
+    p = _due_patient(db, "DUE4")
+    materialize_pellet_recalls(db)
+    e = db.query(RecallEntry).filter(RecallEntry.recall_type == PELLET_RECALL_TYPE).one()
+    e.status = "completed"; e.attempts = 2; db.commit()
+    out = materialize_pellet_recalls(db)
+    assert out["created"] == 0 and out["updated"] == 1
+    db.refresh(e)
+    assert e.status == "active" and e.attempts == 2
+
+
+def test_sync_leaves_suppressed_entry_alone(db):
+    p = _due_patient(db, "DUE5")
+    materialize_pellet_recalls(db)
+    e = db.query(RecallEntry).filter(RecallEntry.recall_type == PELLET_RECALL_TYPE).one()
+    e.status = "suppressed"; db.commit()
+    out = materialize_pellet_recalls(db)
+    # Still due, but suppressed: never updated, never completed.
+    assert out["updated"] == 0 and out["completed"] == 0
+    db.refresh(e)
+    assert e.status == "suppressed"
+
+
 def test_sync_ignores_wwe_entries(db):
     db.add(RecallEntry(chart_number="WWE1", recall_type="Est - Well-Woman Exam",
                        source="smartsheet", status="active"))
