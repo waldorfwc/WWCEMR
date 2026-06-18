@@ -471,16 +471,22 @@ export default function PelletReports() {
             {(s.inventory_health?.expiring_lots > 0 || s.inventory_health?.below_reorder > 0) && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {s.inventory_health?.expiring_lots > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200
-                                   px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openDrill('inventory_health', 'expiring') }}
+                    className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200
+                               px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-100"
+                  >
                     {s.inventory_health.expiring_lots} expiring
-                  </span>
+                  </button>
                 )}
                 {s.inventory_health?.below_reorder > 0 && (
-                  <span className="inline-flex items-center rounded-full bg-red-50 border border-red-200
-                                   px-2 py-0.5 text-[11px] font-medium text-red-700">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); openDrill('inventory_health', 'below_reorder') }}
+                    className="inline-flex items-center rounded-full bg-red-50 border border-red-200
+                               px-2 py-0.5 text-[11px] font-medium text-red-700 hover:bg-red-100"
+                  >
                     {s.inventory_health.below_reorder} below reorder
-                  </span>
+                  </button>
                 )}
               </div>
             )}
