@@ -49,11 +49,14 @@ def test_claim_and_outcome_delegate(client, db):
     client.post("/api/pellets/recall/sync")
     rid = client.get("/api/pellets/recall").json()["items"][0]["id"]
     assert client.post(f"/api/pellets/recall/{rid}/claim").status_code == 200
+    # Realistic flow: record the attempt (bumps attempts via the engine), then
+    # log the outcome. The outcome endpoint is a pure delegation, same as WWE.
+    assert client.post(f"/api/pellets/recall/{rid}/call-attempted").status_code == 200
     r = client.post(f"/api/pellets/recall/{rid}/outcome",
                     json={"outcome": "Left voicemail", "notes": "vm 1"})
     assert r.status_code == 200, r.text
     body = client.get(f"/api/pellets/recall/{rid}").json()
-    assert body["recall"]["attempts"] >= 1
+    assert body["recall"]["attempts"] >= 1                 # from call-attempted
     assert any(h["outcome"] == "Left voicemail" for h in body["history"])
 
 

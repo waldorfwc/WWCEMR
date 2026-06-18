@@ -135,10 +135,5 @@ def dial_pellet(recall_id: str, db: Session = Depends(get_db),
 @router.post("/{recall_id}/outcome")
 def outcome(recall_id: str, payload: OutcomePayload, db: Session = Depends(get_db),
             current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
-    e = _load_pellet_entry(db, recall_id)
-    # Increment attempts so the outcome registers as a contact on the
-    # worklist (the recall engine only increments on call_attempted/dial,
-    # not on outcome itself).
-    e.attempts = (e.attempts or 0) + 1
-    db.flush()
+    _load_pellet_entry(db, recall_id)
     return log_outcome(recall_id, payload, db, current_user)
