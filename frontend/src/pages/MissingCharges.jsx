@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { MODULE, TIER } from '../routes.jsx'
 
 
 function SortableTh({ label, k, sort, onClick }) {
@@ -31,7 +32,12 @@ function SortableTh({ label, k, sort, onClick }) {
 // Show relative time since last provider email; '—' if never emailed.
 function EmailedCell({ when }) {
   if (!when) return <span className="text-gray-300">—</span>
-  const ms = Date.now() - new Date(when).getTime()
+  // Backend timestamps are naive UTC; treat as UTC so the relative math
+  // doesn't drift by the local offset near day boundaries.
+  const s = String(when)
+  const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && !/[Zz]|[+-]\d{2}:?\d{2}$/.test(s)
+    ? s + 'Z' : s
+  const ms = Date.now() - new Date(iso).getTime()
   const days = Math.floor(ms / 86_400_000)
   let label
   if (days <= 0) label = 'today'
@@ -40,7 +46,7 @@ function EmailedCell({ when }) {
   else label = `${Math.floor(days / 7)}w ago`
   // Yellow flag if it's been a while (>10 days = past the weekly cadence)
   const tone = days > 10 ? 'text-amber-700' : 'text-gray-500'
-  return <span className={tone} title={new Date(when).toLocaleString()}>{label}</span>
+  return <span className={tone} title={fmt.dateTime(when)}>{label}</span>
 }
 
 
@@ -57,7 +63,11 @@ const STATUS_TONES = {
 
 
 export default function MissingCharges() {
-  const { isAdmin } = useCurrentUser()
+  const { tier } = useCurrentUser()
+  // Delete is backend-gated on the per-module MANAGE tier (not the global
+  // admin flag) — match it so module managers see the button and a global
+  // admin lacking the module tier doesn't get a 403.
+  const canDelete = tier(MODULE.MISSING_CHARGES, TIER.MANAGE)
   const [filters, setFilters] = useState({
     status: '', provider: '', payer: '', appointment: '', patient: '',
     mrn: '', date_from: '', date_to: '',
@@ -111,7 +121,7 @@ export default function MissingCharges() {
         <div className="flex gap-2">
           <button className="btn-secondary text-sm flex items-center gap-1"
                   onClick={() => setEmailingProviders(true)}>
-            <Send size={13} /> Email providers
+            <Send size={13} /> Email Providers
           </button>
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => setUploading(true)}>
@@ -300,7 +310,7 @@ export default function MissingCharges() {
         <EmailProvidersDrawer onClose={() => setEmailingProviders(false)} />
       )}
       {openId && (
-        <DetailDrawer id={openId} picks={picks} isAdmin={isAdmin}
+        <DetailDrawer id={openId} picks={picks} canDelete={canDelete}
                        onClose={() => setOpenId(null)} />
       )}
     </div>
@@ -336,7 +346,10 @@ function EmailProvidersDrawer({ onClose }) {
   })
 
   function copyLink(url) {
-    const fullUrl = window.location.origin + url
+    // The backend returns an absolute portal_url (APP_BASE_URL host). Only
+    // prepend the current origin for a relative path — otherwise we'd produce
+    // a broken double-origin link.
+    const fullUrl = /^https?:\/\//i.test(url) ? url : window.location.origin + url
     navigator.clipboard.writeText(fullUrl)
     setCopied(url)
     setTimeout(() => setCopied(null), 2000)
@@ -371,7 +384,7 @@ function EmailProvidersDrawer({ onClose }) {
             <button className="btn-primary text-sm flex items-center gap-1"
                     onClick={() => sendAll.mutate()}
                     disabled={sendAll.isPending}>
-              <Send size={12} /> {sendAll.isPending ? 'Sending…' : 'Send weekly emails now'}
+              <Send size={12} /> {sendAll.isPending ? 'Sending…' : 'Send Weekly Emails Now'}
             </button>
           ) : (
             <div className="space-y-2">
@@ -529,7 +542,7 @@ function UploadDrawer({ onClose }) {
 
 // ─── Detail drawer (workflow + notes) ──────────────────────────────
 
-function DetailDrawer({ id, picks, isAdmin, onClose }) {
+function DetailDrawer({ id, picks, canDelete, onClose }) {
   const qc = useQueryClient()
   const [claimDraft, setClaimDraft] = useState('')
 
@@ -589,7 +602,7 @@ function DetailDrawer({ id, picks, isAdmin, onClose }) {
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
-            {isAdmin && (
+            {canDelete && (
               <button onClick={() => {
                         if (window.confirm(`Delete row for ${c.patient_name} on ${fmt.date(c.appointment_date)}?`))
                           deleteMut.mutate()
@@ -639,11 +652,11 @@ function DetailDrawer({ id, picks, isAdmin, onClose }) {
               <div className="flex flex-wrap gap-2">
                 <button className="btn-primary text-[12px] flex items-center gap-1"
                         onClick={() => patchMut.mutate({ status: 'needs_to_be_billed' })}>
-                  <Check size={12} /> Seen — needs billing
+                  <Check size={12} /> Seen — Needs Billing
                 </button>
                 <button className="btn-secondary text-[12px]"
                         onClick={() => patchMut.mutate({ status: 'no_show' })}>
-                  No show
+                  No Show
                 </button>
                 <button className="btn-secondary text-[12px]"
                         onClick={() => patchMut.mutate({ status: 'canceled' })}>
@@ -678,9 +691,11 @@ function DetailDrawer({ id, picks, isAdmin, onClose }) {
                        value={claimDraft !== '' ? claimDraft : (c.claim_number || '')}
                        onChange={e => setClaimDraft(e.target.value)} />
                 <button className="btn-primary text-[12px]"
-                        onClick={() => patchMut.mutate({ claim_number: claimDraft || c.claim_number })}
+                        onClick={() => patchMut.mutate(
+                          { claim_number: claimDraft || c.claim_number },
+                          { onSuccess: onClose })}
                         disabled={(!claimDraft && !c.claim_number) || patchMut.isPending}>
-                  Save & close
+                  Save & Close
                 </button>
               </div>
               {c.status === 'billed' && (
@@ -754,7 +769,7 @@ function NotesSection({ chargeId, notes }) {
       <button className="btn-secondary text-[11px] mt-1"
               onClick={() => add.mutate()}
               disabled={!body.trim() || add.isPending}>
-        {add.isPending ? 'Saving…' : 'Add note'}
+        {add.isPending ? 'Saving…' : 'Add Note'}
       </button>
     </section>
   )

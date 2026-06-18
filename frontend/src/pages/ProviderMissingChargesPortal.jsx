@@ -14,8 +14,9 @@ const api = axios.create({ baseURL: '/api', timeout: 30_000 })
 
 function fmtDate(d) {
   if (!d) return '—'
+  // MM/DD/YYYY per app convention (was "Jun 12, 2026").
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: '2-digit', day: '2-digit', year: 'numeric',
   })
 }
 

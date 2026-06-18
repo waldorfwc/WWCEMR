@@ -6,7 +6,10 @@ verify the signature on every request.
 
 Tokens are signed JWTs with a 60-day expiry (so a single token covers
 ~8 weekly emails before needing reissue). The signing secret comes from
-MISSING_CHARGES_TOKEN_SECRET (or falls back to APP_SECRET / dev-only).
+MISSING_CHARGES_TOKEN_SECRET, else the app's main SECRET_KEY (settings.secret_key)
+— the SAME secret the rest of the app signs JWTs with. There is no hardcoded
+fallback: a token signed with a guessable secret would let anyone forge a
+provider link and read patient PHI on the public portal.
 """
 from __future__ import annotations
 
@@ -18,6 +21,8 @@ from typing import Optional
 
 import jwt   # pyjwt
 
+from app.config import settings
+
 log = logging.getLogger(__name__)
 
 TOKEN_TTL_DAYS = 60
@@ -27,10 +32,8 @@ KIND = "missing_charges_provider"
 
 
 def _secret() -> str:
-    s = (os.environ.get("MISSING_CHARGES_TOKEN_SECRET")
-         or os.environ.get("APP_SECRET")
-         or "dev-only-do-not-use-in-production")
-    return s
+    return (os.environ.get("MISSING_CHARGES_TOKEN_SECRET")
+            or settings.secret_key)
 
 
 def mint_token(provider: str, *, ttl_days: int = TOKEN_TTL_DAYS) -> str:

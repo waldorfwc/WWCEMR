@@ -13,6 +13,7 @@ still useful for previewing the email content.
 """
 from __future__ import annotations
 
+import html as _html
 import logging
 import os
 from datetime import datetime
@@ -86,17 +87,23 @@ def _build_email(provider: str, portal_url: str, rows: list[MissingCharge]) -> t
     count = len(rows)
     subject = f"WWC · {count} appointment{'s' if count != 1 else ''} needs charging"
 
-    # HTML rows
+    # HTML rows — escape every interpolated value; it originates from an
+    # uploaded Excel and must be treated as untrusted (HTML/markup injection).
     rows_html = ""
     rows_text = ""
     for c in rows:
+        _date = _html.escape(str(c.appointment_date))
+        _name = _html.escape(c.patient_name or "—")
+        _mrn = _html.escape(str(c.patient_mrn or ""))
+        _type = _html.escape(c.appointment_type or "—")
+        _payer = _html.escape(c.payer or "—")
         rows_html += (
             f'<tr>'
-            f'<td style="padding:6px 8px;border-top:1px solid #eee">{c.appointment_date}</td>'
-            f'<td style="padding:6px 8px;border-top:1px solid #eee">{(c.patient_name or "—")}<br>'
-            f'<span style="font-size:11px;color:#888">MRN {c.patient_mrn}</span></td>'
-            f'<td style="padding:6px 8px;border-top:1px solid #eee">{c.appointment_type or "—"}</td>'
-            f'<td style="padding:6px 8px;border-top:1px solid #eee">{c.payer or "—"}</td>'
+            f'<td style="padding:6px 8px;border-top:1px solid #eee">{_date}</td>'
+            f'<td style="padding:6px 8px;border-top:1px solid #eee">{_name}<br>'
+            f'<span style="font-size:11px;color:#888">MRN {_mrn}</span></td>'
+            f'<td style="padding:6px 8px;border-top:1px solid #eee">{_type}</td>'
+            f'<td style="padding:6px 8px;border-top:1px solid #eee">{_payer}</td>'
             f'</tr>'
         )
         link_note = (
@@ -109,7 +116,7 @@ def _build_email(provider: str, portal_url: str, rows: list[MissingCharge]) -> t
 
     html = f"""\
 <html><body style="font-family:Helvetica,Arial,sans-serif;font-size:14px;color:#333">
-<p>Hi Dr. {provider.split(',')[0]},</p>
+<p>Hi Dr. {_html.escape(provider.split(',')[0])},</p>
 
 <p>You have <strong>{count} appointment{'s' if count != 1 else ''}</strong> that need
 charges entered. Open each one in ModMed, finish the note so it bills, then click
@@ -199,36 +206,53 @@ def send_provider_emails(db: Session, *, triggered_by: str = "system") -> dict:
             report["skipped_count"] += 1
             continue
 
-        token = token_svc.mint_token(provider)
-        portal_url = f"{base}/p/missing-charges/{quote(token)}"
+        # Isolate each provider: a failure (SMTP throw, resolve error) must
+        # not abort the whole batch and strand the providers not yet processed.
+        try:
+            token = token_svc.mint_token(provider)
+            portal_url = f"{base}/p/missing-charges/{quote(token)}"
 
-        user = _provider_user(db, provider)
-        if not user or not user.email:
+            user = _provider_user(db, provider)
+            if not user or not user.email:
+                report["providers"].append({
+                    "provider": provider,
+                    "row_count": len(rows),
+                    "status": "skipped_no_email",
+                    "portal_url": portal_url,
+                })
+                report["skipped_count"] += 1
+                continue
+
+            subject, html, text = _build_email(provider, portal_url, rows)
+            ok = send_email(user.email, subject, html, text)
+
+            # Only stamp last_emailed_at when the email actually went out —
+            # otherwise a logged-only/failed send would silently mark rows
+            # "emailed" and break the weekly cadence.
+            if ok:
+                for c in rows:
+                    c.last_emailed_at = now_utc_naive()
+                db.commit()
+                report["sent_count"] += 1
+            else:
+                db.rollback()
+
+            report["providers"].append({
+                "provider": provider,
+                "email": user.email,
+                "row_count": len(rows),
+                "status": "sent" if ok else "logged_only",
+                "portal_url": portal_url,
+            })
+        except Exception as e:                                   # pragma: no cover
+            db.rollback()
+            log.exception("missing-charges email failed for provider %s", provider)
             report["providers"].append({
                 "provider": provider,
                 "row_count": len(rows),
-                "status": "skipped_no_email",
-                "portal_url": portal_url,
+                "status": "error",
+                "error": str(e),
             })
             report["skipped_count"] += 1
-            continue
-
-        subject, html, text = _build_email(provider, portal_url, rows)
-        ok = send_email(user.email, subject, html, text)
-
-        # Stamp last_emailed_at on every row included
-        for c in rows:
-            c.last_emailed_at = now_utc_naive()
-        db.commit()
-
-        report["providers"].append({
-            "provider": provider,
-            "email": user.email,
-            "row_count": len(rows),
-            "status": "sent" if ok else "logged_only",
-            "portal_url": portal_url,
-        })
-        if ok:
-            report["sent_count"] += 1
 
     return report
