@@ -38,6 +38,7 @@ export default function PelletRecallDetail({ recallId, onClose }) {
   const [claimError, setClaimError] = useState(null)
   const [outcome, setOutcome] = useState('')
   const [notes, setNotes] = useState('')
+  const [permanentConfirm, setPermanentConfirm] = useState(null)
   const [dialState, setDialState] = useState(null)   // null | 'ringing' | 'connected' | 'error'
   const [dialMsg, setDialMsg] = useState(null)
   const dialResetTimer = useRef(null)
@@ -113,14 +114,21 @@ export default function PelletRecallDetail({ recallId, onClose }) {
 
   // ── Log outcome ────────────────────────────────────────────────────────────
   const logOutcome = useMutation({
-    mutationFn: () => api.post(`/pellets/recall/${recallId}/outcome`, { outcome, notes }).then(r => r.data),
+    mutationFn: (vars) => api.post(`/pellets/recall/${recallId}/outcome`,
+      { outcome, notes, confirm_permanent: vars?.confirmPermanent || false }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pellet-recall', recallId] })
       setOutcome('')
       setNotes('')
+      setPermanentConfirm(null)
     },
     onError: (err) => {
-      alert(err?.response?.data?.detail || 'Failed to log outcome.')
+      if (err?.response?.status === 409) {
+        setPermanentConfirm(err.response.data?.detail
+          || 'This outcome permanently removes the patient from the recall list.')
+      } else {
+        alert(err?.response?.data?.detail || 'Failed to log outcome.')
+      }
     },
   })
 
@@ -256,7 +264,7 @@ export default function PelletRecallDetail({ recallId, onClose }) {
                   <select
                     className="input text-sm w-full"
                     value={outcome}
-                    onChange={e => setOutcome(e.target.value)}
+                    onChange={e => { setOutcome(e.target.value); setPermanentConfirm(null) }}
                   >
                     <option value="">— Pick an outcome —</option>
                     {outcomes.map(o => (
@@ -270,6 +278,20 @@ export default function PelletRecallDetail({ recallId, onClose }) {
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
                   />
+                  {permanentConfirm && (
+                    <div className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 space-y-2">
+                      <div>⚠ {permanentConfirm}</div>
+                      <div className="flex gap-2 justify-end">
+                        <button className="btn-secondary text-xs"
+                                onClick={() => setPermanentConfirm(null)}>Cancel</button>
+                        <button className="btn-primary text-xs"
+                                disabled={logOutcome.isPending}
+                                onClick={() => logOutcome.mutate({ confirmPermanent: true })}>
+                          {logOutcome.isPending ? 'Removing…' : 'Confirm & Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex justify-end">
                     <button
                       className="btn-primary text-sm"
