@@ -99,6 +99,7 @@ def import_rows(
     """Upsert by (patient_mrn, appointment_date). Returns
     (new_count, duplicate_count, error_count)."""
     new_count = dup_count = err_count = 0
+    seen_keys: set[tuple] = set()
 
     for row in rows:
         mrn = row.get("patient_mrn")
@@ -106,6 +107,17 @@ def import_rows(
         if not mrn or not dos:
             err_count += 1
             continue
+
+        # Same (mrn, date) already handled earlier in THIS file. The session is
+        # autoflush=False, so the DB existence check below can't see the first
+        # row's pending insert — without this guard both rows would be added and
+        # db.commit() would blow up on uq_missing_charge_mrn_date, failing the
+        # whole upload. First occurrence wins; later ones count as duplicates.
+        key = (mrn, dos)
+        if key in seen_keys:
+            dup_count += 1
+            continue
+        seen_keys.add(key)
 
         existing = (db.query(MissingCharge)
                       .filter(MissingCharge.patient_mrn == mrn,
