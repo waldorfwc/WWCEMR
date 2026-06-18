@@ -98,7 +98,7 @@ def picklists(db: Session = Depends(get_db),
 async def upload_report(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW)),
+    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK)),
 ):
     """Parse an 'Appointment Missing Charges' Excel and upsert rows.
     Dedupe key: (patient_mrn, appointment_date)."""
@@ -291,7 +291,7 @@ class ChargePatch(BaseModel):
 @router.patch("/{charge_id}")
 def patch_charge(charge_id: str, payload: ChargePatch,
                   db: Session = Depends(get_db),
-                  current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
+                  current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
     c = _load(db, charge_id)
     actor = current_user.get("email") or "system"
     data = payload.model_dump(exclude_unset=True)
@@ -334,7 +334,7 @@ class NoteIn(BaseModel):
 @router.post("/{charge_id}/notes", status_code=201)
 def add_note(charge_id: str, payload: NoteIn,
               db: Session = Depends(get_db),
-              current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
+              current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
     c = _load(db, charge_id)
     if not payload.body.strip():
         raise HTTPException(status_code=422, detail="note body required")
@@ -366,7 +366,7 @@ class ProviderTokenMint(BaseModel):
 
 @router.post("/provider-tokens")
 def mint_provider_token(payload: ProviderTokenMint,
-                          current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
+                          current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
     """Mint a signed token for a provider. Anyone with claim:read can
     generate one (so a biller can copy the link and email it ad hoc).
     Returns both the raw token and the full portal URL."""
@@ -469,7 +469,7 @@ def provider_action(token: str, charge_id: str, payload: ProviderActionIn,
 
 @router.post("/email-providers")
 def email_providers(db: Session = Depends(get_db),
-                     current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
+                     current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
     """Send one email per provider with their open `needs_to_be_billed`
     rows + a signed portal link. Returns the send report.
 
@@ -553,7 +553,7 @@ def _normalize_name_to_tokens(name: str) -> Optional[tuple]:
 @router.post("/provider-mappings/auto-match")
 def auto_match_provider_mappings(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW)),
+    current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK)),
 ):
     """Walk unmapped provider names, pair each with an active Google-sync'd
     user whose display_name matches by tokens (first + last, case-insensitive,
@@ -632,7 +632,7 @@ class MappingIn(BaseModel):
 @router.post("/provider-mappings", status_code=201)
 def create_provider_mapping(payload: MappingIn,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
+                              current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
     name = payload.provider_name.strip()
     email = (payload.user_email or "").strip().lower()
     ignored = bool(payload.is_ignored)
@@ -666,7 +666,7 @@ class MappingPatch(BaseModel):
 @router.patch("/provider-mappings/{mapping_id}")
 def patch_provider_mapping(mapping_id: str, payload: MappingPatch,
                              db: Session = Depends(get_db),
-                             current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.VIEW))):
+                             current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
     m = db.query(ProviderUserMapping).filter(ProviderUserMapping.id == mapping_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="mapping not found")

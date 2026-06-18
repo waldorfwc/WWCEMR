@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Receipt, Search, X, Check, MessageSquare, ExternalLink,
@@ -74,6 +74,8 @@ export default function MissingCharges() {
     open_only: true, search: '',
   })
   const [sort, setSort] = useState({ key: '', dir: '' })
+  const [page, setPage] = useState(1)
+  const PER_PAGE = 200
   function toggleSort(key) {
     setSort(prev => {
       if (prev.key !== key)    return { key, dir: 'asc' }
@@ -81,6 +83,9 @@ export default function MissingCharges() {
       return { key: '', dir: '' }   // third click clears
     })
   }
+  // Reset to page 1 whenever the filters or sort change so the user never
+  // lands on a now-empty page.
+  useEffect(() => { setPage(1) }, [JSON.stringify(filters), JSON.stringify(sort)])
   const [uploading, setUploading] = useState(false)
   const [emailingProviders, setEmailingProviders] = useState(false)
   const [openId, setOpenId] = useState(null)
@@ -95,13 +100,14 @@ export default function MissingCharges() {
     queryFn: () => api.get('/billing/missing-charges/dashboard').then(r => r.data),
   })
   const { data, isLoading } = useQuery({
-    queryKey: ['mc-list', filters, sort],
+    queryKey: ['mc-list', filters, sort, page],
     queryFn: () => api.get('/billing/missing-charges', {
       params: {
         ...Object.fromEntries(
           Object.entries(filters).filter(([_, v]) => v !== '' && v !== false)
         ),
         ...(sort.key ? { sort: sort.key, sort_dir: sort.dir } : {}),
+        page, per_page: PER_PAGE,
       },
     }).then(r => r.data),
   })
@@ -302,6 +308,33 @@ export default function MissingCharges() {
           </tbody>
         </table>
       </div>
+
+      {/* Pager */}
+      {(() => {
+        const total = data?.total ?? 0
+        const pageCount = Math.max(1, Math.ceil(total / PER_PAGE))
+        if (total === 0) return null
+        const start = (page - 1) * PER_PAGE + 1
+        const end = Math.min(page * PER_PAGE, total)
+        return (
+          <div className="flex items-center justify-between mt-2 text-[12px] text-gray-600">
+            <span>Showing <strong>{start}–{end}</strong> of <strong>{total}</strong></span>
+            <div className="flex items-center gap-2">
+              <button className="btn-secondary text-[12px] disabled:opacity-40"
+                      disabled={page <= 1 || isLoading}
+                      onClick={() => setPage(p => Math.max(1, p - 1))}>
+                Previous
+              </button>
+              <span>Page {page} of {pageCount}</span>
+              <button className="btn-secondary text-[12px] disabled:opacity-40"
+                      disabled={page >= pageCount || isLoading}
+                      onClick={() => setPage(p => p + 1)}>
+                Next
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {uploading && (
         <UploadDrawer onClose={() => setUploading(false)} />
