@@ -124,3 +124,19 @@ def test_inventory_health(db):
     assert out["total_on_hand"] == 1
     assert out["expiring"] == 1
     assert out["below_reorder"] == 1
+
+
+def test_rows_for_billing_backlog(db):
+    t = _dtype(db)
+    d = _device(db, t, ownership="wwc_owned")
+    _assignment(db, t, status="inserted", device=d, chart="R1", billed_at=None)
+    rows = rpt.rows_for(db, "billing_backlog", date_from=date(2026, 6, 1),
+                        date_to=date(2026, 6, 30), location=None, device_type_id=None)
+    assert len(rows) == 1 and rows[0]["chart_number"] == "R1"
+    assert {"assignment_id", "chart_number", "patient_name", "status"} <= set(rows[0])
+
+
+def test_rows_to_csv_has_header_and_rows():
+    csv_text = rpt.rows_to_csv([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
+    lines = [ln for ln in csv_text.splitlines() if ln.strip()]
+    assert lines[0] == "a,b" and len(lines) == 3

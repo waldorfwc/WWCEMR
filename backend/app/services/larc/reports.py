@@ -3,6 +3,8 @@ over the assignment/device data, parameterized by an optional location +
 device-type filter and (for period tiles) a date range. No persistence."""
 from __future__ import annotations
 
+import csv
+import io
 from datetime import date, datetime, time, timedelta
 from typing import Optional
 
@@ -189,3 +191,140 @@ def inventory_health(db: Session, *, location: Optional[str] = None,
             below += 1
     return {"total_on_hand": len(devices), "by_type": by_type,
             "expiring": expiring, "below_reorder": below}
+
+
+def _assignment_row(a, type_names: dict) -> dict:
+    dev = a.device
+    return {
+        "assignment_id": str(a.id),
+        "chart_number": a.chart_number,
+        "patient_name": a.patient_name,
+        "device_type": type_names.get(a.device_type_id),
+        "ownership": (dev.ownership if dev else None),
+        "location": (dev.location if dev else None),
+        "status": a.status,
+        "source_flow": a.source_flow,
+        "inserted_at": a.inserted_at.strftime("%m/%d/%Y") if a.inserted_at else None,
+        "billed_at": a.billed_at.strftime("%m/%d/%Y") if a.billed_at else None,
+    }
+
+
+VALID_TILES = ("workflow_funnel", "outstanding_enrollment", "insertions",
+               "billing_backlog", "owed_patients", "inventory_health",
+               "insertion_outcomes")
+
+
+def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
+             location: Optional[str] = None, device_type_id: Optional[str] = None,
+             bucket: Optional[str] = None, today: Optional[date] = None) -> list[dict]:
+    today = today or now_utc_naive().date()
+    type_names = {t.id: t.name for t in db.query(LarcDeviceType).all()}
+
+    if tile in ("workflow_funnel", "outstanding_enrollment"):
+        q = (_assignment_base(db, location, device_type_id)
+             .options(joinedload(LarcAssignment.milestones),
+                      joinedload(LarcAssignment.device)))
+        out = []
+        for a in q.all():
+            buckets = assignment_buckets(a, today)
+            if tile == "outstanding_enrollment":
+                buckets = {b for b in buckets if b in _ENROLLMENT_STAGES}
+            if not buckets:
+                continue
+            if bucket and bucket not in buckets:
+                continue
+            r = _assignment_row(a, type_names)
+            r["bucket"] = "; ".join(sorted(buckets))
+            out.append(r)
+        return out
+
+    if tile == "insertions":
+        rows = _inserted_in_range_q(db, date_from, date_to, location, device_type_id).all()
+        cats = {t.id: t.category for t in db.query(LarcDeviceType).all()}
+        out = []
+        for a in rows:
+            cat = cats.get(a.device_type_id, "larc")
+            if bucket and cat != bucket:
+                continue
+            r = _assignment_row(a, type_names)
+            r["category"] = cat
+            out.append(r)
+        return out
+
+    if tile == "billing_backlog":
+        q = (_assignment_base(db, location, device_type_id)
+             .filter(LarcAssignment.status == "inserted",
+                     LarcAssignment.billed_at.is_(None))
+             .options(joinedload(LarcAssignment.device)))
+        return [_assignment_row(a, type_names) for a in q.all()]
+
+    if tile == "owed_patients":
+        from app.models.larc import LarcOwedPatient
+        if bucket == "awaiting_replacement":
+            q = (_assignment_base(db, location, device_type_id)
+                 .filter(LarcAssignment.status == "failed_used",
+                         LarcAssignment.replacement_assignment_id.is_(None))
+                 .options(joinedload(LarcAssignment.device)))
+            return [_assignment_row(a, type_names) for a in q.all()]
+        oq = db.query(LarcOwedPatient).filter(LarcOwedPatient.resolved_at.is_(None))
+        if device_type_id:
+            oq = oq.filter(LarcOwedPatient.original_device_type_id == device_type_id)
+        return [{"chart_number": o.chart_number, "patient_name": o.patient_name,
+                 "device_type": type_names.get(o.original_device_type_id),
+                 "owed_since": o.owed_since.strftime("%m/%d/%Y") if o.owed_since else None}
+                for o in oq.all()]
+
+    if tile == "inventory_health":
+        horizon = today + timedelta(days=90)
+        devices = _instock_devices_q(db, location, device_type_id).all()
+        out = []
+        for d in devices:
+            if bucket == "expiring":
+                if not (d.expiration_date and d.expiration_date <= horizon):
+                    continue
+            elif bucket and bucket not in ("expiring", "below_reorder"):
+                if str(d.device_type_id) != bucket:
+                    continue
+            out.append({"our_id": d.our_id, "device_type": type_names.get(d.device_type_id),
+                        "location": d.location, "ownership": d.ownership,
+                        "expiration_date": d.expiration_date.strftime("%m/%d/%Y") if d.expiration_date else None})
+        return out
+
+    if tile == "insertion_outcomes":
+        from app.models.larc import LarcCheckout
+        q = (db.query(LarcCheckout, LarcAssignment)
+             .join(LarcAssignment, LarcCheckout.assignment_id == LarcAssignment.id)
+             .filter(LarcAssignment.deleted_at.is_(None),
+                     LarcCheckout.outcome.isnot(None),
+                     LarcCheckout.requested_at >= _dt_floor(date_from),
+                     LarcCheckout.requested_at < _dt_floor(date_to + timedelta(days=1))))
+        if device_type_id:
+            q = q.filter(LarcAssignment.device_type_id == device_type_id)
+        if location:
+            q = q.join(LarcDevice, LarcAssignment.device_id == LarcDevice.id).filter(LarcDevice.location == location)
+        _label = {"inserted": "success"}
+        out = []
+        for c, a in q.all():
+            key = _label.get(c.outcome, c.outcome)
+            if bucket and key != bucket:
+                continue
+            out.append({"checkout_id": str(c.id), "chart_number": a.chart_number,
+                        "patient_name": a.patient_name, "device_type": type_names.get(a.device_type_id),
+                        "outcome": c.outcome,
+                        "requested_at": c.requested_at.strftime("%m/%d/%Y") if c.requested_at else None})
+        return out
+
+    raise ValueError(f"unknown tile: {tile}")
+
+
+def rows_to_csv(rows: list[dict]) -> str:
+    if not rows:
+        return ""
+    fields = list(rows[0].keys())
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=fields, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: ("; ".join(map(str, v)) if isinstance(v, list) else v)
+                    for k, v in r.items()})
+    return buf.getvalue()
