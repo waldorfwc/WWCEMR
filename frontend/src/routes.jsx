@@ -83,6 +83,7 @@ import PelletDoseTypes from './pages/PelletDoseTypes'
 import PelletManual from './pages/PelletManual'
 import PelletPatientDetail from './pages/PelletPatientDetail'
 import PelletPatients from './pages/PelletPatients'
+import PelletRecall from './pages/PelletRecall'
 import PelletReports from './pages/PelletReports'
 import PelletSettings from './pages/PelletSettings'
 import Pellets from './pages/Pellets'
@@ -253,6 +254,7 @@ export const ROUTES = [
     { path: 'counts/:id',   element: <PelletCountDetail />,   module: M.PELLETS, tier: TIER.WORK },
     { path: 'audit',        element: <PelletAudit />,         module: M.PELLETS, tier: TIER.VIEW },
     { path: 'reports',      element: <PelletReports />,       module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'recall',       element: <PelletRecall />,        module: M.PELLETS, tier: TIER.WORK },
     { path: 'manual',       element: <PelletManual />,        module: M.PELLETS, tier: TIER.VIEW },
     { path: 'patients',     element: <PelletPatients />,      module: M.PELLETS, tier: TIER.VIEW },
     { path: 'patients/:id', element: <PelletPatientDetail />, module: M.PELLETS, tier: TIER.VIEW },

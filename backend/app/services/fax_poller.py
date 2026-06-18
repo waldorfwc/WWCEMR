@@ -157,6 +157,23 @@ def _checklist_eod_nudge():
         db.close()
 
 
+def _pellet_recall_sync():
+    """Daily: refresh the pellet recall worklist (idempotent)."""
+    from datetime import date
+    db = SessionLocal()
+    try:
+        from app.services.cron_lock import claim_cron_run
+        if not claim_cron_run(db, "pellet_recall_sync", date.today().isoformat()):
+            return
+        from app.services.pellet.recall_sync import materialize_pellet_recalls
+        materialize_pellet_recalls(db)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Pellet recall sync error: %s", exc)
+    finally:
+        db.close()
+
+
 def _pellet_stale_sweep():
     """Nightly: auto-cancel pellet visits 7+ days past scheduled with
     still-proposed dose lines. Returns stock for any pulled-but-not-inserted
@@ -306,6 +323,10 @@ def start_scheduler() -> BackgroundScheduler:
     # Pellet scheduling — roll the slot horizon forward nightly at 2 AM.
     sched.add_job(_pellet_slot_materialize, "cron", hour=2, minute=0,
                   id="pellet_slot_materialize", max_instances=1, coalesce=True)
+    # Pellet recall sync — refresh the recall worklist daily at 3 AM.
+    sched.add_job(_pellet_recall_sync, "cron", hour=3, minute=0,
+                  id="pellet_recall_sync", replace_existing=True,
+                  max_instances=1, coalesce=True)
     # Missing-charges provider emails — Monday 8 AM weekly
     sched.add_job(_missing_charges_weekly_emails, "cron",
                   day_of_week="mon", hour=8, minute=0,
