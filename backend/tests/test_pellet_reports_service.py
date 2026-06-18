@@ -192,3 +192,22 @@ def test_rows_for_inventory_bucket_filters(db):
     # bucket=expiring keeps only the lot expiring within 90 days
     exp_rows = rpt.rows_for(db, "inventory_health", bucket="expiring", **kw)
     assert len(exp_rows) == 1 and exp_rows[0]["lot_number"] == "NEAR"
+
+
+def test_below_reorder_drill_matches_count_incl_depleted(db):
+    from datetime import date as _d
+    from app.models.pellet import PelletDoseType, PelletStock, PelletLot
+    # Dose type with a white_plains threshold of 20 but NO stock on hand.
+    dt_type = PelletDoseType(hormone="testosterone", dose_mg=200, label="T 200",
+                             reorder_thresholds_by_location={"white_plains": 20})
+    db.add(dt_type); db.commit()
+    # Headline counts it as below-reorder (0 < 20)...
+    tile = rpt.inventory_health(db, location=None, today=_d(2026, 6, 15))
+    assert tile["below_reorder"] == 1
+    # ...and the drill now surfaces it (synthetic 0-on-hand row), matching count.
+    rows = rpt.rows_for(db, "inventory_health", date_from=_d(2026, 6, 1),
+                        date_to=_d(2026, 6, 30), location=None, provider=None,
+                        bucket="below_reorder", today=_d(2026, 6, 15))
+    assert len(rows) == 1
+    assert rows[0]["dose_type"] == "T 200" and rows[0]["doses_on_hand"] == 0
+    assert rows[0]["reorder_threshold"] == 20

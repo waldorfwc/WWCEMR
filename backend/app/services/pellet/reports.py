@@ -352,39 +352,49 @@ def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
         from app.models.pellet import PelletDoseType, PelletLot, PelletStock
         today = today or now_utc_naive().date()
         horizon = today + timedelta(days=90)
-        _LOCS = ("white_plains", "brandywine", "arlington")
-        sq = db.query(PelletStock).filter(PelletStock.status == "active",
-                                          PelletStock.doses_on_hand > 0)
-        if location:
-            sq = sq.filter(PelletStock.location == location)
-        # `bucket` narrows the drill: a specific location, the expiring lots, or
-        # the dose types/locations below their reorder threshold.
-        if bucket in _LOCS:
-            sq = sq.filter(PelletStock.location == bucket)
-        lots = {l.id: l for l in db.query(PelletLot).all()}
         types = {d.id: d for d in db.query(PelletDoseType).all()}
-        stocks = sq.all()
-        below_keys: set = set()
+
         if bucket == "below_reorder":
+            # Synthetic rows per (location, dose_type) below its reorder
+            # threshold — on-hand summed over ALL active stock (incl. zero/no
+            # stock), so the drill matches the headline count exactly and the
+            # "we're out" cases (the most important ones) actually show up.
+            stock_q = db.query(PelletStock).filter(PelletStock.status == "active")
+            if location:
+                stock_q = stock_q.filter(PelletStock.location == location)
+            lots = {l.id: l for l in db.query(PelletLot).all()}
             onhand: dict = {}
-            for s in stocks:
+            for s in stock_q.all():
                 lot = lots.get(s.lot_id)
                 if lot:
                     k = (s.location, lot.dose_type_id)
                     onhand[k] = onhand.get(k, 0) + int(s.doses_on_hand or 0)
+            out = []
             for d in types.values():
                 for loc, thr in (d.reorder_thresholds_by_location or {}).items():
-                    if thr is not None and onhand.get((loc, d.id), 0) < int(thr):
-                        below_keys.add((loc, d.id))
+                    if thr is None or (location and loc != location):
+                        continue
+                    on = onhand.get((loc, d.id), 0)
+                    if on < int(thr):
+                        out.append({"location": loc, "dose_type": d.label,
+                                    "doses_on_hand": on, "reorder_threshold": int(thr)})
+            return out
+
+        # Default / location / expiring: one row per in-stock lot×location.
+        sq = db.query(PelletStock).filter(PelletStock.status == "active",
+                                          PelletStock.doses_on_hand > 0)
+        if location:
+            sq = sq.filter(PelletStock.location == location)
+        # Any bucket that isn't the "expiring" pseudo-bucket is a location.
+        if bucket and bucket != "expiring":
+            sq = sq.filter(PelletStock.location == bucket)
+        lots = {l.id: l for l in db.query(PelletLot).all()}
         out = []
-        for s in stocks:
+        for s in sq.all():
             lot = lots.get(s.lot_id)
             dose = types.get(lot.dose_type_id) if lot else None
             if bucket == "expiring":
                 if not (lot and lot.expiration_date and lot.expiration_date <= horizon):
-                    continue
-            if bucket == "below_reorder":
-                if not (lot and (s.location, lot.dose_type_id) in below_keys):
                     continue
             out.append({
                 "location": s.location,
