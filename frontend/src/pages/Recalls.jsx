@@ -550,6 +550,7 @@ function RecallDrawer({ recallId, onClose }) {
   const { user } = useCurrentUser()
   const [outcome, setOutcome] = useState('')
   const [notes, setNotes] = useState('')
+  const [permanentConfirm, setPermanentConfirm] = useState(null)
   const [claimError, setClaimError] = useState(null)
 
   const { data } = useQuery({
@@ -599,14 +600,23 @@ function RecallDrawer({ recallId, onClose }) {
   const phone = recall?.cell_phone || recall?.primary_phone
 
   const submit = useMutation({
-    mutationFn: () => api.post(`/recalls/${recallId}/outcome`, {
-      outcome, notes: notes || null,
+    mutationFn: (vars) => api.post(`/recalls/${recallId}/outcome`, {
+      outcome, notes: notes || null, confirm_permanent: vars?.confirmPermanent || false,
     }).then(r => r.data),
     onSuccess: () => {
+      setPermanentConfirm(null)
       qc.invalidateQueries({ queryKey: ['recalls'] })
       qc.invalidateQueries({ queryKey: ['recalls-dash'] })
       qc.invalidateQueries({ queryKey: ['recalls', recallId] })
       onClose()
+    },
+    onError: (err) => {
+      if (err?.response?.status === 409) {
+        setPermanentConfirm(err.response.data?.detail
+          || 'This outcome permanently suppresses this patient.')
+      } else {
+        alert(err?.response?.data?.detail || 'Failed to log outcome.')
+      }
     },
   })
 
@@ -711,7 +721,7 @@ function RecallDrawer({ recallId, onClose }) {
               <div className="space-y-2">
                 <select className="input text-sm w-full"
                         value={outcome}
-                        onChange={e => setOutcome(e.target.value)}>
+                        onChange={e => { setOutcome(e.target.value); setPermanentConfirm(null) }}>
                   <option value="">— Pick an outcome —</option>
                   {(catalog?.outcomes || []).map(o => (
                     <option key={o.value} value={o.value}>
@@ -726,9 +736,23 @@ function RecallDrawer({ recallId, onClose }) {
                           placeholder="Notes / next steps…"
                           value={notes}
                           onChange={e => setNotes(e.target.value)} />
-                {isPermanent && (
+                {isPermanent && !permanentConfirm && (
                   <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
                     ⚠ This outcome will permanently suppress this patient. They cannot be re-added to the recall list.
+                  </div>
+                )}
+                {permanentConfirm && (
+                  <div className="text-[12px] text-amber-800 bg-amber-50 border border-amber-200 rounded p-2 space-y-2">
+                    <div>⚠ {permanentConfirm}</div>
+                    <div className="flex gap-2 justify-end">
+                      <button className="btn-secondary text-xs"
+                              onClick={() => setPermanentConfirm(null)}>Cancel</button>
+                      <button className="btn-primary text-xs"
+                              disabled={submit.isPending}
+                              onClick={() => submit.mutate({ confirmPermanent: true })}>
+                        {submit.isPending ? 'Removing…' : 'Confirm & Remove'}
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div className="flex justify-end">
