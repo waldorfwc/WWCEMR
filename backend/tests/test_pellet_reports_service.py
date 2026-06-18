@@ -168,3 +168,27 @@ def test_rows_to_csv_has_header_and_rows():
     csv_text = rpt.rows_to_csv([{"a": 1, "b": "x"}, {"a": 2, "b": "y"}])
     lines = [ln for ln in csv_text.splitlines() if ln.strip()]
     assert lines[0] == "a,b" and len(lines) == 3
+
+
+def test_rows_for_inventory_bucket_filters(db):
+    from datetime import date as _d
+    from app.models.pellet import PelletDoseType, PelletLot, PelletStock
+    dt_type = PelletDoseType(hormone="estradiol", dose_mg=12.5, label="E 12.5",
+                             reorder_thresholds_by_location={"white_plains": 20})
+    db.add(dt_type); db.flush()
+    near = PelletLot(dose_type_id=dt_type.id, qualgen_lot_number="NEAR",
+                     expiration_date=_d(2026, 7, 1), doses_originally_received=5)
+    far = PelletLot(dose_type_id=dt_type.id, qualgen_lot_number="FAR",
+                    expiration_date=_d(2027, 1, 1), doses_originally_received=5)
+    db.add(near); db.add(far); db.flush()
+    db.add(PelletStock(lot_id=near.id, location="white_plains", doses_on_hand=3, status="active"))
+    db.add(PelletStock(lot_id=far.id, location="arlington", doses_on_hand=4, status="active"))
+    db.commit()
+    kw = dict(date_from=_d(2026, 6, 1), date_to=_d(2026, 6, 30),
+              location=None, provider=None, today=_d(2026, 6, 15))
+    # bucket=location filters to that location
+    loc_rows = rpt.rows_for(db, "inventory_health", bucket="arlington", **kw)
+    assert len(loc_rows) == 1 and loc_rows[0]["location"] == "arlington"
+    # bucket=expiring keeps only the lot expiring within 90 days
+    exp_rows = rpt.rows_for(db, "inventory_health", bucket="expiring", **kw)
+    assert len(exp_rows) == 1 and exp_rows[0]["lot_number"] == "NEAR"

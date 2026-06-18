@@ -350,16 +350,42 @@ def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
 
     if tile == "inventory_health":
         from app.models.pellet import PelletDoseType, PelletLot, PelletStock
+        today = today or now_utc_naive().date()
+        horizon = today + timedelta(days=90)
+        _LOCS = ("white_plains", "brandywine", "arlington")
         sq = db.query(PelletStock).filter(PelletStock.status == "active",
                                           PelletStock.doses_on_hand > 0)
         if location:
             sq = sq.filter(PelletStock.location == location)
+        # `bucket` narrows the drill: a specific location, the expiring lots, or
+        # the dose types/locations below their reorder threshold.
+        if bucket in _LOCS:
+            sq = sq.filter(PelletStock.location == bucket)
         lots = {l.id: l for l in db.query(PelletLot).all()}
         types = {d.id: d for d in db.query(PelletDoseType).all()}
+        stocks = sq.all()
+        below_keys: set = set()
+        if bucket == "below_reorder":
+            onhand: dict = {}
+            for s in stocks:
+                lot = lots.get(s.lot_id)
+                if lot:
+                    k = (s.location, lot.dose_type_id)
+                    onhand[k] = onhand.get(k, 0) + int(s.doses_on_hand or 0)
+            for d in types.values():
+                for loc, thr in (d.reorder_thresholds_by_location or {}).items():
+                    if thr is not None and onhand.get((loc, d.id), 0) < int(thr):
+                        below_keys.add((loc, d.id))
         out = []
-        for s in sq.all():
+        for s in stocks:
             lot = lots.get(s.lot_id)
             dose = types.get(lot.dose_type_id) if lot else None
+            if bucket == "expiring":
+                if not (lot and lot.expiration_date and lot.expiration_date <= horizon):
+                    continue
+            if bucket == "below_reorder":
+                if not (lot and (s.location, lot.dose_type_id) in below_keys):
+                    continue
             out.append({
                 "location": s.location,
                 "lot_number": lot.qualgen_lot_number if lot else None,
