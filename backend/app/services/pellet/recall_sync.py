@@ -12,6 +12,21 @@ from app.models.recall import RecallEntry
 from app.utils.dt import now_utc_naive
 
 PELLET_RECALL_TYPE = "Pellet Re-insertion"
+RECALL_LAST_SYNCED_KEY = "recall_last_synced_at"
+
+
+def _stamp_last_synced(db: Session) -> None:
+    """Record when the pellet recall queue was last materialized, so the
+    reports tile can show a 'last synced' hint (stored in the pellet KV table,
+    not the tunable settings registry)."""
+    from app.models.pellet_config import PelletConfig
+    stamp = now_utc_naive().isoformat()
+    row = (db.query(PelletConfig)
+             .filter(PelletConfig.key == RECALL_LAST_SYNCED_KEY).first())
+    if row is None:
+        db.add(PelletConfig(key=RECALL_LAST_SYNCED_KEY, value=stamp, updated_by="recall-sync"))
+    else:
+        row.value = stamp
 
 
 def _to_date(s):
@@ -62,5 +77,6 @@ def materialize_pellet_recalls(db: Session) -> dict:
         if chart not in seen and e.status == "active":
             e.status = "completed"; completed += 1
 
+    _stamp_last_synced(db)
     db.commit()
     return {"created": created, "updated": updated, "completed": completed}

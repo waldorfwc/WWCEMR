@@ -91,6 +91,25 @@ def _pellet_recall_entries(db) -> dict:
               .filter(RecallEntry.recall_type == PELLET_RECALL_TYPE).all()}
 
 
+def _recall_last_synced(db) -> Optional[str]:
+    """When the pellet recall queue was last materialized, formatted for display
+    (None if it has never run — the contact-status numbers are only meaningful
+    once a sync has populated the recall engine)."""
+    from app.models.pellet_config import PelletConfig
+    from app.services.pellet.recall_sync import RECALL_LAST_SYNCED_KEY
+    try:
+        row = (db.query(PelletConfig)
+                 .filter(PelletConfig.key == RECALL_LAST_SYNCED_KEY).first())
+    except Exception:                                        # pragma: no cover
+        return None
+    if not row or not row.value:
+        return None
+    try:
+        return datetime.fromisoformat(row.value).strftime("%m/%d/%Y %I:%M %p")
+    except (ValueError, TypeError):                          # pragma: no cover
+        return None
+
+
 def recall_due(db: Session, *, location: Optional[str] = None,
                provider: Optional[str] = None, today: Optional[date] = None) -> dict:
     """Snapshot: active patients past (or nearing) their recall interval, with
@@ -132,7 +151,8 @@ def recall_due(db: Session, *, location: Optional[str] = None,
         else:
             not_contacted += 1
     return {"overdue": overdue, "due_soon": due_soon, "total": overdue + due_soon,
-            "not_contacted": not_contacted, "contacted": contacted}
+            "not_contacted": not_contacted, "contacted": contacted,
+            "last_synced_at": _recall_last_synced(db)}
 
 
 def _mammo_ok(db, p, ref: date) -> bool:

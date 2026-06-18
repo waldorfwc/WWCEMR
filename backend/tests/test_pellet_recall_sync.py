@@ -83,6 +83,21 @@ def test_sync_ignores_wwe_entries(db):
     assert wwe.status == "active"
 
 
+def test_sync_records_last_synced_stamp(db):
+    from app.models.pellet_config import PelletConfig
+    from app.services.pellet.recall_sync import RECALL_LAST_SYNCED_KEY
+    _due_patient(db, "DUE6")
+    materialize_pellet_recalls(db)
+    row = (db.query(PelletConfig)
+             .filter(PelletConfig.key == RECALL_LAST_SYNCED_KEY).one())
+    # Stored as a parseable ISO timestamp; refreshed on a later run.
+    first = row.value
+    assert datetime.fromisoformat(first)
+    materialize_pellet_recalls(db)
+    db.refresh(row)
+    assert datetime.fromisoformat(row.value) >= datetime.fromisoformat(first)
+
+
 def test_cron_job_runs(db, monkeypatch):
     import app.services.fax_poller as fp
     # Allow the lock (3-arg: db, job_name, run_key) + use the test session.

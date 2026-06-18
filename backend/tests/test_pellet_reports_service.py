@@ -171,6 +171,20 @@ def test_recall_due_contact_status(db):
     assert out["not_contacted"] == 1
 
 
+def test_recall_due_last_synced_hint(db):
+    from app.models.pellet_config import PelletConfig
+    from app.services.pellet.recall_sync import RECALL_LAST_SYNCED_KEY
+    # No sync row yet -> None.
+    assert rpt.recall_due(db, location=None, provider=None,
+                          today=date(2026, 6, 15))["last_synced_at"] is None
+    # With a stored ISO stamp -> formatted MM/DD/YYYY h:mm AM/PM.
+    db.add(PelletConfig(key=RECALL_LAST_SYNCED_KEY,
+                        value="2026-06-15T13:05:00", updated_by="recall-sync"))
+    db.commit()
+    out = rpt.recall_due(db, location=None, provider=None, today=date(2026, 6, 15))
+    assert out["last_synced_at"] == "06/15/2026 01:05 PM"
+
+
 def test_rows_for_recall_due_contact_columns_and_bucket(db):
     from app.models.recall import RecallEntry
     from app.services.pellet.recall_sync import PELLET_RECALL_TYPE

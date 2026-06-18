@@ -434,6 +434,11 @@ export default function PelletReports() {
                 </div>
               )}
             </div>
+            <div className="mt-3 pt-2 border-t border-plum-200 text-[11px] text-muted">
+              {s.recall_due?.last_synced_at
+                ? `Last synced ${s.recall_due.last_synced_at}`
+                : 'Never synced — run the recall sync'}
+            </div>
           </Tile>
 
           {/* ── 4. Prerequisites Not Ready ────────────────────────────── */}
