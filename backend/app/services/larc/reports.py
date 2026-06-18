@@ -73,3 +73,55 @@ def outstanding_enrollment(db: Session, *, location: Optional[str] = None,
             for s in stages:
                 by_stage[s] += 1
     return {"by_stage": by_stage, "total": total}
+
+
+def _inserted_in_range_q(db, date_from, date_to, location, device_type_id):
+    return (_assignment_base(db, location, device_type_id)
+            .filter(LarcAssignment.status.in_(("inserted", "billed")),
+                    LarcAssignment.inserted_at.isnot(None),
+                    LarcAssignment.inserted_at >= _dt_floor(date_from),
+                    LarcAssignment.inserted_at < _dt_floor(date_to + timedelta(days=1))))
+
+
+def insertions(db: Session, *, date_from: date, date_to: date,
+               location: Optional[str] = None, device_type_id: Optional[str] = None) -> dict:
+    rows = _inserted_in_range_q(db, date_from, date_to, location, device_type_id).all()
+    cats = {t.id: t.category for t in db.query(LarcDeviceType).all()}
+    by_category: dict = {}
+    for a in rows:
+        c = cats.get(a.device_type_id, "larc")
+        by_category[c] = by_category.get(c, 0) + 1
+    total = len(rows)
+    length = (date_to - date_from).days + 1
+    prior_to = date_from - timedelta(days=1)
+    prior_from = prior_to - timedelta(days=length - 1)
+    prior_total = _inserted_in_range_q(db, prior_from, prior_to, location, device_type_id).count()
+    return {"total": total, "by_category": by_category, "prior_total": prior_total,
+            "prior_from": prior_from, "prior_to": prior_to, "delta": total - prior_total}
+
+
+def insertion_outcomes(db: Session, *, date_from: date, date_to: date,
+                       location: Optional[str] = None,
+                       device_type_id: Optional[str] = None) -> dict:
+    """Period: insertion-visit outcomes from LarcCheckout (requested_at in range)."""
+    from app.models.larc import LarcCheckout
+    q = (db.query(LarcCheckout)
+         .join(LarcAssignment, LarcCheckout.assignment_id == LarcAssignment.id)
+         .filter(LarcAssignment.deleted_at.is_(None),
+                 LarcCheckout.outcome.isnot(None),
+                 LarcCheckout.requested_at >= _dt_floor(date_from),
+                 LarcCheckout.requested_at < _dt_floor(date_to + timedelta(days=1)))
+         )
+    if device_type_id:
+        q = q.filter(LarcAssignment.device_type_id == device_type_id)
+    if location:
+        q = (q.join(LarcDevice, LarcAssignment.device_id == LarcDevice.id)
+               .filter(LarcDevice.location == location))
+    rows = q.all()
+    success = sum(1 for c in rows if c.outcome == "inserted")
+    fu = sum(1 for c in rows if c.outcome == "failed_unused")
+    fused = sum(1 for c in rows if c.outcome == "failed_used")
+    attempts = success + fu + fused
+    rate = round((fu + fused) / attempts, 2) if attempts else 0.0
+    return {"success": success, "failed_unused": fu, "failed_used": fused,
+            "total": attempts, "failure_rate": rate}

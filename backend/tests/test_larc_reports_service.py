@@ -55,3 +55,37 @@ def test_outstanding_enrollment(db):
     assert out["total"] >= 0
     assert set(out["by_stage"]) == {"needs_enrollment", "needs_fax",
                                     "awaiting_receipt", "received_not_notified"}
+
+
+def test_insertions_in_range_with_prior(db):
+    t1 = _dtype(db, "Liletta", "larc")
+    t2 = _dtype(db, "NovaSure", "office_procedure")
+    df, dt = date(2026, 6, 1), date(2026, 6, 30)
+    _assignment(db, t1, status="inserted", chart="I1",
+                inserted_at=datetime(2026, 6, 10))
+    _assignment(db, t2, status="billed", chart="I2",
+                inserted_at=datetime(2026, 6, 20))
+    _assignment(db, t1, status="inserted", chart="I3",
+                inserted_at=datetime(2026, 5, 15))   # prior period
+    out = rpt.insertions(db, date_from=df, date_to=dt, location=None, device_type_id=None)
+    assert out["total"] == 2
+    assert out["by_category"] == {"larc": 1, "office_procedure": 1}
+    assert out["prior_total"] == 1
+    assert out["delta"] == 1
+    assert out["prior_from"] == date(2026, 5, 2) and out["prior_to"] == date(2026, 5, 31)
+
+
+def test_insertion_outcomes(db):
+    from app.models.larc import LarcCheckout
+    t = _dtype(db)
+    d = _device(db, t)
+    a = _assignment(db, t, device=d, chart="O1")
+    df, dt = date(2026, 6, 1), date(2026, 6, 30)
+    for oc in ("inserted", "failed_unused", "failed_used", "patient_no_show"):
+        db.add(LarcCheckout(assignment_id=a.id, device_id=d.id, requested_by="ma@x.com",
+                            outcome=oc, requested_at=datetime(2026, 6, 15)))
+    db.commit()
+    out = rpt.insertion_outcomes(db, date_from=df, date_to=dt, location=None, device_type_id=None)
+    assert out["success"] == 1 and out["failed_unused"] == 1 and out["failed_used"] == 1
+    assert out["total"] == 3
+    assert out["failure_rate"] == round(2 / 3, 2)
