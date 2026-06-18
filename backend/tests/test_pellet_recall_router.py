@@ -34,6 +34,7 @@ def test_detail_has_insertion_history_and_script(client, db):
     assert len(body["insertion_history"]) == 1
     assert body["insertion_history"][0]["location"] == "white_plains"
     assert body["caller_script"] and "outcomes" in body
+    assert "{months}" not in body["caller_script"]   # placeholder substituted
     assert any(h["event_type"] == "detail_viewed" for h in body["history"])
 
 

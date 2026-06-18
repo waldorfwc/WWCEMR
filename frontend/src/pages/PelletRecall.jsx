@@ -122,7 +122,7 @@ export default function PelletRecall() {
         </div>
       )}
 
-      {/* Detail modal (placeholder — fleshed out next task) */}
+      {/* Recall detail modal */}
       {openId && (
         <PelletRecallDetail
           recallId={openId}

@@ -21,6 +21,7 @@ from app.routers.recalls import (OutcomePayload, _entry_to_dict, _taxonomy,
                                   log_call_attempted, dial, log_outcome)
 from app.services.pellet.recall_sync import (materialize_pellet_recalls,
                                              PELLET_RECALL_TYPE)
+from app.utils.dt import now_utc_naive
 from app.services.pellet.settings import cfg
 
 router = APIRouter(prefix="/pellets/recall", tags=["pellet-recall"])
@@ -90,10 +91,17 @@ def get_pellet_recall(recall_id: str, db: Session = Depends(get_db),
               .filter(RecallCallLog.recall_entry_id == e.id)
               .order_by(desc(RecallCallLog.occurred_at)).limit(50).all())
     permanent, cooldown, completed, all_labels = _taxonomy(db)
+    # Fill the caller-script's {months}-since-last-insertion placeholder so the
+    # script reads naturally on screen (verbatim "{months}" otherwise).
+    if e.last_visit:
+        months_ago = str(max(1, round((now_utc_naive().date() - e.last_visit).days / 30)))
+    else:
+        months_ago = "several"
+    caller_script = (cfg(db, "recall_caller_script") or "").replace("{months}", months_ago)
     return {
         "recall": _entry_to_dict(e, dob=e.dob),
         "insertion_history": _insertion_history(db, e.chart_number),
-        "caller_script": cfg(db, "recall_caller_script"),
+        "caller_script": caller_script,
         "outcomes": list(all_labels),
         "history": [
             {"id": str(l.id), "event_type": l.event_type, "user_email": l.user_email,
