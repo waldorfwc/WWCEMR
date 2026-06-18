@@ -152,6 +152,58 @@ def test_inventory_health(db):
     assert out["below_reorder"] == 1
 
 
+def test_recall_due_contact_status(db):
+    from app.models.recall import RecallEntry
+    from app.services.pellet.recall_sync import PELLET_RECALL_TYPE
+    today = date(2026, 6, 15)
+    p1 = _patient(db, chart_number="RC1", recall_interval_months=4)
+    _visit(db, p1, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=200))
+    p2 = _patient(db, chart_number="RC2", recall_interval_months=4)
+    _visit(db, p2, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=200))
+    # p1 has been contacted (2 attempts); p2 has no recall entry yet.
+    db.add(RecallEntry(chart_number="RC1", recall_type=PELLET_RECALL_TYPE, source="pellet",
+                       status="active", attempts=2, last_outcome="Left voicemail",
+                       last_attempt_at=datetime(2026, 6, 14)))
+    db.commit()
+    out = rpt.recall_due(db, location=None, provider=None, today=today)
+    assert out["total"] == 2
+    assert out["contacted"] == 1
+    assert out["not_contacted"] == 1
+
+
+def test_rows_for_recall_due_contact_columns_and_bucket(db):
+    from app.models.recall import RecallEntry
+    from app.services.pellet.recall_sync import PELLET_RECALL_TYPE
+    today = date(2026, 6, 15)
+    p1 = _patient(db, chart_number="RD1", recall_interval_months=4)
+    _visit(db, p1, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=200))
+    p2 = _patient(db, chart_number="RD2", recall_interval_months=4)
+    _visit(db, p2, status="billed", inserted_at=datetime(2026, 6, 15) - timedelta(days=200))
+    db.add(RecallEntry(chart_number="RD1", recall_type=PELLET_RECALL_TYPE, source="pellet",
+                       status="active", attempts=3, last_outcome="No answer",
+                       last_attempt_at=datetime(2026, 6, 14)))
+    db.commit()
+    rows = rpt.rows_for(db, "recall_due", date_from=today, date_to=today,
+                        location=None, provider=None, today=today)
+    assert len(rows) == 2
+    assert all({"attempts", "last_outcome", "last_attempt_at"} <= set(r) for r in rows)
+    rd1 = next(r for r in rows if r["chart_number"] == "RD1")
+    assert rd1["attempts"] == 3 and rd1["last_outcome"] == "No answer"
+    assert rd1["last_attempt_at"] == "06/14/2026"
+    rd2 = next(r for r in rows if r["chart_number"] == "RD2")
+    assert rd2["attempts"] == 0 and rd2["last_outcome"] is None
+    nc = rpt.rows_for(db, "recall_due", date_from=today, date_to=today, location=None,
+                      provider=None, bucket="not_contacted", today=today)
+    assert len(nc) == 1 and nc[0]["chart_number"] == "RD2"
+    c = rpt.rows_for(db, "recall_due", date_from=today, date_to=today, location=None,
+                     provider=None, bucket="contacted", today=today)
+    assert len(c) == 1 and c[0]["chart_number"] == "RD1"
+    # the overdue bucket still works alongside contact buckets
+    od = rpt.rows_for(db, "recall_due", date_from=today, date_to=today, location=None,
+                      provider=None, bucket="overdue", today=today)
+    assert len(od) == 2
+
+
 def test_rows_for_status_funnel_bucket(db):
     p = _patient(db)
     _visit(db, p, status="cancelled")

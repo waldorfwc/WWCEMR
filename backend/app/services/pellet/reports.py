@@ -81,14 +81,26 @@ def _has_open_visit(visits) -> bool:
     return any(v.status not in ("billed", "cancelled") for v in visits)
 
 
+def _pellet_recall_entries(db) -> dict:
+    """chart_number -> RecallEntry for the materialized pellet recalls, so the
+    reports tile can surface call-attempt progress from the recall engine."""
+    from app.models.recall import RecallEntry
+    from app.services.pellet.recall_sync import PELLET_RECALL_TYPE
+    return {e.chart_number: e for e in
+            db.query(RecallEntry)
+              .filter(RecallEntry.recall_type == PELLET_RECALL_TYPE).all()}
+
+
 def recall_due(db: Session, *, location: Optional[str] = None,
                provider: Optional[str] = None, today: Optional[date] = None) -> dict:
     """Snapshot: active patients past (or nearing) their recall interval, with
-    no open visit. Mirrors pellet.py recall_is_due (interval*30 days)."""
+    no open visit. Mirrors pellet.py recall_is_due (interval*30 days). Also
+    splits the due patients by contact-attempt status from the recall engine."""
     from app.utils.dt import now_utc_naive
     today = today or now_utc_naive().date()
     soon = today + timedelta(days=30)
-    overdue = due_soon = 0
+    entries = _pellet_recall_entries(db)
+    overdue = due_soon = not_contacted = contacted = 0
     patients = (db.query(PelletPatient)
                 .filter(PelletPatient.status == "active").all())
     for p in patients:
@@ -112,7 +124,15 @@ def recall_due(db: Session, *, location: Optional[str] = None,
             overdue += 1
         elif due <= soon:
             due_soon += 1
-    return {"overdue": overdue, "due_soon": due_soon, "total": overdue + due_soon}
+        else:
+            continue
+        e = entries.get(p.chart_number)
+        if e is not None and (e.attempts or 0) >= 1:
+            contacted += 1
+        else:
+            not_contacted += 1
+    return {"overdue": overdue, "due_soon": due_soon, "total": overdue + due_soon,
+            "not_contacted": not_contacted, "contacted": contacted}
 
 
 def _mammo_ok(db, p, ref: date) -> bool:
@@ -314,6 +334,7 @@ def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
     if tile == "recall_due":
         today = today or now_utc_naive().date()
         soon = today + timedelta(days=30)
+        entries = _pellet_recall_entries(db)
         out = []
         patients = (db.query(PelletPatient)
                     .filter(PelletPatient.status == "active").all())
@@ -335,7 +356,12 @@ def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
             kind = "overdue" if due < today else ("due_soon" if due <= soon else None)
             if kind is None:
                 continue
-            if bucket and bucket != kind:
+            e = entries.get(p.chart_number)
+            attempts = int(e.attempts or 0) if e else 0
+            contact_kind = "contacted" if attempts >= 1 else "not_contacted"
+            # bucket may narrow by due-ness (overdue/due_soon) OR contact
+            # status (not_contacted/contacted) — a single-dimension chip.
+            if bucket and bucket not in (kind, contact_kind):
                 continue
             out.append({
                 "patient_id": str(p.id),
@@ -345,6 +371,11 @@ def rows_for(db: Session, tile: str, *, date_from: date, date_to: date,
                 "due_date": due.strftime("%m/%d/%Y"),
                 "recall_interval_months": p.recall_interval_months or 4,
                 "bucket": kind,
+                "attempts": attempts,
+                "last_outcome": (e.last_outcome if e else None),
+                "last_attempt_at": (e.last_attempt_at.strftime("%m/%d/%Y")
+                                    if e and e.last_attempt_at else None),
+                "last_worked_by": (e.last_worked_by if e else None),
             })
         return out
 

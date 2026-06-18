@@ -411,6 +411,28 @@ export default function PelletReports() {
                   <span className="font-semibold text-ink">{s.recall_due.due_soon}</span>
                 </div>
               )}
+              {(s.recall_due?.not_contacted != null || s.recall_due?.contacted != null) && (
+                <div className="mt-2 pt-2 border-t border-plum-200 space-y-1.5">
+                  {s.recall_due?.not_contacted != null && (
+                    <div
+                      className="flex items-center justify-between cursor-pointer hover:text-plum-700"
+                      onClick={(e) => { e.stopPropagation(); openDrill('recall_due', 'not_contacted') }}
+                    >
+                      <span className="text-red-600">Not Yet Contacted</span>
+                      <span className="font-semibold text-ink">{s.recall_due.not_contacted}</span>
+                    </div>
+                  )}
+                  {s.recall_due?.contacted != null && (
+                    <div
+                      className="flex items-center justify-between cursor-pointer hover:text-plum-700"
+                      onClick={(e) => { e.stopPropagation(); openDrill('recall_due', 'contacted') }}
+                    >
+                      <span className="text-muted">Contacted</span>
+                      <span className="font-semibold text-ink">{s.recall_due.contacted}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </Tile>
 
