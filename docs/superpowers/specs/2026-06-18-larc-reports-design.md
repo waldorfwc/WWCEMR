@@ -61,9 +61,11 @@ New router, registered in `app/main.py`. Endpoints mirror surgery/pellet reports
    (`status in ("unassigned","received")`) on-hand by device type & location; devices expiring
    ≤90 days (`expiration_date`); device types below their `reorder_threshold` (count of in-stock per
    device type vs `LarcDeviceType.reorder_threshold`). `{total_on_hand, by_type, expiring, below_reorder}`.
-7. **Insertion Outcomes** *(period)* — of assignments with an outcome in range (`inserted_at` for
-   inserted/billed; the assignment status for failed): counts of `success` (inserted/billed) vs
-   `failed_unused` vs `failed_used` and the **failure rate** (`(failed_unused+failed_used)/total`).
+7. **Insertion Outcomes** *(period)* — over `LarcCheckout` rows (the record of each insertion-visit +
+   its outcome) with `outcome` set and `requested_at` in range: counts of `success` (`inserted`) vs
+   `failed_unused` vs `failed_used`, and the **failure rate** = `(failed_unused+failed_used)/total`
+   where total = those three (a `patient_no_show` outcome is excluded from the rate). Filters resolve
+   via the checkout's assignment (`device_type_id`) and the assignment's device (`location`).
    `{success, failed_unused, failed_used, total, failure_rate}`.
 
 ### Drill-down rows (slim shape)
@@ -75,6 +77,8 @@ New router, registered in `app/main.py`. Endpoints mirror surgery/pellet reports
   (+ the awaiting-replacement assignments under `bucket=awaiting_replacement`).
 - `inventory_health`: one row per in-stock device `{our_id, device_type, location, ownership,
   expiration_date}`; `bucket` ∈ a device-type-id, `expiring`, or `below_reorder`.
+- `insertion_outcomes`: `LarcCheckout` rows `{checkout_id, chart_number, patient_name, device_type,
+  location, outcome, requested_at}`; `bucket` ∈ `success`/`failed_unused`/`failed_used`.
 CSV columns mirror the JSON keys.
 
 ### Frontend (`frontend/src/pages/LarcReports.jsx`)
