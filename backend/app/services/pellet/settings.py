@@ -40,6 +40,12 @@ PELLET_SETTINGS_DEFAULTS: dict[str, Any] = {
         "### Refund Policy\n\n"
         "Replace this with the practice's refund policy."
     ),
+    "recall_caller_script": (
+        "Hi, this is the office of Waldorf Women's Care calling about your hormone "
+        "pellet therapy. Our records show it's been about {months} months since your "
+        "last insertion and you're due to come in. Would you like to schedule your "
+        "re-insertion? We have openings at White Plains, Brandywine, and Arlington."
+    ),
 }
 
 
