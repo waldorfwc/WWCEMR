@@ -69,3 +69,18 @@ def test_action_404_on_non_pellet_entry(client, db):
     assert client.post(f"/api/pellets/recall/{e.id}/claim").status_code == 404
     assert client.post(f"/api/pellets/recall/{e.id}/outcome",
                        json={"outcome": "Scheduled"}).status_code == 404
+
+
+def test_outcome_permanent_requires_confirm(client, db):
+    _due(db, "PERM1")
+    client.post("/api/pellets/recall/sync")
+    rid = client.get("/api/pellets/recall").json()["items"][0]["id"]
+    # A permanent outcome without confirmation is rejected with 409 + a message.
+    r = client.post(f"/api/pellets/recall/{rid}/outcome",
+                    json={"outcome": "Declined recall"})
+    assert r.status_code == 409, r.text
+    assert "confirm" in r.json()["detail"].lower() or "permanent" in r.json()["detail"].lower()
+    # Resending with confirm_permanent=true applies it.
+    r2 = client.post(f"/api/pellets/recall/{rid}/outcome",
+                     json={"outcome": "Declined recall", "confirm_permanent": True})
+    assert r2.status_code == 200, r2.text
