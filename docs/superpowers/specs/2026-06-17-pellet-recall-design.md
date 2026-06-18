@@ -43,13 +43,16 @@ Re-insertion"`.
      `fax_poller` scheduler, cross-instance-locked via `claim_cron_run`) and on demand via
      `POST /pellets/recall/sync`.
 
-2. **Shared recall actions.** The recall claim/release/dial/log-outcome/call-attempted logic is
-   currently inline in the `app/routers/recalls.py` handlers. Extract the bodies into reusable
-   functions in `app/services/recall/actions.py` — `claim(db, entry, user)`, `release(db, entry,
-   user)`, `dial(db, entry, user)`, `log_call_attempted(db, entry, user)`, `log_outcome(db, entry,
-   payload, user)` — and have the existing recall handlers call them (thin wrappers). The WWE module
-   behavior is unchanged (covered by existing recall tests). This lets the pellet router reuse the
-   exact same actions under pellet gating.
+2. **Reuse the recall actions by delegation (no change to `recalls.py`).** The recall
+   claim/release/dial/log-outcome/call-attempted handlers in `app/routers/recalls.py` are plain
+   functions taking `(recall_id, db, current_user[, payload])` — no other injected dependencies. The
+   `Depends(requires_tier(Module.RECALL, ...))` default only fires when FastAPI routes a request, NOT
+   when the function is called directly. So the pellet endpoints (gated `Module.PELLETS`) load the
+   `RecallEntry`, assert it's a `"Pellet Re-insertion"` entry, then **call the recall handler
+   directly** (e.g. `return dial(recall_id, db, current_user)`). The WWE router is left completely
+   untouched — zero risk to the working module — while the pellet workflow reuses the identical
+   logic under pellet gating. The small claim/release helpers (`_ensure_claim_available`,
+   `_take_claim`, `_release_claim`, `_entry_to_dict`) are importable from `recalls.py`.
 
 3. **Pellet recall router** `app/routers/pellet_recall.py` (prefix `/pellets/recall`,
    `Module.PELLETS`):
@@ -63,10 +66,12 @@ Re-insertion"`.
      setting with starter copy). A 404 if the entry isn't a pellet recall.
    - `POST /{recall_id}/claim`, `DELETE /{recall_id}/claim`, `POST /{recall_id}/call-attempted`,
      `POST /{recall_id}/dial`, `POST /{recall_id}/outcome` (WORK) → load the `RecallEntry`, assert
-     `recall_type=="Pellet Re-insertion"`, then call the shared `actions.*` function. Same payloads
-     as the recall endpoints (outcome = `{outcome, notes, ...}`).
-   Outcome taxonomy: reuse the existing recall outcomes config (the same outcomes —
-   reached/voicemail/scheduled/declined/etc. — apply to pellet recalls).
+     `recall_type=="Pellet Re-insertion"` (else 404), then delegate to the imported recall handler
+     (`claim_recall`/`release_recall`/`log_call_attempted`/`dial`/`log_outcome`). The outcome endpoint
+     reuses the recall `OutcomePayload`.
+   The detail response also includes the **outcomes catalog** (the same list the recall config
+   exposes via `_read_recall_config`/the outcomes taxonomy) so the pellet modal's outcome dropdown is
+   populated without calling a `Module.RECALL`-gated endpoint.
 
 ### Frontend
 - New nav link **"Recall"** in `frontend/src/components/pellet/PelletNav.jsx` (`tier: TIER.WORK`),
@@ -85,19 +90,19 @@ Re-insertion"`.
   in place without resetting attempts, and completes an entry once the patient schedules/inserts;
   idempotent; WWE recall rows untouched. The pellet router: list filters to the pellet type; detail
   returns pellet insertion history + caller script + 404 for a non-pellet entry; claim/outcome on a
-  pellet entry go through the shared action and write a call log + bump attempts. The recall-actions
-  extraction leaves the existing recall tests green. Endpoints gated `Module.PELLETS`.
+  pellet entry delegate to the recall handler and write a call log + bump attempts; the action
+  endpoints 404 on a non-pellet `RecallEntry` (a pellet user can't work WWE recalls through them).
+  Endpoints gated `Module.PELLETS`. `recalls.py` is unchanged, so the existing recall tests stay green.
 - **Frontend:** `npm run build` clean.
 - **Authenticated walk-through** (`backend/tests/test_pellet_recall_walkthrough.py`): seed an overdue
   pellet patient → `POST /sync` materializes the entry → `GET /pellets/recall` lists it → `GET
   /{id}` shows insertion history → `POST /{id}/outcome` logs a call → attempts bumped + history row.
 
 ## File structure
-- Create `backend/app/services/pellet/recall_sync.py`, `backend/app/routers/pellet_recall.py`,
-  `backend/app/services/recall/actions.py` (extracted shared logic).
-- Modify `backend/app/routers/recalls.py` (handlers delegate to `actions.*`), `app/main.py`
-  (register pellet_recall), `app/services/fax_poller.py` (daily sync cron),
-  `app/services/pellet/settings.py` (`recall_caller_script` default).
+- Create `backend/app/services/pellet/recall_sync.py`, `backend/app/routers/pellet_recall.py`.
+- Modify `app/main.py` (register pellet_recall), `app/services/fax_poller.py` (daily sync cron),
+  `app/services/pellet/settings.py` (`recall_caller_script` default). **`recalls.py` is NOT modified**
+  — the pellet router imports + delegates to its handlers.
 - Create `frontend/src/pages/PelletRecall.jsx` (+ `PelletRecallDetail.jsx` if needed); modify
   `routes.jsx`, `components/pellet/PelletNav.jsx`.
 - Tests: `test_pellet_recall_sync.py`, `test_pellet_recall_router.py`, `test_pellet_recall_walkthrough.py`.
