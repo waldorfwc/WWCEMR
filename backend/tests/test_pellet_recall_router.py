@@ -42,3 +42,26 @@ def test_detail_404_for_non_pellet_entry(client, db):
                     source="smartsheet", status="active")
     db.add(e); db.commit(); db.refresh(e)
     assert client.get(f"/api/pellets/recall/{e.id}").status_code == 404
+
+
+def test_claim_and_outcome_delegate(client, db):
+    _due(db, "ACT1")
+    client.post("/api/pellets/recall/sync")
+    rid = client.get("/api/pellets/recall").json()["items"][0]["id"]
+    assert client.post(f"/api/pellets/recall/{rid}/claim").status_code == 200
+    r = client.post(f"/api/pellets/recall/{rid}/outcome",
+                    json={"outcome": "Left voicemail", "notes": "vm 1"})
+    assert r.status_code == 200, r.text
+    body = client.get(f"/api/pellets/recall/{rid}").json()
+    assert body["recall"]["attempts"] >= 1
+    assert any(h["outcome"] == "Left voicemail" for h in body["history"])
+
+
+def test_action_404_on_non_pellet_entry(client, db):
+    from app.models.recall import RecallEntry
+    e = RecallEntry(chart_number="WWE8", recall_type="Est - Well-Woman Exam",
+                    source="smartsheet", status="active")
+    db.add(e); db.commit(); db.refresh(e)
+    assert client.post(f"/api/pellets/recall/{e.id}/claim").status_code == 404
+    assert client.post(f"/api/pellets/recall/{e.id}/outcome",
+                       json={"outcome": "Scheduled"}).status_code == 404

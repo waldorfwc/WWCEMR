@@ -16,7 +16,9 @@ from app.models.pellet import PelletPatient
 from app.models.recall import RecallCallLog, RecallEntry
 from app.permissions.catalog import Module, Tier
 from app.permissions.dependencies import requires_tier
-from app.routers.recalls import _entry_to_dict, _taxonomy
+from app.routers.recalls import (OutcomePayload, _entry_to_dict, _taxonomy,
+                                  claim_recall, release_recall,
+                                  log_call_attempted, dial, log_outcome)
 from app.services.pellet.recall_sync import (materialize_pellet_recalls,
                                              PELLET_RECALL_TYPE)
 from app.services.pellet.settings import cfg
@@ -100,3 +102,43 @@ def get_pellet_recall(recall_id: str, db: Session = Depends(get_db),
             for l in logs
         ],
     }
+
+
+@router.post("/{recall_id}/claim")
+def claim(recall_id: str, db: Session = Depends(get_db),
+          current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    _load_pellet_entry(db, recall_id)
+    return claim_recall(recall_id, db, current_user)
+
+
+@router.delete("/{recall_id}/claim", status_code=200)
+def release(recall_id: str, db: Session = Depends(get_db),
+            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    _load_pellet_entry(db, recall_id)
+    return release_recall(recall_id, db, current_user)
+
+
+@router.post("/{recall_id}/call-attempted")
+def call_attempted(recall_id: str, db: Session = Depends(get_db),
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    _load_pellet_entry(db, recall_id)
+    return log_call_attempted(recall_id, db, current_user)
+
+
+@router.post("/{recall_id}/dial")
+def dial_pellet(recall_id: str, db: Session = Depends(get_db),
+                current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    _load_pellet_entry(db, recall_id)
+    return dial(recall_id, db, current_user)
+
+
+@router.post("/{recall_id}/outcome")
+def outcome(recall_id: str, payload: OutcomePayload, db: Session = Depends(get_db),
+            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    e = _load_pellet_entry(db, recall_id)
+    # Increment attempts so the outcome registers as a contact on the
+    # worklist (the recall engine only increments on call_attempted/dial,
+    # not on outcome itself).
+    e.attempts = (e.attempts or 0) + 1
+    db.flush()
+    return log_outcome(recall_id, payload, db, current_user)
