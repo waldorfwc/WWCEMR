@@ -36,15 +36,22 @@ def test_login_generic_404_on_no_match(client, db):
 
 
 def test_login_locked_out_after_three_fails(client, db):
+    # Lockout is now IP-based (Fable portal audit H1-router): failed
+    # no-match guesses are charged to the requester's IP, not to the
+    # patient's surgery_id, so an attacker who only knows a patient's DOB
+    # can't lock the real patient out. Under Starlette's TestClient
+    # request.client.host is a stable "testclient", so failures from the
+    # same client accumulate against one IP.
+    from app.routers.patient_portal import LOCKOUT_FAILS
     _seed_surgery(db)
-    for _ in range(3):
-        # Same DOB so the surgery is identifiable for lockout tracking,
-        # but wrong last4 — so login fails and records an attempt against
-        # the matched surgery id.
-        client.post("/api/patient/portal/login",
-                     json={"dob": "1990-01-01", "phone_last4": "0000"})
+    # LOCKOUT_FAILS no-match attempts (wrong last4) from this client/IP.
+    for _ in range(LOCKOUT_FAILS):
+        r = client.post("/api/patient/portal/login",
+                         json={"dob": "1990-01-01", "phone_last4": "0000"})
+        assert r.status_code == 404
+    # The next attempt from the same IP is locked out before it can match.
     r = client.post("/api/patient/portal/login",
-                     json={"dob": "1990-01-01", "phone_last4": "1234"})
+                     json={"dob": "1990-01-01", "phone_last4": "0000"})
     assert r.status_code == 429
     assert "15 minutes" in r.text
     assert "240-252-2140" in r.text
@@ -331,24 +338,30 @@ def test_step_up_blocks_when_no_balance(client, db):
     assert r.status_code == 422  # no outstanding balance
 
 
-def test_checkout_rejects_invalid_code(client, db):
+def test_checkout_ignores_code_and_proceeds(client, db):
+    """The SMS step-up `code` step was removed — the portal JWT is now the
+    only auth for checkout (the step_up_token/code fields are legacy and
+    ignored). A wrong code must NOT reject the request: with Stripe mocked
+    as configured the request proceeds to a real checkout session."""
     from app.services.patient_portal_auth import issue_portal_token
     s = _seed_surgery(db); s.patient_responsibility = 250; db.commit()
     token = issue_portal_token(s)
-    with patch("app.services.patient_portal_auth._generate_code",
-                return_value="111111"):
-        with patch("app.services.patient_portal_auth.send_sms",
-                    return_value=True):
-            step = client.post(
-                f"/api/patient/portal/{s.id}/payments/step-up",
-                headers={"Authorization": f"Bearer {token}"}
-            ).json()
-    r = client.post(
-        f"/api/patient/portal/{s.id}/payments/checkout",
-        json={"step_up_token": step["step_up_token"], "code": "000000"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 401
+
+    class FakePay:
+        id = "pay_test_id"
+        checkout_url = "https://stripe.test/cs_123"
+
+    with patch("app.services.stripe_payments.is_configured",
+                return_value=True), \
+         patch("app.services.stripe_payments.create_checkout_session",
+                return_value=FakePay()):
+        r = client.post(
+            f"/api/patient/portal/{s.id}/payments/checkout",
+            json={"step_up_token": "anything", "code": "000000"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["checkout_url"].startswith("https://stripe.test/")
 
 
 def test_checkout_creates_session_with_correct_code(client, db):
@@ -1111,26 +1124,32 @@ def test_fmla_step_up_rejects_when_fee_already_paid(client, db):
     assert "already" in r.json()["detail"].lower()
 
 
-def test_fmla_checkout_rejects_invalid_code(client, db):
+def test_fmla_checkout_ignores_code_and_proceeds(client, db):
+    """FMLA checkout no longer verifies an SMS step-up `code` — the portal
+    JWT is the only auth (the code field is legacy and ignored). A wrong
+    code must NOT reject; with Stripe mocked configured the request
+    proceeds to a real checkout session."""
     from unittest.mock import patch
     from app.services.patient_portal_auth import issue_portal_token
     s = _seed_surgery(db)
     db.commit()
     token = issue_portal_token(s)
-    with patch("app.services.patient_portal_auth._generate_code",
-                return_value="111111"), \
-         patch("app.services.patient_portal_auth.send_sms",
-                return_value=True):
-        step = client.post(
-            f"/api/patient/portal/{s.id}/fmla/step-up",
-            headers={"Authorization": f"Bearer {token}"}
-        ).json()
-    r = client.post(
-        f"/api/patient/portal/{s.id}/fmla/checkout",
-        json={"step_up_token": step["step_up_token"], "code": "000000"},
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    assert r.status_code == 401
+
+    class FakePay:
+        id = "pay_fmla_test"
+        checkout_url = "https://stripe.test/cs_fmla"
+
+    with patch("app.services.stripe_payments.is_configured",
+                return_value=True), \
+         patch("app.services.stripe_payments.create_checkout_session",
+                return_value=FakePay()):
+        r = client.post(
+            f"/api/patient/portal/{s.id}/fmla/checkout",
+            json={"step_up_token": "anything", "code": "000000"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    assert r.status_code == 200, r.text
+    assert r.json()["checkout_url"].startswith("https://stripe.test/")
 
 
 def test_fmla_checkout_creates_session_with_kind_fmla_fee(client, db):
