@@ -61,7 +61,9 @@ export default function SurgeryBlockSchedule() {
       {rematerialize.data && (
         <div className="card text-xs bg-blue-50 border-blue-200 text-blue-800 mb-3">
           ✓ Materialized {rematerialize.data.blockdays_created} new + refreshed {rematerialize.data.blockdays_updated} block days,
-          skipped {rematerialize.data.blackout_skips} dates due to blackouts.
+          skipped {rematerialize.data.blackout_skips} dates due to blackouts
+          {rematerialize.data.blockdays_removed > 0 &&
+            `, removed ${rematerialize.data.blockdays_removed} stale day${rematerialize.data.blockdays_removed === 1 ? '' : 's'} now blacked out`}.
         </div>
       )}
 
