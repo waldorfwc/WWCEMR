@@ -5376,6 +5376,47 @@ def consent_template_matches(surgery_id: str,
     }
 
 
+@router.get("/{surgery_id}/consent/envelopes/{envelope_id}/document")
+def view_consent_document(
+    surgery_id: str, envelope_id: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.VIEW)),
+):
+    """Stream the signed consent PDF so staff can view it from the consents
+    card. Only available once the envelope is signed/completed — BoldSign
+    returns 404/422 for unsigned documents. Served inline so the browser
+    opens it in a new tab."""
+    from fastapi import Response
+    from app.models.surgery import SurgeryConsentEnvelope
+    env = (db.query(SurgeryConsentEnvelope)
+             .filter(SurgeryConsentEnvelope.id == envelope_id,
+                     SurgeryConsentEnvelope.surgery_id == surgery_id)
+             .first())
+    if env is None:
+        raise HTTPException(status_code=404, detail="consent envelope not found")
+    if (env.status or "") not in ("signed", "completed"):
+        raise HTTPException(status_code=409,
+                            detail="This consent isn't signed yet — nothing to view.")
+    if not env.boldsign_envelope_id:
+        raise HTTPException(status_code=409,
+                            detail="This consent wasn't sent via BoldSign.")
+    from app.services.boldsign_envelopes import (
+        download_signed_pdf, BoldSignEnvelopeError,
+    )
+    try:
+        pdf_bytes = download_signed_pdf(env.boldsign_envelope_id)
+    except BoldSignEnvelopeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    label = "consent"
+    if env.template and env.template.name:
+        label = "".join(c if c.isalnum() else "_"
+                        for c in env.template.name)[:60].strip("_") or "consent"
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{label}.pdf"'},
+    )
+
+
 @router.post("/{surgery_id}/consent/boldsign-send")
 def send_consent_via_boldsign(
     surgery_id: str,

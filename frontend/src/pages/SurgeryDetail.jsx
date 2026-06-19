@@ -4658,6 +4658,23 @@ function ConsentPanel({ surgery }) {
     staleTime: 30_000,
   })
 
+  // Open the signed consent PDF in a new tab. Fetched as a blob through the
+  // authed api client (a plain <a> wouldn't carry the auth header).
+  async function viewConsent(e) {
+    try {
+      const r = await api.get(
+        `/surgery/${surgery.id}/consent/envelopes/${e.id}/document`,
+        { responseType: 'blob' })
+      const url = URL.createObjectURL(r.data)
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (err) {
+      let msg = 'Could not open the consent.'
+      try { msg = JSON.parse(await err?.response?.data?.text())?.detail || msg } catch {}
+      alert(msg)
+    }
+  }
+
   const boldsignSend = useMutation({
     mutationFn: (ignoreWarnings) =>
       api.post(`/surgery/${surgery.id}/consent/boldsign-send`,
@@ -4787,6 +4804,12 @@ function ConsentPanel({ surgery }) {
                   )}
                 </span>
                 <span className="text-[11px] uppercase tracking-wide font-medium">{e.status}</span>
+                {['signed', 'completed'].includes(e.status) && (
+                  <button onClick={() => viewConsent(e)}
+                          className="text-[10px] text-plum-700 hover:underline font-medium">
+                    View
+                  </button>
+                )}
                 {e.envelope_id && (
                   <span className="text-[10px] font-mono text-gray-500">{e.envelope_id.slice(0, 8)}…</span>
                 )}
