@@ -154,6 +154,36 @@ def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
             # Pages without form widgets raise — skip
             pass
 
+    # The MedStar PDF has form fields for the insurance NAME but none for the
+    # member/policy ID or group number, so the ID never made it onto the slip.
+    # Overlay them in the blank gap just below each insurance-name box
+    # (AUTO_InsuranceName at x=179 / AUTO_SecondaryInsuranceName at x=423, both
+    # bottom-edge y≈105; Additional Notes box starts ~y=76). Coordinates are in
+    # PDF points from bottom-left — nudge after a test print if needed.
+    ovr = overrides or {}
+    prim_id = str(ovr.get("AUTO_InsuranceID") or s.primary_member_id or "")
+    prim_grp = str(ovr.get("AUTO_InsuranceGroup") or s.primary_group or "")
+    sec_id = str(ovr.get("AUTO_SecondaryInsuranceID") or s.secondary_member_id or "")
+    prim_txt = "  ".join(p for p in (
+        f"ID: {prim_id}" if prim_id else "",
+        f"Grp: {prim_grp}" if prim_grp else "") if p)
+    overlay_items = []
+    if prim_txt:
+        overlay_items.append((181, 94, prim_txt))
+    if sec_id:
+        overlay_items.append((425, 94, f"ID: {sec_id}"))
+
+    if overlay_items:
+        ov = io.BytesIO()
+        c = canvas.Canvas(ov, pagesize=letter)
+        c.setFont("Helvetica", 7)
+        for x, y, txt in overlay_items:
+            c.drawString(x, y, txt[:60])
+        c.showPage()
+        c.save()
+        ov.seek(0)
+        writer.pages[0].merge_page(PdfReader(ov).pages[0])
+
     buf = io.BytesIO()
     writer.write(buf)
     return buf.getvalue()
