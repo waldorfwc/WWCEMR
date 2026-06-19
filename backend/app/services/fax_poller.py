@@ -263,7 +263,10 @@ def _boarding_slip_autosend():
         run_key = now_utc_naive().strftime("%Y-%m-%dT%H")
         if not claim_cron_run(db, "surgery_boarding_slip_autosend", run_key):
             return
-        auto_email_sweep(db)
+        import logging
+        result = auto_email_sweep(db)
+        # Log each run so the scheduled job is observable in Cloud Run logs.
+        logging.getLogger(__name__).info("boarding-slip autosend ran: %s", result)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("Boarding-slip autosend error: %s", exc)
