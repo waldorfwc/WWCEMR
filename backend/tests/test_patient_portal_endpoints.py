@@ -808,7 +808,7 @@ def test_instructions_pdf_streams_when_present(client, db):
     s.procedure_classification = "office_d_and_c"
     db.commit()
     token = issue_portal_token(s)
-    with patch("app.services.surgery_documents.fetch_instructions_pdf",
+    with patch("app.services.surgery.documents.fetch_instructions_pdf",
                 return_value=b"%PDF-test-bytes"):
         r = client.get(
             f"/api/patient/portal/{s.id}/documents/instructions/preop",
@@ -896,7 +896,7 @@ def test_clearance_template_streams_when_present(client, db):
     s.clearance_required = True
     db.commit()
     token = issue_portal_token(s)
-    with patch("app.services.surgery_uploads.stream_static_pdf",
+    with patch("app.services.surgery.uploads.stream_static_pdf",
                 return_value=b"%PDF-clearance-blank"):
         r = client.get(f"/api/patient/portal/{s.id}/clearance/template",
                           headers={"Authorization": f"Bearer {token}"})
@@ -912,7 +912,7 @@ def test_clearance_template_404_when_object_missing(client, db):
     s.clearance_required = True
     db.commit()
     token = issue_portal_token(s)
-    with patch("app.services.surgery_uploads.stream_static_pdf",
+    with patch("app.services.surgery.uploads.stream_static_pdf",
                 return_value=None):
         r = client.get(f"/api/patient/portal/{s.id}/clearance/template",
                           headers={"Authorization": f"Bearer {token}"})
@@ -930,7 +930,7 @@ def test_clearance_upload_writes_and_marks_status(client, db):
     db.commit()
     token = issue_portal_token(s)
     pdf_bytes = b"%PDF-1.4\nfake-clearance"
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient:
         blob = MagicMock()
         MockClient.return_value.bucket.return_value.blob.return_value = blob
         r = client.post(
@@ -992,7 +992,7 @@ def test_uploads_returns_patient_documents_with_signed_urls(client, db):
     ))
     db.commit()
     token = issue_portal_token(s)
-    with patch("app.services.surgery_uploads.signed_download_url",
+    with patch("app.services.surgery.uploads.signed_download_url",
                 return_value="https://signed.example/x"):
         r = client.get(f"/api/patient/portal/{s.id}/uploads",
                           headers={"Authorization": f"Bearer {token}"})
@@ -1023,7 +1023,7 @@ def test_fmla_upload_creates_fmla_blank_document(client, db):
     db.commit()
     token = issue_portal_token(s)
     pdf_bytes = b"%PDF-1.4\nfmla blank form\n"
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient:
         blob = MagicMock()
         MockClient.return_value.bucket.return_value.blob.return_value = blob
         r = client.post(
@@ -1049,7 +1049,7 @@ def test_fmla_upload_flips_status_when_fee_already_paid(client, db):
     db.commit()
     token = issue_portal_token(s)
     pdf_bytes = b"%PDF-1.4\nfmla\n"
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient:
         blob = MagicMock()
         MockClient.return_value.bucket.return_value.blob.return_value = blob
         r = client.post(
@@ -1071,7 +1071,7 @@ def test_fmla_upload_does_not_flip_status_when_fee_unpaid(client, db):
     db.commit()
     token = issue_portal_token(s)
     pdf_bytes = b"%PDF-1.4\nfmla\n"
-    with patch("app.services.surgery_uploads.storage.Client") as MockClient:
+    with patch("app.services.surgery.uploads.storage.Client") as MockClient:
         blob = MagicMock()
         MockClient.return_value.bucket.return_value.blob.return_value = blob
         r = client.post(
@@ -1216,7 +1216,7 @@ def test_fmla_get_returns_uploads_with_signed_urls(client, db):
     ))
     db.commit()
     token = issue_portal_token(s)
-    with patch("app.services.surgery_uploads.signed_download_url",
+    with patch("app.services.surgery.uploads.signed_download_url",
                 return_value="https://signed.example/x"):
         r = client.get(f"/api/patient/portal/{s.id}/fmla",
                           headers={"Authorization": f"Bearer {token}"})

@@ -139,7 +139,7 @@ def test_template_kinds_includes_all_seven():
 # ─── seed_default_email_templates() ───────────────────────────────
 
 def test_seed_inserts_all_seven_templates(db):
-    from app.services.surgery_config_seed import (
+    from app.services.surgery.config_seed import (
         seed_default_email_templates, DEFAULT_EMAIL_TEMPLATES,
     )
 
@@ -150,13 +150,16 @@ def test_seed_inserts_all_seven_templates(db):
     n2 = seed_default_email_templates(db)
     assert n2 == 0
 
-    # Every EMAIL_TEMPLATE_KINDS value has a row
+    # Every seeded template kind has a row. EMAIL_TEMPLATE_KINDS also
+    # carries the legacy "docusign_consent_sent" kind (kept only so
+    # historical patient_emails rows resolve; superseded by boldsign_*
+    # and intentionally NOT seeded), so compare against the seed list.
     kinds_in_db = {t.kind for t in db.query(EmailTemplate).all()}
-    assert set(EMAIL_TEMPLATE_KINDS) == kinds_in_db
+    assert {t["kind"] for t in DEFAULT_EMAIL_TEMPLATES} == kinds_in_db
 
 
 def test_seed_does_not_overwrite_existing(db):
-    from app.services.surgery_config_seed import seed_default_email_templates
+    from app.services.surgery.config_seed import seed_default_email_templates
 
     # Pre-existing admin-edited template
     db.add(EmailTemplate(
@@ -224,7 +227,7 @@ def test_send_ad_hoc_rejects_blank_recipient(client, db):
 # ─── I8: admin email-template endpoints ───────────────────────────
 
 def test_list_email_templates_returns_seeded(client, db):
-    from app.services.surgery_config_seed import seed_default_email_templates
+    from app.services.surgery.config_seed import seed_default_email_templates
     seed_default_email_templates(db)
     resp = client.get("/api/surgery/admin/email-templates")
     assert resp.status_code == 200

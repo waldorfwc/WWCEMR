@@ -127,7 +127,7 @@ def test_count_pdf_generator_returns_bytes_and_filename(db):
                        finished_by="tester@example.com",
                        witness_user="witness@example.com")
     db.add(c); db.commit(); db.refresh(c)
-    from app.services.pellet_count_pdf import generate_count_pdf
+    from app.services.pellet.count_pdf import generate_count_pdf
     body, fname = generate_count_pdf(db, c)
     assert isinstance(body, (bytes, bytearray))
     assert body[:4] == b"%PDF"
