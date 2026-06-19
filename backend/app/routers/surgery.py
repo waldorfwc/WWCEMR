@@ -4317,6 +4317,14 @@ def create_blackout(payload: BlackoutIn, db: Session = Depends(get_db),
         created_by=current_user.get("email"),
     )
     db.add(row); db.commit(); db.refresh(row)
+    # A whole-day blackout can strand block days that were already
+    # materialized on that date — re-run the materializer so its reconcile
+    # pass drops the stale, empty ones now (the picker already hides them via
+    # the blackout filter; this keeps the table clean and any booked-slot
+    # days surface as conflicts). Partial-day blackouts never remove a day.
+    if st is None and et is None:
+        from app.services.surgery.block_schedule import materialize_block_days
+        materialize_block_days(db)
     return {"id": str(row.id)}
 
 

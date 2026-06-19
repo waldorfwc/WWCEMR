@@ -109,6 +109,18 @@ def test_materializer_removes_empty_blockday_on_blackout(db):
     assert db.query(BlockDay).filter(BlockDay.block_date == D).count() == 0
 
 
+def test_create_blackout_endpoint_clears_stale_block_day(client, db):
+    _block(db)
+    assert db.query(BlockDay).filter(BlockDay.block_date == D).count() == 1
+    resp = client.post("/api/surgery/admin/blackouts", json={
+        "blackout_date": D.isoformat(),
+        "scope": "office", "reason": "holiday", "label": "Test Holiday",
+    })
+    assert resp.status_code == 201, resp.text
+    # Whole-day office blackout → the stale empty block day is reconciled away.
+    assert db.query(BlockDay).filter(BlockDay.block_date == D).count() == 0
+
+
 def test_materializer_keeps_blockday_with_booked_slot(db):
     bd = _block(db)
     db.add(SurgerySlot(block_day_id=bd.id, start_time=time(7, 0),
