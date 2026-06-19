@@ -28,7 +28,12 @@ from app.services.storage import save_blob
 log = logging.getLogger(__name__)
 
 # Templates ship inside the container image at backend/app/assets/.
-_ASSETS = Path(__file__).resolve().parents[1] / "assets" / "boarding_slip_templates"
+# This file lives at app/services/surgery/boarding_slip.py, so app/ is
+# parents[2] (surgery → services → app). The services-package reorg
+# (daee081) moved this file one level deeper and left this at parents[1],
+# which pointed at the non-existent app/services/assets/ — every boarding
+# slip then 500'd with "template missing".
+_ASSETS = Path(__file__).resolve().parents[2] / "assets" / "boarding_slip_templates"
 MEDSTAR_TEMPLATE = str(_ASSETS / "medstar_template.pdf")
 CRMC_TEMPLATE    = str(_ASSETS / "crmc_template.pdf")
 
