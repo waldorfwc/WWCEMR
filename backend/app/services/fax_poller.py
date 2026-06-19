@@ -265,8 +265,9 @@ def _boarding_slip_autosend():
             return
         import logging
         result = auto_email_sweep(db)
-        # Log each run so the scheduled job is observable in Cloud Run logs.
-        logging.getLogger(__name__).info("boarding-slip autosend ran: %s", result)
+        # WARNING level so the hourly heartbeat is visible in Cloud Run logs
+        # (the app's root logger defaults to WARNING, so INFO is dropped).
+        logging.getLogger(__name__).warning("boarding-slip autosend ran: %s", result)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).warning("Boarding-slip autosend error: %s", exc)
