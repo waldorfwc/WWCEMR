@@ -251,6 +251,26 @@ def _surgery_escalation_sweep():
         db.close()
 
 
+def _boarding_slip_autosend():
+    """Hourly: email the boarding slip to per-facility recipients once a
+    surgery date has been selected for the configured number of hours.
+    Guarded so only one instance runs per hour across instances."""
+    db = SessionLocal()
+    try:
+        from app.services.cron_lock import claim_cron_run
+        from app.services.surgery.boarding_slip_email import auto_email_sweep
+        # one run per hour across instances
+        run_key = now_utc_naive().strftime("%Y-%m-%dT%H")
+        if not claim_cron_run(db, "surgery_boarding_slip_autosend", run_key):
+            return
+        auto_email_sweep(db)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Boarding-slip autosend error: %s", exc)
+    finally:
+        db.close()
+
+
 def _google_workspace_sync():
     """Hourly: pull every user from Google Workspace and reconcile is_active.
     No-ops silently when GOOGLE_WORKSPACE_* env vars aren't configured."""
@@ -309,6 +329,10 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(_surgery_escalation_sweep, "cron",
                   day_of_week="mon-fri", hour="8-18", minute=45,
                   id="surgery_escalations", max_instances=1, coalesce=True)
+    # Boarding-slip auto-send — hourly; the sweep self-gates on the
+    # configured enable flag + per-surgery elapsed-hours threshold.
+    sched.add_job(_boarding_slip_autosend, "cron", minute=15,
+                  id="surgery_boarding_slip_autosend", max_instances=1, coalesce=True)
     # Surgery release alerts — once daily Mon-Fri at 9 AM.
     sched.add_job(_surgery_release_sweep, "cron",
                   day_of_week="mon-fri", hour=9, minute=0,

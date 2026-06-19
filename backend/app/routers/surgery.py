@@ -36,6 +36,7 @@ from app.services.surgery.slot_conflict import overlapping_slot
 from app.services.surgery.blackout_conflict import is_date_blacked_out
 from app.services.surgery.settings import cfg
 from app.services.surgery import step_engine
+from app.services.surgery import boarding_slip_email
 from app.services.storage import save_blob, serve_blob, is_legacy_local_path
 
 router = APIRouter(prefix="/surgery", tags=["surgery"])
@@ -3390,7 +3391,8 @@ def boarding_slip_prefill(surgery_id: str,
 
 class BoardingSlipSendPayload(BaseModel):
     kind: str                                  # "fax" | "email"
-    to: str                                    # fax number OR email address
+    to: Optional[str] = None                   # fax number OR email address(es)
+    recipients: Optional[list[str]] = None     # email-only: explicit recipient list
     subject: Optional[str] = None              # email-only
     message: Optional[str] = None              # cover sheet text / email body
     file_id: Optional[str] = None              # default: latest boarding slip
@@ -3405,22 +3407,30 @@ def send_boarding_slip(surgery_id: str,
     if payload.kind not in ("fax", "email"):
         raise HTTPException(status_code=422, detail="kind must be 'fax' or 'email'")
     to = (payload.to or "").strip()
-    if not to:
-        raise HTTPException(status_code=422, detail="destination ('to') is required")
-    # PHI destination shape check — misdirected fax is the classic HIPAA
-    # breach vector. (Fable surgery audit Low.)
     import re
+    # PHI destination shape check — misdirected fax/email is the classic HIPAA
+    # breach vector. (Fable surgery audit Low.)
+    recipients: list[str] = []
     if payload.kind == "fax":
+        if not to:
+            raise HTTPException(status_code=422,
+                                detail="destination ('to') is required")
         digits = re.sub(r"\D", "", to)
         if len(digits) < 10:
             raise HTTPException(
                 status_code=422,
                 detail="fax number must contain at least 10 digits")
-    else:  # email
-        if "@" not in to or "." not in to.rsplit("@", 1)[-1]:
+    else:  # email — multi-recipient: explicit list, or split `to` on , / ;
+        raw = (payload.recipients
+               if payload.recipients is not None
+               else re.split(r"[,;]", to))
+        recipients = [e.strip() for e in (raw or []) if e and e.strip()]
+        recipients = [e for e in recipients if "@" in e
+                      and "." in e.rsplit("@", 1)[-1]]
+        if not recipients:
             raise HTTPException(
                 status_code=422,
-                detail="email destination must look like an email address")
+                detail="at least one valid email recipient is required")
 
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
     if not s:
@@ -3428,17 +3438,21 @@ def send_boarding_slip(surgery_id: str,
     # HIPAA outbound audit: who sent a PHI document where. send_history
     # already records on the file, but the central audit log is what
     # incident queries hit. (Fable surgery audit Low + H2.)
-    log_action(
-        db,
-        action="PHI_BOARDING_SLIP_SENT",
-        resource_type="surgery",
-        resource_id=str(s.id),
-        patient_id=s.chart_number or None,
-        user_id=(current_user.get("email") or "").lower() or None,
-        user_name=current_user.get("name") or current_user.get("email"),
-        description=(f"Sent boarding slip for surgery "
-                     f"{s.surgery_number or s.id} via {payload.kind} to {to}"),
-    )
+    # The email path's audit is emitted by boarding_slip_email.send_boarding_slip_email
+    # (which has the resolved recipient list), so only the fax path logs here —
+    # otherwise PHI_BOARDING_SLIP_SENT would be double-recorded for email.
+    if payload.kind == "fax":
+        log_action(
+            db,
+            action="PHI_BOARDING_SLIP_SENT",
+            resource_type="surgery",
+            resource_id=str(s.id),
+            patient_id=s.chart_number or None,
+            user_id=(current_user.get("email") or "").lower() or None,
+            user_name=current_user.get("name") or current_user.get("email"),
+            description=(f"Sent boarding slip for surgery "
+                         f"{s.surgery_number or s.id} via fax to {to}"),
+        )
 
     # Resolve which boarding slip to send
     q = db.query(SurgeryFile).filter(SurgeryFile.surgery_id == s.id,
@@ -3537,71 +3551,36 @@ def send_boarding_slip(surgery_id: str,
         }
 
     # --- email path ---
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
-    from email.mime.application import MIMEApplication
-    from app.services.checklist_notifications import _smtp_settings
-    cfg = _smtp_settings()
-    if not (cfg["host"] and cfg["from"]):
-        raise HTTPException(status_code=503,
-                            detail="SMTP isn't configured on this server.")
-    subject = (payload.subject or
-               f"Boarding slip — {s.patient_name or 'patient'} — {facility_label}")
-    body_text = (
-        payload.message
-        or f"Attached is the boarding slip for {s.patient_name or 'this patient'}"
-           f" (chart #{s.chart_number or '—'}) at {facility_label}."
-    )
-    body_html = (
-        f"<p>{body_text}</p>"
-        f"<p style='color:#888;font-size:11px'>"
-        f"Sent from Waldorf Women's Care · {actor.split('@')[0]}</p>"
-    )
-    msg = MIMEMultipart()
-    msg["Subject"] = subject
-    msg["From"] = cfg["from"]
-    msg["To"] = payload.to.strip()
-    msg.attach(MIMEText(body_html, "html"))
-    attach = MIMEApplication(pdf_bytes, _subtype="pdf")
-    attach.add_header("Content-Disposition", "attachment",
-                        filename=f.filename or "boarding_slip.pdf")
-    msg.attach(attach)
+    # Multi-recipient send is delegated to boarding_slip_email, which builds
+    # the MIME message, sends via smtplib, records the file send-history, and
+    # emits the PHI_BOARDING_SLIP_SENT audit (so the router no longer does any
+    # of that for email — avoids double send-history + double audit).
     try:
-        with smtplib.SMTP(cfg["host"], cfg["port"]) as smtp:
-            smtp.starttls()
-            if cfg["user"] and cfg["password"]:
-                smtp.login(cfg["user"], cfg["password"])
-            smtp.sendmail(cfg["from"], [payload.to.strip()], msg.as_string())
-    except Exception as exc:
-        _record_send({
-            "at":     now_utc_naive().isoformat(),
-            "by":     actor,
-            "kind":   "email",
-            "to":     payload.to.strip(),
-            "status": "failed",
-            "error":  str(exc),
-        })
-        db.commit()
-        raise HTTPException(status_code=502,
-                            detail=f"Email send failed: {exc}")
+        result = boarding_slip_email.send_boarding_slip_email(
+            db, s, f, recipients,
+            sent_by=actor,
+            subject=payload.subject,
+            message=payload.message,
+        )
+    except ValueError as exc:
+        # The service raises ValueError both for "SMTP not configured" and for
+        # send failures; distinguish so the client gets the right status.
+        msg = str(exc)
+        if "smtp" in msg.lower() and "configured" in msg.lower():
+            raise HTTPException(status_code=503, detail=msg)
+        raise HTTPException(status_code=502, detail=msg)
 
-    _record_send({
-        "at":     now_utc_naive().isoformat(),
-        "by":     actor,
-        "kind":   "email",
-        "to":     payload.to.strip(),
-        "status": "sent",
-    })
+    sent_to = result.get("to", recipients)
     from app.models.surgery import SurgeryNote
     db.add(SurgeryNote(
         surgery_id=s.id, created_by=actor,
-        content=f"Emailed boarding slip to {payload.to.strip()}.",
+        content=f"Emailed boarding slip to {', '.join(sent_to)}.",
     ))
     # Mark the post_to_hospital step done (see fax path above). (Fable audit #5.)
     s.calendar_invite_sent_at = now_utc_naive()
     db.commit()
-    return {"ok": True, "kind": "email", "to": payload.to.strip(),
+    db.refresh(f)
+    return {"ok": True, "kind": "email", "to": sent_to,
             "send_history": f.send_history or []}
 
 

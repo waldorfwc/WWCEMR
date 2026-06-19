@@ -298,6 +298,8 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
         # Clear hospital-posting state since the new date needs a fresh
         # boarding slip / fax.
         s.calendar_invite_sent_at = None
+        # Re-arm the boarding-slip auto-email for the new date.
+        s.boarding_slip_auto_emailed_at = None
 
     db.commit()
     db.refresh(s)

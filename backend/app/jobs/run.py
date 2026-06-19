@@ -106,6 +106,17 @@ def surgery_auto_unresponsive():
     run_auto_unresponsive_sweep()
 
 
+@register("surgery_boarding_slip_autosend")
+def surgery_boarding_slip_autosend():
+    from app.database import SessionLocal
+    from app.services.surgery.boarding_slip_email import auto_email_sweep
+    db = SessionLocal()
+    try:
+        return auto_email_sweep(db)
+    finally:
+        db.close()
+
+
 @register("pellet_stale_sweep")
 def pellet_stale_sweep():
     from app.services.fax_poller import _pellet_stale_sweep
