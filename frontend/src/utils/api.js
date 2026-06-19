@@ -16,7 +16,19 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401 && !window.location.pathname.startsWith('/auth') && window.location.pathname !== '/login') {
+    const status = err.response?.status
+    const detail = err.response?.data?.detail
+    const onAuthPage = window.location.pathname.startsWith('/auth')
+      || window.location.pathname === '/login'
+    // 401 = session ended/invalid. A 403 whose detail says the account is
+    // suspended means the user was deactivated (e.g. by the Google sync) but
+    // still holds a session — force a clean logout instead of letting them
+    // 403 on every page. A plain 403 (insufficient module tier) must NOT log
+    // them out — it's a per-action denial, not a session problem.
+    const suspended = status === 403
+      && typeof detail === 'string'
+      && detail.toLowerCase().includes('suspended')
+    if ((status === 401 || suspended) && !onAuthPage) {
       localStorage.removeItem('session_token')
       localStorage.removeItem('user')
       window.location.href = '/login'

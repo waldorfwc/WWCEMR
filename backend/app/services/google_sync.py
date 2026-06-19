@@ -180,6 +180,10 @@ def run_sync(db: Session, *, triggered_by: str = "system:cron") -> dict:
                 detail["activated"].append(email)
             elif (not google_active) and existing.is_active:
                 existing.is_active = False
+                # Revoke any live session — mirror the admin "suspend" path so
+                # an auto-deactivated user gets a clean 401 logout instead of a
+                # zombie session that 403s on every request.
+                existing.token_version = int(getattr(existing, "token_version", 0) or 0) + 1
                 suspended += 1
                 detail["suspended"].append(email)
 
@@ -197,6 +201,8 @@ def run_sync(db: Session, *, triggered_by: str = "system:cron") -> dict:
             continue
         if u.is_active:
             u.is_active = False
+            # Revoke live sessions too (see note above).
+            u.token_version = int(getattr(u, "token_version", 0) or 0) + 1
             suspended += 1
             detail["suspended"].append(email)
 
