@@ -187,11 +187,29 @@ def materialize_block_days(db: Session, *, days_ahead: int | None = None) -> dic
                 ))
                 created += 1
 
+    # Reconcile: a block day materialized earlier can become stale when a
+    # whole-day blackout is added afterward (the typical ad-hoc PTO case —
+    # the create loop above only SKIPS new creation, it never removed the
+    # already-existing row). Delete those stale, schedule-derived, EMPTY
+    # block days so they stop surfacing in the date picker. Block days that
+    # already have a booked slot are left alone — those are real conflicts
+    # surfaced via find_blocked_conflicts and must not be silently deleted
+    # (that would orphan a patient's scheduled date).
+    removed = 0
+    for (fac, bdate, _st), bd in list(existing.items()):
+        blacked = (bdate in office_blackouts
+                   or bdate in provider_blackouts
+                   or bdate in facility_blackouts.get(fac, set()))
+        if blacked and not (bd.slots or []):
+            db.delete(bd)
+            removed += 1
+
     db.commit()
     return {
         "days_ahead": days_ahead,
         "blockdays_created": created,
         "blockdays_updated": updated,
+        "blockdays_removed": removed,
         "blackout_skips": blocked,
     }
 

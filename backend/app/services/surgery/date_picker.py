@@ -23,6 +23,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.surgery import BlockDay, Surgery, SurgeryBlackoutDay, SurgerySlot
+from app.services.surgery.blackout_conflict import is_date_blacked_out
 from app.services.surgery.block_schedule import (
     DURATIONS, book_slot, can_fit, CapacityViolation,
 )
@@ -178,6 +179,20 @@ def available_slots_for_surgery(db: Session, s: Surgery, *,
         if cursor is None or cursor + duration > block_end_min:
             continue
         h, m = divmod(cursor, 60)
+        # Don't offer blacked-out days/windows. Whole-day blackouts (PTO,
+        # holidays, facility closures) remove the day entirely; partial-day
+        # blackouts remove it only when the proposed slot overlaps the
+        # blocked window — the same check book_slot enforces at booking, so
+        # the offer and the booking now agree. (Previously this list ignored
+        # blackouts, so a block day on a date later blacked out — the typical
+        # ad-hoc PTO case — was still selectable.)
+        end_min = cursor + duration
+        if is_date_blacked_out(
+                db, bd.block_date, bd.facility,
+                surgeon_email=s.surgeon_email,
+                start_time=_time(h, m),
+                end_time=_time(end_min // 60 % 24, end_min % 60)):
+            continue
         out.append(AvailableSlot(
             block_day_id=str(bd.id),
             facility=bd.facility,
