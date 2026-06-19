@@ -3065,6 +3065,17 @@ def trigger_release_sweep(db: Session = Depends(get_db),
     return run_release_sweep(db)
 
 
+@router.post("/admin/run-boarding-slip-autosend")
+def trigger_boarding_slip_autosend(db: Session = Depends(get_db),
+                                   current_user: dict = Depends(requires_super_admin())):
+    """Manual trigger for the boarding-slip auto-email sweep. Primary runner
+    is the hourly in-process job (surgery_boarding_slip_autosend); this lets
+    an admin fire it on demand to verify config. Returns the sweep result
+    (sent / skipped_no_recipients / errors, or {"skipped":"disabled"})."""
+    from app.services.surgery.boarding_slip_email import auto_email_sweep
+    return auto_email_sweep(db)
+
+
 @router.post("/admin/block-days/{block_day_id}/mark-released")
 def mark_block_day_released(block_day_id: str,
                               db: Session = Depends(get_db),
