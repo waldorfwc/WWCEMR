@@ -183,17 +183,17 @@ DEFAULT_SMS_TEMPLATES = [
     {
         "kind": "sms_surgery_confirmation",
         "label": "SMS — surgery confirmation",
-        "body": "WWC Gyn: Your surgery is confirmed for {{surgery_date}} at {{start_time}} at {{facility}}. Reply STOP to opt out.",
+        "body": "WWC Gyn: Your surgery is confirmed for {{surgery_date}} at {{surgery_time}} at {{facility_name}}. Reply STOP to opt out.",
     },
     {
         "kind": "sms_surgery_reminder",
         "label": "SMS — surgery reminder",
-        "body": "WWC Gyn: Reminder — your surgery is in {{days_until}} days ({{surgery_date}} at {{start_time}}). Reply STOP to opt out.",
+        "body": "WWC Gyn: Reminder — your surgery is in {{days_until}} days ({{surgery_date}} at {{surgery_time}}). Reply STOP to opt out.",
     },
     {
         "kind": "sms_generic_message",
         "label": "SMS — staff-composed message",
-        "body": "WWC Gyn: {{body}} Reply STOP to opt out.",
+        "body": "WWC Gyn: {{message}} Reply STOP to opt out.",
     },
     {
         "kind": "sms_portal_login_code",

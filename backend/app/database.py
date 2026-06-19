@@ -43,6 +43,7 @@ def init_db():
     # retained at _seed_default_groups for traceability but no longer called.
     _migrate_template_targeting()
     _migrate_billing_doc_status_open_to_new()
+    _migrate_sms_template_vars()
     _backfill_larc_assignment_device_type()
     from app.services.larc.seed import seed_larc_device_types
     seed_larc_device_types()
@@ -103,6 +104,28 @@ def _migrate_billing_doc_status_open_to_new():
         conn.execute(text(
             "UPDATE billing_documents SET status = 'new' WHERE status = 'open'"
         ))
+
+
+def _migrate_sms_template_vars():
+    """One-time: three seeded SMS templates referenced placeholder names that
+    build_sms_context never provides, so patients received blank fields —
+    `{{body}}` (the staff-composed message), and `{{start_time}}`/`{{facility}}`
+    (the context supplies `surgery_time`/`facility_name`). Token-replace the
+    broken names in any existing sms_templates row, preserving custom wording.
+    Idempotent — once fixed the broken tokens are gone."""
+    insp = inspect(engine)
+    if "sms_templates" not in insp.get_table_names():
+        return
+    with engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE sms_templates SET body = REPLACE(body, '{{body}}', '{{message}}') "
+            "WHERE body LIKE '%{{body}}%'"))
+        conn.execute(text(
+            "UPDATE sms_templates SET body = REPLACE(body, '{{start_time}}', '{{surgery_time}}') "
+            "WHERE body LIKE '%{{start_time}}%'"))
+        conn.execute(text(
+            "UPDATE sms_templates SET body = REPLACE(body, '{{facility}}', '{{facility_name}}') "
+            "WHERE body LIKE '%{{facility}}%'"))
 
 
 def _adapt_coltype_for_dialect(coltype: str, dialect: str) -> str:
