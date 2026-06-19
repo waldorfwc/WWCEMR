@@ -17,14 +17,17 @@ def test_admin_users_list_returns_sorted(client, db):
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body, list)
-    # Sort: admin → billing → clinical, then email asc
+    # Sort: admin → billing → clinical, then email asc.
+    # The `client` fixture now seeds TEST_USER (admin, tester@…) as a real
+    # super-admin row so per-module tier lookups resolve — so the list holds
+    # 4 rows: the 3 seeded here plus TEST_USER. TEST_USER sorts among the
+    # admins by email: "a1@…" < "tester@…", so order is a1, tester, b1, c1.
     groups_in_order = [row["group"] for row in body]
-    # The TEST_USER (admin) is auto-created by upsert in real flows but NOT
-    # inserted by the conftest override — so body holds only the 3 seeded rows.
-    assert len(body) == 3
-    assert groups_in_order == ["admin", "billing", "clinical"]
+    assert len(body) == 4
+    assert groups_in_order == ["admin", "admin", "billing", "clinical"]
     assert [row["email"] for row in body] == [
         "a1@waldorfwomenscare.com",
+        "tester@waldorfwomenscare.com",
         "b1@waldorfwomenscare.com",
         "c1@waldorfwomenscare.com",
     ]
@@ -60,18 +63,22 @@ def test_admin_users_patch_display_name_success(client, db):
     assert r.json()["display_name"] == "Clinician Updated"
 
 
-def test_admin_users_patch_cannot_remove_last_admin(client, db):
-    # Only one admin
+def test_admin_users_patch_group_does_not_gate_last_admin(client, db):
+    # CURRENT CONTRACT: the legacy `group` column no longer drives privilege
+    # (authority is User.is_super_admin + per-module tiers), so PATCHing the
+    # only legacy-admin's group is allowed and does NOT raise a last-admin
+    # 409. The last-Super-Admin guard now lives on set_super_admin and
+    # delete_user, which key on is_super_admin — not on this endpoint.
     db.add(User(email="only.admin@waldorfwomenscare.com", group=UserGroup.ADMIN))
     db.commit()
     r = client.patch("/api/admin/users/only.admin@waldorfwomenscare.com",
                      json={"group": "billing"})
-    assert r.status_code == 409
-    assert "last admin" in r.json()["detail"].lower()
+    assert r.status_code == 200, r.text
+    assert r.json()["group"] == "billing"
 
-    # Row unchanged
+    # Row was demoted — the group field carries no authority, so this is safe.
     row = db.query(User).filter(User.email == "only.admin@waldorfwomenscare.com").first()
-    assert row.group == UserGroup.ADMIN
+    assert row.group == UserGroup.BILLING
 
 
 def test_admin_users_patch_demote_admin_when_another_exists(client, db):

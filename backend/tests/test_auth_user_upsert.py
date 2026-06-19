@@ -12,12 +12,23 @@ def test_me_returns_group_for_known_admin(client, db):
     assert body["group"] == "admin"
 
 
-def test_get_current_user_upserts_new_user_as_clinical(db):
-    """Direct call to get_current_user with a request lacking a row creates one."""
+def test_get_current_user_returns_clinical_group_for_provisioned_user(db):
+    """get_current_user resolves the group of an already-provisioned user.
+
+    CURRENT CONTRACT: get_current_user NO LONGER auto-provisions. A token
+    whose subject has no User row now 401s ("Account no longer exists.") —
+    accounts are created only in the Google OAuth login flow (auth audit C2).
+    So the user row must already exist; here we verify a clinical user
+    resolves to group="clinical".
+    """
     from app.routers.auth import get_current_user, create_access_token
     from fastapi import Request
 
-    # Build a real token for a brand-new user.
+    # Pre-seed the clinical user (login flow would have created this row).
+    db.add(User(email="brandnew@waldorfwomenscare.com",
+                display_name="Brand New", group=UserGroup.CLINICAL))
+    db.commit()
+
     token = create_access_token({
         "email": "brandnew@waldorfwomenscare.com",
         "name": "Brand New",
@@ -37,6 +48,37 @@ def test_get_current_user_upserts_new_user_as_clinical(db):
     row = db.query(User).filter(User.email == "brandnew@waldorfwomenscare.com").first()
     assert row is not None
     assert row.group == UserGroup.CLINICAL
+
+
+def test_get_current_user_401s_when_user_row_missing(db):
+    """A valid token with no backing User row is rejected, not auto-provisioned.
+
+    Codifies the auth audit C2 fix: a deleted (or never-provisioned) user
+    presenting an unexpired JWT can't silently resurrect/create their account.
+    """
+    from app.routers.auth import get_current_user, create_access_token
+    from fastapi import Request
+    from fastapi import HTTPException
+    import pytest
+
+    token = create_access_token({
+        "email": "ghost@waldorfwomenscare.com",
+        "name": "Ghost",
+    })
+    scope = {
+        "type": "http",
+        "headers": [(b"authorization", f"Bearer {token}".encode())],
+    }
+    request = Request(scope)
+
+    with pytest.raises(HTTPException) as exc:
+        get_current_user(request, db=db)
+    assert exc.value.status_code == 401
+    assert "no longer exists" in exc.value.detail.lower()
+
+    # No row was created as a side effect.
+    assert db.query(User).filter(
+        User.email == "ghost@waldorfwomenscare.com").first() is None
 
 
 def test_get_current_user_reads_existing_group(db):
@@ -64,6 +106,12 @@ def test_get_current_user_reads_existing_group(db):
 def test_get_current_user_normalizes_email_to_lowercase(db):
     from app.routers.auth import get_current_user, create_access_token
     from fastapi import Request
+
+    # Pre-seed the user (no auto-provisioning anymore — auth audit C2). The
+    # row is stored lowercase, matching the normalized token email.
+    db.add(User(email="mixedcase@waldorfwomenscare.com",
+                display_name="Mixed", group=UserGroup.CLINICAL))
+    db.commit()
 
     token = create_access_token({
         "email": "MixedCase@waldorfwomenscare.com",

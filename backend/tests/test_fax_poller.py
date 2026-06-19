@@ -60,7 +60,10 @@ def test_poll_skips_rows_past_max_age(db, monkeypatch):
     row = FaxLog(
         chart_number="PP4", doc_ids=["z"], grouping_mode=GroupingMode.SEPARATE,
         dest_fax="1", status=FaxLogStatus.SENT, ringcentral_message_id="rc-4",
-        sent_at=datetime.utcnow() - timedelta(hours=3),  # older than default 1h window
+        # The poll window was widened to 24h (POLL_MAX_AGE_MINUTES=1440) so
+        # RingCentral's slow Sent/Delivered confirmations aren't missed. Seed
+        # well past that window so the row is correctly skipped as too old.
+        sent_at=datetime.utcnow() - timedelta(hours=30),
     )
     db.add(row); db.commit()
 
