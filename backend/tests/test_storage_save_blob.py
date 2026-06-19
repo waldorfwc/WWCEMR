@@ -1,14 +1,25 @@
 """storage.save_blob + is_legacy_local_path."""
+import os
 from unittest.mock import patch, MagicMock
 
 
 def _reload_storage(monkeypatch, backend="gcs"):
     """Helper: set env var then reload the module so module-level _STORAGE_BACKEND
-    picks it up."""
+    picks it up.
+
+    `settings` is a cached singleton built at first import, so reloading the
+    storage module alone won't change settings.storage_backend /
+    documents_local_root (the env var is read once at Settings() construction).
+    Override the resolved module-level globals directly so the backend +
+    local-root reflect this test's intent regardless of singleton state."""
     monkeypatch.setenv("STORAGE_BACKEND", backend)
     import importlib
     from app.services import storage as s
     importlib.reload(s)
+    monkeypatch.setattr(s, "_STORAGE_BACKEND", backend.lower())
+    root = os.environ.get("DOCUMENTS_LOCAL_ROOT")
+    if root:
+        monkeypatch.setattr(s.settings, "documents_local_root", root)
     return s
 
 

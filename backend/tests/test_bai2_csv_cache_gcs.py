@@ -37,11 +37,12 @@ def test_parse_csv_path_wrapper_still_works(tmp_path):
 def test_preview_caches_csv_via_save_blob_with_key(client, db):
     """Preview should write the CSV to gs://wwc-app-docs/bank-recon-csv/
     with a deterministic key keyed by preview_id+ext."""
-    captured = {}
+    # preview_csv writes TWO blobs via save_blob_with_key: the raw CSV
+    # (keyed {pid}{ext}) and a filter snapshot (keyed {pid}.snapshot.json).
+    # Capture every call and assert on the CSV-specific one.
+    calls = []
     def _capture_save(*, key, body, content_type=None):
-        captured["key"] = key
-        captured["body"] = body
-        captured["content_type"] = content_type
+        calls.append({"key": key, "body": body, "content_type": content_type})
         return key
 
     with patch("app.routers.bank_recon.save_blob_with_key",
@@ -57,18 +58,28 @@ def test_preview_caches_csv_via_save_blob_with_key(client, db):
     pid = body["preview_id"]
     ext = body["ext"]
     assert ext == ".csv"
-    assert captured["key"] == f"bank-recon-csv/{pid}{ext}"
-    assert captured["content_type"] == "text/csv"
-    assert b"2026-05-01" in captured["body"]
+    csv_call = next(c for c in calls if c["key"] == f"bank-recon-csv/{pid}{ext}")
+    assert csv_call["content_type"] == "text/csv"
+    assert b"2026-05-01" in csv_call["body"]
+    # The snapshot blob is also written for /generate to consume.
+    assert any(c["key"] == f"bank-recon-csv/{pid}.snapshot.json" for c in calls)
 
 
 def test_generate_reads_csv_via_read_blob(client, db):
     """Generate should look up the preview CSV by key — not by filesystem
     path. Returns 404 with friendly message if the key isn't found."""
+    # /generate serializes concurrent calls with a Postgres advisory lock
+    # (pg_advisory_xact_lock). SQLite has no such function, so register a
+    # no-op on the test connection.
+    db.connection().connection.create_function(
+        "pg_advisory_xact_lock", 1, lambda _k: None)
+    # preview_id must be 32 hex chars (Field pattern guards the csv key from
+    # path-escape); use a conforming id so we exercise the read_blob lookup
+    # rather than tripping request validation (422).
     with patch("app.routers.bank_recon.read_blob",
                 side_effect=FileNotFoundError("not found")):
         r = client.post("/api/bank-recon/generate", json={
-            "preview_id": "abc123",
+            "preview_id": "a" * 32,
             "csv_filename": "bank.csv",
             "ext": ".csv",
         })

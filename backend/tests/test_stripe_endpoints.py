@@ -118,6 +118,7 @@ def test_webhook_session_completed_marks_paid(client, db, monkeypatch):
             "id": "cs_test_99",
             "amount_total": 75000,
             "payment_intent": "pi_test_99",
+            "payment_status": "paid",
         }},
     }
     with patch("app.routers.stripe_payments.svc.parse_webhook_event",
@@ -247,6 +248,7 @@ def test_webhook_session_completed_sends_receipt(client, db, monkeypatch):
             "id": "cs_test_recpt",
             "amount_total": 75000,
             "payment_intent": "pi_recpt",
+            "payment_status": "paid",
         }},
     }
     with patch("app.routers.stripe_payments.svc.parse_webhook_event",
@@ -302,6 +304,7 @@ def test_webhook_fmla_fee_sets_fmla_fee_paid_no_balance_bump(client, db):
             "id": "cs_test_fmla_webhook",
             "amount_total": 2500,
             "payment_intent": "pi_test_fmla",
+            "payment_status": "paid",
         })
 
     db.refresh(s); db.refresh(pay)
@@ -345,6 +348,7 @@ def test_webhook_patient_balance_unchanged_behavior(client, db):
             "id": "cs_test_balance",
             "amount_total": 20000,
             "payment_intent": "pi_test_balance",
+            "payment_status": "paid",
         })
 
     db.refresh(s); db.refresh(pay)
