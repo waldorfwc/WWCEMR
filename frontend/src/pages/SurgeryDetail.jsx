@@ -965,6 +965,24 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
   // Keep local history in sync with surgery dict updates from parent
   useEffect(() => { setHistory(sendHistory || []) }, [sendHistory])
 
+  // Per-facility boarding-slip recipient list (configured in Surgery Settings).
+  const { data: config } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+    staleTime: 300_000,
+  })
+  const facility = surgery.selected_facility
+  const configuredRecipients =
+    facility === 'medstar' ? (config?.boarding_slip_recipients_medstar || [])
+    : facility === 'crmc'  ? (config?.boarding_slip_recipients_crmc || [])
+    : []
+
+  // When the email panel opens, pre-fill the recipients field from config (once).
+  function openEmail() {
+    setMode('email')
+    setTo((Array.isArray(configuredRecipients) ? configuredRecipients : []).join(', '))
+  }
+
   const send = useMutation({
     mutationFn: (body) => api.post(`/surgery/${surgery.id}/boarding-slip/send`, body)
                               .then(r => r.data),
@@ -983,9 +1001,18 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
 
   function submit() {
     setError(null); setResult(null)
-    const body = { kind: mode, to: to.trim(), file_id: fileId, message: message || null }
-    if (mode === 'email') body.subject = subject || null
-    send.mutate(body)
+    if (mode === 'email') {
+      const recipients = to.split(/[,;]/).map(s => s.trim()).filter(Boolean)
+      send.mutate({
+        kind: 'email',
+        recipients,
+        subject: subject || null,
+        message: message || null,
+        file_id: fileId,
+      })
+    } else {
+      send.mutate({ kind: mode, to: to.trim(), file_id: fileId, message: message || null })
+    }
   }
 
   const SendHistoryList = () => history.length === 0 ? null : (
@@ -1025,7 +1052,7 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
             <Send size={11} /> Fax
           </button>
           <button className="btn-secondary text-xs flex items-center gap-1"
-                  onClick={() => setMode('email')}>
+                  onClick={openEmail}>
             <Mail size={11} /> Email
           </button>
         </div>
@@ -1048,13 +1075,27 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
 
       <div>
         <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-0.5">
-          {mode === 'fax' ? 'Fax number' : 'Email address'}
+          {mode === 'fax' ? 'Fax number' : 'Recipients'}
         </div>
         <input className={`input text-[12px] w-full ${mode === 'fax' ? 'font-mono' : ''}`}
-               type={mode === 'email' ? 'email' : 'tel'}
+               type={mode === 'fax' ? 'tel' : 'text'}
                value={to}
                onChange={e => setTo(e.target.value)}
-               placeholder={mode === 'fax' ? '240-555-0100' : 'scheduling@hospital.com'} />
+               placeholder={mode === 'fax'
+                 ? '240-555-0100'
+                 : 'scheduling@hospital.com, ops@hospital.com'} />
+        {mode === 'email' && (
+          configuredRecipients.length === 0 ? (
+            <p className="text-[11px] text-amber-700 mt-0.5">
+              No recipients configured — add them in Surgery Settings, or type
+              addresses below.
+            </p>
+          ) : (
+            <p className="text-[10px] text-gray-500 mt-0.5">
+              Separate multiple addresses with commas. Pre-filled from Surgery Settings.
+            </p>
+          )
+        )}
       </div>
 
       {mode === 'email' && (
@@ -1082,7 +1123,8 @@ function SendBoardingSlipPanel({ surgery, fileId, sendHistory }) {
       {error && <div className="text-red-600">{error}</div>}
       {result && (
         <div className="text-green-700">
-          ✓ {mode === 'fax' ? 'Fax queued' : 'Email sent'} to <strong>{result.to}</strong>
+          ✓ {mode === 'fax' ? 'Fax queued' : 'Email sent'} to{' '}
+          <strong>{Array.isArray(result.to) ? result.to.join(', ') : result.to}</strong>
           {result.message_id && <> · <span className="font-mono text-[10px]">{result.message_id}</span></>}
         </div>
       )}

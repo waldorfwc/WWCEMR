@@ -227,7 +227,87 @@ function AlertsTab() {
       </section>
       <AlertRecipientsSection />
       <ReminderLeadDaysSection />
+      <BoardingSlipEmailSection />
     </div>
+  )
+}
+
+function BoardingSlipEmailSection() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState({})
+  const save = useMutation({
+    mutationFn: (body) => api.put('/surgery/config', body).then(r => r.data),
+    onSuccess: () => { setDraft({}); qc.invalidateQueries({ queryKey: ['surgery-config'] }) },
+    onError: (e) => alert(saveErrorMessage(e)),
+  })
+  if (!data) return null
+
+  const listFor = (k) => draft[k] ?? (Array.isArray(data[k]) ? data[k] : [])
+  const enabled = draft.boarding_slip_auto_email_enabled
+    ?? !!data.boarding_slip_auto_email_enabled
+  const hours = draft.boarding_slip_auto_email_hours
+    ?? (Number.isFinite(data.boarding_slip_auto_email_hours)
+          ? data.boarding_slip_auto_email_hours : 24)
+
+  return (
+    <section className="card p-4">
+      <h2 className="font-medium mb-1">Boarding-Slip Email</h2>
+      <p className="text-[11px] text-muted mb-4">
+        Recipient lists the boarding slip is emailed to, per facility. Used by the
+        manual Email button on a surgery and by the optional automatic send.
+      </p>
+
+      <StringListEditor
+        title="MedStar Recipients"
+        hint="Email addresses the MedStar boarding slip is sent to."
+        placeholder="scheduling@medstar.org"
+        items={listFor('boarding_slip_recipients_medstar')}
+        onChange={(next) => setDraft(d => ({ ...d, boarding_slip_recipients_medstar: next }))} />
+
+      <StringListEditor
+        title="CRMC Recipients"
+        hint="Email addresses the CRMC boarding slip is sent to."
+        placeholder="scheduling@umcharlesregional.org"
+        items={listFor('boarding_slip_recipients_crmc')}
+        onChange={(next) => setDraft(d => ({ ...d, boarding_slip_recipients_crmc: next }))} />
+
+      <div className="border-t border-border-subtle pt-3 mt-1">
+        <label className="text-[13px] flex items-center gap-2 cursor-pointer">
+          <input type="checkbox"
+                 className="h-4 w-4 rounded border-gray-300 text-plum-600 focus:ring-plum-500"
+                 checked={enabled}
+                 onChange={e => setDraft(d => ({ ...d, boarding_slip_auto_email_enabled: e.target.checked }))} />
+          <span className="font-medium">Automatically Email Boarding Slip</span>
+        </label>
+        <div className={`mt-2 ${enabled ? '' : 'opacity-50'}`}>
+          <label className="block text-[13px]">
+            <span className="font-medium">Hours After Date Selected</span>
+            <input type="number" min={0} max={336}
+                   className="input mt-1 w-28 ml-2"
+                   value={hours}
+                   disabled={!enabled}
+                   onChange={e => setDraft(d => ({ ...d, boarding_slip_auto_email_hours: Number(e.target.value) }))} />
+          </label>
+          <p className="text-[11px] text-muted mt-1">
+            Automatically email the boarding slip this many hours after a surgery
+            date is selected.
+          </p>
+        </div>
+      </div>
+
+      <button className="btn-primary text-xs mt-4"
+              disabled={!Object.keys(draft).length || save.isPending}
+              onClick={() => save.mutate(draft)}>
+        {save.isPending ? 'Saving…' : 'Save Changes'}
+      </button>
+      {save.isError && (
+        <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
+      )}
+    </section>
   )
 }
 
