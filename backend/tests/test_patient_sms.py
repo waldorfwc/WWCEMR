@@ -118,7 +118,9 @@ def test_send_marked_failed_on_twilio_error(db):
     s = _make_surgery(db)
     db.commit()
 
-    with patch("app.services.patient_sms.send_sms", return_value=False):
+    # send_sms returns None on any Twilio failure; send_patient_sms then
+    # records status="failed".
+    with patch("app.services.patient_sms.send_sms", return_value=None):
         row = send_patient_sms(
             db, kind="sms_surgery_reminder",
             surgery=s, context={}, sent_by="x@y.com",
@@ -154,7 +156,7 @@ def test_template_kinds_includes_five():
 # ─── seed tests (J2) ─────────────────────────────────────────────
 
 def test_seed_inserts_all_five_templates(db):
-    from app.services.surgery_config_seed import (
+    from app.services.surgery.config_seed import (
         seed_default_sms_templates, DEFAULT_SMS_TEMPLATES,
     )
 
@@ -170,7 +172,7 @@ def test_seed_inserts_all_five_templates(db):
 
 
 def test_seed_does_not_overwrite_existing(db):
-    from app.services.surgery_config_seed import seed_default_sms_templates
+    from app.services.surgery.config_seed import seed_default_sms_templates
 
     db.add(SmsTemplate(
         kind="sms_surgery_reminder", label="custom",
@@ -187,7 +189,7 @@ def test_seed_does_not_overwrite_existing(db):
 def test_default_bodies_are_short():
     """Confirm seeded templates stay under 160 chars when sample vars are
     short — these go out as single SMS segments most of the time."""
-    from app.services.surgery_config_seed import DEFAULT_SMS_TEMPLATES
+    from app.services.surgery.config_seed import DEFAULT_SMS_TEMPLATES
     # Replace vars with realistic short values, check resulting length.
     sample = {"amount": "750.00", "checkout_url": "https://stripe.com/abc",
               "surgery_date": "2026-06-15", "start_time": "07:30",
@@ -201,7 +203,7 @@ def test_default_bodies_are_short():
 
 
 def test_list_sms_templates_returns_seeded(client, db):
-    from app.services.surgery_config_seed import seed_default_sms_templates
+    from app.services.surgery.config_seed import seed_default_sms_templates
     seed_default_sms_templates(db)
     resp = client.get("/api/surgery/admin/sms-templates")
     assert resp.status_code == 200
@@ -261,7 +263,7 @@ def test_build_context_fills_known_vars(db, monkeypatch):
     assert ctx["patient_name"] == "Jane"
     assert ctx["surgery_date"] == "Wed Jun 3"
     assert ctx["surgery_time"] == "7:30 AM"
-    assert ctx["facility_name"] == "MedStar"
+    assert ctx["facility_name"] == "MedStar SMHC"
     assert ctx["practice_phone"] == "(301) 638-5511"
 
 

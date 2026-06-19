@@ -1,6 +1,15 @@
 """Portal auth helpers — code lifecycle + JWT TTL."""
+import re
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
+
+
+def _code_from_sms(mock_sms):
+    """The plaintext code never leaves issue_challenge as a return value —
+    it only travels via SMS. Recover it from the mocked send_sms body."""
+    args, _ = mock_sms.call_args
+    body = args[1]
+    return re.search(r"\b(\d{6})\b", body).group(1)
 
 from app.models.surgery import Surgery
 from app.services.patient_portal_auth import (
@@ -47,21 +56,21 @@ def test_token_exp_floors_at_today_plus_30(db):
 def test_issue_challenge_creates_code_and_sms(db):
     s = _make_surgery(db)
     with patch("app.services.patient_portal_auth.send_sms",
-                return_value=True) as mock_sms:
-        challenge_token, code = issue_challenge(db, s)
+                return_value="SM123") as mock_sms:
+        challenge_token = issue_challenge(db, s)
     assert len(challenge_token) >= 32
-    assert len(code) == 6 and code.isdigit()
     mock_sms.assert_called_once()
-    # SMS body contains the code
-    args, kwargs = mock_sms.call_args
-    assert code in args[1]
+    # SMS body contains a 6-digit code
+    code = _code_from_sms(mock_sms)
+    assert len(code) == 6 and code.isdigit()
 
 
 def test_verify_code_success_marks_used(db):
     s = _make_surgery(db)
     with patch("app.services.patient_portal_auth.send_sms",
-                return_value=True):
-        challenge_token, code = issue_challenge(db, s)
+                return_value="SM123") as mock_sms:
+        challenge_token = issue_challenge(db, s)
+    code = _code_from_sms(mock_sms)
     surgery_id = verify_code(db, challenge_token, code)
     assert surgery_id == s.id
     # Replay attempt should fail
@@ -71,8 +80,8 @@ def test_verify_code_success_marks_used(db):
 def test_verify_code_wrong_increments_fail_count(db):
     s = _make_surgery(db)
     with patch("app.services.patient_portal_auth.send_sms",
-                return_value=True):
-        challenge_token, _ = issue_challenge(db, s)
+                return_value="SM123"):
+        challenge_token = issue_challenge(db, s)
     assert verify_code(db, challenge_token, "000000") is None
     assert verify_code(db, challenge_token, "000000") is None
     assert verify_code(db, challenge_token, "000000") is None
@@ -90,8 +99,9 @@ def test_verify_code_returns_none_when_expired(db):
     from datetime import datetime, timedelta
     s = _make_surgery(db)
     with patch("app.services.patient_portal_auth.send_sms",
-                return_value=True):
-        challenge_token, code = issue_challenge(db, s)
+                return_value="SM123") as mock_sms:
+        challenge_token = issue_challenge(db, s)
+    code = _code_from_sms(mock_sms)
     # Manually expire the row to bypass time-wait.
     from app.models.patient_portal import PatientPortalAuthCode
     row = (db.query(PatientPortalAuthCode)
@@ -105,10 +115,11 @@ def test_verify_code_returns_none_when_expired(db):
 def test_issue_challenge_payment_purpose_uses_payment_copy(db):
     s = _make_surgery(db)
     with patch("app.services.patient_portal_auth.send_sms",
-                return_value=True) as mock_sms:
-        challenge_token, code = issue_challenge(db, s, purpose="payment")
+                return_value="SM123") as mock_sms:
+        challenge_token = issue_challenge(db, s, purpose="payment")
     args, _ = mock_sms.call_args
     body = args[1]
+    code = _code_from_sms(mock_sms)
     assert "payment" in body.lower() or "charge" in body.lower()
     assert code in body
     # Sign-in copy should NOT appear in payment SMS
