@@ -485,6 +485,10 @@ def _apply_lightweight_migrations():
         ("pellet_patients", "labs_self_reported_at", "DATETIME"),
         # Surgery Reports — completion timestamp (backs "completed" + cycle-time tiles)
         ("surgeries", "completed_at", "DATETIME"),
+        # Boarding-slip auto-email sweep — stamp + slot booking timestamp it
+        # arms off (slot.created_at = when the surgery date was selected).
+        ("surgeries", "boarding_slip_auto_emailed_at", "DATETIME"),
+        ("surgery_slots", "created_at", "DATETIME"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

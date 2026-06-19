@@ -52,6 +52,12 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "surgery_device_types":        ["None", "Benesta", "Liletta", "Mirena", "Paragard", "Skyla", "Kyleena"],
     "assistant_surgeons":          ["None", "Dr. Gillespie"],
 
+    # ── boarding-slip email (manual send + scheduled auto-send) ──
+    "boarding_slip_recipients_medstar": [],
+    "boarding_slip_recipients_crmc":    [],
+    "boarding_slip_auto_email_enabled": False,
+    "boarding_slip_auto_email_hours":   24,
+
     # ── payer-ID → insurance-company resolution (order-prefill) ──
     # Maps an electronic payer ID (string) extracted from a surgery order to
     # one of the INSURANCE_COMPANIES picklist values so insurance prefills.

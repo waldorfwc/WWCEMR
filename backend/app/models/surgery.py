@@ -264,6 +264,10 @@ class Surgery(Base, SoftDeleteMixin):
     # field editor — coordinator's tweaks survive page reloads and seed
     # the editor next time it's opened.
     boarding_slip_overrides = Column(JSON, nullable=True)
+    # Set by the boarding-slip auto-email sweep when it emails the slip to
+    # the configured per-facility recipients. NULL = not yet auto-emailed.
+    # Cleared on reschedule so a new selected date re-arms the auto-send.
+    boarding_slip_auto_emailed_at = Column(DateTime, nullable=True)
 
     # Pre-op labs — patient self-reports the date they got labs drawn
     # (4–7 days before surgery is the practice rule).
@@ -598,6 +602,11 @@ class SurgerySlot(Base):
     procedure_kind = Column(String(20), nullable=False)
     # values: robotic_180 | robotic_240 | minor | major | office
     notes = Column(Text, nullable=True)
+    # When the slot was booked = when the patient/coordinator selected this
+    # surgery date. The boarding-slip auto-email sweep arms off this; on a
+    # reschedule the old slot is deleted + a new one created, so the new
+    # row's created_at is the new selection time.
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
 
     block_day = relationship("BlockDay", back_populates="slots")
 

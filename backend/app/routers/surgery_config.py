@@ -140,6 +140,34 @@ class ConfigPayload(BaseModel):
     assistant_surgeons:        Optional[list[str]] = None
     # payer-ID → insurance-company map (full-replace dict)
     payer_id_insurance_map:    Optional[dict[str, str]] = None
+    # boarding-slip email (manual send + scheduled auto-send)
+    boarding_slip_recipients_medstar: Optional[list[str]] = None
+    boarding_slip_recipients_crmc:    Optional[list[str]] = None
+    boarding_slip_auto_email_enabled: Optional[bool] = None
+    boarding_slip_auto_email_hours:   Optional[int] = Field(default=None, ge=0, le=336)
+
+    @field_validator("boarding_slip_recipients_medstar",
+                     "boarding_slip_recipients_crmc")
+    @classmethod
+    def boarding_slip_recipients_valid(cls, v):
+        # Per-facility recipient email lists. Strip + lowercase each entry,
+        # drop blanks, dedupe (order preserved). Reject any remaining entry
+        # without an "@" so a typo can't silently store an unmailable
+        # address. An empty list is allowed (means "no recipients").
+        if v is None:
+            return v
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in v:
+            e = (item or "").strip().lower()
+            if not e:
+                continue
+            if "@" not in e:
+                raise ValueError(f"invalid email: {e}")
+            if e not in seen:
+                seen.add(e)
+                out.append(e)
+        return out
 
     @field_validator("step_expected_days_hospital", "step_expected_days_office")
     @classmethod
