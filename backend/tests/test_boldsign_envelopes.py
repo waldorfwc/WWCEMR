@@ -18,7 +18,7 @@ def _make_surgery(db, procedures=None):
         chart_number="1", patient_name="Jane Doe", email="jane@example.com",
         eligible_facilities=["medstar"], selected_facility="medstar",
         status="confirmed",
-        procedures=procedures or [{"name": "Robotic hysterectomy"}],
+        procedures=procedures or [{"description": "Robotic hysterectomy"}],
     )
     db.add(s); db.commit(); db.refresh(s)
     return s
@@ -51,7 +51,7 @@ def test_select_template_matches_by_procedure(db):
 
 
 def test_select_template_returns_none_when_no_match(db):
-    s = _make_surgery(db, procedures=[{"name": "Endometrial biopsy"}])
+    s = _make_surgery(db, procedures=[{"description": "Endometrial biopsy"}])
     _make_template(db)  # only matches Robotic/hysterectomy
     assert select_template_id(s, db) is None
 
@@ -61,8 +61,9 @@ def test_build_signer_payload_includes_patient(db):
     t = _make_template(db)
     signers = _build_signer_payload(s, t)
     assert len(signers) >= 1
-    assert signers[0]["name"] == "Jane Doe"
-    assert signers[0]["emailAddress"] == "jane@example.com"
+    assert signers[0]["signerName"] == "Jane Doe"
+    assert signers[0]["signerEmail"] == "jane@example.com"
+    assert signers[0]["signerRole"] == "Patient"
 
 
 def test_send_creates_envelope_row_and_calls_email_hook(db, monkeypatch):
@@ -78,7 +79,7 @@ def test_send_creates_envelope_row_and_calls_email_hook(db, monkeypatch):
 
     from app.models.patient_email import EmailTemplate
     db.add(EmailTemplate(
-        kind="docusign_consent_sent", label="x",
+        kind="boldsign_consent_sent", label="x",
         subject="Sign your forms", html_body="<p>Hi {{patient_name}}</p>",
     ))
     db.commit()
@@ -99,7 +100,7 @@ def test_send_creates_envelope_row_and_calls_email_hook(db, monkeypatch):
     # Email hook fired
     from app.models.patient_email import PatientEmail
     em = (db.query(PatientEmail)
-            .filter(PatientEmail.template_kind == "docusign_consent_sent",
+            .filter(PatientEmail.template_kind == "boldsign_consent_sent",
                     PatientEmail.surgery_id == s.id).first())
     assert em is not None
 
@@ -145,7 +146,7 @@ def test_boldsign_send_endpoint(client, db, monkeypatch):
     # Seed the consent-sent email template so the I6 hook doesn't skip
     from app.models.patient_email import EmailTemplate
     db.add(EmailTemplate(
-        kind="docusign_consent_sent", label="x",
+        kind="boldsign_consent_sent", label="x",
         subject="Sign your forms", html_body="<p>Hi {{patient_name}}</p>",
     ))
     db.commit()

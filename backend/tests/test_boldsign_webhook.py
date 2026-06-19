@@ -46,10 +46,12 @@ def test_webhook_rejects_bad_signature(client, monkeypatch):
 
 
 def test_webhook_setup_mode_when_secret_missing(client, monkeypatch):
-    """When BOLDSIGN_WEBHOOK_SECRET is unset, the endpoint enters setup
-    mode and returns 200 to let BoldSign's Verify button pass during
-    initial dashboard configuration."""
+    """When BOLDSIGN_WEBHOOK_SECRET is unset, the endpoint is fail-CLOSED
+    (503) unless the operator opts in with BOLDSIGN_WEBHOOK_ALLOW_UNSIGNED.
+    With that opt-in flag set, it enters setup mode and returns 200 to let
+    BoldSign's Verify button pass during initial dashboard configuration."""
     monkeypatch.delenv("BOLDSIGN_WEBHOOK_SECRET", raising=False)
+    monkeypatch.setenv("BOLDSIGN_WEBHOOK_ALLOW_UNSIGNED", "true")
     body = b'{"event":"Completed"}'
     sig = _sign(body, "some-secret")
     resp = client.post("/api/boldsign/webhook",
