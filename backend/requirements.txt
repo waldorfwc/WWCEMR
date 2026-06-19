@@ -7,7 +7,7 @@ pydantic
 pydantic-settings
 python-multipart
 anthropic
-reportlab
+reportlab==4.4.10
 pandas
 openpyxl
 xlrd
@@ -22,7 +22,7 @@ paramiko
 
 pytest
 pytest-asyncio
-pypdf
+pypdf==6.10.2
 apscheduler
 respx
 email-validator
