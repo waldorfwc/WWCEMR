@@ -89,7 +89,7 @@ def test_select_slot_skips_sms_when_no_consent(client, db):
 
 def test_reminder_cron_sends_both_email_and_sms(db):
     _seed_templates(db)
-    from app.services.surgery_reminders import run_reminder_sweep
+    from app.services.surgery.reminders import run_reminder_sweep
     s = _seed_surgery_consented(db,
         scheduled_date=date.today() + timedelta(days=3), status="confirmed")
     db.commit()
@@ -106,7 +106,7 @@ def test_reminder_cron_sends_both_email_and_sms(db):
 
 def test_reminder_sms_is_idempotent(db):
     _seed_templates(db)
-    from app.services.surgery_reminders import run_reminder_sweep
+    from app.services.surgery.reminders import run_reminder_sweep
     _seed_surgery_consented(db,
         scheduled_date=date.today() + timedelta(days=3), status="confirmed")
     db.commit()

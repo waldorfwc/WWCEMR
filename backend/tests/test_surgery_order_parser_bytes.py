@@ -16,14 +16,14 @@ def _build_tiny_pdf(text: str) -> bytes:
 
 
 def test_extract_pdf_text_from_bytes_reads_in_memory_pdf():
-    from app.services.surgery_order_parser import extract_pdf_text_from_bytes
+    from app.services.surgery.order_parser import extract_pdf_text_from_bytes
     body = _build_tiny_pdf("Hello from the surgery order parser test")
     out = extract_pdf_text_from_bytes(body)
     assert "Hello from the surgery order parser test" in out
 
 
 def test_extract_pdf_text_path_wrapper_still_works(tmp_path):
-    from app.services.surgery_order_parser import extract_pdf_text
+    from app.services.surgery.order_parser import extract_pdf_text
     p = tmp_path / "order.pdf"
     p.write_bytes(_build_tiny_pdf("Backward-compat wrapper"))
     assert "Backward-compat wrapper" in extract_pdf_text(str(p))
@@ -32,7 +32,7 @@ def test_extract_pdf_text_path_wrapper_still_works(tmp_path):
 def test_parse_order_pdf_bytes_direct_sends_base64_to_claude():
     """The scanned-image fallback should base64-encode the bytes and send
     them as a document content block. We mock the Anthropic client."""
-    from app.services.surgery_order_parser import parse_order_pdf_bytes_direct
+    from app.services.surgery.order_parser import parse_order_pdf_bytes_direct
 
     # Validator requires patient.last_name + first_name and chart_number
     fake_message = MagicMock()
@@ -44,9 +44,9 @@ def test_parse_order_pdf_bytes_direct_sends_base64_to_claude():
     fake_client = MagicMock()
     fake_client.messages.create.return_value = fake_message
 
-    with patch("app.services.surgery_order_parser.anthropic.Anthropic",
+    with patch("app.services.surgery.order_parser.anthropic.Anthropic",
                 return_value=fake_client), \
-         patch("app.services.surgery_order_parser.settings.anthropic_api_key",
+         patch("app.services.surgery.order_parser.settings.anthropic_api_key",
                 "fake-key"):
         out = parse_order_pdf_bytes_direct(b"%PDF-1.4\nfake scanned bytes")
 
