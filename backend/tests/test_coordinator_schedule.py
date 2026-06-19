@@ -8,6 +8,10 @@ def _seed(db):
     s = Surgery(chart_number="1", patient_name="Pat",
                  eligible_facilities=["medstar"], selected_facility="medstar",
                  status="in_progress",
+                 # book_slot/can_fit key capacity off procedure_classification,
+                 # not procedures[].kind. robotic_180 is directly bookable at
+                 # medstar (default duration 180 via block_kind).
+                 procedure_classification="robotic_180",
                  procedures=[{"name": "Hyst", "kind": "robotic_180"}])
     db.add(s); db.flush()
     bd = BlockDay(facility="medstar",

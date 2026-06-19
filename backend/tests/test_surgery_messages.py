@@ -9,6 +9,7 @@ def _seed_surgery(db, **kw):
     s = Surgery(chart_number=kw.get("chart","S1"),
                   patient_name=kw.get("name","Pat"),
                   status="new",
+                  sms_consent=True,
                   cell_phone=kw.get("phone","+12405551234"))
     db.add(s); db.commit(); db.refresh(s)
     return s
@@ -22,6 +23,12 @@ def test_staff_messages_get_returns_thread_and_marks_read(client, db):
     r = client.get(f"/api/staff/surgeries/{s.id}/messages")
     assert r.status_code == 200, r.text
     assert len(r.json()["messages"]) == 1
+    # GET no longer marks read as a side effect (Fable M3); marking read is
+    # now an explicit POST so prefetch/auto-reload can't silently clear the
+    # shared inbox.
+    mr = client.post(f"/api/staff/surgeries/{s.id}/messages/mark-read")
+    assert mr.status_code == 200, mr.text
+    db.expire_all()
     rows = db.query(SurgeryMessage).filter(
         SurgeryMessage.surgery_id == s.id).all()
     assert all(m.read_by_staff_at is not None for m in rows
@@ -31,8 +38,11 @@ def test_staff_messages_get_returns_thread_and_marks_read(client, db):
 def test_staff_messages_post_persists_and_sends_sms(client, db):
     s = _seed_surgery(db)
     db.commit()
-    with patch("app.routers.surgery_messages.send_sms",
-                return_value=True) as mock_sms:
+    # The router now routes the patient-notification SMS through
+    # send_patient_sms (consent gate + PatientSms audit row); the Twilio
+    # seam it ultimately calls is send_sms in app.services.patient_sms.
+    with patch("app.services.patient_sms.send_sms",
+                return_value="SM123") as mock_sms:
         r = client.post(
             f"/api/staff/surgeries/{s.id}/messages",
             json={"body": "Clear liquids OK"},
@@ -53,10 +63,10 @@ def test_staff_messages_post_persists_and_sends_sms(client, db):
 
 
 def test_staff_messages_post_soft_fails_on_sms_error(client, db):
-    """If send_sms raises, the message should still be persisted."""
+    """If the Twilio send raises, the message should still be persisted."""
     s = _seed_surgery(db)
     db.commit()
-    with patch("app.routers.surgery_messages.send_sms",
+    with patch("app.services.patient_sms.send_sms",
                 side_effect=Exception("twilio down")):
         r = client.post(
             f"/api/staff/surgeries/{s.id}/messages",
@@ -90,6 +100,7 @@ def test_staff_messages_inbox_drops_once_staff_views(client, db):
     db.commit()
     assert any(r["surgery_id"] == str(s.id)
                   for r in client.get("/api/staff/messages/inbox").json()["rows"])
-    client.get(f"/api/staff/surgeries/{s.id}/messages")
+    # Marking read is now an explicit POST (GET has no side effect, Fable M3).
+    client.post(f"/api/staff/surgeries/{s.id}/messages/mark-read")
     assert not any(r["surgery_id"] == str(s.id)
                       for r in client.get("/api/staff/messages/inbox").json()["rows"])

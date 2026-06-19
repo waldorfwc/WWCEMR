@@ -16,9 +16,11 @@ def _seed_templates(db):
         kind="sms_surgery_reminder", label="x",
         body="WWC: reminder — surgery in {{days_until}} days",
     ))
+    # Ad-hoc composer fills {{message}} (build_sms_context(s, message=...)),
+    # so the template must reference {{message}} for the body to render.
     db.add(SmsTemplate(
         kind="sms_generic_message", label="x",
-        body="WWC: {{body}}",
+        body="WWC: {{message}}",
     ))
     db.add(EmailTemplate(
         kind="surgery_confirmation", label="x",
@@ -34,6 +36,9 @@ def _seed_surgery_consented(db, **kw):
         sms_consent=True,
         eligible_facilities=["medstar"], selected_facility="medstar",
         status="in_progress",
+        # can_fit/book_slot key off Surgery.procedure_classification, not
+        # procedures[].kind — robotic_180 is directly bookable at medstar.
+        procedure_classification="robotic_180",
         procedures=[{"name": "Hyst", "kind": "robotic_180"}],
     )
     defaults.update(kw)
