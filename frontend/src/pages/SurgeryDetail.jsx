@@ -1205,6 +1205,25 @@ function BoardingSlipFieldsEditor({ surgery, onClose, onRegenerate, isPending })
                     value={form.additional_notes}
                     onChange={v => update('additional_notes', v)} />
               )}
+
+              <div className="pt-2 mt-1 border-t border-plum-100">
+                <div className="text-[11px] uppercase tracking-wide text-plum-700 font-semibold mb-1">
+                  Insurance
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <FE label="Insurance" value={form.insurance_name}
+                      onChange={v => update('insurance_name', v)} />
+                  <FE label="Subscriber ID" mono value={form.primary_member_id}
+                      onChange={v => update('primary_member_id', v)} />
+                  <FE label="Group" mono value={form.primary_group}
+                      onChange={v => update('primary_group', v)} />
+                  <div />
+                  <FE label="Secondary insurance" value={form.secondary_insurance}
+                      onChange={v => update('secondary_insurance', v)} />
+                  <FE label="Secondary subscriber ID" mono value={form.secondary_member_id}
+                      onChange={v => update('secondary_member_id', v)} />
+                </div>
+              </div>
             </>
           )}
         </div>

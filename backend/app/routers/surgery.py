@@ -3223,6 +3223,13 @@ _USER_TO_MEDSTAR = {
     "diagnosis_description": "AUTO_VisitImpressions",
     "special_request":       "Other Special Equipment",
     "additional_notes":      "Additional Notes",
+    # Insurance — name fills the AcroForm field; the ID/group target the
+    # overlay keys generate_medstar draws below the insurance-name boxes.
+    "insurance_name":        "AUTO_InsuranceName",
+    "primary_member_id":     "AUTO_InsuranceID",
+    "primary_group":         "AUTO_InsuranceGroup",
+    "secondary_insurance":   "AUTO_SecondaryInsuranceName",
+    "secondary_member_id":   "AUTO_SecondaryInsuranceID",
 }
 
 # User-friendly field keys → CRMC coord-map keys.
@@ -3236,6 +3243,11 @@ _USER_TO_CRMC = {
     "primary_cpt":           "cpt",
     "special_request":       "special_request",
     "auth_number":           "auth_number",
+    "insurance_name":        "primary_ins",
+    "primary_member_id":     "ins_id_p",
+    "primary_group":         "group_p",
+    "secondary_insurance":   "secondary_ins",
+    "secondary_member_id":   "ins_id_s",
 }
 
 
@@ -3356,6 +3368,11 @@ def boarding_slip_prefill(surgery_id: str,
         "special_request":   s.special_equipment_notes or "",
         "auth_number":       s.auth_number or "",
         "additional_notes":  s.notes or "",
+        "insurance_name":    s.primary_insurance or "",
+        "primary_member_id": s.primary_member_id or "",
+        "primary_group":     s.primary_group or "",
+        "secondary_insurance":   s.secondary_insurance or "",
+        "secondary_member_id":   s.secondary_member_id or "",
     }
     # Persisted overrides win — coordinator's last-saved edits seed the
     # form so they don't have to re-enter them every regeneration.

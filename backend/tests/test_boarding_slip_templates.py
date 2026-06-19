@@ -25,28 +25,41 @@ def test_crmc_template_exists():
     assert os.path.exists(CRMC_TEMPLATE), CRMC_TEMPLATE
 
 
-def _pdf_text(pdf_bytes):
-    return "".join(p.extract_text() or "" for p in PdfReader(io.BytesIO(pdf_bytes)).pages)
+def _fields(pdf_bytes):
+    return PdfReader(io.BytesIO(pdf_bytes)).get_fields() or {}
 
 
-def test_medstar_overlays_member_id_and_group(db):
-    # The MedStar PDF has no ID/group field — they're overlaid below the
-    # insurance-name boxes. Confirm they render onto the slip.
+def test_medstar_member_id_appends_next_to_insurance_name(db):
+    # The MedStar PDF has no ID/group field — they're appended onto the
+    # insurance-name field so they print next to the company name.
     s = Surgery(chart_number="1", patient_name="Doe, Jane", status="confirmed",
                 selected_facility="medstar",
                 primary_insurance="BCBS Federal", primary_member_id="XEG123456789",
-                primary_group="170000", secondary_member_id="1EG4TE5MK72",
+                primary_group="170000", secondary_insurance="Medicare",
+                secondary_member_id="1EG4TE5MK72",
                 procedures=[{"cpt": "58571", "description": "Lap hyst"}])
-    text = _pdf_text(bsl.generate_medstar(s))
-    assert "XEG123456789" in text       # primary member id
-    assert "170000" in text             # primary group
-    assert "1EG4TE5MK72" in text        # secondary member id
+    f = _fields(bsl.generate_medstar(s))
+    name = f.get("AUTO_InsuranceName", {}).get("/V") or ""
+    assert "BCBS Federal" in name and "XEG123456789" in name and "170000" in name
+    sec = f.get("AUTO_SecondaryInsuranceName", {}).get("/V") or ""
+    assert "Medicare" in sec and "1EG4TE5MK72" in sec
 
 
-def test_medstar_no_insurance_overlay_when_blank(db):
-    # No member id/group → no overlay, and still a valid PDF.
+def test_medstar_override_member_id(db):
+    s = Surgery(chart_number="3", patient_name="Roe, Pat", status="confirmed",
+                selected_facility="medstar", primary_insurance="BCBS",
+                procedures=[{"cpt": "58571", "description": "Lap hyst"}])
+    f = _fields(bsl.generate_medstar(
+        s, overrides={"AUTO_InsuranceName": "Aetna", "AUTO_InsuranceID": "OVR-999"}))
+    name = f.get("AUTO_InsuranceName", {}).get("/V") or ""
+    assert "Aetna" in name and "OVR-999" in name
+
+
+def test_medstar_no_insurance_id_when_blank(db):
+    # No member id/group → insurance name unchanged, still a valid PDF.
     s = Surgery(chart_number="2", patient_name="Roe, Pat", status="confirmed",
-                selected_facility="medstar",
+                selected_facility="medstar", primary_insurance="BCBS",
                 procedures=[{"cpt": "58571", "description": "Lap hyst"}])
     pdf = bsl.generate_medstar(s)
     assert pdf[:5] == b"%PDF-"
+    assert (_fields(pdf).get("AUTO_InsuranceName", {}).get("/V") or "") == "BCBS"

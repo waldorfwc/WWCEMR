@@ -138,11 +138,27 @@ def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
     }
 
     # Apply caller overrides on top so staff can correct prefilled values.
-    if overrides:
-        for k, v in overrides.items():
-            if v is None:
-                continue
-            fields[k] = str(v)
+    ovr = overrides or {}
+    for k, v in ovr.items():
+        if v is None:
+            continue
+        fields[k] = str(v)
+
+    # The MedStar PDF has a field for the insurance NAME but none for the
+    # member/policy ID or group. Append them right after the insurance
+    # company name so they print next to it at the form's font size (an
+    # earlier tiny overlay below the box was hard to read).
+    prim_id = str(ovr.get("AUTO_InsuranceID") or s.primary_member_id or "").strip()
+    prim_grp = str(ovr.get("AUTO_InsuranceGroup") or s.primary_group or "").strip()
+    sec_id = str(ovr.get("AUTO_SecondaryInsuranceID") or s.secondary_member_id or "").strip()
+    prim_bits = [b for b in (f"ID {prim_id}" if prim_id else "",
+                             f"Grp {prim_grp}" if prim_grp else "") if b]
+    if prim_bits:
+        base = (fields.get("AUTO_InsuranceName") or "").strip()
+        fields["AUTO_InsuranceName"] = (f"{base}  " + "  ".join(prim_bits)).strip()
+    if sec_id:
+        base = (fields.get("AUTO_SecondaryInsuranceName") or "").strip()
+        fields["AUTO_SecondaryInsuranceName"] = f"{base}  ID {sec_id}".strip()
 
     reader = PdfReader(MEDSTAR_TEMPLATE)
     writer = PdfWriter(clone_from=reader)
@@ -153,36 +169,6 @@ def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
         except Exception:
             # Pages without form widgets raise — skip
             pass
-
-    # The MedStar PDF has form fields for the insurance NAME but none for the
-    # member/policy ID or group number, so the ID never made it onto the slip.
-    # Overlay them in the blank gap just below each insurance-name box
-    # (AUTO_InsuranceName at x=179 / AUTO_SecondaryInsuranceName at x=423, both
-    # bottom-edge y≈105; Additional Notes box starts ~y=76). Coordinates are in
-    # PDF points from bottom-left — nudge after a test print if needed.
-    ovr = overrides or {}
-    prim_id = str(ovr.get("AUTO_InsuranceID") or s.primary_member_id or "")
-    prim_grp = str(ovr.get("AUTO_InsuranceGroup") or s.primary_group or "")
-    sec_id = str(ovr.get("AUTO_SecondaryInsuranceID") or s.secondary_member_id or "")
-    prim_txt = "  ".join(p for p in (
-        f"ID: {prim_id}" if prim_id else "",
-        f"Grp: {prim_grp}" if prim_grp else "") if p)
-    overlay_items = []
-    if prim_txt:
-        overlay_items.append((181, 94, prim_txt))
-    if sec_id:
-        overlay_items.append((425, 94, f"ID: {sec_id}"))
-
-    if overlay_items:
-        ov = io.BytesIO()
-        c = canvas.Canvas(ov, pagesize=letter)
-        c.setFont("Helvetica", 7)
-        for x, y, txt in overlay_items:
-            c.drawString(x, y, txt[:60])
-        c.showPage()
-        c.save()
-        ov.seek(0)
-        writer.pages[0].merge_page(PdfReader(ov).pages[0])
 
     buf = io.BytesIO()
     writer.write(buf)
