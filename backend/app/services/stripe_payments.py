@@ -23,13 +23,17 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import timedelta
 from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.models.larc import LarcAssignment
+from app.models.larc_payment import LarcPayment
 from app.models.stripe_payment import StripeCustomer, SurgeryPayment
 from app.models.surgery import Surgery
+from app.utils.dt import now_utc_naive
 
 log = logging.getLogger(__name__)
 
@@ -240,6 +244,102 @@ def create_checkout_session(
         db.rollback()
         raise
     return pay
+
+
+# ─── LARC patient-responsibility checkout ───────────────────────────
+
+def create_larc_checkout(
+    db: Session,
+    assignment: LarcAssignment,
+    amount: Decimal,
+    *,
+    actor: str = "patient",
+) -> dict:
+    """Create a Stripe Checkout Session + a matching LarcPayment row for a
+    LARC device patient-responsibility charge.
+
+    Mirrors `create_checkout_session` for surgeries but without the
+    StripeCustomer indirection — LARC assignments are keyed by chart number,
+    not by a persisted Stripe customer. Returns
+    ``{"checkout_url": ..., "payment_id": ...}``.
+
+    Idempotency: re-uses a "requested" LarcPayment created in the last
+    15 minutes for the same assignment + amount (mirrors the surgery
+    creator's window) so a double-click doesn't mint a second session.
+    """
+    if amount <= 0:
+        raise ValueError("amount must be > 0")
+
+    # 15-min idempotency window — reuse a recent open request for the same
+    # assignment + amount rather than minting a duplicate Stripe session.
+    cutoff = now_utc_naive() - timedelta(minutes=15)
+    recent = (db.query(LarcPayment)
+                .filter(LarcPayment.assignment_id == str(assignment.id),
+                        LarcPayment.status == "requested",
+                        LarcPayment.amount_requested == amount,
+                        LarcPayment.requested_at >= cutoff,
+                        LarcPayment.checkout_url.isnot(None))
+                .order_by(LarcPayment.requested_at.desc())
+                .first())
+    if recent is not None:
+        return {"checkout_url": recent.checkout_url, "payment_id": str(recent.id)}
+
+    s = _client()
+    amount_cents = int((amount * 100).quantize(Decimal("1")))
+    session = s.checkout.Session.create(
+        mode="payment",
+        line_items=[{
+            "price_data": {
+                "currency": "usd",
+                "unit_amount": amount_cents,
+                "product_data": {
+                    "name": "LARC device — patient responsibility",
+                    "description": f"Ref: LARC {str(assignment.id)[:8]}",
+                },
+            },
+            "quantity": 1,
+        }],
+        payment_intent_data={
+            "metadata": {
+                "larc_assignment_id": str(assignment.id),
+                "kind": "larc_patient_responsibility",
+            },
+        },
+        metadata={
+            "larc_assignment_id": str(assignment.id),
+            "kind": "larc_patient_responsibility",
+        },
+        success_url=_success_url(),
+        cancel_url=_cancel_url(),
+    )
+
+    pay = LarcPayment(
+        assignment_id=str(assignment.id),
+        kind="larc_patient_responsibility",
+        status="requested",
+        amount_requested=amount,
+        stripe_checkout_session_id=session.id,
+        checkout_url=session.url,
+    )
+    db.add(pay)
+    try:
+        db.commit(); db.refresh(pay)
+    except Exception as exc:
+        # Orphan Stripe session — the API call succeeded but the local row
+        # didn't commit. Best-effort expire + log loudly so an operator can
+        # reconcile. (Mirrors create_checkout_session's L5 guard.)
+        log.error("ORPHAN STRIPE SESSION — LARC commit failed for assignment "
+                  "%s after creating session %s: %s",
+                  assignment.id, session.id, exc)
+        try:
+            _client().checkout.Session.expire(session.id)
+            log.warning("orphan LARC session %s expired in Stripe", session.id)
+        except Exception as expire_exc:
+            log.error("could not expire orphan LARC session %s: %s",
+                      session.id, expire_exc)
+        db.rollback()
+        raise
+    return {"checkout_url": session.url, "payment_id": str(pay.id)}
 
 
 # ─── Receipts ───────────────────────────────────────────────────────
