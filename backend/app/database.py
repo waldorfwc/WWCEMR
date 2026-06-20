@@ -521,6 +521,10 @@ def _apply_lightweight_migrations():
         ("surgery_slots", "created_at", "DATETIME"),
         # Missing-charges provider-token revocation (per-provider version).
         ("provider_user_mappings", "token_version", "INTEGER DEFAULT 0"),
+        # LARC per-step notification idempotency — dedicated GUID column (the
+        # 36-char assignment id doesn't fit chart_number's String(20)).
+        ("patient_emails", "larc_assignment_id", "CHAR(36)"),
+        ("patient_sms", "larc_assignment_id", "CHAR(36)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

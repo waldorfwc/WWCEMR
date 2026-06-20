@@ -68,6 +68,9 @@ class PatientSms(Base):
                               ForeignKey("surgeries.id", ondelete="SET NULL"),
                               nullable=True)
     chart_number    = Column(String(20), nullable=True)
+    larc_assignment_id = Column(GUID(), index=True, nullable=True)
+    # 36-char LARC assignment GUID — too long for chart_number (String(20)).
+    # Null for surgery/pellet rows. Backs per-step notification idempotency.
     to_phone        = Column(String(40), nullable=False)
     template_kind   = Column(String(60), nullable=True)
     rendered_body   = Column(Text, nullable=False)

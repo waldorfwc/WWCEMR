@@ -86,6 +86,9 @@ class PatientEmail(Base):
     # generic messaging unconnected to a Surgery row) can use the same
     # audit table without invented FKs.
     chart_number    = Column(String(20), nullable=True)
+    larc_assignment_id = Column(GUID(), index=True, nullable=True)
+    # 36-char LARC assignment GUID — too long for chart_number (String(20)).
+    # Null for surgery/pellet rows. Backs per-step notification idempotency.
     to_email        = Column(String(200), nullable=False)
     template_kind   = Column(String(60), nullable=True)
     # Null for ad-hoc free-text composer sends.
