@@ -420,12 +420,26 @@ def _handle_larc_session_completed(db, obj):
     paid, stamp the assignment, fire the receipt notification, and try to
     auto-allocate an in-stock device (notifying on success)."""
     session_id = obj.get("id")
+    # Delayed payment methods (ACH, klarna, afterpay) fire
+    # checkout.session.completed with payment_status='unpaid' before funds
+    # settle — don't credit until settled. Mirrors _handle_session_completed
+    # / pellet. (Fable billing audit M1.)
+    if (obj.get("payment_status") or "").lower() not in ("paid", "no_payment_required"):
+        return
     pay = (db.query(LarcPayment)
              .filter(LarcPayment.stripe_checkout_session_id == session_id)
+             .with_for_update()
              .first())
     if not pay:
         log.warning("stripe webhook checkout.session.completed — no "
                     "LarcPayment for session %s", session_id)
+        return
+    # Idempotency: Stripe retries on 5xx/timeout. Combined with the
+    # event-level dedup and the row lock above, two concurrent deliveries
+    # can't both re-credit the assignment.
+    if pay.status == "paid":
+        log.info("stripe webhook checkout.session.completed — LarcPayment %s "
+                 "already paid, ignoring", pay.id)
         return
     pay.status = "paid"
     pay.amount_paid = (obj.get("amount_total") or 0) / 100.0

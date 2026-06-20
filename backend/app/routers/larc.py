@@ -1565,7 +1565,11 @@ def record_benefits(assignment_id: str, payload: BenefitsIn,
                        "breakdown": breakdown})
     db.commit()
     # Patient now knows their responsibility — notify them to pay.
-    notify_larc_step(db, a, "responsibility_determined")
+    # Only the practice-owned (in_stock) track carries a patient-payment
+    # step; the pharmacy track bills through enrollment, so firing the
+    # "pay your responsibility" link there would be erroneous.
+    if a.source_flow == "in_stock":
+        notify_larc_step(db, a, "responsibility_determined")
     # $0-responsibility auto-satisfy: nothing for the patient to pay, so mark
     # paid and let the in-stock device bind automatically.
     if a.source_flow == "in_stock" and (a.patient_responsibility in (None, 0)) and not a.patient_paid_at:
@@ -2041,7 +2045,10 @@ def record_payment(assignment_id: str,
     db.commit()
     # Once benefits + payment are both satisfied, bind an in-stock device.
     try_auto_allocate(db, a)
-    notify_larc_step(db, a, "responsibility_satisfied")
+    # Payment receipt is a practice-owned (in_stock) track step; the
+    # pharmacy track has no payment step, so don't notify there.
+    if a.source_flow == "in_stock":
+        notify_larc_step(db, a, "responsibility_satisfied")
     if a.device_id:
         notify_larc_step(db, a, "device_allocated")
     db.refresh(a)

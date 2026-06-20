@@ -40,14 +40,18 @@ def notify_larc_step(db: Session, a, step: str, *, sent_by: str = "system") -> N
         "amount": f"{a.patient_responsibility:.2f}" if a.patient_responsibility else "",
     }
     if a.patient_email:
+        # NB: don't pass chart_number here — LarcAssignment.chart_number is
+        # String(40) but PatientEmail/PatientSms.chart_number is String(20),
+        # so a long chart would overflow. Idempotency + linkage key off
+        # larc_assignment_id (set below), so chart_number isn't needed.
         row = send_patient_email(db, kind=kind, to_email=a.patient_email, context=ctx,
-                                 sent_by=sent_by, chart_number=a.chart_number)
+                                 sent_by=sent_by)
         if row is not None:
             row.larc_assignment_id = a.id
             db.commit()
     if a.sms_consent and a.patient_cell:
         srow = send_patient_sms(db, kind=kind, surgery=None, context=ctx, sent_by=sent_by,
-                                to_phone=a.patient_cell, chart_number=a.chart_number,
+                                to_phone=a.patient_cell,
                                 consent_override=True)
         if srow is not None:
             srow.larc_assignment_id = a.id

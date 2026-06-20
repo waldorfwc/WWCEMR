@@ -143,6 +143,7 @@ def dashboard(a: LarcAssignment = Depends(require_larc_portal_token),
               db: Session = Depends(get_db)):
     track = patient_track(a)
     return {
+        "patient": {"patient_name": a.patient_name, "chart_number": a.chart_number},
         "track": track["track"],
         "steps": track["steps"],
         "payment": _payment_summary(a),
