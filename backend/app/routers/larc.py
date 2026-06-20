@@ -54,6 +54,7 @@ from app.services.larc.workflow import (
 )
 from app.models.larc_config import LarcConfig
 from app.services.larc.settings import LARC_SETTINGS_DEFAULTS, cfg
+from app.services.larc.source_flow import suggest_flow
 
 router = APIRouter(prefix="/larc", tags=["larc"])
 
@@ -1146,6 +1147,10 @@ def patch_device(device_id: str, payload: DevicePatch,
 
 # ─── Assignments (Phase 1: list + create skeleton) ──────────────────
 
+class SuggestFlowIn(BaseModel):
+    device_type_id: str
+
+
 class AssignmentIn(BaseModel):
     device_id: Optional[str] = None         # null if pharmacy-order, set later on receipt
     chart_number: str
@@ -1213,6 +1218,23 @@ def list_assignments(
         "total": len(rows),
         "assignments": [_assignment_dict(a) for a in rows],
     }
+
+
+@router.post("/assignments/suggest-flow")
+def suggest_assignment_flow(
+    payload: SuggestFlowIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK)),
+):
+    """Advisory: given a device type, recommend stock vs pharmacy vs office
+    and the set of override options. Does not create anything."""
+    dt = (db.query(LarcDeviceType)
+            .filter(LarcDeviceType.id == payload.device_type_id,
+                    LarcDeviceType.is_active.is_(True))
+            .first())
+    if not dt:
+        raise HTTPException(status_code=404, detail="device type not found")
+    return suggest_flow(db, dt)
 
 
 @router.post("/assignments", status_code=201)
