@@ -146,7 +146,7 @@ export const HELP_CONTENT = {
       { icon: ListChecks, tone: 'plum', title: 'Workflow Buckets',
         body: 'The bucket cards group every assignment by what it needs next — Needs Benefits, Needs Enrollment, Needs Fax, Awaiting Receipt, Received — Notify, Appt Scheduled, Inserted — To Bill, plus the Office-Procedure (OP) lanes. Click a bucket to load just those patients.' },
       { icon: UserPlus, tone: 'green', title: 'Start LARC Process',
-        body: 'Click "Start LARC Process" and enter the patient (MRN, DOB, name, email, cell), device type, requesting provider, and reason for request. The system then recommends using an in-stock device or sending a pharmacy enrollment form — you can accept the recommendation or pick the other path before confirming.' },
+        body: 'Click "Start LARC Process" and complete the intake — patient (MRN, DOB, name, email, cell), Device Type, Requested By (the ordering provider, from the Admin → Users clinician list), and Reason for Request (each reason carries an ICD-10 code, e.g. Contraception · Z30.430). The system then recommends using an in-stock device or sending a pharmacy enrollment form — accept the recommendation or pick the other path before confirming. The chosen provider also pre-fills the enrollment\'s inserting provider.' },
       { icon: Boxes, tone: 'blue', title: 'Device Inventory',
         body: 'The on-hand grid shows counts by device type, split into LARC and Office Procedure Devices, so you can see stock at a glance.' },
       { icon: AlertTriangle, tone: 'amber', title: 'Reorder & Expiry Alerts',
@@ -159,6 +159,7 @@ export const HELP_CONTENT = {
     tips: [
       'The "Owed List" / Owed tab tracks patients who still owe for a device after insertion.',
       'Use "+ Add Device" in the nav to log a new physical device into inventory.',
+      'Reason-for-Request options (with ICD-10) are configured under Settings → Reasons; the Requested-By provider list comes from Admin → Users.',
     ],
   },
 
@@ -357,16 +358,19 @@ export const HELP_CONTENT = {
     steps: ['Set Windows', 'Edit Device Types', 'Manage Pharmacies'],
     sections: [
       { icon: Settings, tone: 'plum', title: 'Global Configuration',
-        body: 'These settings apply to the whole device-tracking program. The tabs are Thresholds & Windows, Device Types and Pharmacies (Super Admins also see Practice Profile).' },
+        body: 'These settings apply to the whole device-tracking program. The tabs are Thresholds & Windows, Device Types, Pharmacies and Reasons (Super Admins also see Practice Profile).' },
       { icon: SlidersHorizontal, tone: 'blue', title: 'Thresholds & Windows',
         body: 'Set Device Expiry Hold (days before expiry a device is pulled back to unassigned), Assignment Reallocate After (stale assignment age), Pharmacy Order SLA (target turnaround) and the Checkout Ack Window (hours a provider has to acknowledge a checkout).' },
       { icon: Boxes, tone: 'green', title: 'Device Types',
         body: 'Add, edit or retire device types (LARC and Office Procedure), set the NDC, reorder thresholds and the controlled flag. The per-device BoldSign enrollment-form templates (Nexplanon / Paragard / Bayer) are set here too — these are enrollment forms, not consents.' },
       { icon: Phone, tone: 'gray', title: 'Pharmacies',
         body: 'Maintain the pharmacy directory used for enrollment faxes — name, fax, phone, NPI, notes and active flag.' },
+      { icon: ListChecks, tone: 'amber', title: 'Reasons',
+        body: 'Maintain the Reason-for-Request list shown in Start LARC Process — each row pairs a label (e.g. Contraception, Menorrhagia) with its ICD-10 code. Add, edit or remove rows, then Save. The "Requested By" provider dropdown is not configured here — it draws from the clinician list in Admin → Users (active users with an NPI).' },
     ],
     tips: [
       'Reorder thresholds set here drive the Reorder Alerts on the Device Tracking overview.',
+      'Changes to the Reasons list take effect immediately in the Start LARC Process form.',
     ],
   },
 
