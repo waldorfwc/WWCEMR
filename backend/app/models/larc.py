@@ -246,6 +246,8 @@ class LarcAssignment(Base, SoftDeleteMixin):
     # request originates from a scheduled surgery. Distinct from created_by
     # (the staff/system that scheduled).
     requested_by_provider = Column(String(200), nullable=True)
+    reason_for_request = Column(String(120), nullable=True)
+    reason_icd10       = Column(String(20),  nullable=True)
 
     # Source flow + workflow state
     source_flow = Column(String(20), default="in_stock", nullable=False)
