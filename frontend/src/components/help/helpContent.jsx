@@ -17,6 +17,8 @@ import {
   Users, Upload, Mail, Link2, Filter, RefreshCw, ListChecks,
   UserPlus, StickyNote, FileText, Pencil,
   LayoutGrid, BarChart3, Download, Phone, Boxes,
+  Settings, SlidersHorizontal, Package, ScanLine, History,
+  Inbox, ShieldCheck, KeyRound, ClipboardCheck,
 } from 'lucide-react'
 
 // tone → Tailwind classes for the section icon chip + callout.
@@ -277,6 +279,216 @@ export const HELP_CONTENT = {
       'Watch the TF chips — claims past timely filing are likely uncollectible, so work the urgent ones first.',
     ],
   },
+
+  // ── Surgery Settings · /surgery/settings ───────────────────────
+  'surgery-settings': {
+    title: 'Surgery Settings',
+    steps: ['Tune Alerts', 'Set Steps & Schedules', 'Facilities & Types', 'Templates & Consents'],
+    sections: [
+      { icon: Settings, tone: 'plum', title: 'Global Configuration',
+        body: 'Everything here is practice-wide setup, not a single case — changes affect every surgery. The tabs across the top are Alerts & Windows, Workflow Steps, Post-Op Schedules, Facilities & Capacity, Clearances & Devices, Surgery Types, Templates, Consent Templates, Message Templates and Google Sync.' },
+      { icon: AlertTriangle, tone: 'amber', title: 'Alerts & Windows',
+        body: 'Set the thresholds that drive the dashboard — overdue hours, labs / pre-op validity, scheduling horizon, office capacity and the cancellation fee. This tab also holds Alert Recipients and the Boarding-Slip Email recipients (MedStar / CRMC) with an "Automatically Email Boarding Slip" option and how many hours after the date is picked to send it.' },
+      { icon: ListChecks, tone: 'blue', title: 'Workflow Steps & Post-Op',
+        body: 'Workflow Steps sets the named steps and expected days for the Hospital and Office pathways — that "expected days" is what flags a case as behind. Post-Op Schedules builds the visit rules (days after surgery, Office vs Telehealth) matched to a procedure by keyword.' },
+      { icon: Calendar, tone: 'plum', title: 'Facilities, Capacity & Surgery Types',
+        body: 'Facilities & Capacity manages the facility list and the daily case limits / office slot times. Clearances & Devices edits clearance types, device types, assistant surgeons and the Payer ID → Insurance map. Surgery Types defines each procedure (CPTs, classification, eligible facilities and which consents attach).' },
+      { icon: FileSignature, tone: 'green', title: 'Consent Templates',
+        body: 'Register a BoldSign consent template and tell the system when to use it — match by CPT codes (most reliable), procedure keywords (fallback), and optionally a specific facility or insurance. Mark a template "supplemental" to add it on top of the primary matched consent.' },
+      { icon: Mail, tone: 'gray', title: 'Message & Email Templates',
+        body: 'The Templates tab holds procedure, email and SMS templates with editable subject / body and a preview. Message Templates manages the staff-facing message snippets, and Google Sync connects the surgery calendar.' },
+    ],
+    tips: [
+      'Consents only auto-send on a case when a template here matches that case’s procedures — if a consent won’t send, check the CPT / keyword match.',
+      'Changing expected days on Workflow Steps re-scores which cases show as behind on the dashboard.',
+    ],
+  },
+
+  // ── Surgery To-do · /surgery/todo ──────────────────────────────
+  'surgery-todo': {
+    title: 'Scheduler To-Do',
+    steps: ['Scan Action Needed', 'Open a Case', 'Work the Step', 'Clear Activity'],
+    sections: [
+      { icon: ListChecks, tone: 'plum', title: 'Action Needed',
+        body: 'The left column lists the single next open step for every active surgery, with the patient, chart / surgery #, facility and due date. A red border + "Xd behind" means it is past its expected window; an amber border + "Needs review" means data is missing.' },
+      { icon: Filter, tone: 'gray', title: 'Behind Only',
+        body: 'The header counts how many are open, behind and to review. Tick "Behind only" to hide everything except cases that are past schedule.' },
+      { icon: RefreshCw, tone: 'blue', title: 'Recent Activity',
+        body: 'The right column is a live feed of what happened on cases — date picked, rescheduled or cancelled, consent signed or declined, document uploaded, labs reported, payment made and step-overdue alerts. A plum dot marks an item you haven’t read.' },
+      { icon: ClipboardCheck, tone: 'green', title: 'Open & Mark Read',
+        body: 'Click any row — in the worklist or the activity feed — to jump to that case’s Surgery Detail page; opening an activity marks it read. "Mark all read" clears the whole feed at once.' },
+    ],
+    tips: [
+      'This is a cross-case worklist — it pulls the next step from every active surgery so nothing stalls.',
+      'Work behind / needs-review rows first; they are the cases most at risk of slipping.',
+    ],
+  },
+
+  // ── Pellet Settings · /pellets/settings ────────────────────────
+  'pellet-settings': {
+    title: 'Pellet Settings',
+    steps: ['Validity & Windows', 'Portal Requirements', 'Pricing', 'Portal Text'],
+    sections: [
+      { icon: Settings, tone: 'plum', title: 'Global Configuration',
+        body: 'These are program-wide pellet settings, not one patient. The tabs are Thresholds & Windows, Dose Types, Patient Portal, Payments and Portal Info.' },
+      { icon: SlidersHorizontal, tone: 'blue', title: 'Thresholds & Windows',
+        body: 'Set how long labs and a mammogram stay valid (in days), how many days past schedule a visit goes stale, and how many dose combinations to suggest and the most pellets per combo.' },
+      { icon: ClipboardCheck, tone: 'amber', title: 'Patient Portal Requirements',
+        body: 'Toggle whether patients must have a current mammogram, current labs and a signed consent before the insertion visit, and set the BoldSign Consent Template ID used for that consent.' },
+      { icon: DollarSign, tone: 'green', title: 'Payments & Packages',
+        body: 'Set the insertion price and optional monthly subscription amount, choose which payment methods patients can use (single insertion, packages, subscription), and build package discount tiers (count → percent off).' },
+      { icon: FileText, tone: 'gray', title: 'Dose Types & Portal Info',
+        body: 'Dose Types is the catalog of pellet dose definitions. Portal Info is the markdown text shown to patients on the portal’s Rules & Info page.' },
+    ],
+    tips: [
+      'Mammogram / labs validity here drives the "needs mammo" and "needs labs" flags on the pellet roster.',
+      'Leave the subscription amount at 0 if you don’t offer monthly billing.',
+    ],
+  },
+
+  // ── LARC Settings · /larc/settings ─────────────────────────────
+  'larc-settings': {
+    title: 'Device Tracking Settings',
+    steps: ['Set Windows', 'Edit Device Types', 'Manage Pharmacies'],
+    sections: [
+      { icon: Settings, tone: 'plum', title: 'Global Configuration',
+        body: 'These settings apply to the whole device-tracking program. The tabs are Thresholds & Windows, Device Types and Pharmacies (Super Admins also see Practice Profile).' },
+      { icon: SlidersHorizontal, tone: 'blue', title: 'Thresholds & Windows',
+        body: 'Set Device Expiry Hold (days before expiry a device is pulled back to unassigned), Assignment Reallocate After (stale assignment age), Pharmacy Order SLA (target turnaround) and the Checkout Ack Window (hours a provider has to acknowledge a checkout).' },
+      { icon: Boxes, tone: 'green', title: 'Device Types',
+        body: 'Add, edit or retire device types (LARC and Office Procedure), set the NDC, reorder thresholds and the controlled flag. The per-device BoldSign enrollment-form templates (Nexplanon / Paragard / Bayer) are set here too — these are enrollment forms, not consents.' },
+      { icon: Phone, tone: 'gray', title: 'Pharmacies',
+        body: 'Maintain the pharmacy directory used for enrollment faxes — name, fax, phone, NPI, notes and active flag.' },
+    ],
+    tips: [
+      'Reorder thresholds set here drive the Reorder Alerts on the Device Tracking overview.',
+    ],
+  },
+
+  // ── Pellet Inventory · /pellets/inventory ──────────────────────
+  'pellet-inventory': {
+    title: 'Pellet Inventory',
+    steps: ['Place Order', 'Receive Shipment', 'Track Lots', 'Transfer / Dispose'],
+    sections: [
+      { icon: Package, tone: 'plum', title: 'Stock by Lot & Location',
+        body: 'The "Lots in Inventory" grid shows doses on hand by dose type and location (White Plains, Brandywine, Arlington), with each Qualgen lot number and its expiration. Expand a dose group to see its lots, or edit a lot inline. Filter by hormone, location or lot #, and export with Excel / Print PDF.' },
+      { icon: AlertTriangle, tone: 'amber', title: 'Reorder & Expiry Alerts',
+        body: 'Cards surface Reorder Alerts (doses at or below threshold with a suggested order qty) and lots Expiring Within 90 Days, so you reorder and rotate stock before you run short.' },
+      { icon: Upload, tone: 'green', title: 'Orders & Receiving',
+        body: 'Use "Place order" to log a Qualgen purchase and "Receive shipment" when it arrives — Ordered Pellets shows recent orders with status, ETA and cost. "Receive →" on an order opens the receive flow.' },
+      { icon: RefreshCw, tone: 'blue', title: 'Transfers & Disposal',
+        body: '"Transfer" moves doses between locations (tracked through chain-of-custody — awaiting pickup vs in transit) and "Dispose" logs destroyed stock. Open Counts shows any reconciliation in progress.' },
+      { icon: ListChecks, tone: 'gray', title: 'Dose-Type Catalog',
+        body: 'The catalog table lists each dose with on-hand, reorder threshold, order qty and notes. "Edit thresholds →" jumps to the settings that drive the reorder alerts.' },
+    ],
+    tips: [
+      'Testosterone pellets are DEA Schedule III (SCH III badge) — every receipt, transfer and disposal is logged to the Audit tab.',
+      'Watch the "Expiring Within 90 Days" card and use the oldest lots first.',
+    ],
+  },
+
+  // ── Pellet Counts · /pellets/counts ────────────────────────────
+  'pellet-counts': {
+    title: 'Pellet Counts',
+    steps: ['Start a Count', 'Pick Scope', 'Add Witness', 'Reconcile & Finish'],
+    sections: [
+      { icon: ScanLine, tone: 'plum', title: 'Count Workflow',
+        body: 'Counts reconcile the physical pellet stock against the system. "Start count" begins one at a location; "Start all 3 locations" opens one for each. The table lists every count with its location, scope, status, who started / finished it and the witness.' },
+      { icon: ShieldCheck, tone: 'amber', title: 'Scope & Witness',
+        body: 'Choose "All lots" or "Sch III only" (controlled testosterone). A second-person witness email is required at start whenever any Schedule III lot is in scope — this is a DEA control.' },
+      { icon: AlertTriangle, tone: 'red', title: 'Blocking Visits',
+        body: 'You can’t start a count while pellet visits are still "proposed" — the drawer lists them so you can mark each "Did not happen", "Edit dose" or "Confirm as planned" first, so the snapshot is accurate.' },
+      { icon: FileText, tone: 'green', title: 'Open, Finish & PDF',
+        body: 'Open → a count to enter the physical numbers lot by lot and finish it; the system records any variance. Finished counts produce a PDF, and an in-progress count can be Cancelled.' },
+    ],
+    tips: [
+      'Resolve every "proposed" visit before starting — otherwise the on-hand snapshot won’t match the shelf.',
+      'The witness must be a different person than whoever starts the count.',
+    ],
+  },
+
+  // ── Pellet Audit · /pellets/audit ──────────────────────────────
+  'pellet-audit': {
+    title: 'Pellet Audit Log',
+    steps: ['Filter', 'Read an Event', 'Verify Witness'],
+    sections: [
+      { icon: History, tone: 'plum', title: 'Perpetual Record',
+        body: 'This is the write-only history of every inventory change — receipts, transfers, disposals, count adjustments, dose-type edits and opening balances. Nothing here can be edited; it exists for DEA Schedule III (testosterone) compliance.' },
+      { icon: Filter, tone: 'gray', title: 'Filters',
+        body: 'Narrow the log by Action, Location, Actor (email), Lot UUID and time Window — filters combine with AND. "Clear filters" resets, and the summary shows how many events and how many were witnessed.' },
+      { icon: BarChart3, tone: 'blue', title: 'Reading a Row',
+        body: 'Each row shows When, Actor, Action, Location, the signed change in doses (Δ doses — green added, red removed) and a plain-language Summary. A detail line adds the witness, reason, transfer destination or count variance (expected vs counted).' },
+      { icon: ShieldCheck, tone: 'amber', title: 'In / Out / Witness',
+        body: 'A positive Δ means stock came in (receipt / transfer received), a negative Δ means it went out (transfer sent / disposal / count-down). A "wit" shield badge marks events that were witnessed.' },
+    ],
+    tips: [
+      'Filter by Lot UUID to trace a single lot’s entire history end to end.',
+      'This log is the source of truth if a count variance ever needs explaining.',
+    ],
+  },
+
+  // ── Insurance Documents · /billing/insurance-documents ─────────
+  'insurance-docs': {
+    title: 'Insurance Documents',
+    steps: ['Triage New', 'Assign', 'Work the Doc', 'Mark Worked'],
+    sections: [
+      { icon: Inbox, tone: 'plum', title: 'Document Inbox',
+        body: 'This is the shared inbox for faxed and uploaded insurance documents — paper EOBs, patient payments, denials and letters. Each row shows the filename, type, page count, when it arrived, who it’s assigned to and its status.' },
+      { icon: Filter, tone: 'gray', title: 'Filters & Search',
+        body: 'Filter by Status (New / In progress / Worked — toggles multi-select), by Classification, and with "Assigned to me" or "Unassigned only". Search by filename, and sort by Type or Uploaded date.' },
+      { icon: Upload, tone: 'green', title: 'Upload',
+        body: '"+ Upload document" adds a PDF or image manually, sets its classification (or "Auto-classify with AI"), and optionally assigns it. The system warns on a possible duplicate.' },
+      { icon: FileText, tone: 'blue', title: 'View & Work',
+        body: 'Click a row to open the viewer (page through, zoom, rotate) with a side panel to set the classification, assign staff, add notes and change the status. Leaving it unassigned makes it visible to everyone with billing access.' },
+      { icon: ListChecks, tone: 'amber', title: 'Status Flow',
+        body: 'A document moves New → In progress → Worked. Use "Mark in progress" while you’re on it and "Mark as Worked" when done; the access log records who did what.' },
+    ],
+    tips: [
+      'Assign a document to yourself so two people don’t work the same fax.',
+      'Use "Unassigned only" to find documents nobody has picked up yet.',
+    ],
+  },
+
+  // ── Admin · Permissions · /admin/permissions ───────────────────
+  'admin-permissions': {
+    title: 'Permissions',
+    steps: ['Pick a Module', 'Grant a Tier', 'Use Groups', 'Open a Profile'],
+    sections: [
+      { icon: KeyRound, tone: 'plum', title: 'Module + Tier Access',
+        body: 'Access is granted per module at a tier — View (read), Work (do the day-to-day) or Manage (configure). Pick a module up top to see every group and user who has access to it.' },
+      { icon: ListChecks, tone: 'blue', title: 'Granting in the Grid',
+        body: 'Each row has a clickable dot under View, Work, Manage and Admin. Click an empty dot to grant that tier, or click the active dot to clear it. Plum dots come from a group or normal override; amber dots are a per-user override.' },
+      { icon: Users, tone: 'green', title: 'Groups vs Users',
+        body: 'Use the Groups + Users / Groups / Users buttons to filter the list. Groups bundle several grants so you can give a whole role at once; "+ New Group" creates one. A user’s effective access is the highest tier across their groups plus any per-user override.' },
+      { icon: ShieldCheck, tone: 'amber', title: 'Profiles & Super Admin',
+        body: 'Click a name to open its profile drawer — for a user, manage group membership, per-module overrides and the Super Admin flag; for a group, edit its name, members and grants. Super Admin has Admin on every module and always wins.' },
+    ],
+    tips: [
+      'The Source column tells you where access comes from — "← Group" is inherited, "Override" is per-user (click the active dot to clear it).',
+      'Prefer Groups over per-user overrides so access stays consistent across a role.',
+      'The system refuses to remove the last Super Admin.',
+    ],
+  },
+
+  // ── Admin · Checklist Templates · /admin/templates ─────────────
+  'admin-templates': {
+    title: 'Checklist Templates',
+    steps: ['Create a Template', 'Set the Schedule', 'Assign It', 'Add Training'],
+    sections: [
+      { icon: ClipboardList, tone: 'plum', title: 'Recurring Task Templates',
+        body: 'A template generates a checklist task on a schedule for the right people. "+ New Template" creates one; the table lists each by title, category, schedule, due, manager and assignees, with an Active toggle.' },
+      { icon: Calendar, tone: 'blue', title: 'Schedule',
+        body: 'Pick a recurrence — Daily, specific weekdays or days of month, a yearly anniversary, every N days/months/years, or On demand — plus a weekend rule, due time and priority. This controls when instances are generated.' },
+      { icon: Users, tone: 'green', title: 'Who Gets It',
+        body: 'Assign by group, by specific users, or to "anyone with this permission". "Preview assignees" shows the computed count before you save. A Manager (escalate to) is required, with an escalate-after-hours setting.' },
+      { icon: ShieldCheck, tone: 'amber', title: 'Yes/No & Training',
+        body: 'A task can ask a Yes/No question with an optional follow-up ("How many?" / "Why?"). You can also require a training certification before the task is assigned, link the training material, set when the cert expires, and manage authorized trainers and certified trainees.' },
+    ],
+    tips: [
+      'A template with no valid assignees is flagged in red — fix the Who-gets-it section so tasks actually generate.',
+      'These are operational checklists; consent forms are configured under Surgery Settings, not here.',
+    ],
+  },
 }
 
 /**
@@ -287,26 +499,39 @@ export const HELP_CONTENT = {
  */
 export function helpKeyForPath(pathname) {
   if (!pathname) return null
+  // Static surgery sub-routes — listed BEFORE the /surgery/<id> digit guard so
+  // they can never false-match (they're non-numeric, but order it defensively).
+  if (pathname === '/surgery/settings') return 'surgery-settings'
+  if (pathname === '/surgery/todo') return 'surgery-todo'
+  if (pathname === '/surgery/reports') return 'surgery-reports'
   // Surgery detail: /surgery/<numeric-id>. Sibling routes (settings, todo,
   // calendar, reports, etc.) are non-numeric, so the digit check below avoids
   // false matches against the static surgery sub-routes handled here.
   if (/^\/surgery\/\d+(?:\/|$)/.test(pathname)) return 'surgery-detail'
   if (pathname === '/surgery' || pathname === '/surgery/') return 'surgery-dashboard'
-  if (pathname === '/surgery/reports') return 'surgery-reports'
-  // Missing charges lives under the billing layout.
+  // Billing layout sub-routes.
   if (pathname === '/billing/missing-charges') return 'missing-charges'
+  if (pathname === '/billing/insurance-documents') return 'insurance-docs'
   // Active AR worklist (claim detail at /active-ar/:id gets its own help later).
   if (pathname === '/active-ar') return 'active-ar'
   // Recalls (WWE) index. Sub-route /recalls/settings is excluded.
   if (pathname === '/recalls' || pathname === '/recalls/') return 'recalls'
-  // LARC / Device Tracking — index + reports. Other sub-tabs get help later.
-  if (pathname === '/larc' || pathname === '/larc/') return 'larc'
+  // LARC / Device Tracking — index + reports + settings. Other sub-tabs later.
   if (pathname === '/larc/reports') return 'larc-reports'
+  if (pathname === '/larc/settings') return 'larc-settings'
+  if (pathname === '/larc' || pathname === '/larc/') return 'larc'
   // Pellet sub-pages (check before the /pellets index).
   if (pathname === '/pellets/reports') return 'pellet-reports'
   if (pathname === '/pellets/recall') return 'pellet-recall'
+  if (pathname === '/pellets/settings') return 'pellet-settings'
+  if (pathname === '/pellets/inventory') return 'pellet-inventory'
+  if (pathname === '/pellets/counts') return 'pellet-counts'
+  if (pathname === '/pellets/audit') return 'pellet-audit'
   // Pellets main page is the /pellets index (patient list). Other sub-tabs
-  // (/pellets/inventory, …) get their own help later.
+  // (/pellets/activity, …) get their own help later.
   if (pathname === '/pellets' || pathname === '/pellets/patients') return 'pellets'
+  // Admin console.
+  if (pathname === '/admin/permissions') return 'admin-permissions'
+  if (pathname === '/admin/templates') return 'admin-templates'
   return null
 }
