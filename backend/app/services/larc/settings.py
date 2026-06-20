@@ -17,6 +17,10 @@ LARC_SETTINGS_DEFAULTS: dict[str, Any] = {
     "assignment_reallocate_after_days": 180,   # workflow.ASSIGNMENT_REALLOCATE_AFTER_DAYS
     "pharmacy_order_sla_days":           14,   # workflow.PHARMACY_ORDER_SLA_DAYS
     "checkout_ack_window_hours":         24,   # workflow.CHECKOUT_ACK_WINDOW_HOURS
+    "reason_for_request_options": [
+        {"reason": "Contraception", "icd10": "Z30.430"},
+        {"reason": "Menorrhagia",   "icd10": "N92.0"},
+    ],
 }
 
 

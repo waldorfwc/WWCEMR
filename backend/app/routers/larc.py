@@ -403,6 +403,23 @@ class LarcConfigPayload(BaseModel):
     assignment_reallocate_after_days: Optional[int] = Field(default=None, ge=1, le=3650)
     pharmacy_order_sla_days:          Optional[int] = Field(default=None, ge=1, le=365)
     checkout_ack_window_hours:        Optional[int] = Field(default=None, ge=1, le=720)
+    reason_for_request_options:       Optional[list[dict]] = None
+
+    @field_validator("reason_for_request_options")
+    @classmethod
+    def _validate_reasons(cls, v):
+        if v is None:
+            return v
+        cleaned = []
+        for item in v:
+            if not isinstance(item, dict):
+                raise ValueError("each reason must be an object")
+            reason = str(item.get("reason", "")).strip()
+            icd10 = str(item.get("icd10", "")).strip()
+            if not reason or not icd10:
+                raise ValueError("each reason needs a non-empty reason and icd10")
+            cleaned.append({"reason": reason, "icd10": icd10})
+        return cleaned
 
 
 @router.get("/config")
