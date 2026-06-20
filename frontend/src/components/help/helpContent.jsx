@@ -141,12 +141,12 @@ export const HELP_CONTENT = {
   // ── LARC / Device Tracking · /larc ─────────────────────────────
   'larc': {
     title: 'Device Tracking',
-    steps: ['Work a Bucket', 'Benefits & Enroll', 'Fax Pharmacy', 'Receive', 'Insert & Bill'],
+    steps: ['Start LARC Process', 'Pick the Path', 'Benefits & Enroll', 'Fax / Receive', 'Insert & Bill'],
     sections: [
       { icon: ListChecks, tone: 'plum', title: 'Workflow Buckets',
         body: 'The bucket cards group every assignment by what it needs next — Needs Benefits, Needs Enrollment, Needs Fax, Awaiting Receipt, Received — Notify, Appt Scheduled, Inserted — To Bill, plus the Office-Procedure (OP) lanes. Click a bucket to load just those patients.' },
-      { icon: UserPlus, tone: 'green', title: 'Enrollment & Benefits',
-        body: 'Use "LARC Enrollment Form" to start a new pharmacy enrollment, or "Benefits for In-Stock Device" when the device is already on the shelf.' },
+      { icon: UserPlus, tone: 'green', title: 'Start LARC Process',
+        body: 'Click "Start LARC Process" and enter the patient (MRN, DOB, name, email, cell), device type, requesting provider, and reason for request. The system then recommends using an in-stock device or sending a pharmacy enrollment form — you can accept the recommendation or pick the other path before confirming.' },
       { icon: Boxes, tone: 'blue', title: 'Device Inventory',
         body: 'The on-hand grid shows counts by device type, split into LARC and Office Procedure Devices, so you can see stock at a glance.' },
       { icon: AlertTriangle, tone: 'amber', title: 'Reorder & Expiry Alerts',
