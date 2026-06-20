@@ -55,6 +55,7 @@ from app.services.larc.workflow import (
 from app.models.larc_config import LarcConfig
 from app.services.larc.settings import LARC_SETTINGS_DEFAULTS, cfg
 from app.services.larc.source_flow import suggest_flow
+from app.services.larc.allocation import try_auto_allocate
 
 router = APIRouter(prefix="/larc", tags=["larc"])
 
@@ -1561,7 +1562,14 @@ def record_benefits(assignment_id: str, payload: BenefitsIn,
                        f" — pt responsibility ${a.patient_responsibility}"),
               detail={"patient_responsibility": str(a.patient_responsibility),
                        "breakdown": breakdown})
-    db.commit(); db.refresh(a)
+    db.commit()
+    # $0-responsibility auto-satisfy: nothing for the patient to pay, so mark
+    # paid and let the in-stock device bind automatically.
+    if a.source_flow == "in_stock" and (a.patient_responsibility in (None, 0)) and not a.patient_paid_at:
+        a.patient_paid_at = now_utc_naive()
+        a.patient_paid_by = "system:zero_responsibility"
+        try_auto_allocate(db, a)
+    db.refresh(a)
     return {
         "assignment": _assignment_dict(a, include_milestones=True),
         "breakdown": breakdown,
@@ -2022,7 +2030,10 @@ def record_payment(assignment_id: str,
               summary=f"Patient payment received for {a.patient_name}"
                        + (f" (${payload.amount:.2f})" if payload.amount else ""),
               detail={"amount": payload.amount, "notes": payload.notes})
-    db.commit(); db.refresh(a)
+    db.commit()
+    # Once benefits + payment are both satisfied, bind an in-stock device.
+    try_auto_allocate(db, a)
+    db.refresh(a)
     return _assignment_dict(a, include_milestones=True)
 
 
