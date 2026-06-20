@@ -72,7 +72,20 @@ server {
 
     # SPA fallback — any unknown path serves index.html so the React router
     # can handle deep links.
+    #
+    # index.html must NOT be cached: it's the un-hashed entry point that
+    # references the hashed /assets/ bundles. With no Cache-Control, browsers
+    # apply heuristic caching and keep serving a STALE index.html after a
+    # deploy — pinning the app to an old JS bundle (e.g. new Help pages never
+    # appear) until a manual hard-refresh. "no-cache" = store but always
+    # revalidate (cheap 304 when unchanged), so deploys propagate immediately.
+    # Defining add_header here drops the inherited server-level security
+    # headers (documented above), so re-assert them.
     location / {
         try_files $uri $uri/ /index.html;
+        add_header Cache-Control            "no-cache" always;
+        add_header X-Frame-Options           "SAMEORIGIN" always;
+        add_header X-Content-Type-Options    "nosniff" always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
     }
 }
