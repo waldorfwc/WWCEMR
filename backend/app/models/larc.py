@@ -248,6 +248,11 @@ class LarcAssignment(Base, SoftDeleteMixin):
     requested_by_provider = Column(String(200), nullable=True)
     reason_for_request = Column(String(120), nullable=True)
     reason_icd10       = Column(String(20),  nullable=True)
+    sms_consent          = Column(Boolean, default=False, nullable=False)
+    sms_consented_at     = Column(DateTime, nullable=True)
+    sms_consented_by     = Column(String(200), nullable=True)
+    portal_token_version = Column(Integer, default=0, nullable=False)
+    needs_allocation_no_stock = Column(Boolean, default=False, nullable=False)
 
     # Source flow + workflow state
     source_flow = Column(String(20), default="in_stock", nullable=False)

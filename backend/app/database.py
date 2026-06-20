@@ -201,6 +201,11 @@ def _apply_lightweight_migrations():
         ("larc_assignments", "deleted_by", "VARCHAR(200)"),
         ("larc_assignments", "reason_for_request", "VARCHAR(120)"),
         ("larc_assignments", "reason_icd10", "VARCHAR(20)"),
+        ("larc_assignments", "sms_consent", "BOOLEAN DEFAULT FALSE"),
+        ("larc_assignments", "sms_consented_at", "DATETIME"),
+        ("larc_assignments", "sms_consented_by", "VARCHAR(200)"),
+        ("larc_assignments", "portal_token_version", "INTEGER DEFAULT 0"),
+        ("larc_assignments", "needs_allocation_no_stock", "BOOLEAN DEFAULT FALSE"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),
