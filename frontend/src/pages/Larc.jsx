@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Box,
-  Check, Clock, Plus, Search, Truck, X,
+  Check, Clock, PackageCheck, Plus, Search, Truck, X,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
@@ -294,6 +294,11 @@ export default function Larc() {
         </div>
       </div>
 
+      {/* Devices ready to check out (MA action) */}
+      <div className="mb-4">
+        <LarcCheckoutCard />
+      </div>
+
       {/* Bucket chip bar */}
       <div className="flex flex-wrap gap-1.5 mb-4">
         {BUCKET_DEFS.map(b => {
@@ -438,6 +443,133 @@ export default function Larc() {
   )
 }
 
+
+
+// Devices ready to check out — the MA pulls the device from the cabinet and
+// records the device ID. Mirrors the LarcCheckoutCard on My Checklist; the
+// per-assignment checkout action used to live on the assignment detail page.
+function LarcCheckoutCard() {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['larc-checkouts'],
+    queryFn: () => api.get('/larc/checkouts/ready').then(r => r.data),
+  })
+
+  const rows = data || []
+  const count = rows.length
+
+  return (
+    <div className="card border-plum-100 bg-plum-50/30">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <PackageCheck size={18} className="text-plum-700" />
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Devices Ready to Check Out</div>
+            <div className="text-xs text-gray-600">
+              {isLoading
+                ? 'Loading…'
+                : error
+                  ? <span className="text-red-600">Couldn't load — {error?.response?.data?.detail || error.message}</span>
+                  : count === 0
+                    ? 'No devices waiting to be checked out.'
+                    : `${count} ${count === 1 ? 'device' : 'devices'} ready to check out.`}
+            </div>
+          </div>
+        </div>
+        <button
+          className="btn-primary text-xs"
+          onClick={() => setOpen(o => !o)}
+          disabled={count === 0}
+        >
+          {open ? 'Close' : 'Check out a device'}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-3 space-y-2">
+          {rows.map(r => (
+            <LarcCheckoutRow key={r.assignment_id} row={r} qc={qc} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function LarcCheckoutRow({ row, qc }) {
+  const [deviceId, setDeviceId] = useState('')
+  const [givenTo, setGivenTo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+  const [done, setDone] = useState(false)
+
+  async function submit() {
+    if (!deviceId.trim()) {
+      setErr('Enter the device ID from the label')
+      return
+    }
+    setBusy(true); setErr(null)
+    try {
+      await api.post(`/larc/assignments/${row.assignment_id}/checkout-direct`, {
+        device_our_id: deviceId.trim(),
+        given_to: givenTo.trim() || null,
+      })
+      setDone(true)
+      qc.invalidateQueries({ queryKey: ['larc-checkouts'] })
+      qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
+    } catch (e) {
+      setErr(e?.response?.data?.detail || e.message)
+    } finally { setBusy(false) }
+  }
+
+  if (done) {
+    return (
+      <div className="bg-green-50 border border-green-200 rounded p-2 text-xs text-green-800">
+        ✓ Checked out {row.device_type_name} for {row.patient_name}.
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-white border border-border-subtle rounded p-2.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-gray-900 truncate">{row.patient_name}</div>
+          <div className="text-xs text-gray-600">
+            {row.device_type_name || 'Device'}
+            {row.appt_date && <> · appt {fmt.date(row.appt_date)}</>}
+            {row.chart_number && <> · chart {row.chart_number}</>}
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input
+          className="input text-xs font-mono w-40"
+          placeholder="Device ID from label"
+          value={deviceId}
+          onChange={e => setDeviceId(e.target.value)}
+          autoComplete="off"
+        />
+        <input
+          className="input text-xs w-48"
+          placeholder="Given to (optional)"
+          value={givenTo}
+          onChange={e => setGivenTo(e.target.value)}
+        />
+        <button
+          className="btn-primary text-xs"
+          onClick={submit}
+          disabled={busy || !deviceId.trim()}
+        >
+          {busy ? 'Checking out…' : 'Check out'}
+        </button>
+      </div>
+      {err && <div className="text-xs text-red-600 mt-1">{err}</div>}
+    </div>
+  )
+}
 
 
 function StartLarcProcessDrawer({ onClose, onCreated }) {
