@@ -104,7 +104,7 @@ export const HELP_CONTENT = {
     ],
     tips: [
       'Provider emails go out automatically every Monday at 8 AM; "Send Weekly Emails Now" is only for an ad-hoc run.',
-      'The signed provider portal links expire after 60 days.',
+      'The signed provider portal links expire after 14 days. Use "Revoke Links" on a provider mapping to invalidate their outstanding links immediately (e.g. when they leave).',
     ],
   },
 }
