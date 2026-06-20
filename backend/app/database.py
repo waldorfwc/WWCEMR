@@ -199,6 +199,8 @@ def _apply_lightweight_migrations():
         ("claims", "deleted_by", "VARCHAR(200)"),
         ("larc_assignments", "deleted_at", "DATETIME"),
         ("larc_assignments", "deleted_by", "VARCHAR(200)"),
+        ("larc_assignments", "reason_for_request", "VARCHAR(120)"),
+        ("larc_assignments", "reason_icd10", "VARCHAR(20)"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),

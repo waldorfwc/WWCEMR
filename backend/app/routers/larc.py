@@ -54,6 +54,7 @@ from app.services.larc.workflow import (
 )
 from app.models.larc_config import LarcConfig
 from app.services.larc.settings import LARC_SETTINGS_DEFAULTS, cfg
+from app.services.larc.source_flow import suggest_flow
 
 router = APIRouter(prefix="/larc", tags=["larc"])
 
@@ -181,6 +182,8 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "source_flow": a.source_flow,
         "linked_surgery_id": str(a.linked_surgery_id) if a.linked_surgery_id else None,
         "requested_by_provider": a.requested_by_provider,
+        "reason_for_request": a.reason_for_request,
+        "reason_icd10": a.reason_icd10,
         "from_surgery": a.linked_surgery_id is not None,
         "status": a.status,
         "sub_flag": a.sub_flag,
@@ -402,6 +405,23 @@ class LarcConfigPayload(BaseModel):
     assignment_reallocate_after_days: Optional[int] = Field(default=None, ge=1, le=3650)
     pharmacy_order_sla_days:          Optional[int] = Field(default=None, ge=1, le=365)
     checkout_ack_window_hours:        Optional[int] = Field(default=None, ge=1, le=720)
+    reason_for_request_options:       Optional[list[dict]] = None
+
+    @field_validator("reason_for_request_options")
+    @classmethod
+    def _validate_reasons(cls, v):
+        if v is None:
+            return v
+        cleaned = []
+        for item in v:
+            if not isinstance(item, dict):
+                raise ValueError("each reason must be an object")
+            reason = str(item.get("reason", "")).strip()
+            icd10 = str(item.get("icd10", "")).strip()
+            if not reason or not icd10:
+                raise ValueError("each reason needs a non-empty reason and icd10")
+            cleaned.append({"reason": reason, "icd10": icd10})
+        return cleaned
 
 
 @router.get("/config")
@@ -1146,6 +1166,10 @@ def patch_device(device_id: str, payload: DevicePatch,
 
 # ─── Assignments (Phase 1: list + create skeleton) ──────────────────
 
+class SuggestFlowIn(BaseModel):
+    device_type_id: str
+
+
 class AssignmentIn(BaseModel):
     device_id: Optional[str] = None         # null if pharmacy-order, set later on receipt
     chart_number: str
@@ -1169,6 +1193,12 @@ class AssignmentIn(BaseModel):
     source_flow: str = "in_stock"           # in_stock | pharmacy_order
     device_type_id: Optional[str] = None    # required for pharmacy_order before a device exists
     notes: Optional[str] = None
+    reason_for_request: Optional[str] = None
+    reason_icd10:       Optional[str] = None
+    requested_by_provider:    Optional[str] = None
+    inserting_provider_email: Optional[str] = None
+    inserting_provider_name:  Optional[str] = None
+    inserting_provider_npi:   Optional[str] = None
 
 
 @router.get("/assignments")
@@ -1215,11 +1245,28 @@ def list_assignments(
     }
 
 
+@router.post("/assignments/suggest-flow")
+def suggest_assignment_flow(
+    payload: SuggestFlowIn,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK)),
+):
+    """Advisory: given a device type, recommend stock vs pharmacy vs office
+    and the set of override options. Does not create anything."""
+    dt = (db.query(LarcDeviceType)
+            .filter(LarcDeviceType.id == payload.device_type_id,
+                    LarcDeviceType.is_active.is_(True))
+            .first())
+    if not dt:
+        raise HTTPException(status_code=404, detail="device type not found")
+    return suggest_flow(db, dt)
+
+
 @router.post("/assignments", status_code=201)
 def create_assignment(payload: AssignmentIn,
                        db: Session = Depends(get_db),
                        current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
-    if payload.source_flow not in ("in_stock", "pharmacy_order"):
+    if payload.source_flow not in ("in_stock", "pharmacy_order", "office_procedure"):
         raise HTTPException(status_code=422, detail="invalid source_flow")
 
     device: Optional[LarcDevice] = None
@@ -1294,6 +1341,12 @@ def create_assignment(payload: AssignmentIn,
         status="new",
         is_active=True,
         notes=payload.notes,
+        reason_for_request=(payload.reason_for_request or "").strip() or None,
+        reason_icd10=(payload.reason_icd10 or "").strip() or None,
+        requested_by_provider=(payload.requested_by_provider or "").strip() or None,
+        inserting_provider_email=(payload.inserting_provider_email or "").strip() or None,
+        inserting_provider_name=(payload.inserting_provider_name or "").strip() or None,
+        inserting_provider_npi=(payload.inserting_provider_npi or "").strip() or None,
         created_by=current_user.get("email"),
     )
     db.add(a); db.flush()

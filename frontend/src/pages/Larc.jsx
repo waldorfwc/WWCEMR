@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Box,
   Check, Clock, Plus, Search, Truck, X,
@@ -37,8 +37,7 @@ export default function Larc() {
   const navigate = useNavigate()
   const [filterBucket, setFilterBucket] = useState('')
   const [search, setSearch] = useState('')
-  const [newRequest, setNewRequest] = useState(false)
-  const [reserveInventory, setReserveInventory] = useState(false)
+  const [startOpen, setStartOpen] = useState(false)
 
   const { data: dash } = useQuery({
     queryKey: ['larc-dashboard'],
@@ -127,15 +126,8 @@ export default function Larc() {
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
-          <button className="btn-secondary text-sm flex items-center gap-1"
-                  onClick={() => setReserveInventory(true)}
-                  title="Reserve an in-stock device for a patient — allocate the specific device later after benefits + payment">
-            <Plus size={13} /> Benefits for In-Stock Device
-          </button>
-          <button className="btn-primary text-sm flex items-center gap-1"
-                  onClick={() => setNewRequest(true)}
-                  title="Send a pharmacy enrollment form for a specific patient — the pharmacy ships the device">
-            <Plus size={13} /> LARC Enrollment Form
+          <button className="btn-primary" onClick={() => setStartOpen(true)}>
+            <Plus size={13} /> Start LARC Process
           </button>
         </div>
       </div>
@@ -438,38 +430,27 @@ export default function Larc() {
         </table>
       </div>
 
-      {newRequest && <NewRequestDrawer mode="pharmacy"
-                                          onClose={() => setNewRequest(false)}
-                                          onCreated={(id) => navigate(`/larc/assignments/${id}`)} />}
-      {reserveInventory && <NewRequestDrawer mode="reserve_inventory"
-                                          onClose={() => setReserveInventory(false)}
-                                          onCreated={(id) => navigate(`/larc/assignments/${id}`)} />}
+      {startOpen && <StartLarcProcessDrawer
+        onClose={() => setStartOpen(false)}
+        onCreated={(id) => { setStartOpen(false); navigate('/larc/assignments/' + id) }}
+      />}
     </div>
   )
 }
 
 
-function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
-  const isReserve = mode === 'reserve_inventory'
+
+function StartLarcProcessDrawer({ onClose, onCreated }) {
   const qc = useQueryClient()
+  const [step, setStep] = useState(1)            // 1 = intake, 2 = suggestion
+  const [suggestion, setSuggestion] = useState(null)
+  const [chosenFlow, setChosenFlow] = useState(null)
   const [form, setForm] = useState({
-    chart_number: '',
-    patient_first_name: '', patient_middle_initial: '', patient_last_name: '',
-    patient_dob: '',
-    patient_email: '', patient_phone: '', patient_cell: '',
-    patient_address: '', patient_city: '', patient_state: '', patient_zip: '',
-    primary_insurance: '', insurance_policy_no: '', insurance_group_no: '',
-    // Pharmacy enrollment flow sends the BoldSign envelope; reserve-
-    // inventory flow creates the same kind of in-stock assignment that
-    // used to come from the legacy "in-stock" picker, except the actual
-    // device is picked LATER on the assignment page (after benefits +
-    // payment). Both create an assignment without device_id; only the
-    // BoldSign-side workflow differs.
-    source_flow: isReserve ? 'in_stock' : 'pharmacy_order',
-    device_id: '', device_type_id: '',
-    notes: '',
+    chart_number: '', patient_first_name: '', patient_last_name: '',
+    patient_dob: '', patient_email: '', patient_cell: '',
+    device_type_id: '', requested_by_email: '',
+    reason_for_request: '', reason_icd10: '',
   })
-  const [insuranceCardFile, setInsuranceCardFile] = useState(null)
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const { data: types } = useQuery({
@@ -477,262 +458,155 @@ function NewRequestDrawer({ mode = 'pharmacy', onClose, onCreated }) {
     queryFn: () => api.get('/larc/device-types').then(r => r.data),
     staleTime: 60_000,
   })
-  const { data: picklists } = useQuery({
-    queryKey: ['larc-picklists'],
-    queryFn: () => api.get('/larc/picklists').then(r => r.data),
+  const { data: clinicians } = useQuery({
+    queryKey: ['clinicians'],
+    queryFn: () => api.get('/admin/users/clinicians').then(r => r.data),
     staleTime: 60_000,
   })
-  // Compose "Last, First [M]" from the distinct fields — this is what
-  // the legacy patient_name column holds (still required by the API).
-  const composedName = (() => {
-    const last  = (form.patient_last_name  || '').trim()
-    const first = (form.patient_first_name || '').trim()
-    const mi    = (form.patient_middle_initial || '').trim()
-    if (!last && !first) return ''
-    const right = [first, mi].filter(Boolean).join(' ')
-    return [last, right].filter(Boolean).join(', ')
-  })()
+  const { data: config } = useQuery({
+    queryKey: ['larc-config'],
+    queryFn: () => api.get('/larc/config').then(r => r.data),
+    staleTime: 60_000,
+  })
+  const reasons = config?.reason_for_request_options || []
+
+  const allFilled = form.chart_number.trim() && form.patient_first_name.trim()
+    && form.patient_last_name.trim() && form.patient_dob && form.patient_email.trim()
+    && form.patient_cell.trim() && form.device_type_id && form.requested_by_email
+    && form.reason_for_request
+
+  const suggest = useMutation({
+    mutationFn: () => api.post('/larc/assignments/suggest-flow',
+      { device_type_id: form.device_type_id }).then(r => r.data),
+    onSuccess: (data) => { setSuggestion(data); setChosenFlow(data.suggested_flow); setStep(2) },
+    onError: (e) => alert(e?.response?.data?.detail || 'Could not compute a suggestion'),
+  })
 
   const create = useMutation({
-    mutationFn: async () => {
-      const assignment = (await api.post('/larc/assignments', {
+    mutationFn: () => {
+      const prov = (clinicians || []).find(c => c.email === form.requested_by_email)
+      return api.post('/larc/assignments', {
         chart_number: form.chart_number.trim(),
-        patient_name: composedName,
-        patient_first_name:     form.patient_first_name.trim() || null,
-        patient_middle_initial: form.patient_middle_initial.trim() || null,
-        patient_last_name:      form.patient_last_name.trim() || null,
-        patient_dob: form.patient_dob || null,
-        patient_email: form.patient_email || null,
-        patient_phone: form.patient_phone || null,
-        patient_cell:  form.patient_cell || null,
-        patient_address: form.patient_address || null,
-        patient_city:    form.patient_city || null,
-        patient_state:   form.patient_state || null,
-        patient_zip:     form.patient_zip || null,
-        primary_insurance:   form.primary_insurance || null,
-        insurance_policy_no: form.insurance_policy_no.trim() || null,
-        insurance_group_no:  form.insurance_group_no.trim() || null,
-        source_flow: form.source_flow,
-        device_id: null,
+        patient_name: `${form.patient_last_name.trim()}, ${form.patient_first_name.trim()}`,
+        patient_first_name: form.patient_first_name.trim(),
+        patient_last_name: form.patient_last_name.trim(),
+        patient_dob: form.patient_dob,
+        patient_email: form.patient_email.trim(),
+        patient_cell: form.patient_cell.trim(),
         device_type_id: form.device_type_id,
-        notes: form.notes || null,
-      })).data
-      // Insurance card upload — only if a file was picked. Errors here
-      // don't block the assignment (it's already created).
-      if (insuranceCardFile) {
-        const fd = new FormData()
-        fd.append('file', insuranceCardFile)
-        try {
-          await api.post(`/larc/assignments/${assignment.id}/insurance-card`,
-                          fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-        } catch (e) {
-          alert('Assignment created, but insurance-card upload failed: '
-                + (e?.response?.data?.detail || e.message))
-        }
-      }
-      return assignment
+        source_flow: chosenFlow,
+        reason_for_request: form.reason_for_request,
+        reason_icd10: form.reason_icd10,
+        requested_by_provider: prov?.display_name || null,
+        inserting_provider_email: prov?.email || null,
+        inserting_provider_name: prov?.display_name || null,
+        inserting_provider_npi: prov?.npi || null,
+      }).then(r => r.data)
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
       qc.invalidateQueries({ queryKey: ['larc-assignments'] })
-      qc.invalidateQueries({ queryKey: ['larc-ready-to-checkout'] })
       onCreated(data.id)
     },
     onError: (e) => alert(e?.response?.data?.detail || 'Create failed'),
   })
+
+  const FLOW_LABEL = {
+    in_stock: 'Use an in-stock device',
+    pharmacy_order: 'Pharmacy enrollment form',
+    office_procedure: 'In-office procedure device',
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30" />
       <div className="relative w-full max-w-lg bg-white shadow-xl overflow-y-auto"
            onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">
-            {isReserve ? 'Benefits for In-Stock Device' : 'LARC Enrollment Form'}
-          </h2>
-          <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
+        <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
+          <h2 className="font-semibold text-plum-700">Start LARC Process</h2>
+          <button onClick={onClose}><X size={18} /></button>
         </div>
-        <div className="p-5 space-y-3 text-sm">
-          {isReserve ? (
-            <div className="bg-amber-50/60 border border-amber-200 rounded px-2 py-1.5 text-[11px] text-gray-700">
-              No device is picked yet — that happens later on the assignment
-              page, after benefits are verified and the patient has paid
-              their responsibility.
-            </div>
-          ) : (
-            <div className="bg-plum-50/40 border border-plum-100 rounded px-2 py-1.5 text-[11px] text-gray-700">
-              For an office-purchased device (no patient yet), use{' '}
-              <Link to="/larc/devices?add=1" className="text-plum-700 hover:underline">
-                Receive Devices into Inventory
-              </Link>{' '}instead.
-            </div>
-          )}
 
-          <div className="grid grid-cols-6 gap-2">
-            <div className="col-span-3">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Chart # *</label>
-              <input className="input text-sm w-full font-mono" required
-                     value={form.chart_number}
-                     onChange={e => update('chart_number', e.target.value)} />
-            </div>
-            <div className="col-span-3">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">DOB</label>
-              <input type="date" className="input text-sm w-full"
-                     value={form.patient_dob}
-                     onChange={e => update('patient_dob', e.target.value)} />
-            </div>
-            <div className="col-span-3">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">First name *</label>
-              <input className="input text-sm w-full" required
-                     value={form.patient_first_name}
-                     onChange={e => update('patient_first_name', e.target.value)} />
-            </div>
-            <div className="col-span-1">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">MI</label>
-              <input className="input text-sm w-full"
-                     maxLength={3}
-                     value={form.patient_middle_initial}
-                     onChange={e => update('patient_middle_initial', e.target.value)} />
-            </div>
-            <div className="col-span-2">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Last name *</label>
-              <input className="input text-sm w-full" required
-                     value={form.patient_last_name}
-                     onChange={e => update('patient_last_name', e.target.value)} />
-            </div>
-
-            <div className="col-span-3">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Cell phone</label>
-              <input className="input text-sm w-full font-mono"
-                     placeholder="240-555-1234"
-                     value={form.patient_cell}
-                     onChange={e => update('patient_cell', e.target.value)} />
-            </div>
-            <div className="col-span-3">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Home / alt phone</label>
-              <input className="input text-sm w-full font-mono"
-                     value={form.patient_phone}
-                     onChange={e => update('patient_phone', e.target.value)} />
-            </div>
-            <div className="col-span-6">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Email</label>
-              <input className="input text-sm w-full"
-                     value={form.patient_email}
-                     onChange={e => update('patient_email', e.target.value)} />
-            </div>
-
-            {!isReserve && (
-              <>
-                <div className="col-span-6">
-                  <label className="text-[11px] uppercase text-gray-500 block mb-1">Street address</label>
-                  <input className="input text-sm w-full"
-                         value={form.patient_address}
-                         onChange={e => update('patient_address', e.target.value)} />
-                </div>
-                <div className="col-span-3">
-                  <label className="text-[11px] uppercase text-gray-500 block mb-1">City</label>
-                  <input className="input text-sm w-full"
-                         value={form.patient_city}
-                         onChange={e => update('patient_city', e.target.value)} />
-                </div>
-                <div className="col-span-1">
-                  <label className="text-[11px] uppercase text-gray-500 block mb-1">State</label>
-                  <input className="input text-sm w-full"
-                         maxLength={2}
-                         value={form.patient_state}
-                         onChange={e => update('patient_state', e.target.value.toUpperCase())} />
-                </div>
-                <div className="col-span-2">
-                  <label className="text-[11px] uppercase text-gray-500 block mb-1">ZIP</label>
-                  <input className="input text-sm w-full font-mono"
-                         value={form.patient_zip}
-                         onChange={e => update('patient_zip', e.target.value)} />
-                </div>
-              </>
-            )}
-
-            <div className="col-span-6">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Primary insurance</label>
-              <select className="input text-sm w-full"
-                      value={form.primary_insurance}
-                      onChange={e => update('primary_insurance', e.target.value)}>
-                <option value="">— select insurance —</option>
-                {(picklists?.insurance_companies || []).map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
+        {step === 1 && (
+          <div className="p-4 grid grid-cols-6 gap-2 text-sm">
+            <label className="col-span-3">MRN
+              <input className="input w-full" value={form.chart_number}
+                     onChange={e => update('chart_number', e.target.value)} /></label>
+            <label className="col-span-3">DOB
+              <input type="date" className="input w-full" value={form.patient_dob}
+                     onChange={e => update('patient_dob', e.target.value)} /></label>
+            <label className="col-span-3">First Name
+              <input className="input w-full" value={form.patient_first_name}
+                     onChange={e => update('patient_first_name', e.target.value)} /></label>
+            <label className="col-span-3">Last Name
+              <input className="input w-full" value={form.patient_last_name}
+                     onChange={e => update('patient_last_name', e.target.value)} /></label>
+            <label className="col-span-3">Email
+              <input className="input w-full" value={form.patient_email}
+                     onChange={e => update('patient_email', e.target.value)} /></label>
+            <label className="col-span-3">Cell Phone
+              <input className="input w-full" value={form.patient_cell}
+                     onChange={e => update('patient_cell', e.target.value)} /></label>
+            <label className="col-span-6">Device Type
+              <select className="input w-full" value={form.device_type_id}
+                      onChange={e => update('device_type_id', e.target.value)}>
+                <option value="">— select device —</option>
+                {(types || []).filter(t => t.is_active).map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>))}
+              </select></label>
+            <label className="col-span-6">Requested By
+              <select className="input w-full" value={form.requested_by_email}
+                      onChange={e => update('requested_by_email', e.target.value)}>
+                <option value="">— select provider —</option>
+                {(clinicians || []).map(c => (
+                  <option key={c.email} value={c.email}>
+                    {c.display_name}{c.credential ? `, ${c.credential}` : ''}</option>))}
               </select>
-            </div>
-            <div className="col-span-3">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Policy / member #</label>
-              <input className="input text-sm w-full font-mono"
-                     value={form.insurance_policy_no}
-                     onChange={e => update('insurance_policy_no', e.target.value)} />
-            </div>
-            <div className="col-span-3">
-              <label className="text-[11px] uppercase text-gray-500 block mb-1">Group #</label>
-              <input className="input text-sm w-full font-mono"
-                     value={form.insurance_group_no}
-                     onChange={e => update('insurance_group_no', e.target.value)} />
-            </div>
-            {!isReserve && (
-              <div className="col-span-6">
-                <label className="text-[11px] uppercase text-gray-500 block mb-1">Insurance card (image)</label>
-                <input type="file" accept="image/*,application/pdf"
-                       className="text-sm w-full"
-                       onChange={e => setInsuranceCardFile(e.target.files?.[0] || null)} />
-                {insuranceCardFile && (
-                  <div className="text-[10px] text-gray-500 mt-1">
-                    Selected: <span className="font-mono">{insuranceCardFile.name}</span>
-                    {' '}({Math.round(insuranceCardFile.size / 1024)} KB)
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-
-          <div>
-            <label className="text-[11px] uppercase text-gray-500 block mb-1">
-              {isReserve ? 'Device type to reserve *' : 'Device type to order *'}
+              <span className="text-[11px] text-muted">Manage providers in Admin → Users.</span>
             </label>
-            <select className="input text-sm w-full"
-                    value={form.device_type_id}
-                    onChange={e => update('device_type_id', e.target.value)}>
-              <option value="">— pick device type —</option>
-              {(types || [])
-                .filter(t => t.category === 'larc'
-                              && (isReserve
-                                   ? true
-                                   : t.default_flow === 'pharmacy_order'))
-                .map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            <div className="text-[10px] text-gray-500 mt-1">
-              {isReserve
-                ? 'Pick a specific device from inventory later — after benefits + payment.'
-                : 'Device row will be created when it arrives from the pharmacy.'}
+            <label className="col-span-6">Reason for Request
+              <select className="input w-full" value={form.reason_for_request}
+                      onChange={e => {
+                        const r = reasons.find(x => x.reason === e.target.value)
+                        update('reason_for_request', e.target.value)
+                        update('reason_icd10', r?.icd10 || '')
+                      }}>
+                <option value="">— select reason —</option>
+                {reasons.map(r => (
+                  <option key={r.reason} value={r.reason}>{r.reason} ({r.icd10})</option>))}
+              </select></label>
+          </div>
+        )}
+
+        {step === 2 && suggestion && (
+          <div className="p-4 text-sm space-y-3">
+            <div className="rounded border border-plum-200 bg-plum-50 p-3">
+              <div className="font-medium text-plum-700">Recommended</div>
+              <div>{FLOW_LABEL[suggestion.suggested_flow]}
+                {suggestion.suggested_flow === 'in_stock'
+                  && ` — ${suggestion.in_stock_count} available`}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-muted mb-1">Choose how to fulfill:</div>
+              {suggestion.allowed_flows.map(f => (
+                <label key={f} className="flex items-center gap-2 py-1">
+                  <input type="radio" name="flow" checked={chosenFlow === f}
+                         onChange={() => setChosenFlow(f)} />
+                  {FLOW_LABEL[f]}
+                </label>))}
             </div>
           </div>
+        )}
 
-          <div>
-            <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
-            <textarea className="input text-sm w-full" rows={2}
-                      value={form.notes}
-                      onChange={e => update('notes', e.target.value)} />
-          </div>
-        </div>
-        <div className="sticky bottom-0 bg-white border-t border-border-subtle px-5 py-3 flex justify-end gap-2">
-          <button className="text-sm text-muted hover:underline" onClick={onClose}>Cancel</button>
-          <button className="btn-primary text-sm"
-                  onClick={() => create.mutate()}
-                  disabled={
-                    !form.chart_number.trim()
-                    || !form.patient_first_name.trim()
-                    || !form.patient_last_name.trim()
-                    || !form.device_type_id
-                    || create.isPending
-                  }>
-            {create.isPending ? 'Creating…' : 'Create request'}
-          </button>
+        <div className="sticky bottom-0 bg-white border-t px-4 py-3 flex justify-between">
+          {step === 2
+            ? <button className="btn-ghost" onClick={() => setStep(1)}>Back</button>
+            : <span />}
+          {step === 1
+            ? <button className="btn-primary" disabled={!allFilled || suggest.isPending}
+                      onClick={() => suggest.mutate()}>Continue</button>
+            : <button className="btn-primary" disabled={!chosenFlow || create.isPending}
+                      onClick={() => create.mutate()}>Confirm &amp; Create</button>}
         </div>
       </div>
     </div>
