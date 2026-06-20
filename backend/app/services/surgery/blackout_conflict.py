@@ -139,6 +139,31 @@ def is_date_blacked_out(
     return None
 
 
+def blackouts_for(db, blackout_date, facility, surgeon_email=None):
+    """Return ALL scope-matched SurgeryBlackoutDay rows for `blackout_date`.
+
+    Mirrors the scope logic in `is_date_blacked_out` (office always; facility
+    only if the facility matches; provider unless the blackout names a surgeon
+    AND a surgeon_email is supplied that doesn't match). Unlike
+    is_date_blacked_out this does NOT filter by time window — callers inspect
+    each row's is_whole_day / start_time / end_time themselves.
+    """
+    rows = (db.query(SurgeryBlackoutDay)
+              .filter(SurgeryBlackoutDay.blackout_date == blackout_date).all())
+    out = []
+    for b in rows:
+        scope_match = (
+            b.scope == "office"
+            or (b.scope == "facility" and facility == b.facility)
+            or (b.scope == "provider" and (
+                not (b.owner_email and surgeon_email)
+                or surgeon_email.lower() == b.owner_email.lower()))
+        )
+        if scope_match:
+            out.append(b)
+    return out
+
+
 def _windows_overlap(blackout, start_time, end_time) -> bool:
     """True if the blackout's window overlaps the supplied window.
     Whole-day blackouts always overlap. If no input window is given,

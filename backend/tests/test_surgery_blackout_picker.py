@@ -75,13 +75,18 @@ def test_offer_facility_blackout_scoped_to_that_facility(db):
     assert all(a.block_date != D for a in available_slots_for_surgery(db, s))
 
 
-def test_offer_partial_blackout_overlapping_proposed_excluded(db):
+def test_offer_partial_blackout_overlapping_proposed_pushes_start(db):
     s = _surgery(db); _block(db)
-    # Proposed slot is 07:00–10:00 (robotic_180). A 07:00–12:00 partial
-    # blackout overlaps it → day removed.
+    # A 07:00–12:00 partial blackout overlaps the front of the day, but the
+    # 12:00–15:00 afternoon still fits a 180-min case → the day stays offered
+    # with the proposed start pushed past the blocked window (regression: it
+    # used to compute one 07:00 start and drop the whole day).
     _blackout(db, scope="office", reason="other",
               start=time(7, 0), end=time(12, 0))
-    assert all(a.block_date != D for a in available_slots_for_surgery(db, s))
+    days = available_slots_for_surgery(db, s)
+    match = [a for a in days if a.block_date == D]
+    assert match
+    assert match[0].proposed_start_time >= "12:00"
 
 
 def test_offer_partial_blackout_not_overlapping_kept(db):

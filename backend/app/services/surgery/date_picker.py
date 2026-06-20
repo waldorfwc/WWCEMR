@@ -23,7 +23,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.surgery import BlockDay, Surgery, SurgeryBlackoutDay, SurgerySlot
-from app.services.surgery.blackout_conflict import is_date_blacked_out
+from app.services.surgery.blackout_conflict import blackouts_for
 from app.services.surgery.block_schedule import (
     DURATIONS, book_slot, can_fit, CapacityViolation,
 )
@@ -86,9 +86,26 @@ def _balance_gate(s: Surgery) -> Optional[str]:
             "or call our office for a payment plan.")
 
 
+def _blackout_busy(blackouts) -> list:
+    """Build (start_min, end_min) busy intervals from PARTIAL-day blackouts.
+
+    Whole-day blackouts are handled separately (they drop the day) and are
+    skipped here.
+    """
+    busy = []
+    for bo in blackouts:
+        if bo.is_whole_day or bo.start_time is None or bo.end_time is None:
+            continue
+        bs = bo.start_time.hour * 60 + bo.start_time.minute
+        be = bo.end_time.hour * 60 + bo.end_time.minute
+        busy.append((bs, be))
+    return busy
+
+
 def _proposed_start_minutes(bd: BlockDay,
                               needed_minutes: Optional[int] = None,
-                              db: Optional[Session] = None) -> Optional[int]:
+                              db: Optional[Session] = None,
+                              extra_busy: tuple = ()) -> Optional[int]:
     """Return the start-time-in-minutes for the next available slot in this
     block.
 
@@ -104,17 +121,34 @@ def _proposed_start_minutes(bd: BlockDay,
     `needed_minutes` defaults to a conservative 1 minute when not
     supplied so callers that don't know the duration still get the
     legacy behavior of "first cursor position past the existing slots."
-    """
-    existing = sorted((sl for sl in (bd.slots or [])), key=lambda x: x.start_time)
 
-    # Office: pick from the fixed slot list, return the first not already booked.
+    `extra_busy` is a list of (start_min, end_min) intervals to treat as
+    occupied IN ADDITION to existing slots — used to walk gaps around
+    partial-day blackout windows so the picker proposes a start AFTER a
+    morning PTO instead of dropping the whole day.
+    """
+    # Treat existing slots as (start_min, end_min) busy intervals, then
+    # merge in any extra_busy windows (partial-day blackouts).
+    busy = [(sl.start_time.hour * 60 + sl.start_time.minute,
+             sl.start_time.hour * 60 + sl.start_time.minute + sl.duration_minutes)
+            for sl in (bd.slots or [])]
+
+    # Office: pick from the fixed slot list, return the first not already
+    # booked AND not overlapping an extra_busy (blackout) window.
     if bd.facility == "office":
         from app.services.surgery.block_schedule import office_slot_times_min
-        taken = {sl.start_time.hour * 60 + sl.start_time.minute for sl in existing}
+        taken = {sl.start_time.hour * 60 + sl.start_time.minute for sl in (bd.slots or [])}
+        need = needed_minutes or 1
         for t in office_slot_times_min(db):
-            if t not in taken:
-                return t
-        return None  # all office slots taken
+            if t in taken:
+                continue
+            if any(t < be and t + need > bs for (bs, be) in extra_busy):
+                continue
+            return t
+        return None  # all office slots taken / blacked out
+
+    busy.extend(tuple(iv) for iv in extra_busy)
+    busy.sort(key=lambda iv: iv[0])
 
     block_start_min = bd.start_time.hour * 60 + bd.start_time.minute
     block_end_min   = bd.end_time.hour * 60 + bd.end_time.minute
@@ -122,12 +156,11 @@ def _proposed_start_minutes(bd: BlockDay,
 
     # Walk gaps in clock order: before-first, between, after-last
     cursor = block_start_min
-    for sl in existing:
-        sl_start = sl.start_time.hour * 60 + sl.start_time.minute
-        gap = sl_start - cursor
+    for bs, be in busy:
+        gap = bs - cursor
         if gap >= need:
             return cursor
-        cursor = max(cursor, sl_start + sl.duration_minutes)
+        cursor = max(cursor, be)
     if block_end_min - cursor >= need:
         return cursor
     return None
@@ -174,25 +207,25 @@ def available_slots_for_surgery(db: Session, s: Surgery, *,
         ok, _ = can_fit(db, bd, proc_kind)
         if not ok:
             continue
-        cursor = _proposed_start_minutes(bd, needed_minutes=duration, db=db)
+        # Don't offer blacked-out days/windows. Whole-day blackouts (PTO,
+        # holidays, facility closures) remove the day entirely. Partial-day
+        # blackouts only block their own window: feed them into the gap-walk
+        # as occupied intervals so the picker proposes a start AFTER the
+        # blocked window (e.g. morning PTO 07:00–12:00 still offers the free
+        # 12:00–15:00 afternoon). (Previously one proposed start was computed
+        # and the whole day was dropped if it overlapped any partial blackout,
+        # wrongly hiding a block day with a free window.)
+        bos = blackouts_for(db, bd.block_date, bd.facility,
+                            surgeon_email=s.surgeon_email)
+        if any(bo.is_whole_day for bo in bos):
+            continue
+        extra_busy = _blackout_busy(bos)
+        cursor = _proposed_start_minutes(bd, needed_minutes=duration, db=db,
+                                          extra_busy=extra_busy)
         block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
         if cursor is None or cursor + duration > block_end_min:
             continue
         h, m = divmod(cursor, 60)
-        # Don't offer blacked-out days/windows. Whole-day blackouts (PTO,
-        # holidays, facility closures) remove the day entirely; partial-day
-        # blackouts remove it only when the proposed slot overlaps the
-        # blocked window — the same check book_slot enforces at booking, so
-        # the offer and the booking now agree. (Previously this list ignored
-        # blackouts, so a block day on a date later blacked out — the typical
-        # ad-hoc PTO case — was still selectable.)
-        end_min = cursor + duration
-        if is_date_blacked_out(
-                db, bd.block_date, bd.facility,
-                surgeon_email=s.surgeon_email,
-                start_time=_time(h, m),
-                end_time=_time(end_min // 60 % 24, end_min % 60)):
-            continue
         out.append(AvailableSlot(
             block_day_id=str(bd.id),
             facility=bd.facility,
@@ -263,9 +296,17 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
     duration = DURATIONS.get(proc_kind, s.estimated_minutes or 60)
 
     # Recompute next-available start on the target block (fresh, after
-    # the existing slot was deleted if it was on this same block).
+    # the existing slot was deleted if it was on this same block). Honor
+    # blackouts the same way the offer list does so the proposed time is
+    # bookable: whole-day blackouts reject the date, partial-day windows
+    # push the proposed start past the blocked window.
     db.refresh(bd)
-    cursor = _proposed_start_minutes(bd, needed_minutes=duration, db=db)
+    bos = blackouts_for(db, bd.block_date, bd.facility,
+                        surgeon_email=s.surgeon_email)
+    if any(bo.is_whole_day for bo in bos):
+        raise DatePickerError("That date is no longer available — please pick another.")
+    cursor = _proposed_start_minutes(bd, needed_minutes=duration, db=db,
+                                      extra_busy=_blackout_busy(bos))
     block_end_min = bd.end_time.hour * 60 + bd.end_time.minute
     if cursor is None or cursor + duration > block_end_min:
         raise DatePickerError("That date no longer has room — please pick another.")
