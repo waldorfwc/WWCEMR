@@ -841,6 +841,18 @@ function ProviderMappingsPanel({ mapData, workforce, loading, error, onRefresh }
     onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
   })
 
+  const revoke = useMutation({
+    mutationFn: (provider) =>
+      api.post(`/billing/missing-charges/provider-tokens/${encodeURIComponent(provider)}/revoke`)
+         .then(r => r.data),
+    onSuccess: (data) => {
+      alert(`Revoked — outstanding portal links for ${data.provider} are now invalid. `
+            + `They'll get a fresh link on the next email.`)
+      refresh()
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Revoke failed'),
+  })
+
   const [autoReport, setAutoReport] = useState(null)
   const autoMatch = useMutation({
     mutationFn: () => api.post('/billing/missing-charges/provider-mappings/auto-match')
@@ -1020,7 +1032,7 @@ function ProviderMappingsPanel({ mapData, workforce, loading, error, onRefresh }
                             </select>
                           )}
                         </td>
-                        <td className="py-1 pr-1 text-right">
+                        <td className="py-1 pr-1 text-right whitespace-nowrap">
                           {m.is_ignored ? (
                             <button className="text-[10px] text-plum-700 hover:underline"
                                     onClick={() => patch.mutate({
@@ -1036,6 +1048,16 @@ function ProviderMappingsPanel({ mapData, workforce, loading, error, onRefresh }
                                      })} /> active
                             </label>
                           )}
+                          <button className="text-[10px] text-amber-700 hover:underline ml-2"
+                                  title="Invalidate this provider's outstanding portal links"
+                                  disabled={revoke.isPending}
+                                  onClick={() => {
+                                    if (window.confirm(`Revoke all outstanding portal links for ${m.provider_name}? `
+                                        + `They'll get a fresh link on the next email.`))
+                                      revoke.mutate(m.provider_name)
+                                  }}>
+                            Revoke Links
+                          </button>
                         </td>
                         <td className="py-1 text-right">
                           <button className="text-red-600 hover:bg-red-50 p-0.5 rounded"
