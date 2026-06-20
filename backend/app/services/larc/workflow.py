@@ -148,11 +148,18 @@ def spawn_milestones(db: Session, assignment: LarcAssignment) -> None:
         catalog = PHARMACY_ORDER_MILESTONES
     else:
         catalog = IN_STOCK_MILESTONES
+    # Patient-owned devices are never billed by WWC — mark the billing step
+    # N/A. Before a device is bound, a pharmacy_order flow is patient-owned by
+    # definition.
+    dev = assignment.device
+    is_patient_owned = (dev.ownership == "patient_owned") if dev else (assignment.source_flow == "pharmacy_order")
+
     for pos, (kind, title, days) in enumerate(catalog, 1):
+        status = "not_applicable" if (is_patient_owned and kind == "billed") else "pending"
         db.add(LarcMilestone(
             assignment_id=assignment.id,
             kind=kind, title=title, position=pos,
-            status="pending", expected_duration_days=days,
+            status=status, expected_duration_days=days,
         ))
 
 
