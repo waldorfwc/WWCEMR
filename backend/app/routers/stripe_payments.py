@@ -33,6 +33,10 @@ from app.services import stripe_payments as svc
 from app.services.pellet import payments as pelletpay
 from app.services.audit_service import log_action
 from app.services.patient_email import send_patient_email
+from app.models.larc import LarcAssignment
+from app.models.larc_payment import LarcPayment
+from app.services.larc.notifications import notify_larc_step
+from app.services.larc.allocation import try_auto_allocate
 
 log = logging.getLogger(__name__)
 
@@ -295,6 +299,8 @@ async def stripe_webhook(
 
     if event_type == "checkout.session.completed" and pelletpay._is_pellet_event(obj):
         pelletpay.handle_pellet_checkout_completed(db, obj); db.commit()
+    elif event_type == "checkout.session.completed" and (obj.get("metadata") or {}).get("larc_assignment_id"):
+        _handle_larc_session_completed(db, obj); db.commit()
     elif event_type == "checkout.session.completed":
         _handle_session_completed(db, event_type, obj)
     elif event_type == "invoice.paid":
@@ -407,6 +413,39 @@ def _handle_session_completed(db, event_type, obj):
             surgery_id=s.id,
             chart_number=s.chart_number,
         )
+
+
+def _handle_larc_session_completed(db, obj):
+    """A completed LARC patient-responsibility checkout: mark the payment
+    paid, stamp the assignment, fire the receipt notification, and try to
+    auto-allocate an in-stock device (notifying on success)."""
+    session_id = obj.get("id")
+    pay = (db.query(LarcPayment)
+             .filter(LarcPayment.stripe_checkout_session_id == session_id)
+             .first())
+    if not pay:
+        log.warning("stripe webhook checkout.session.completed — no "
+                    "LarcPayment for session %s", session_id)
+        return
+    pay.status = "paid"
+    pay.amount_paid = (obj.get("amount_total") or 0) / 100.0
+    pay.paid_at = now_utc_naive()
+    pay.stripe_payment_intent_id = obj.get("payment_intent")
+    if hasattr(pay, "last_event_payload"):
+        pay.last_event_payload = obj
+
+    a = (db.query(LarcAssignment)
+           .filter(LarcAssignment.id == pay.assignment_id)
+           .first())
+    if a:
+        a.patient_paid_at = now_utc_naive()
+        a.patient_paid_by = "patient:portal"
+        a.patient_paid_amount = pay.amount_paid
+        notify_larc_step(db, a, "responsibility_satisfied")
+        res = try_auto_allocate(db, a)
+        if res.get("allocated"):
+            notify_larc_step(db, a, "device_allocated")
+    db.commit()
 
 
 def _handle_refund(db, event_type, obj):
