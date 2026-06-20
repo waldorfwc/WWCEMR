@@ -57,6 +57,10 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "boarding_slip_recipients_crmc":    [],
     "boarding_slip_auto_email_enabled": False,
     "boarding_slip_auto_email_hours":   24,
+    # Recipient-domain allowlist (fail-closed). Empty list = no restriction
+    # (backward-compatible). When non-empty, a boarding-slip email may only
+    # be sent if EVERY recipient's domain is on this list.
+    "boarding_slip_recipient_allowed_domains": [],
 
     # ── payer-ID → insurance-company resolution (order-prefill) ──
     # Maps an electronic payer ID (string) extracted from a surgery order to

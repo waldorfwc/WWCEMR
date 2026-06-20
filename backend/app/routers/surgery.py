@@ -3886,11 +3886,16 @@ def download_file(surgery_id: str, file_id: str,
     # PHI document download audit (Fable surgery audit H2). Path
     # reports, op notes, clearance letters, consent PDFs all count as
     # PHI; record the actor + filename + kind so a misuse report
-    # query can find who pulled what.
+    # query can find who pulled what. Boarding-slip / consent streams
+    # are the highest-sensitivity PHI documents, so they get the
+    # dedicated PHI_SURGERY_FILE_VIEWED action (the send path already
+    # audits — this is the inbound view counterpart).
     s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    _phi_file_kinds = ("boarding_slip", "consent")
     log_action(
         db,
-        action="CHART_DOCUMENT_DOWNLOAD",
+        action=("PHI_SURGERY_FILE_VIEWED" if f.kind in _phi_file_kinds
+                else "CHART_DOCUMENT_DOWNLOAD"),
         resource_type="surgery_file",
         resource_id=str(f.id),
         patient_id=(s.chart_number if s else None),
@@ -5418,6 +5423,21 @@ def view_consent_document(
     if env.template and env.template.name:
         label = "".join(c if c.isalnum() else "_"
                         for c in env.template.name)[:60].strip("_") or "consent"
+    # HIPAA inbound audit: streaming a signed consent PDF is a PHI access.
+    # Mirror the outbound send-path audit (send_boarding_slip) so an incident
+    # query can find who viewed which patient's consent.
+    s = db.query(Surgery).filter(Surgery.id == surgery_id).first()
+    log_action(
+        db,
+        action="PHI_CONSENT_VIEWED",
+        resource_type="surgery",
+        resource_id=str(s.id) if s else surgery_id,
+        patient_id=(s.chart_number if s else None) or None,
+        user_id=(current_user.get("email") or "").lower() or None,
+        user_name=current_user.get("name") or current_user.get("email"),
+        description=(f"Viewed signed consent ({env.template.name if env.template else label}) "
+                    f"for surgery {(s.surgery_number or s.id) if s else surgery_id}"),
+    )
     return Response(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="{label}.pdf"'},

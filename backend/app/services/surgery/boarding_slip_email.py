@@ -70,6 +70,20 @@ def send_boarding_slip_email(db: Session, s: Surgery, file: SurgeryFile,
     if not recips:
         raise ValueError("no valid recipients")
 
+    # Recipient-domain allowlist (fail-closed). When configured (non-empty),
+    # every recipient's domain must be on the list or NOTHING sends — this
+    # guards against PHI being emailed to an admin-typo'd or untrusted domain.
+    # Empty allowlist = no restriction (backward-compatible).
+    allowed = [d.strip().lower()
+               for d in (cfg(db, "boarding_slip_recipient_allowed_domains") or [])
+               if d and d.strip()]
+    if allowed:
+        bad = [e for e in recips
+               if e.rsplit("@", 1)[-1] not in allowed]
+        if bad:
+            raise ValueError(
+                f"recipient(s) not on an allowed domain: {', '.join(bad)}")
+
     smtp_cfg = _smtp_settings()
     if not (smtp_cfg["host"] and smtp_cfg["from"]):
         raise ValueError("SMTP isn't configured on this server.")

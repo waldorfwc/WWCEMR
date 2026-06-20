@@ -145,6 +145,29 @@ class ConfigPayload(BaseModel):
     boarding_slip_recipients_crmc:    Optional[list[str]] = None
     boarding_slip_auto_email_enabled: Optional[bool] = None
     boarding_slip_auto_email_hours:   Optional[int] = Field(default=None, ge=0, le=336)
+    boarding_slip_recipient_allowed_domains: Optional[list[str]] = None
+
+    @field_validator("boarding_slip_recipient_allowed_domains")
+    @classmethod
+    def boarding_slip_allowed_domains_valid(cls, v):
+        # Recipient-domain allowlist (e.g. "medstar.org"). Lowercase + strip
+        # each entry, drop blanks, dedupe (order preserved). Reject anything
+        # containing an "@" (that's an address, not a domain) or whitespace.
+        # An empty list is allowed and means "no restriction".
+        if v is None:
+            return v
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in v:
+            d = (item or "").strip().lower()
+            if not d:
+                continue
+            if "@" in d or any(c.isspace() for c in d):
+                raise ValueError(f"invalid domain: {item!r}")
+            if d not in seen:
+                seen.add(d)
+                out.append(d)
+        return out
 
     @field_validator("boarding_slip_recipients_medstar",
                      "boarding_slip_recipients_crmc")
