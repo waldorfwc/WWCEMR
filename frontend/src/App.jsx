@@ -30,6 +30,13 @@ import PelletSchedule from './pages/pellet-portal/PelletSchedule'
 import PelletAppointments from './pages/pellet-portal/PelletAppointments'
 import PelletReceipts from './pages/pellet-portal/PelletReceipts'
 import PelletInfo from './pages/pellet-portal/PelletInfo'
+import LarcPortalLogin from './pages/larc-portal/LarcPortalLogin'
+import LarcPortalVerify from './pages/larc-portal/LarcPortalVerify'
+import LarcPortalShell from './pages/larc-portal/LarcPortalShell'
+import LarcStatus from './pages/larc-portal/LarcStatus'
+import LarcPortalPayments from './pages/larc-portal/LarcPortalPayments'
+import LarcPortalEnrollment from './pages/larc-portal/LarcPortalEnrollment'
+import LarcPortalDocuments from './pages/larc-portal/LarcPortalDocuments'
 import ReviewForm from './pages/reputation/ReviewForm'
 import ReputationEmbed from './pages/reputation/Embed'
 
@@ -139,6 +146,16 @@ export default function App() {
           <Route path="appointments" element={<PelletAppointments />} />
           <Route path="receipts" element={<PelletReceipts />} />
           <Route path="info" element={<PelletInfo />} />
+        </Route>
+        {/* LARC patient portal — own auth, own shell */}
+        <Route path="/larc-portal" element={<Navigate to="/larc-portal/login" replace />} />
+        <Route path="/larc-portal/login" element={<LarcPortalLogin />} />
+        <Route path="/larc-portal/verify" element={<LarcPortalVerify />} />
+        <Route path="/larc-portal/home" element={<LarcPortalShell />}>
+          <Route index element={<LarcStatus />} />
+          <Route path="payments" element={<LarcPortalPayments />} />
+          <Route path="enrollment" element={<LarcPortalEnrollment />} />
+          <Route path="documents" element={<LarcPortalDocuments />} />
         </Route>
         {/* Reputation review form — public, no staff auth */}
         <Route path="/r/:token" element={<ReviewForm />} />
