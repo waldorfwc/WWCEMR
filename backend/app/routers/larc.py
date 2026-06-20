@@ -1408,6 +1408,36 @@ def get_assignment(assignment_id: str,
     return _assignment_dict(a, include_milestones=True)
 
 
+@router.post("/assignments/{assignment_id}/portal-preview-token")
+def portal_preview_token(assignment_id: str,
+                         db: Session = Depends(get_db),
+                         current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    """Mint a short-lived patient-portal JWT so staff can preview the LARC
+    portal as the patient (read-only). The viewer="staff:<email>" claim is
+    what patient_larc's require_larc_portal_token uses to 403 non-GET
+    requests, so the preview is read-only end-to-end."""
+    a = db.query(LarcAssignment).filter(LarcAssignment.id == assignment_id).first()
+    if a is None:
+        raise HTTPException(status_code=404, detail="assignment not found")
+    from app.services.larc.portal_auth import issue_portal_token
+    token = issue_portal_token(a, viewer=f"staff:{current_user.get('email')}", ttl_minutes=60)
+    # HIPAA: record the impersonation so we always know which staff member
+    # viewed the patient portal as that patient and when.
+    email = (current_user.get("email") or "").lower().strip() or None
+    log_action(
+        db,
+        action="IMPERSONATE",
+        resource_type="larc_assignment",
+        resource_id=str(a.id),
+        patient_id=a.chart_number or None,
+        user_id=email,
+        user_name=current_user.get("name") or email,
+        description=(f"Staff issued a LARC portal-preview JWT for "
+                     f"{a.patient_name or a.chart_number} (read-only)"),
+    )
+    return {"token": token, "assignment_id": str(a.id)}
+
+
 # ─── Milestone helpers + endpoints ──────────────────────────────────
 
 def _get_milestone(a: LarcAssignment, kind: str) -> Optional[LarcMilestone]:

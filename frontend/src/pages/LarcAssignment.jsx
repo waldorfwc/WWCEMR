@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, AlertTriangle, Check, CheckCircle2, Circle, Clock,
-  ChevronDown, ChevronUp, Edit3, Package, RotateCcw, X, SkipForward, FileText,
+  ChevronDown, ChevronUp, Edit3, Package, RotateCcw, X, SkipForward, FileText, Eye,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import LoadingState from '../components/LoadingState'
@@ -85,6 +85,15 @@ export default function LarcAssignment() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              className="btn-secondary text-[11px] flex items-center gap-1"
+              title="Open the patient portal as this patient (read-only preview)"
+              onClick={async () => {
+                const res = await api.post(`/larc/assignments/${a.id}/portal-preview-token`)
+                window.open('/larc-portal/home?staff_token=' + encodeURIComponent(res.data.token), '_blank')
+              }}>
+              <Eye size={12} /> View as patient
+            </button>
             <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded ${
               a.source_flow === 'office_procedure'
                 ? 'bg-teal-100 text-teal-700'
