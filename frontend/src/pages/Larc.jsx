@@ -445,6 +445,7 @@ function StartLarcProcessDrawer({ onClose, onCreated }) {
   const [step, setStep] = useState(1)            // 1 = intake, 2 = suggestion
   const [suggestion, setSuggestion] = useState(null)
   const [chosenFlow, setChosenFlow] = useState(null)
+  const [showErrors, setShowErrors] = useState(false)
   const [form, setForm] = useState({
     chart_number: '', patient_first_name: '', patient_last_name: '',
     patient_dob: '', patient_email: '', patient_cell: '',
@@ -474,6 +475,23 @@ function StartLarcProcessDrawer({ onClose, onCreated }) {
     && form.patient_last_name.trim() && form.patient_dob && form.patient_email.trim()
     && form.patient_cell.trim() && form.device_type_id && form.requested_by_email
     && form.reason_for_request
+
+  const missing = {
+    chart_number: !form.chart_number.trim(),
+    patient_dob: !form.patient_dob,
+    patient_first_name: !form.patient_first_name.trim(),
+    patient_last_name: !form.patient_last_name.trim(),
+    patient_email: !form.patient_email.trim(),
+    patient_cell: !form.patient_cell.trim(),
+    device_type_id: !form.device_type_id,
+    requested_by_email: !form.requested_by_email,
+    reason_for_request: !form.reason_for_request,
+  }
+  const errCls = (k) => (showErrors && missing[k]) ? ' border-red-400 bg-red-50' : ''
+  const handleContinue = () => {
+    if (!allFilled) { setShowErrors(true); return }
+    suggest.mutate()
+  }
 
   const suggest = useMutation({
     mutationFn: () => api.post('/larc/assignments/suggest-flow',
@@ -529,33 +547,38 @@ function StartLarcProcessDrawer({ onClose, onCreated }) {
 
         {step === 1 && (
           <div className="p-4 grid grid-cols-6 gap-2 text-sm">
-            <label className="col-span-3">MRN
-              <input className="input w-full" value={form.chart_number}
+            {showErrors && !allFilled && (
+              <div className="col-span-6 rounded border border-red-300 bg-red-50 text-red-700 px-3 py-2 text-[12px]">
+                Please complete the highlighted fields — every field is required to continue.
+              </div>
+            )}
+            <label className="col-span-3">MRN <span className="text-red-500">*</span>
+              <input className={"input w-full" + errCls('chart_number')} value={form.chart_number}
                      onChange={e => update('chart_number', e.target.value)} /></label>
-            <label className="col-span-3">DOB
-              <input type="date" className="input w-full" value={form.patient_dob}
+            <label className="col-span-3">DOB <span className="text-red-500">*</span>
+              <input type="date" className={"input w-full" + errCls('patient_dob')} value={form.patient_dob}
                      onChange={e => update('patient_dob', e.target.value)} /></label>
-            <label className="col-span-3">First Name
-              <input className="input w-full" value={form.patient_first_name}
+            <label className="col-span-3">First Name <span className="text-red-500">*</span>
+              <input className={"input w-full" + errCls('patient_first_name')} value={form.patient_first_name}
                      onChange={e => update('patient_first_name', e.target.value)} /></label>
-            <label className="col-span-3">Last Name
-              <input className="input w-full" value={form.patient_last_name}
+            <label className="col-span-3">Last Name <span className="text-red-500">*</span>
+              <input className={"input w-full" + errCls('patient_last_name')} value={form.patient_last_name}
                      onChange={e => update('patient_last_name', e.target.value)} /></label>
-            <label className="col-span-3">Email
-              <input className="input w-full" value={form.patient_email}
+            <label className="col-span-3">Email <span className="text-red-500">*</span>
+              <input className={"input w-full" + errCls('patient_email')} value={form.patient_email}
                      onChange={e => update('patient_email', e.target.value)} /></label>
-            <label className="col-span-3">Cell Phone
-              <input className="input w-full" value={form.patient_cell}
+            <label className="col-span-3">Cell Phone <span className="text-red-500">*</span>
+              <input className={"input w-full" + errCls('patient_cell')} value={form.patient_cell}
                      onChange={e => update('patient_cell', e.target.value)} /></label>
-            <label className="col-span-6">Device Type
-              <select className="input w-full" value={form.device_type_id}
+            <label className="col-span-6">Device Type <span className="text-red-500">*</span>
+              <select className={"input w-full" + errCls('device_type_id')} value={form.device_type_id}
                       onChange={e => update('device_type_id', e.target.value)}>
                 <option value="">— select device —</option>
                 {(types || []).filter(t => t.is_active).map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>))}
               </select></label>
-            <label className="col-span-6">Requested By
-              <select className="input w-full" value={form.requested_by_email}
+            <label className="col-span-6">Requested By <span className="text-red-500">*</span>
+              <select className={"input w-full" + errCls('requested_by_email')} value={form.requested_by_email}
                       onChange={e => update('requested_by_email', e.target.value)}>
                 <option value="">— select provider —</option>
                 {(clinicians || []).map(c => (
@@ -564,8 +587,8 @@ function StartLarcProcessDrawer({ onClose, onCreated }) {
               </select>
               <span className="text-[11px] text-muted">Manage providers in Admin → Users.</span>
             </label>
-            <label className="col-span-6">Reason for Request
-              <select className="input w-full" value={form.reason_for_request}
+            <label className="col-span-6">Reason for Request <span className="text-red-500">*</span>
+              <select className={"input w-full" + errCls('reason_for_request')} value={form.reason_for_request}
                       onChange={e => {
                         const r = reasons.find(x => x.reason === e.target.value)
                         update('reason_for_request', e.target.value)
@@ -603,8 +626,8 @@ function StartLarcProcessDrawer({ onClose, onCreated }) {
             ? <button className="btn-ghost" onClick={() => setStep(1)}>Back</button>
             : <span />}
           {step === 1
-            ? <button className="btn-primary" disabled={!allFilled || suggest.isPending}
-                      onClick={() => suggest.mutate()}>Continue</button>
+            ? <button className="btn-primary" disabled={suggest.isPending}
+                      onClick={handleContinue}>Continue</button>
             : <button className="btn-primary" disabled={!chosenFlow || create.isPending}
                       onClick={() => create.mutate()}>Confirm &amp; Create</button>}
         </div>
