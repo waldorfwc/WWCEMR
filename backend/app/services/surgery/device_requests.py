@@ -24,23 +24,11 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.larc import LarcAssignment, LarcDevice, LarcDeviceType
+from app.models.larc import LarcAssignment, LarcDeviceType
+from app.services.larc.source_flow import pick_source_flow
 from app.services.larc.workflow import log_audit
 
 log = logging.getLogger(__name__)
-
-
-def _pick_source_flow(db: Session, dt: LarcDeviceType) -> str:
-    """Auto-pick the source flow for a device type from current inventory."""
-    in_stock = (db.query(LarcDevice)
-                  .filter(LarcDevice.device_type_id == dt.id,
-                          LarcDevice.status == "unassigned")
-                  .count())
-    if in_stock > 0:
-        return "in_stock"
-    if dt.default_flow == "office_procedure":
-        return "office_procedure"
-    return "pharmacy_order"
 
 
 def sync_surgery_device_requests(db: Session, surgery,
@@ -83,7 +71,7 @@ def sync_surgery_device_requests(db: Session, surgery,
                 skipped_existing += 1
                 continue
 
-            source_flow = _pick_source_flow(db, dt)
+            source_flow = pick_source_flow(db, dt)
 
             a = LarcAssignment(
                 chart_number=surgery.chart_number,
