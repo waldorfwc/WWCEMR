@@ -16,6 +16,7 @@ const BASE_TABS = [
   { id: 'thresholds', label: 'Thresholds & Windows' },
   { id: 'types',      label: 'Device Types' },
   { id: 'pharmacies', label: 'Pharmacies' },
+  { id: 'reasons',    label: 'Reasons' },
 ]
 
 export default function LarcSettings() {
@@ -51,6 +52,7 @@ export default function LarcSettings() {
       {tab === 'thresholds' && <ThresholdsTab />}
       {tab === 'types'      && <LarcDeviceTypes embedded />}
       {tab === 'pharmacies' && <LarcPharmacies embedded />}
+      {tab === 'reasons'    && <ReasonsTab />}
       {tab === 'practice' && isSuperAdmin && <PracticeSettings embedded />}
     </div>
   )
@@ -113,6 +115,55 @@ function ThresholdsTab() {
           <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
         )}
       </section>
+    </div>
+  )
+}
+
+// ─── Reasons tab ────────────────────────────────────────────────────
+
+function ReasonsTab() {
+  const qc = useQueryClient()
+  const { data: config } = useQuery({
+    queryKey: ['larc-config'],
+    queryFn: () => api.get('/larc/config').then(r => r.data),
+  })
+  const [rows, setRows] = useState(null)
+  const list = rows ?? config?.reason_for_request_options ?? []
+
+  const save = useMutation({
+    mutationFn: () => api.put('/larc/config',
+      { reason_for_request_options: list.filter(r => r.reason.trim() && r.icd10.trim()) }
+    ).then(r => r.data),
+    onSuccess: (data) => {
+      qc.setQueryData(['larc-config'], data)
+      setRows(null)
+      alert('Saved')
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
+
+  const set = (i, k, v) => setRows(list.map((r, j) => j === i ? { ...r, [k]: v } : r))
+  const add = () => setRows([...list, { reason: '', icd10: '' }])
+  const remove = (i) => setRows(list.filter((_, j) => j !== i))
+
+  return (
+    <div className="space-y-2 max-w-xl">
+      <p className="text-sm text-muted">Reasons shown in the Start LARC Process form.
+        Each needs an ICD-10 code.</p>
+      {list.map((r, i) => (
+        <div key={i} className="flex gap-2 items-center">
+          <input className="input flex-1" placeholder="Reason" value={r.reason}
+                 onChange={e => set(i, 'reason', e.target.value)} />
+          <input className="input w-32" placeholder="ICD-10" value={r.icd10}
+                 onChange={e => set(i, 'icd10', e.target.value)} />
+          <button className="btn-ghost text-red-600" onClick={() => remove(i)}>Remove</button>
+        </div>
+      ))}
+      <div className="flex gap-2 pt-2">
+        <button className="btn-ghost" onClick={add}>+ Add Reason</button>
+        <button className="btn-primary" disabled={save.isPending}
+                onClick={() => save.mutate()}>Save Changes</button>
+      </div>
     </div>
   )
 }
