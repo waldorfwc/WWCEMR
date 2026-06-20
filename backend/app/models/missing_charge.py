@@ -137,6 +137,10 @@ class ProviderUserMapping(Base):
     user_email    = Column(String(255), nullable=True)
     is_active     = Column(String(1),   default="Y", nullable=False)  # 'Y' | 'N'
     is_ignored    = Column(String(1),   default="N", nullable=False)  # 'Y' = skip, no email
+    # Revocation counter: tokens embed this as `ptv`; bumping it invalidates
+    # every outstanding self-service link for this provider (revoke endpoint
+    # or auto-bump on offboarding).
+    token_version = Column(Integer, nullable=False, default=0)
     created_at    = Column(DateTime, default=now_utc_naive, nullable=False)
     created_by    = Column(String(120), nullable=True)
     updated_at    = Column(DateTime, default=now_utc_naive,

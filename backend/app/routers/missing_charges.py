@@ -366,13 +366,16 @@ class ProviderTokenMint(BaseModel):
 
 @router.post("/provider-tokens")
 def mint_provider_token(payload: ProviderTokenMint,
+                          db: Session = Depends(get_db),
                           current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
     """Mint a signed token for a provider. Anyone with claim:read can
     generate one (so a biller can copy the link and email it ad hoc).
-    Returns both the raw token and the full portal URL."""
+    Returns both the raw token and the full portal URL. The token embeds
+    the provider's current token_version (`ptv`) so a later revoke kills it."""
     try:
-        tok = token_svc.mint_token(payload.provider,
-                                     ttl_days=payload.ttl_days or token_svc.TOKEN_TTL_DAYS)
+        tok = token_svc.mint_token_for_provider(
+            db, payload.provider,
+            ttl_days=payload.ttl_days or token_svc.TOKEN_TTL_DAYS)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return {
@@ -387,7 +390,7 @@ def mint_provider_token(payload: ProviderTokenMint,
 def provider_portal(token: str, db: Session = Depends(get_db)):
     """Public endpoint — provider clicks the link from their email.
     Returns the provider's open `needs_to_be_billed` rows. No login."""
-    payload = token_svc.decode_token(token)
+    payload = token_svc.verify_provider_token(db, token)
     if not payload:
         raise HTTPException(status_code=401, detail="link is invalid or expired")
 
@@ -427,7 +430,7 @@ def provider_action(token: str, charge_id: str, payload: ProviderActionIn,
                      db: Session = Depends(get_db)):
     """Provider marks a charge as billed (note complete) or error
     (with an explanation). Token-validated, no login."""
-    tok = token_svc.decode_token(token)
+    tok = token_svc.verify_provider_token(db, token)
     if not tok:
         raise HTTPException(status_code=401, detail="link is invalid or expired")
     provider = tok["provider"]
@@ -480,6 +483,41 @@ def email_providers(db: Session = Depends(get_db),
     return report
 
 
+@router.post("/provider-tokens/{provider}/revoke")
+def revoke_provider_tokens(provider: str,
+                           db: Session = Depends(get_db),
+                           current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.WORK))):
+    """Kill every outstanding self-service link for `provider` by bumping
+    their ProviderUserMapping.token_version (creating the row if absent).
+    Tokens embed the version as `ptv`; verify_provider_token rejects any
+    token whose ptv is below the stored version.
+
+    NOTE: revoke (or ignore) a provider BEFORE deleting their mapping.
+    Deleting the row loses the version counter — a recreated default row
+    starts at token_version=0, and a still-live token with ptv=0 would
+    then match again. delete_provider_mapping deliberately does NOT bump.
+    """
+    name = (provider or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="provider is required")
+    actor = current_user.get("email") or "system"
+    m = (db.query(ProviderUserMapping)
+           .filter(ProviderUserMapping.provider_name == name).first())
+    if m is None:
+        m = ProviderUserMapping(
+            provider_name=name,
+            token_version=1,
+            is_active="Y",
+            is_ignored="N",
+            created_by=actor,
+        )
+        db.add(m)
+    else:
+        m.token_version = int(m.token_version or 0) + 1
+    db.commit(); db.refresh(m)
+    return {"provider": name, "token_version": m.token_version}
+
+
 # ─── Provider name → user-email mappings ────────────────────────────
 
 def _mapping_dict(m: ProviderUserMapping) -> dict:
@@ -489,6 +527,7 @@ def _mapping_dict(m: ProviderUserMapping) -> dict:
         "user_email":    m.user_email,
         "is_active":     m.is_active == "Y",
         "is_ignored":    m.is_ignored == "Y",
+        "token_version": m.token_version,
         "created_at":    m.created_at.isoformat() if m.created_at else None,
         "created_by":    m.created_by,
         "updated_at":    m.updated_at.isoformat() if m.updated_at else None,
@@ -671,6 +710,11 @@ def patch_provider_mapping(mapping_id: str, payload: MappingPatch,
     if not m:
         raise HTTPException(status_code=404, detail="mapping not found")
     data = payload.model_dump(exclude_unset=True)
+    # Offboarding a provider (ignore them / deactivate the mapping) should
+    # also kill any live self-service link — bump token_version so existing
+    # tokens (ptv below the new version) stop verifying.
+    offboarding = (("is_ignored" in data and data["is_ignored"])
+                   or ("is_active" in data and data["is_active"] is False))
     if "is_ignored" in data:
         m.is_ignored = "Y" if data["is_ignored"] else "N"
     if "user_email" in data:
@@ -678,6 +722,8 @@ def patch_provider_mapping(mapping_id: str, payload: MappingPatch,
         m.user_email = v or None
     if "is_active" in data:
         m.is_active = "Y" if data["is_active"] else "N"
+    if offboarding:
+        m.token_version = int(m.token_version or 0) + 1
     # Validate the final state — a row must either have an email OR be ignored
     if m.is_ignored != "Y" and not (m.user_email or "").strip():
         raise HTTPException(status_code=422,

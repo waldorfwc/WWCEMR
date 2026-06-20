@@ -512,6 +512,8 @@ def _apply_lightweight_migrations():
         # arms off (slot.created_at = when the surgery date was selected).
         ("surgeries", "boarding_slip_auto_emailed_at", "DATETIME"),
         ("surgery_slots", "created_at", "DATETIME"),
+        # Missing-charges provider-token revocation (per-provider version).
+        ("provider_user_mappings", "token_version", "INTEGER DEFAULT 0"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

@@ -3,7 +3,7 @@
 For each provider with open `needs_to_be_billed` rows:
   1. Look up the provider's user account by matching their display name
      (the Excel uses "Last, First" and so do our users' full_name).
-  2. Mint a 60-day signed-token portal URL.
+  2. Mint a 14-day signed-token portal URL.
   3. Send an HTML+text email listing each row with one-click 'Billed' / 'Error'
      links into the portal.
   4. Stamp `last_emailed_at` on every row included.
@@ -146,7 +146,7 @@ charges entered. Open each one in ModMed, finish the note so it bills, then clic
 </table>
 
 <p style="font-size:12px;color:#888;margin-top:18px">
-  The portal link is good for 60 days. If you can't bill a row (visit was canceled,
+  The portal link is good for 14 days. If you can't bill a row (visit was canceled,
   no-show, etc.) click <em>Error</em> and explain — the biller will follow up.
 </p>
 </body></html>"""
@@ -162,7 +162,7 @@ Portal: {portal_url}
 Pending appointments:
 {rows_text}
 
-(The portal link is good for 60 days. If you can't bill a row, click Error
+(The portal link is good for 14 days. If you can't bill a row, click Error
 and explain — the biller will follow up.)
 """
     return subject, html, text
@@ -209,7 +209,7 @@ def send_provider_emails(db: Session, *, triggered_by: str = "system") -> dict:
         # Isolate each provider: a failure (SMTP throw, resolve error) must
         # not abort the whole batch and strand the providers not yet processed.
         try:
-            token = token_svc.mint_token(provider)
+            token = token_svc.mint_token_for_provider(db, provider)
             portal_url = f"{base}/p/missing-charges/{quote(token)}"
 
             user = _provider_user(db, provider)
