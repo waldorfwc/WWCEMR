@@ -50,7 +50,9 @@ export default function LarcAssignment() {
   if (error) return <div className="p-6 text-red-600">{error?.response?.data?.detail || error.message}</div>
   if (!a) return null
 
-  const milestones = a.milestones || []
+  // Hide milestones the backend marked not_applicable (e.g. the `billed`
+  // step for patient-owned devices, where WWC never files a claim).
+  const milestones = (a.milestones || []).filter(m => m.status !== 'not_applicable')
 
   return (
     <div>
