@@ -146,7 +146,7 @@ export default function LarcAssignment() {
       {a.status === 'failed_used' && <ReplacementChainCard a={a} />}
 
       <AllocateInventoryCard a={a} />
-      <InsuranceCardCard a={a} />
+      {a.source_flow === 'pharmacy_order' && <InsuranceCardCard a={a} />}
 
       {/* Benefits calculator — always-visible card. The benefits_verified
           milestone still uses BenefitsBody under the hood, but this surfaces
