@@ -182,6 +182,8 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "source_flow": a.source_flow,
         "linked_surgery_id": str(a.linked_surgery_id) if a.linked_surgery_id else None,
         "requested_by_provider": a.requested_by_provider,
+        "reason_for_request": a.reason_for_request,
+        "reason_icd10": a.reason_icd10,
         "from_surgery": a.linked_surgery_id is not None,
         "status": a.status,
         "sub_flag": a.sub_flag,
@@ -1191,6 +1193,12 @@ class AssignmentIn(BaseModel):
     source_flow: str = "in_stock"           # in_stock | pharmacy_order
     device_type_id: Optional[str] = None    # required for pharmacy_order before a device exists
     notes: Optional[str] = None
+    reason_for_request: Optional[str] = None
+    reason_icd10:       Optional[str] = None
+    requested_by_provider:    Optional[str] = None
+    inserting_provider_email: Optional[str] = None
+    inserting_provider_name:  Optional[str] = None
+    inserting_provider_npi:   Optional[str] = None
 
 
 @router.get("/assignments")
@@ -1258,7 +1266,7 @@ def suggest_assignment_flow(
 def create_assignment(payload: AssignmentIn,
                        db: Session = Depends(get_db),
                        current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
-    if payload.source_flow not in ("in_stock", "pharmacy_order"):
+    if payload.source_flow not in ("in_stock", "pharmacy_order", "office_procedure"):
         raise HTTPException(status_code=422, detail="invalid source_flow")
 
     device: Optional[LarcDevice] = None
@@ -1333,6 +1341,12 @@ def create_assignment(payload: AssignmentIn,
         status="new",
         is_active=True,
         notes=payload.notes,
+        reason_for_request=(payload.reason_for_request or "").strip() or None,
+        reason_icd10=(payload.reason_icd10 or "").strip() or None,
+        requested_by_provider=(payload.requested_by_provider or "").strip() or None,
+        inserting_provider_email=(payload.inserting_provider_email or "").strip() or None,
+        inserting_provider_name=(payload.inserting_provider_name or "").strip() or None,
+        inserting_provider_npi=(payload.inserting_provider_npi or "").strip() or None,
         created_by=current_user.get("email"),
     )
     db.add(a); db.flush()
