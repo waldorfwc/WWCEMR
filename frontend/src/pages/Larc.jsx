@@ -440,7 +440,7 @@ export default function Larc() {
 
 
 
-export function StartLarcProcessDrawer({ onClose, onCreated, mock }) {
+function StartLarcProcessDrawer({ onClose, onCreated }) {
   const qc = useQueryClient()
   const [step, setStep] = useState(1)            // 1 = intake, 2 = suggestion
   const [suggestion, setSuggestion] = useState(null)
@@ -454,26 +454,21 @@ export function StartLarcProcessDrawer({ onClose, onCreated, mock }) {
   })
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const { data: typesData } = useQuery({
+  const { data: types } = useQuery({
     queryKey: ['larc-device-types'],
     queryFn: () => api.get('/larc/device-types').then(r => r.data),
-    staleTime: 60_000, enabled: !mock,
+    staleTime: 60_000,
   })
-  const { data: cliniciansData } = useQuery({
+  const { data: clinicians } = useQuery({
     queryKey: ['clinicians'],
     queryFn: () => api.get('/admin/users/clinicians').then(r => r.data),
-    staleTime: 60_000, enabled: !mock,
+    staleTime: 60_000,
   })
-  const { data: configData } = useQuery({
+  const { data: config } = useQuery({
     queryKey: ['larc-config'],
     queryFn: () => api.get('/larc/config').then(r => r.data),
-    staleTime: 60_000, enabled: !mock,
+    staleTime: 60_000,
   })
-  // In preview mode (mock provided) the API calls are skipped and mock data
-  // is used instead, so the flow renders headlessly without auth.
-  const types = mock?.types ?? typesData
-  const clinicians = mock?.clinicians ?? cliniciansData
-  const config = mock?.config ?? configData
   const reasons = config?.reason_for_request_options || []
 
   const allFilled = form.chart_number.trim() && form.patient_first_name.trim()
@@ -499,10 +494,8 @@ export function StartLarcProcessDrawer({ onClose, onCreated, mock }) {
   }
 
   const suggest = useMutation({
-    mutationFn: () => mock
-      ? Promise.resolve(mock.suggest(form.device_type_id))
-      : api.post('/larc/assignments/suggest-flow',
-          { device_type_id: form.device_type_id }).then(r => r.data),
+    mutationFn: () => api.post('/larc/assignments/suggest-flow',
+      { device_type_id: form.device_type_id }).then(r => r.data),
     onSuccess: (data) => { setSuggestion(data); setChosenFlow(data.suggested_flow); setStep(2) },
     onError: (e) => alert(e?.response?.data?.detail || 'Could not compute a suggestion'),
   })
@@ -510,7 +503,7 @@ export function StartLarcProcessDrawer({ onClose, onCreated, mock }) {
   const create = useMutation({
     mutationFn: () => {
       const prov = (clinicians || []).find(c => c.email === form.requested_by_email)
-      const payload = {
+      return api.post('/larc/assignments', {
         chart_number: form.chart_number.trim(),
         patient_name: `${form.patient_last_name.trim()}, ${form.patient_first_name.trim()}`,
         patient_first_name: form.patient_first_name.trim(),
@@ -526,16 +519,11 @@ export function StartLarcProcessDrawer({ onClose, onCreated, mock }) {
         inserting_provider_email: prov?.email || null,
         inserting_provider_name: prov?.display_name || null,
         inserting_provider_npi: prov?.npi || null,
-      }
-      return mock
-        ? Promise.resolve(mock.create(payload))
-        : api.post('/larc/assignments', payload).then(r => r.data)
+      }).then(r => r.data)
     },
     onSuccess: (data) => {
-      if (!mock) {
-        qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
-        qc.invalidateQueries({ queryKey: ['larc-assignments'] })
-      }
+      qc.invalidateQueries({ queryKey: ['larc-dashboard'] })
+      qc.invalidateQueries({ queryKey: ['larc-assignments'] })
       onCreated(data.id)
     },
     onError: (e) => alert(e?.response?.data?.detail || 'Create failed'),
