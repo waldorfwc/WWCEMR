@@ -4,6 +4,7 @@ import { ChevronDown, History, LogOut, Shield, User as UserIcon } from 'lucide-r
 import logoMark from '../../assets/wwc-logo.png'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { ROUTES } from '../../routes.jsx'
+import HelpButton from '../help/HelpButton'
 
 
 /**
@@ -74,6 +75,7 @@ export default function TopNav({ user, onLogout }) {
       </nav>
 
       <div className="ml-auto flex items-center gap-3">
+        <HelpButton />
         {user && <UserMenu user={user} isAdmin={isAdmin} canSeeAudit={canSeeAudit} onLogout={onLogout} />}
       </div>
     </header>
