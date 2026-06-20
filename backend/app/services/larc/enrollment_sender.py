@@ -958,11 +958,26 @@ def apply_webhook_event(db, env, data: dict) -> str:
                             .filter(LarcAssignment.id == env.assignment_id)
                             .first())
         if assignment is not None:
+            just_signed = False
+            just_faxed = False
             if not assignment.enrollment_signed_at:
                 assignment.enrollment_signed_at = env.signed_at
+                just_signed = True
             # request_faxed_at reflects the successful pharmacy fax; key
             # off env.faxed_at (set by fax_envelope on Sent/Delivered).
             if env.faxed_at and not assignment.request_faxed_at:
                 assignment.request_faxed_at = env.faxed_at
+                just_faxed = True
+            # Fire per-step patient notifications once each milestone flips.
+            # notify_larc_step is itself idempotent per (assignment, step), so
+            # the set-once guards above plus that guard mean each notice goes
+            # out exactly once even across BoldSign webhook retries.
+            if just_signed or just_faxed:
+                db.flush()
+                from app.services.larc.notifications import notify_larc_step
+                if just_signed:
+                    notify_larc_step(db, assignment, "enrollment_completed")
+                if just_faxed:
+                    notify_larc_step(db, assignment, "enrollment_faxed")
 
     return env.status

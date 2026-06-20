@@ -56,6 +56,7 @@ from app.models.larc_config import LarcConfig
 from app.services.larc.settings import LARC_SETTINGS_DEFAULTS, cfg
 from app.services.larc.source_flow import suggest_flow
 from app.services.larc.allocation import try_auto_allocate
+from app.services.larc.notifications import notify_larc_step
 
 router = APIRouter(prefix="/larc", tags=["larc"])
 
@@ -1563,12 +1564,17 @@ def record_benefits(assignment_id: str, payload: BenefitsIn,
               detail={"patient_responsibility": str(a.patient_responsibility),
                        "breakdown": breakdown})
     db.commit()
+    # Patient now knows their responsibility — notify them to pay.
+    notify_larc_step(db, a, "responsibility_determined")
     # $0-responsibility auto-satisfy: nothing for the patient to pay, so mark
     # paid and let the in-stock device bind automatically.
     if a.source_flow == "in_stock" and (a.patient_responsibility in (None, 0)) and not a.patient_paid_at:
         a.patient_paid_at = now_utc_naive()
         a.patient_paid_by = "system:zero_responsibility"
         try_auto_allocate(db, a)
+        notify_larc_step(db, a, "responsibility_satisfied")
+        if a.device_id:
+            notify_larc_step(db, a, "device_allocated")
     db.refresh(a)
     return {
         "assignment": _assignment_dict(a, include_milestones=True),
@@ -1628,7 +1634,9 @@ def mark_patient_notified(
               device=a.device, assignment=a,
               summary=f"Sent Klara to {a.patient_name} to schedule insertion",
               detail={"message_body": payload.message_body} if payload.message_body else None)
-    db.commit(); db.refresh(a)
+    db.commit()
+    notify_larc_step(db, a, "patient_notified")
+    db.refresh(a)
     return _assignment_dict(a, include_milestones=True)
 
 
@@ -2033,6 +2041,9 @@ def record_payment(assignment_id: str,
     db.commit()
     # Once benefits + payment are both satisfied, bind an in-stock device.
     try_auto_allocate(db, a)
+    notify_larc_step(db, a, "responsibility_satisfied")
+    if a.device_id:
+        notify_larc_step(db, a, "device_allocated")
     db.refresh(a)
     return _assignment_dict(a, include_milestones=True)
 
@@ -2344,7 +2355,9 @@ def receive_device(assignment_id: str, payload: ReceiveDeviceIn,
                        f"for {a.patient_name}"),
               detail={"manufacturer_lot": d.manufacturer_lot,
                        "expiration_date": str(d.expiration_date) if d.expiration_date else None})
-    db.commit(); db.refresh(a)
+    db.commit()
+    notify_larc_step(db, a, "device_received")
+    db.refresh(a)
     return _assignment_dict(a, include_milestones=True)
 
 

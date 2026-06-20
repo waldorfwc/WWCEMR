@@ -56,6 +56,7 @@ def init_db():
             seed_default_email_templates, seed_default_sms_templates,
         )
         from app.services.surgery.surgery_type_seed import seed_surgery_types
+        from app.services.larc.seed_templates import seed_larc_templates
         db = SessionLocal()
         try:
             seed_default_facilities(db)
@@ -63,6 +64,7 @@ def init_db():
             seed_default_email_templates(db)
             seed_default_sms_templates(db)
             seed_surgery_types(db)
+            seed_larc_templates(db)
         finally:
             db.close()
     except Exception:
