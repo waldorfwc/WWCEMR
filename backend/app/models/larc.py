@@ -248,6 +248,11 @@ class LarcAssignment(Base, SoftDeleteMixin):
     requested_by_provider = Column(String(200), nullable=True)
     reason_for_request = Column(String(120), nullable=True)
     reason_icd10       = Column(String(20),  nullable=True)
+    sms_consent          = Column(Boolean, default=False, nullable=False)
+    sms_consented_at     = Column(DateTime, nullable=True)
+    sms_consented_by     = Column(String(200), nullable=True)
+    portal_token_version = Column(Integer, default=0, nullable=False)
+    needs_allocation_no_stock = Column(Boolean, default=False, nullable=False)
 
     # Source flow + workflow state
     source_flow = Column(String(20), default="in_stock", nullable=False)
@@ -522,6 +527,28 @@ class LarcAuditEvent(Base):
     # Free-form payload for context (before/after snapshots, notes)
     detail = Column(JSON, nullable=True)
     summary = Column(Text, nullable=True)   # one-line human description
+
+
+# ─── Patient-portal login-challenge throttling ─────────────────────
+
+class LarcPortalAuthAttempt(Base):
+    """SMS-OTP login challenge for the LARC patient portal. Mirrors
+    PelletPortalAuthAttempt exactly but keyed off a LarcAssignment — a
+    separate table (not columns on the assignment row) so a code can be
+    issued, verified, and burned without touching the workflow row."""
+    __tablename__ = "larc_portal_auth_attempts"
+    __table_args__ = (Index("ix_larc_authattempt_token", "challenge_token"),)
+
+    id = Column(GUID(), primary_key=True, default=new_uuid)
+    assignment_id = Column(GUID(), ForeignKey("larc_assignments.id", ondelete="CASCADE"),
+                           nullable=False)
+    challenge_token = Column(String(80), nullable=False)
+    code_hash = Column(String(120), nullable=False)
+    purpose = Column(String(20), nullable=False, default="login")
+    attempts = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+    consumed_at = Column(DateTime, nullable=True)
 
 
 # ─── LARC enrollment envelope (BoldSign pharmacy-order forms) ──────

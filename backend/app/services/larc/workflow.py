@@ -45,7 +45,6 @@ IN_STOCK_MILESTONES = [
     ("benefits_verified",            "Benefits verified",                 3),
     ("patient_responsibility_modmed","Patient responsibility in ModMed",  2),
     ("patient_notified",             "Patient notified to schedule",      2),
-    ("appt_scheduled",               "Insertion appointment scheduled",   7),
     ("device_checked_out",           "Device checked out for insertion",  1),
     ("device_inserted",              "Device inserted",                   1),
     ("billed",                       "Insertion billed (claim # recorded)", 14),
@@ -59,7 +58,6 @@ PHARMACY_ORDER_MILESTONES = [
     ("request_faxed",                "Request faxed to pharmacy",         1),
     ("device_received",              "Device received from pharmacy",    14),
     ("patient_notified",             "Patient notified to schedule",      2),
-    ("appt_scheduled",               "Insertion appointment scheduled",   7),
     ("device_checked_out",           "Device checked out for insertion",  1),
     ("device_inserted",              "Device inserted",                   1),
     ("billed",                       "Insertion billed (claim # recorded)", 14),
@@ -88,7 +86,6 @@ ALL_BUCKETS = [
     "needs_fax",
     "awaiting_receipt",
     "received_not_notified",
-    "appt_scheduled",
     "checked_out",
     "inserted_not_billed",
     "failed_replacement_unrequested",
@@ -151,11 +148,18 @@ def spawn_milestones(db: Session, assignment: LarcAssignment) -> None:
         catalog = PHARMACY_ORDER_MILESTONES
     else:
         catalog = IN_STOCK_MILESTONES
+    # Patient-owned devices are never billed by WWC — mark the billing step
+    # N/A. Before a device is bound, a pharmacy_order flow is patient-owned by
+    # definition.
+    dev = assignment.device
+    is_patient_owned = (dev.ownership == "patient_owned") if dev else (assignment.source_flow == "pharmacy_order")
+
     for pos, (kind, title, days) in enumerate(catalog, 1):
+        status = "not_applicable" if (is_patient_owned and kind == "billed") else "pending"
         db.add(LarcMilestone(
             assignment_id=assignment.id,
             kind=kind, title=title, position=pos,
-            status="pending", expected_duration_days=days,
+            status=status, expected_duration_days=days,
         ))
 
 
@@ -202,9 +206,10 @@ def assignment_buckets(a: LarcAssignment, today: Optional[_date] = None) -> set[
         if done("device_received") and not done("patient_notified"):
             out.add("received_not_notified")
 
-    if done("appt_scheduled") and not done("device_checked_out"):
-        out.add("appt_scheduled")
-    if done("device_checked_out") and not done("device_inserted"):
+    # Ready-to-checkout / checked-out lane. The appointment-scheduling step
+    # was removed, so once the patient has been notified (device on-hand) the
+    # assignment is ready for checkout; it stays in this lane until insertion.
+    if done("patient_notified") and not done("device_inserted"):
         out.add("checked_out")
     if done("device_inserted") and not done("billed"):
         out.add("inserted_not_billed")

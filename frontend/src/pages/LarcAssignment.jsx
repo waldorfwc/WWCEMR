@@ -50,7 +50,9 @@ export default function LarcAssignment() {
   if (error) return <div className="p-6 text-red-600">{error?.response?.data?.detail || error.message}</div>
   if (!a) return null
 
-  const milestones = a.milestones || []
+  // Hide milestones the backend marked not_applicable (e.g. the `billed`
+  // step for patient-owned devices, where WWC never files a claim).
+  const milestones = (a.milestones || []).filter(m => m.status !== 'not_applicable')
 
   return (
     <div>
@@ -146,7 +148,7 @@ export default function LarcAssignment() {
       {a.status === 'failed_used' && <ReplacementChainCard a={a} />}
 
       <AllocateInventoryCard a={a} />
-      <InsuranceCardCard a={a} />
+      {a.source_flow === 'pharmacy_order' && <InsuranceCardCard a={a} />}
 
       {/* Benefits calculator — always-visible card. The benefits_verified
           milestone still uses BenefitsBody under the hood, but this surfaces
@@ -233,8 +235,7 @@ function milestoneInline(m, a) {
     case 'request_faxed':                  return <FaxPharmacyBody a={a} />
     case 'device_received':                return <ReceiveDeviceBody a={a} />
     case 'patient_notified':               return <NotifyBody a={a} />
-    case 'appt_scheduled':                 return <ApptBody a={a} />
-    case 'device_checked_out':             return <CheckoutPlaceholderBody a={a} />
+    case 'device_checked_out':             return <CheckedOutStatusBody a={a} />
     case 'device_inserted':                return <OutcomeBody a={a} />
     case 'billed':                         return <BilledBody a={a} />
     // Office-procedure (NovaSure, Bensta) ─────────────────────────────
@@ -1014,50 +1015,10 @@ function NotifyBody({ a }) {
 }
 
 
-function ApptBody({ a }) {
-  const qc = useQueryClient()
-  const [date, setDate] = useState(a.appt_date || '')
-  const save = useMutation({
-    mutationFn: () => api.post(`/larc/assignments/${a.id}/schedule-appt`,
-                                { appt_date: date }).then(r => r.data),
-    onSuccess: () => invalidateLarcLists(qc, a.id),
-    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
-  })
-  return (
-    <div className="space-y-2 text-[12px]">
-      <div className="flex items-center gap-2">
-        <input type="date" className="input text-[12px]" value={date}
-               onChange={e => setDate(e.target.value)} />
-        <button className="btn-primary text-[11px]"
-                onClick={() => save.mutate()}
-                disabled={!date || save.isPending}>
-          {save.isPending ? 'Saving…' : 'Save appt date'}
-        </button>
-      </div>
-      {a.appt_date && (
-        <div className="text-[10px] text-green-700">Appt scheduled for {fmt.date(a.appt_date)}</div>
-      )}
-    </div>
-  )
-}
-
-
-function CheckoutPlaceholderBody({ a }) {
-  const qc = useQueryClient()
-  const [dob, setDob] = useState(a.patient_dob || '')
-  const [givenTo, setGivenTo] = useState('')
-  const [result, setResult] = useState(null)
-  const request = useMutation({
-    mutationFn: () => api.post(`/larc/assignments/${a.id}/checkout-request`, {
-      patient_dob: dob, given_to: givenTo || null,
-    }).then(r => r.data),
-    onSuccess: (data) => {
-      setResult(data)
-      invalidateLarcLists(qc, a.id)
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'Request failed'),
-  })
-
+// Read-only status for the device-checkout milestone. The check-out action itself
+// now lives on the LARC dashboard ("Devices Ready to Check Out") and My Checklist;
+// this card just reflects whether the device has been checked out yet.
+function CheckedOutStatusBody({ a }) {
   const done = !!a.milestones?.find(m => m.kind === 'device_checked_out' && m.status === 'done')
   if (done) {
     return (
@@ -1066,47 +1027,9 @@ function CheckoutPlaceholderBody({ a }) {
       </div>
     )
   }
-
   return (
-    <div className="space-y-2 text-[12px]">
-      <div className="text-[11px] text-gray-600">
-        Pulling the device from the cabinet for insertion. MA enters patient DOB to verify
-        identity. Auto-approved when all gates pass (DOB match, today's appt, benefits done,
-        device available); otherwise flagged for manager approval.
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <div className="text-[11px] uppercase text-gray-500">Patient DOB (identity check)</div>
-          <input type="date" className="input text-[12px] w-full" value={dob}
-                 onChange={e => setDob(e.target.value)} />
-        </div>
-        <div>
-          <div className="text-[11px] uppercase text-gray-500">Given to (provider/MA)</div>
-          <input className="input text-[12px] w-full" value={givenTo}
-                 onChange={e => setGivenTo(e.target.value)}
-                 placeholder="e.g. Dr. Cooke" />
-        </div>
-      </div>
-      <button className="btn-primary text-[11px]"
-              onClick={() => request.mutate()}
-              disabled={!dob || request.isPending}>
-        {request.isPending ? 'Requesting…' : 'Request check-out'}
-      </button>
-      {result && (
-        <div className={`text-[11px] p-2 rounded ${
-          result.approval_status === 'approved' ? 'bg-green-50 text-green-800 border border-green-200'
-            : 'bg-amber-50 text-amber-800 border border-amber-200'
-        }`}>
-          {result.approval_status === 'approved'
-            ? '✓ Auto-approved — device is yours, head to the cabinet.'
-            : <>
-                ⚠ Flagged for manager approval. Gates that failed:
-                <ul className="list-disc pl-5 mt-0.5 text-[10px]">
-                  {(result.gate_failures || []).map((g, i) => <li key={i}>{g}</li>)}
-                </ul>
-              </>}
-        </div>
-      )}
+    <div className="text-[11px] text-gray-600">
+      Not checked out yet. Check out the device from the LARC dashboard or your checklist.
     </div>
   )
 }

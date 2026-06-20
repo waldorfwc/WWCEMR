@@ -36,7 +36,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, surgery_activity, larc, larc_config, billing_document, missing_charge, pellet, pellet_config, recall_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier, bai2, bai2_exclusion, pellet_portal, pellet_payment, pellet_schedule, cron_run, surgery_type  # noqa
+    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, surgery_activity, larc, larc_config, larc_payment, billing_document, missing_charge, pellet, pellet_config, recall_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier, bai2, bai2_exclusion, pellet_portal, pellet_payment, pellet_schedule, cron_run, surgery_type  # noqa
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
     # Default groups already exist in production; the legacy seed code is
@@ -56,6 +56,7 @@ def init_db():
             seed_default_email_templates, seed_default_sms_templates,
         )
         from app.services.surgery.surgery_type_seed import seed_surgery_types
+        from app.services.larc.seed_templates import seed_larc_templates
         db = SessionLocal()
         try:
             seed_default_facilities(db)
@@ -63,6 +64,7 @@ def init_db():
             seed_default_email_templates(db)
             seed_default_sms_templates(db)
             seed_surgery_types(db)
+            seed_larc_templates(db)
         finally:
             db.close()
     except Exception:
@@ -201,6 +203,11 @@ def _apply_lightweight_migrations():
         ("larc_assignments", "deleted_by", "VARCHAR(200)"),
         ("larc_assignments", "reason_for_request", "VARCHAR(120)"),
         ("larc_assignments", "reason_icd10", "VARCHAR(20)"),
+        ("larc_assignments", "sms_consent", "BOOLEAN DEFAULT FALSE"),
+        ("larc_assignments", "sms_consented_at", "DATETIME"),
+        ("larc_assignments", "sms_consented_by", "VARCHAR(200)"),
+        ("larc_assignments", "portal_token_version", "INTEGER DEFAULT 0"),
+        ("larc_assignments", "needs_allocation_no_stock", "BOOLEAN DEFAULT FALSE"),
         # Practice config defaults for appeal-letter signer
         ("practice_config", "appeal_signer_name", "VARCHAR(200)"),
         ("practice_config", "appeal_signer_credentials", "VARCHAR(50)"),
@@ -516,6 +523,10 @@ def _apply_lightweight_migrations():
         ("surgery_slots", "created_at", "DATETIME"),
         # Missing-charges provider-token revocation (per-provider version).
         ("provider_user_mappings", "token_version", "INTEGER DEFAULT 0"),
+        # LARC per-step notification idempotency — dedicated GUID column (the
+        # 36-char assignment id doesn't fit chart_number's String(20)).
+        ("patient_emails", "larc_assignment_id", "CHAR(36)"),
+        ("patient_sms", "larc_assignment_id", "CHAR(36)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())
