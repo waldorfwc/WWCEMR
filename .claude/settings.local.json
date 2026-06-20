@@ -303,7 +303,7 @@
       "Bash(./venv/bin/pytest tests/test_docusign_email.py tests/test_patient_email.py tests/test_patient_sms.py -q)",
       "Bash(/usr/bin/curl -s -o /dev/null -w \"%{http_code}\" -X POST -H \"Content-Type: application/json\" -d '{\"event\":\"test\"}' \"https://gw.waldorfwomenscare.com/api/boldsign/webhook\")",
       "Bash(/bin/echo 'POST /api/boldsign/webhook \\(no signature, setup mode\\) -> __TRACKED_VAR__ \\(expect 200\\)')",
-      "Bash(/bin/echo 'POST /api/boldsign/webhook \\(no signature\\) -> __TRACKED_VAR__ \\(expect 400 — setup mode auto-exits when secret is set\\)')",
+      "Bash(/bin/echo 'POST /api/boldsign/webhook \\(no signature\\) -> __TRACKED_VAR__ \\(expect 400 \u2014 setup mode auto-exits when secret is set\\)')",
       "Bash(/usr/bin/sed -n '644,685p' backend/app/models/surgery.py)",
       "Bash(/usr/bin/sed -n '55,107p' backend/app/services/surgery_picklists.py)",
       "Bash(./venv/bin/pytest tests/test_boldsign_envelopes.py tests/test_boldsign_webhook.py tests/test_docusign_email.py -v)",
@@ -441,7 +441,7 @@
       "Bash(/usr/bin/find backend/app/services -name \"*storage*\" -o -name \"*_files*\")",
       "Bash(/usr/bin/sed -n '325,400p' backend/app/routers/documents.py)",
       "Bash(echo \"=== sample of what GCS has under extracted/ ===\")",
-      "Bash(echo \"=== ah — Document/ is a subdir, let's count actual files ===\")",
+      "Bash(echo \"=== ah \u2014 Document/ is a subdir, let's count actual files ===\")",
       "Bash(/usr/bin/head -1)",
       "Bash(echo \"=== test patient doc download with proper JWT ===\")",
       "Bash(/usr/bin/head -c 16 /tmp/test_doc.pdf)",
@@ -452,7 +452,7 @@
       "Bash(echo \"=== close Cloud SQL ===\")",
       "Bash(/usr/bin/head -c 200 /tmp/intake_test.pdf)",
       "Bash(/bin/rm -f /tmp/intake_test.pdf)",
-      "Bash(echo \"=== sample of intake/ — looking for non-zip files / nested structure ===\")",
+      "Bash(echo \"=== sample of intake/ \u2014 looking for non-zip files / nested structure ===\")",
       "Bash(echo \"=== curl test result \\(from background\\) ===\")",
       "Bash(echo \"=== all top-level prefixes in wwc-app-docs \\(every dir\\) ===\")",
       "Bash(echo \"=== count of archives per year prefix ===\")",
@@ -547,7 +547,7 @@
       "Bash(export PATH=\"/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/opt/homebrew/share/google-cloud-sdk/bin\")",
       "Bash(grep -n \"create\\\\.mutate\\\\|Create surgery\\\\|+ Create\\\\|Create.*$\" frontend/src/pages/Surgery.jsx)",
       "Bash(grep -n \"def benefits_endpoint\\\\|^@router.post.*/benefits\\\\|return {\\\\s*$\\\\|pdf_download_url\" backend/app/routers/surgery.py)",
-      "Bash(echo \"Enabling public IP on app-db \\(will close after run\\)…\")",
+      "Bash(echo \"Enabling public IP on app-db \\(will close after run\\)\u2026\")",
       "Bash(ps aux *)",
       "Bash(grep -rn \"{d.weekday}\\\\|{day.weekday}\\\\|weekday}, {.*block_date\\\\|{block_date}\" frontend/src/pages/PatientSurgery.jsx)",
       "Bash(venv/bin/python -c ' *)",
@@ -599,7 +599,7 @@
       "Bash(venv/bin/pytest tests/test_permissions_catalog.py tests/test_permissions_resolver.py tests/test_requires_tier.py tests/test_permission_grants.py tests/test_admin_tiers_api.py tests/test_default_staff.py tests/test_module_tier_models.py -q)",
       "Bash(venv/bin/pytest tests/test_translate_perms_to_tiers.py -q)",
       "Bash(grep -n \"needed = \\\\[\\\\|^    \\\\]$\" /Users/wwcclaudecode/Documents/wwc-era-project/backend/app/database.py)",
-      "Bash(venv/bin/python3 -c \"from app.services.larc_enrollment_sender import send_enrollment_envelope, _build_nexplanon_fields; from app.models.larc import LarcEnrollmentEnvelope; print\\('OK — imports clean'\\)\")",
+      "Bash(venv/bin/python3 -c \"from app.services.larc_enrollment_sender import send_enrollment_envelope, _build_nexplanon_fields; from app.models.larc import LarcEnrollmentEnvelope; print\\('OK \u2014 imports clean'\\)\")",
       "Bash(venv/bin/python3 -c \"from app.services.larc_enrollment_sender import apply_webhook_event; from app.services.larc_pharmacy_fax import fax_envelope, fetch_signed_pdf; from app.routers.boldsign import router; print\\('imports OK'\\)\")",
       "WebFetch(domain:developers.boldsign.com)",
       "Bash(venv/bin/python3 -c \"from app.services.larc_enrollment_sender import _build_bayer_fields; print\\('OK'\\)\")",
@@ -651,5 +651,8 @@
       "Bash(echo \"exit $?\")",
       "Bash(backend/venv/bin/python /tmp/parity_probe.py)"
     ]
+  },
+  "enabledPlugins": {
+    "twilio-developer-kit@claude-plugins-official": true
   }
 }
