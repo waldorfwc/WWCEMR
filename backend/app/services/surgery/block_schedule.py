@@ -195,12 +195,25 @@ def materialize_block_days(db: Session, *, days_ahead: int | None = None) -> dic
     # already have a booked slot are left alone — those are real conflicts
     # surfaced via find_blocked_conflicts and must not be silently deleted
     # (that would orphan a patient's scheduled date).
+    # Prefetch which existing block days already have a slot in ONE query
+    # instead of lazy-loading bd.slots per block day (N+1). DISTINCT
+    # block_day_id over the relevant ids gives us the "has any slot" set.
     removed = 0
+    existing_ids = [bd.id for bd in existing.values()]
+    slotted_ids: set = set()
+    if existing_ids:
+        slotted_ids = {
+            row[0] for row in
+            db.query(SurgerySlot.block_day_id)
+              .filter(SurgerySlot.block_day_id.in_(existing_ids))
+              .distinct()
+              .all()
+        }
     for (fac, bdate, _st), bd in list(existing.items()):
         blacked = (bdate in office_blackouts
                    or bdate in provider_blackouts
                    or bdate in facility_blackouts.get(fac, set()))
-        if blacked and not (bd.slots or []):
+        if blacked and bd.id not in slotted_ids:
             db.delete(bd)
             removed += 1
 

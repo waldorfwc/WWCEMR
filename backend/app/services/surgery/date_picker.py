@@ -23,7 +23,9 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.surgery import BlockDay, Surgery, SurgeryBlackoutDay, SurgerySlot
-from app.services.surgery.blackout_conflict import blackouts_for
+from app.services.surgery.blackout_conflict import (
+    blackouts_for, _scope_matches_blackout,
+)
 from app.services.surgery.block_schedule import (
     DURATIONS, book_slot, can_fit, CapacityViolation,
 )
@@ -199,6 +201,20 @@ def available_slots_for_surgery(db: Session, s: Surgery, *,
                             BlockDay.block_date <= end)
                     .order_by(BlockDay.block_date).all())
 
+    # Prefetch ALL blackout rows in the window in ONE query, grouped by date.
+    # Previously this called blackouts_for() once PER block day — one query
+    # each across the (up to 180-day) horizon. The per-block-day scope match
+    # below uses the SAME predicate (_scope_matches_blackout) blackouts_for
+    # uses, so results are byte-for-byte identical — only the query count
+    # drops (N+1 → 1).
+    blackout_rows = (db.query(SurgeryBlackoutDay)
+                       .filter(SurgeryBlackoutDay.blackout_date >= floor_date,
+                               SurgeryBlackoutDay.blackout_date <= end)
+                       .all())
+    blackouts_by_date: dict = {}
+    for b in blackout_rows:
+        blackouts_by_date.setdefault(b.blackout_date, []).append(b)
+
     out: list[AvailableSlot] = []
     for bd in block_days:
         # Skip the patient's currently-held block day from the offer list
@@ -215,8 +231,9 @@ def available_slots_for_surgery(db: Session, s: Surgery, *,
         # 12:00–15:00 afternoon). (Previously one proposed start was computed
         # and the whole day was dropped if it overlapped any partial blackout,
         # wrongly hiding a block day with a free window.)
-        bos = blackouts_for(db, bd.block_date, bd.facility,
-                            surgeon_email=s.surgeon_email)
+        bos = [b for b in blackouts_by_date.get(bd.block_date, [])
+               if _scope_matches_blackout(b, bd.facility,
+                                          surgeon_email=s.surgeon_email)]
         if any(bo.is_whole_day for bo in bos):
             continue
         extra_busy = _blackout_busy(bos)

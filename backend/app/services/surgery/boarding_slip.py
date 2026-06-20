@@ -37,6 +37,52 @@ _ASSETS = Path(__file__).resolve().parents[2] / "assets" / "boarding_slip_templa
 MEDSTAR_TEMPLATE = str(_ASSETS / "medstar_template.pdf")
 CRMC_TEMPLATE    = str(_ASSETS / "crmc_template.pdf")
 
+# Practical single-line width of the MedStar AUTO_InsuranceName /
+# AUTO_SecondaryInsuranceName fields. The template's AcroForm defines no
+# /MaxLen on either field (verified via PdfReader(MEDSTAR_TEMPLATE)
+# .get_fields()[...]["/MaxLen"] → None), so we cap conservatively to keep a
+# long insurer + member ID + group from overflowing/clipping the fixed-width
+# box on the printed slip.
+_INSURANCE_FIELD_MAX = 80
+
+
+def _cap_insurance_field(name: str, member_bits: list[str]) -> str:
+    """Compose the insurance-name field as `name` + member ID/group bits,
+    capped to `_INSURANCE_FIELD_MAX`.
+
+    `member_bits` is the ordered list of trailing fragments (e.g.
+    ["ID XEG123", "Grp 170000"]). Truncation policy: never split the member
+    ID — prefer keeping `name + ID` and dropping/truncating the group if the
+    total would exceed the cap; if even `name + ID` exceeds, truncate the
+    trailing end.
+    """
+    name = (name or "").strip()
+    cap = _INSURANCE_FIELD_MAX
+    if not member_bits:
+        return name[:cap]
+    # Try fitting all bits first.
+    full = (f"{name}  " + "  ".join(member_bits)).strip()
+    if len(full) <= cap:
+        return full
+    # Drop trailing bits (group first) until name + remaining fits, keeping
+    # at least the first bit (the member ID) intact.
+    bits = list(member_bits)
+    while len(bits) > 1:
+        bits.pop()  # drop the trailing (group) fragment
+        candidate = (f"{name}  " + "  ".join(bits)).strip()
+        if len(candidate) <= cap:
+            return candidate
+    # Only the member ID bit remains and name + ID still overflows. Never
+    # split the ID: truncate the NAME portion (the trailing end of the name)
+    # so the ID fragment survives whole at the end of the field.
+    id_bit = bits[0]
+    sep = "  "
+    room = cap - len(sep) - len(id_bit)
+    if room <= 0:
+        # Even the ID alone exceeds the cap — keep the ID, trim its tail.
+        return id_bit[:cap]
+    return (name[:room].rstrip() + sep + id_bit).strip()
+
 
 # ─── Helpers ──────────────────────────────────────────────────────
 
@@ -155,10 +201,17 @@ def generate_medstar(s: Surgery, overrides: Optional[dict] = None) -> bytes:
                              f"Grp {prim_grp}" if prim_grp else "") if b]
     if prim_bits:
         base = (fields.get("AUTO_InsuranceName") or "").strip()
-        fields["AUTO_InsuranceName"] = (f"{base}  " + "  ".join(prim_bits)).strip()
+        fields["AUTO_InsuranceName"] = _cap_insurance_field(base, prim_bits)
+    else:
+        fields["AUTO_InsuranceName"] = _cap_insurance_field(
+            fields.get("AUTO_InsuranceName") or "", [])
     if sec_id:
         base = (fields.get("AUTO_SecondaryInsuranceName") or "").strip()
-        fields["AUTO_SecondaryInsuranceName"] = f"{base}  ID {sec_id}".strip()
+        fields["AUTO_SecondaryInsuranceName"] = _cap_insurance_field(
+            base, [f"ID {sec_id}"])
+    else:
+        fields["AUTO_SecondaryInsuranceName"] = _cap_insurance_field(
+            fields.get("AUTO_SecondaryInsuranceName") or "", [])
 
     reader = PdfReader(MEDSTAR_TEMPLATE)
     writer = PdfWriter(clone_from=reader)

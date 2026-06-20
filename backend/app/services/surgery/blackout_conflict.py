@@ -139,6 +139,22 @@ def is_date_blacked_out(
     return None
 
 
+def _scope_matches_blackout(b, facility, surgeon_email=None) -> bool:
+    """True if blackout row `b`'s scope applies to `facility` /
+    `surgeon_email`. Single source of truth for the scope predicate shared by
+    `blackouts_for` and bulk-prefetch callers (date_picker) so the matching
+    logic stays byte-for-byte identical regardless of how the rows were
+    fetched.
+    """
+    return (
+        b.scope == "office"
+        or (b.scope == "facility" and facility == b.facility)
+        or (b.scope == "provider" and (
+            not (b.owner_email and surgeon_email)
+            or surgeon_email.lower() == b.owner_email.lower()))
+    )
+
+
 def blackouts_for(db, blackout_date, facility, surgeon_email=None):
     """Return ALL scope-matched SurgeryBlackoutDay rows for `blackout_date`.
 
@@ -150,18 +166,8 @@ def blackouts_for(db, blackout_date, facility, surgeon_email=None):
     """
     rows = (db.query(SurgeryBlackoutDay)
               .filter(SurgeryBlackoutDay.blackout_date == blackout_date).all())
-    out = []
-    for b in rows:
-        scope_match = (
-            b.scope == "office"
-            or (b.scope == "facility" and facility == b.facility)
-            or (b.scope == "provider" and (
-                not (b.owner_email and surgeon_email)
-                or surgeon_email.lower() == b.owner_email.lower()))
-        )
-        if scope_match:
-            out.append(b)
-    return out
+    return [b for b in rows
+            if _scope_matches_blackout(b, facility, surgeon_email)]
 
 
 def _windows_overlap(blackout, start_time, end_time) -> bool:
