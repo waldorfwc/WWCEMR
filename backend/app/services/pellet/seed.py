@@ -1,4 +1,4 @@
-"""Seed the Pellet dose-type catalog + initial manual sections.
+"""Seed the Pellet dose-type catalog.
 
 Run from database.init_db() — re-runs on every boot are safe; rows are
 only inserted when missing. Edit this list to add a new dose; existing
