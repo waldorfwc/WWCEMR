@@ -144,7 +144,7 @@ export const HELP_CONTENT = {
     steps: ['Start LARC Process', 'Pick the Path', 'Benefits & Enroll', 'Fax / Receive', 'Insert & Bill'],
     sections: [
       { icon: ListChecks, tone: 'plum', title: 'Workflow Buckets',
-        body: 'The bucket cards group every assignment by what it needs next — Needs Benefits, Needs Enrollment, Needs Fax, Awaiting Receipt, Received — Notify, Appt Scheduled, Inserted — To Bill, plus the Office-Procedure (OP) lanes. Click a bucket to load just those patients.' },
+        body: 'The bucket cards group every assignment by what it needs next — Needs Benefits, Needs Enrollment, Needs Fax, Awaiting Receipt, Received — Notify, Inserted — To Bill, plus the Office-Procedure (OP) lanes. Click a bucket to load just those patients.' },
       { icon: UserPlus, tone: 'green', title: 'Start LARC Process',
         body: 'Click "Start LARC Process" and complete the intake — patient (MRN, DOB, name, email, cell), Device Type, Requested By (the ordering provider, from the Admin → Users clinician list), and Reason for Request (each reason carries an ICD-10 code, e.g. Contraception · Z30.430). The system then recommends using an in-stock device or sending a pharmacy enrollment form — accept the recommendation or pick the other path before confirming. The chosen provider also pre-fills the enrollment\'s inserting provider.' },
       { icon: Boxes, tone: 'blue', title: 'Device Inventory',
@@ -153,8 +153,10 @@ export const HELP_CONTENT = {
         body: 'Cards surface Reorder Alerts (below threshold), devices Expiring Within 365 Days, Overdue Pharmacy Orders, and Unacknowledged Checkouts — use the "Ack" button to clear a checkout.' },
       { icon: Filter, tone: 'gray', title: 'Assignment List',
         body: 'The list is sortable by Patient, Device, Flow, Status and Created with a search box for name or chart #. Click any row to open that assignment and advance it.' },
+      { icon: DollarSign, tone: 'green', title: 'To Bill',
+        body: 'The "To Bill" tab lists practice-owned (WWC-owned or WWC-claimed) devices that have been checked out but not yet billed, oldest first. Once a device is inserted, enter the ModMed claim number and Save to record the claim — the row then clears. Devices not yet inserted show "Awaiting insertion" until the insertion is recorded. Patient-owned devices never appear here (WWC doesn\'t bill insurance for them).' },
       { icon: LayoutGrid, tone: 'plum', title: 'Nav Tabs',
-        body: 'The top tabs cover Overview, Devices, Checkouts, Owed, Reports, Inventory Count, EOD Report, Audit, Manual and Settings.' },
+        body: 'The top tabs cover Overview, Devices, Checkouts, To Bill, Owed, Reports, Inventory Count, EOD Report, Audit, Manual and Settings.' },
     ],
     tips: [
       'The "Owed List" / Owed tab tracks patients who still owe for a device after insertion.',
