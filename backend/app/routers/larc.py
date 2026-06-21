@@ -257,6 +257,7 @@ def dashboard(db: Session = Depends(get_db),
     on_hand_by_type: dict = {}
     on_hand_by_location: dict = {loc: 0 for loc in LOCATIONS}
     on_hand_by_category: dict = {"larc": 0, "office_procedure": 0}
+    on_hand_by_ownership: dict = {"wwc_owned": 0, "patient_owned": 0, "wwc_claimed": 0}
     device_categories: dict = {}   # device_type name → category
     for d in devices:
         t = d.device_type.name if d.device_type else "Unknown"
@@ -264,6 +265,7 @@ def dashboard(db: Session = Depends(get_db),
         on_hand_by_type[t] = on_hand_by_type.get(t, 0) + 1
         on_hand_by_location[d.location] = on_hand_by_location.get(d.location, 0) + 1
         on_hand_by_category[cat] = on_hand_by_category.get(cat, 0) + 1
+        on_hand_by_ownership[d.ownership or "wwc_owned"] = on_hand_by_ownership.get(d.ownership or "wwc_owned", 0) + 1
         device_categories[t] = cat
 
     # Reorder alerts — in-stock device types at or below threshold
@@ -343,6 +345,7 @@ def dashboard(db: Session = Depends(get_db),
     return {
         "today": str(today),
         "on_hand_by_type": on_hand_by_type,
+        "on_hand_by_ownership": on_hand_by_ownership,
         "on_hand_by_location": on_hand_by_location,
         "on_hand_by_category": on_hand_by_category,
         "device_categories": device_categories,
