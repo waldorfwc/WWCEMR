@@ -8,9 +8,10 @@ Three sweeps:
    any) lands on the Owed list with `expires_at` set to the device's
    expiration_date.
 
-2. **Reallocate stale assignments** — assignments that haven't been
-   inserted within 180 days of creation get their device freed; the
-   patient goes on the Owed list.
+2. **Reallocate stale assignments** — assignments not inserted within
+   180 days of device receipt (falling back to creation date when no
+   receipt is recorded) get their device freed; the patient goes on the
+   Owed list, and a patient-owned device is auto-claimed as WWC Claimed.
 
 3. **Pharmacy SLA follow-up** — pharmacy orders faxed >14 days ago with
    no device received yet are flagged for staff follow-up (writes an
