@@ -6,6 +6,29 @@ import api, { fmt } from '../utils/api'
 import EmptyState from '../components/EmptyState'
 
 
+// Open the label PDF in a new tab for printing. Uses an authed blob request
+// (the bearer token is in localStorage, not a cookie), so a bare <a href>
+// to the gated endpoint would 401. Open the tab synchronously on the click
+// gesture, then point it at the blob once fetched (avoids popup blockers).
+async function openLabels(ids) {
+  const win = window.open('', '_blank', 'noopener,noreferrer')
+  try {
+    const res = await api.get(`/larc/devices/labels.pdf?ids=${ids}`, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    if (win) {
+      win.location = url
+    } else {
+      const a = document.createElement('a')
+      a.href = url; a.download = 'larc_labels.pdf'; a.click()
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  } catch (e) {
+    if (win) win.close()
+    alert(e?.response?.data?.detail || 'Could not load labels')
+  }
+}
+
+
 const STATUS_TONES = {
   unassigned:  'bg-gray-100 text-gray-700',
   received:    'bg-blue-100 text-blue-700',
@@ -92,11 +115,11 @@ export default function LarcDevices() {
         </h1>
         <div className="flex items-center gap-2">
           {selected.size > 0 && (
-            <a href={`/api/larc/devices/labels.pdf?ids=${[...selected].join(',')}`}
-               target="_blank" rel="noopener noreferrer"
+            <button type="button"
+               onClick={() => openLabels([...selected].join(','))}
                className="btn-secondary text-sm flex items-center gap-1">
               <Printer size={13} /> Print {selected.size} label{selected.size === 1 ? '' : 's'}
-            </a>
+            </button>
           )}
           <button className="btn-secondary text-sm"
                   onClick={() => downloadExport('/larc/devices/export.csv', 'larc-inventory.csv')}>
@@ -346,11 +369,11 @@ function BulkAddForm({ types, onClose }) {
           </div>
           <div className="p-5 space-y-3 text-sm">
             <p>Print labels for the new devices in one shot:</p>
-            <a href={`/api/larc/devices/labels.pdf?ids=${result.device_ids.join(',')}`}
-               target="_blank" rel="noopener noreferrer"
+            <button type="button"
+               onClick={() => openLabels(result.device_ids.join(','))}
                className="btn-primary text-sm inline-flex items-center gap-1">
               <Printer size={13} /> Open {result.created}-page label PDF
-            </a>
+            </button>
           </div>
           <div className="px-5 py-3 border-t border-border-subtle flex justify-end">
             <button className="btn-secondary text-sm" onClick={onClose}>Done</button>
