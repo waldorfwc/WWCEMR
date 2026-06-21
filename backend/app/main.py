@@ -212,20 +212,6 @@ async def _http_exception_handler(request: Request, exc: StarletteHTTPException)
     )
 
 
-def api_error(status_code: int, code: str, message: str, **extra) -> HTTPException:
-    """Helper for routes that want to attach a machine-readable `code`
-    to an error response. The exception handler surfaces `code` in the
-    response envelope alongside the human-readable detail.
-
-    Example:
-        raise api_error(409, "duplicate",
-                         "A document with identical contents already exists.",
-                         existing_id=str(existing.id))
-    """
-    detail: dict = {"code": code, "message": message}
-    detail.update(extra)
-    return HTTPException(status_code=status_code, detail=detail)
-
 app.include_router(imports.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
 app.include_router(claims.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])
 app.include_router(service_lines.router, prefix="/api", dependencies=[Depends(requires_tier(Module.ACTIVE_AR, Tier.VIEW))])

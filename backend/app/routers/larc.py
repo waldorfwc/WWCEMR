@@ -489,7 +489,7 @@ class DeviceTypeIn(BaseModel):
     typical_cost: Optional[DollarAmount] = None
     reorder_threshold: Optional[int] = None
     reorder_quantity: Optional[int] = None
-    enrollment_form_template: Optional[str] = None   # DocuSign template_id
+    enrollment_form_template: Optional[str] = None   # BoldSign template id / path
     notes: Optional[str] = None
     is_active: bool = True
 

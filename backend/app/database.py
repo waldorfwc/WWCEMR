@@ -40,8 +40,6 @@ def init_db():
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
     _migrate_manuals_to_unified()
-    # Default groups already exist in production; the legacy seed code is
-    # retained at _seed_default_groups for traceability but no longer called.
     _migrate_template_targeting()
     _migrate_billing_doc_status_open_to_new()
     _migrate_sms_template_vars()
@@ -919,8 +917,7 @@ def _apply_lightweight_migrations():
 
 
 # practice_role enum → seed group name. Used only by the one-time
-# template-targeting migration below. Kept inline so we can drop
-# app/services/permissions.py entirely.
+# template-targeting migration below.
 _PRACTICE_ROLE_TO_GROUP = {
     "office_manager":    "Office Manager",
     "provider":          "Provider",

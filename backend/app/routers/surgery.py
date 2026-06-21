@@ -5335,7 +5335,7 @@ class ConsentTransitionPayload(BaseModel):
 def consent_mark_sent(surgery_id: str, payload: ConsentTransitionPayload = ConsentTransitionPayload(),
                        db: Session = Depends(get_db),
                        current_user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK))):
-    """Mark that consent has been sent to the patient (paper or DocuSign).
+    """Mark that consent has been sent to the patient (paper or e-sign).
     Sets consent_status='sent', stamps consent_sent_at, moves the consent
     milestone to 'in_progress' (still pending the signature)."""
     s = (db.query(Surgery)
