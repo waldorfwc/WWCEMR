@@ -28,6 +28,7 @@ from app.routers import surgery_messages
 from app.routers import message_templates
 from app.routers import reputation_public, reputation_admin
 from app.routers import fee_schedule as fee_schedule_router
+from app.routers import manual as manual_router
 from app.models import patient_email as _patient_email_models  # noqa: F401
 from app.models import patient_sms as _patient_sms_models  # noqa: F401
 from app.models import fee_schedule as _fee_schedule_models  # noqa: F401
@@ -344,6 +345,8 @@ app.include_router(reputation_public.router)
 app.include_router(reputation_public.embed_router)
 app.include_router(reputation_admin.router,
                    dependencies=[Depends(requires_tier(Module.REPUTATION, Tier.VIEW))])
+# Unified operating manual — handlers self-gate per-module (VIEW read, MANAGE write)
+app.include_router(manual_router.router, prefix="/api")
 
 
 @app.get("/api/health")

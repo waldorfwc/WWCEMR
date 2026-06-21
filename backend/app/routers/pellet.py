@@ -39,7 +39,6 @@ from app.models.pellet import (
     PelletAuditEvent, PelletCount, PelletCountAttachment, PelletCountLine,
     PelletDisposal,
     PelletDoseType, PelletFilterPreset, PelletLot, PelletMammoFacility,
-    PelletManualSection,
     PelletOrder, PelletOrderAttachment, PelletOrderLine,
     PelletPatient, PelletPatientLab, PelletPatientMammo, PelletPatientNote,
     PelletReceipt, PelletReceiptAttachment, PelletStock, PelletTransfer,
@@ -2861,107 +2860,6 @@ def list_audit(
                 }
                 for e in rows
             ]}
-
-
-# ─── Manual ─────────────────────────────────────────────────────────
-
-@router.get("/manual")
-def list_manual(db: Session = Depends(get_db),
-                  current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.VIEW))):
-    rows = (db.query(PelletManualSection)
-              .order_by(PelletManualSection.sort_order,
-                        PelletManualSection.title).all())
-    return [
-        {
-            "id":         str(s.id),
-            "slug":       s.slug,
-            "title":      s.title,
-            "sort_order": s.sort_order,
-            "body_md":    s.body_md,
-            "updated_by": s.updated_by,
-            "updated_at": s.updated_at.isoformat() if s.updated_at else None,
-        }
-        for s in rows
-    ]
-
-
-class ManualPatch(BaseModel):
-    title:      Optional[str] = None
-    body_md:    Optional[str] = None
-    sort_order: Optional[int] = None
-
-
-@router.patch("/manual/{section_id}")
-def patch_manual(section_id: str, payload: ManualPatch,
-                   db: Session = Depends(get_db),
-                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
-    s = db.query(PelletManualSection).filter(PelletManualSection.id == section_id).first()
-    if not s:
-        raise HTTPException(status_code=404, detail="section not found")
-    # Capture before-state for audit (Fable audit #17). Manual edits
-    # affect SOP documentation referenced by DEA-relevant procedures, so
-    # mutate-without-audit was inconsistent with the module's posture.
-    before = {"title": s.title, "sort_order": s.sort_order,
-              "body_md_len": len(s.body_md or "")}
-    data = payload.model_dump(exclude_unset=True)
-    changed = []
-    for k, v in data.items():
-        if getattr(s, k, None) != v:
-            changed.append(k)
-            setattr(s, k, v)
-    by = current_user.get("email") or "system"
-    s.updated_by = by
-    if changed:
-        _audit(db, actor=by, action="manual_section_edited",
-               detail={"section_id": str(s.id), "slug": s.slug,
-                       "fields_changed": changed, "before": before,
-                       "new_body_len": len(s.body_md or "")},
-               summary=f"Edited manual section {s.slug!r}: {', '.join(changed)}")
-    db.commit(); db.refresh(s)
-    return {"id": str(s.id), "slug": s.slug, "title": s.title,
-            "sort_order": s.sort_order, "body_md": s.body_md,
-            "updated_by": s.updated_by, "updated_at": s.updated_at.isoformat()}
-
-
-class ManualIn(BaseModel):
-    slug:       str
-    title:      str
-    body_md:    str = ""
-    sort_order: int = 1000
-
-
-@router.post("/manual", status_code=201)
-def create_manual_section(payload: ManualIn,
-                            db: Session = Depends(get_db),
-                            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
-    slug = payload.slug.strip().lower()
-    title = payload.title.strip()
-    if not slug or not title:
-        raise HTTPException(status_code=422, detail="slug and title required")
-    existing = (db.query(PelletManualSection)
-                  .filter(PelletManualSection.slug == slug).first())
-    if existing:
-        raise HTTPException(status_code=409, detail=f"slug {slug!r} already exists")
-    s = PelletManualSection(
-        slug=slug, title=title, body_md=payload.body_md,
-        sort_order=payload.sort_order,
-        updated_by=current_user.get("email") or "system",
-    )
-    db.add(s); db.commit(); db.refresh(s)
-    return {"id": str(s.id), "slug": s.slug, "title": s.title,
-            "sort_order": s.sort_order, "body_md": s.body_md,
-            "updated_by": s.updated_by, "updated_at": s.updated_at.isoformat()}
-
-
-@router.delete("/manual/{section_id}", status_code=204)
-def delete_manual_section(section_id: str,
-                            db: Session = Depends(get_db),
-                            current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
-    s = db.query(PelletManualSection).filter(PelletManualSection.id == section_id).first()
-    if not s:
-        raise HTTPException(status_code=404, detail="section not found")
-    db.delete(s); db.commit()
-    return
 
 
 # ─── Filter presets (per-user saved searches) ───────────────────────
