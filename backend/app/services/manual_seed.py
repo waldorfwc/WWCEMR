@@ -938,12 +938,74 @@ formatted file that ModMed's bank-recon importer accepts.
 """),
 ]
 
+MISSING_CHARGES_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+**Missing Charges** tracks encounters from the ModMed schedule that have no
+charge on file. The goal is zero open rows — every encounter either gets billed
+or explained (no-show, canceled, or provider can't bill).
+
+**Status ladder:**
+
+| Status | Meaning |
+|---|---|
+| New | Just imported — needs triage |
+| Needs to be billed | Biller confirmed it's a real visit; waiting on the provider |
+| Provider says billed | Provider marked it billed via the portal link |
+| Provider can't bill | Provider flagged an error; reason in the drawer |
+| Billed | Claim # entered and confirmed |
+| No Show / Canceled | Closed — no charge expected |
+
+> Provider emails go out automatically every Monday at 8 AM. "Send Weekly
+> Emails Now" triggers an ad-hoc run.
+"""),
+
+    ("review", "Reviewing & Triaging Rows", 20, """\
+**Load encounters:**
+1. Click **Upload Report** and drop the ModMed "Appointment Missing Charges"
+   Excel. Rows already on file (same patient MRN + DOS) are skipped —
+   no duplicates.
+2. The status counter cards at the top update automatically. Click any card
+   to filter to that status. Uncheck **Open only** to see billed / no-show /
+   canceled rows.
+
+**Filter the list** by provider, payer, appointment type, date range, MRN or
+free-text search (name, MRN, or claim #).
+
+**Triage a New row:**
+1. Click the row to open the detail drawer.
+2. Choose an action:
+   - **Seen — Needs Billing** → moves to *Needs to be billed*; the provider
+     receives it on the next Monday email (or an ad-hoc run).
+   - **No Show** or **Canceled** → closes the row; no charge expected.
+
+**Provider email flow:**
+- Each provider receives one email listing their open *Needs to be billed*
+  rows with a signed 60-day self-service portal link to mark each row
+  **Billed** or **Error**.
+- Inside **Email Providers**, set which user email each provider's list goes
+  to. "Auto-match from Google directory" fills gaps automatically. Unmapped
+  providers receive no email until mapped.
+- **Revoke Links** (in the mappings table) invalidates a provider's
+  outstanding portal links — they get a fresh link on the next email run.
+  Use this when a provider leaves or a link is compromised.
+
+**Enter the claim #:**
+Once a provider marks a row billed (or you confirm it yourself), open the
+row and enter the ModMed claim # in the detail drawer, then **Save & Close**.
+This moves the row to *Billed* and clears it from the open list.
+
+> Billed rows can be **Reopened** from the detail drawer if a claim # was
+> entered in error.
+"""),
+]
+
 MANUAL_SEEDS = {
-    "device_larc":        LARC_MANUAL_SECTIONS,
-    "pellets":            PELLET_MANUAL_SECTIONS,
-    "surgery":            SURGERY_MANUAL_SECTIONS,
-    "active_ar":          ACTIVE_AR_MANUAL_SECTIONS,
-    "billing_bank_recon": BANK_RECON_MANUAL_SECTIONS,
+    "device_larc":              LARC_MANUAL_SECTIONS,
+    "pellets":                  PELLET_MANUAL_SECTIONS,
+    "surgery":                  SURGERY_MANUAL_SECTIONS,
+    "active_ar":                ACTIVE_AR_MANUAL_SECTIONS,
+    "billing_bank_recon":       BANK_RECON_MANUAL_SECTIONS,
+    "billing_missing_charges":  MISSING_CHARGES_MANUAL_SECTIONS,
 }
 
 

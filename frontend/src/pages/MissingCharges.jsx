@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Receipt, Search, X, Check, MessageSquare, ExternalLink,
   Calendar, DollarSign, Trash2, AlertCircle, Send, Link as LinkIcon,
-  Copy, ArrowUp, ArrowDown, ArrowUpDown,
+  Copy, ArrowUp, ArrowDown, ArrowUpDown, BookOpen,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
@@ -124,7 +125,14 @@ export default function MissingCharges() {
           <h2 className="text-base font-semibold text-gray-800">Missing Charges</h2>
           <span className="text-[11px] text-gray-500">({data?.total ?? 0})</span>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
+          <Link
+            to="/billing/missing-charges/manual"
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-plum-700 px-1"
+            title="Missing Charges Manual"
+          >
+            <BookOpen size={14} /> Manual
+          </Link>
           <button className="btn-secondary text-sm flex items-center gap-1"
                   onClick={() => setEmailingProviders(true)}>
             <Send size={13} /> Email Providers

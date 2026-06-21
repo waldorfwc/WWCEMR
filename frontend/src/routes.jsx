@@ -176,6 +176,7 @@ export const ROUTES = [
     { path: '',                  element: <Navigate to="bank-recon" replace /> },
     { path: 'bank-recon',         element: <BankRecon />,           module: M.BANK_RECON,         tier: TIER.VIEW },
     { path: 'missing-charges',    element: <MissingCharges />,      module: M.MISSING_CHARGES,    tier: TIER.VIEW },
+    { path: 'missing-charges/manual', element: <ModuleManual module="billing_missing_charges" title="Missing Charges Manual" blurb="Working rules for charge-capture review." backTo="/billing/missing-charges" backLabel="Missing Charges" />, module: M.MISSING_CHARGES, tier: TIER.VIEW },
     { path: 'insurance-documents', element: <InsuranceDocuments />, module: M.INSURANCE_DOCS,     tier: TIER.VIEW },
     { path: 'insurance-contacts',  element: <InsuranceContacts />,  module: M.INSURANCE_CONTACTS, tier: TIER.VIEW },
     // Code Helper is a billing/claims utility — gate on Active AR.
