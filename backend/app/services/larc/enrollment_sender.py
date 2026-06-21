@@ -668,7 +668,7 @@ def send_enrollment_envelope(
         raise LarcEnrollmentError(
             f"Enrollment template {template_id} (device {dt.name!r}) has no "
             "field map configured. Add a _TemplateSpec entry in "
-            "app/services/larc_enrollment_sender.py."
+            "app/services/larc/enrollment_sender.py."
         )
 
     needs_patient = any(r.name == "Patient" for r in spec.roles)

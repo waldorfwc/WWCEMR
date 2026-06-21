@@ -769,19 +769,3 @@ class PelletFilterPreset(Base):
                             onupdate=now_utc_naive, nullable=False)
 
 
-# ─── Editable manual (mirror LARC manual) ───────────────────────────
-
-class PelletManualSection(Base):
-    """A section of the Pellet operating manual. Editable in the UI;
-    seeded on first boot from pellet_seed.py."""
-    __tablename__ = "pellet_manual_sections"
-
-    id            = Column(GUID(), primary_key=True, default=new_uuid)
-    slug          = Column(String(80), nullable=False, unique=True)
-    title         = Column(String(200), nullable=False)
-    sort_order    = Column(Integer, default=100, nullable=False)
-    body_md       = Column(Text, nullable=False)
-    updated_by    = Column(String(120), nullable=True)
-    updated_at    = Column(DateTime, default=now_utc_naive,
-                            onupdate=now_utc_naive, nullable=False)
-    created_at    = Column(DateTime, default=now_utc_naive, nullable=False)

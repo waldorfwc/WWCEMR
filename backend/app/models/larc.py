@@ -454,26 +454,6 @@ class LarcOwedPatient(Base):
 
 # ─── Audit log (every device interaction) ───────────────────────────
 
-class LarcManualSection(Base):
-    """Editable LARC operating-procedures manual. Each section is one
-    markdown body; managers can edit / reorder / add sections in-app.
-    Seeded on first boot with the initial practice rules."""
-    __tablename__ = "larc_manual_sections"
-    __table_args__ = (
-        Index("ix_larc_manual_sort", "sort_order"),
-    )
-
-    id = Column(GUID(), primary_key=True, default=new_uuid)
-    slug = Column(String(80), nullable=False, unique=True)   # for TOC anchors
-    title = Column(String(200), nullable=False)
-    body_md = Column(Text, nullable=False, default="")
-    sort_order = Column(Integer, default=0, nullable=False)
-    created_at = Column(DateTime, default=now_utc_naive, nullable=False)
-    updated_at = Column(DateTime, default=now_utc_naive,
-                        onupdate=now_utc_naive, nullable=False)
-    updated_by = Column(String(200), nullable=True)
-
-
 class LarcInventoryCount(Base):
     """Physical inventory reconciliation session. Staff scans every
     device in a location (or all), and the system compares the scanned

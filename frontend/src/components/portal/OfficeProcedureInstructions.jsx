@@ -129,8 +129,7 @@ export default function OfficeProcedureInstructions() {
           surgical responsibility and to choose your surgical date. If your
           pre-op appointment is in the office, you will sign the surgical
           consent during your visit. However, if your pre-op appointment is
-          virtual, you will need to sign your surgical consent via DocuSign
-          or your patient portal.
+          virtual, you will need to sign your surgical consent through our secure consent portal.
         </p>
       </Section>
 

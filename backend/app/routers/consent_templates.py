@@ -1,6 +1,6 @@
 """Admin CRUD for ConsentTemplate.
 
-Surgery schedulers register a DocuSign template per procedure here.
+Surgery schedulers register a BoldSign template per procedure here.
 Templates are matched at consent-send time by procedure keywords +
 optional facility + optional insurance keywords. Supplemental forms
 (Medicaid sterilization, etc.) attach in addition to the primary
