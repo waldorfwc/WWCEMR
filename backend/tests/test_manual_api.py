@@ -7,6 +7,7 @@ Auth/grant mechanism used here:
   rows to set an exact tier per module. Used for 403 gating assertions.
 """
 import pytest
+from app.models.audit import AuditLog
 from app.models.manual import ManualSection
 from app.models.module_tier import UserModuleOverride
 from app.models.user import User, UserGroup
@@ -236,3 +237,53 @@ def test_list_filters_by_module(client, db):
     slugs = {s["slug"] for s in r.json()}
     assert "surg-sec" in slugs
     assert "pell-sec" not in slugs
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# HIPAA audit log — create / patch / delete each write an AuditLog row
+# ──────────────────────────────────────────────────────────────────────────────
+
+def test_delete_writes_audit(client, db):
+    """DELETE /api/manual/{id} must write an audit row with action=manual_section_deleted."""
+    db.add(ManualSection(module="surgery", slug="audit-del", title="O",
+                         body_md="x", sort_order=10))
+    db.commit()
+    sid = db.query(ManualSection).filter_by(module="surgery", slug="audit-del").one().id
+    r = client.delete(f"/api/manual/{sid}")
+    assert r.status_code == 204
+    ev = (db.query(AuditLog)
+            .filter(AuditLog.resource_type == "manual_section",
+                    AuditLog.action == "manual_section_deleted",
+                    AuditLog.resource_id == str(sid))
+            .all())
+    assert len(ev) == 1
+
+
+def test_create_writes_audit(client, db):
+    """POST /api/manual must write an audit row with action=manual_section_created."""
+    r = client.post("/api/manual", json={"module": "surgery", "slug": "audit-new",
+                                         "title": "New", "body_md": "b", "sort_order": 20})
+    assert r.status_code == 201
+    ev = db.query(AuditLog).filter(
+        AuditLog.action == "manual_section_created",
+        AuditLog.resource_type == "manual_section",
+    ).all()
+    assert len(ev) >= 1
+
+
+def test_patch_writes_audit(client, db):
+    """PATCH /api/manual/{id} must write an audit row with action=manual_section_updated."""
+    s = ManualSection(module="surgery", slug="audit-patch", title="Before",
+                      body_md="", sort_order=5)
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    sid = s.id
+    r = client.patch(f"/api/manual/{sid}", json={"title": "After"})
+    assert r.status_code == 200
+    ev = (db.query(AuditLog)
+            .filter(AuditLog.resource_type == "manual_section",
+                    AuditLog.action == "manual_section_updated",
+                    AuditLog.resource_id == str(sid))
+            .all())
+    assert len(ev) == 1

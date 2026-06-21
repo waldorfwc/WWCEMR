@@ -15,6 +15,7 @@ from app.models.manual import ManualSection
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier, MODULE_REGISTRY
 from app.permissions.resolver import effective_tier
+from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/manual", tags=["manual"])
 
@@ -107,6 +108,15 @@ def create_section(
         updated_by=current_user.get("email") or "system",
     )
     db.add(row)
+    db.flush()  # populate row.id before logging
+    log_action(
+        db, "manual_section_created", "manual_section",
+        actor=current_user,
+        resource_id=str(row.id),
+        description=f"Created {payload.module} manual section {row.slug!r}",
+        new_values={"module": payload.module, "slug": row.slug, "title": row.title},
+        defer_commit=True,
+    )
     db.commit()
     db.refresh(row)
     return {"id": str(row.id), "slug": row.slug}
@@ -133,9 +143,20 @@ def patch_section(
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
     _assert_tier(db, current_user, _resolve_module(s.module), Tier.MANAGE)
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    old = {"title": s.title, "sort_order": s.sort_order}
+    changes = payload.model_dump(exclude_unset=True)
+    for k, v in changes.items():
         setattr(s, k, v)
     s.updated_by = current_user.get("email") or "system"
+    log_action(
+        db, "manual_section_updated", "manual_section",
+        actor=current_user,
+        resource_id=str(s.id),
+        description=f"Edited {s.module} manual section {s.slug!r}",
+        old_values=old,
+        new_values=changes,
+        defer_commit=True,
+    )
     db.commit()
     db.refresh(s)
     return {"id": str(s.id)}
@@ -155,5 +176,18 @@ def delete_section(
     if not s:
         raise HTTPException(status_code=404, detail="section not found")
     _assert_tier(db, current_user, _resolve_module(s.module), Tier.MANAGE)
+    log_action(
+        db, "manual_section_deleted", "manual_section",
+        actor=current_user,
+        resource_id=str(s.id),
+        description=f"Deleted {s.module} manual section {s.slug!r}",
+        old_values={
+            "module": s.module,
+            "slug": s.slug,
+            "title": s.title,
+            "body_excerpt": (s.body_md or "")[:240],
+        },
+        defer_commit=True,
+    )
     db.delete(s)
     db.commit()
