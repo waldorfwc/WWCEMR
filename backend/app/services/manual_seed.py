@@ -1201,6 +1201,95 @@ Add, edit, or remove outcomes, then **Save Changes**.
 """),
 ]
 
+REPUTATION_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+The **Reputation / Marketing** module runs the practice's online-review program.
+Patients scan a staff member's personal QR code after a visit, leave a star
+rating and comment, and optionally get sent on to leave a Google review.
+
+**Three tabs:**
+
+| Tab | Path | What it does |
+|---|---|---|
+| Reviews | `/marketing` | Inbox of patient reviews awaiting moderation |
+| Leaderboard | `/marketing/leaderboard` | Staff ranking by points earned |
+| Profiles | `/marketing/profiles` | Per-employee QR codes and token management |
+"""),
+
+    ("reviews", "Reviews Workflow", 20, """\
+Patient reviews land on the **Reviews** tab for moderation before any appear
+publicly.
+
+**Each review card shows:**
+
+- Star rating and comment
+- Which staff member it's for
+- The patient's name, chart # and phone (visible to staff only — never published)
+- A note if the patient clicked "→ Google share" (indicating they were sent to
+  leave a Google review too)
+
+**To approve a review for the public website:**
+
+1. Confirm the patient consented to display.
+2. Tick **Show on website** on the card.
+
+> Reviews without display consent cannot be shown on the website — the
+> checkbox stays disabled if consent was not given.
+
+> Chart # and phone are for follow-up only and are never published with the review.
+"""),
+
+    ("leaderboard", "Leaderboard", 30, """\
+The **Leaderboard** tab ranks every staff member by reputation-program points.
+
+**Score columns:**
+
+| Column | What it counts |
+|---|---|
+| Scans | QR code scans by patients |
+| Reviews | Total reviews left |
+| 5-star | Reviews rated 5 stars |
+| Google | Google-share clicks |
+| Points | Combined score (ranks the list) |
+
+The top-ranked employee earns a trophy; the list refreshes automatically
+about once a minute.
+
+> Points come from patients scanning an employee's QR code and leaving a review.
+> Generate codes on the Profiles tab.
+
+> Deactivated employees still appear on the board but are dimmed.
+"""),
+
+    ("profiles", "Reputation Profiles", 40, """\
+The **Profiles** tab manages one profile per staff member. Each profile drives
+that person's unique review QR code.
+
+**Creating a profile:**
+1. Click **+ New employee**.
+2. Set Display name, Role and Location.
+3. The profile gets a QR token immediately.
+
+**Using the QR code:**
+- Click **QR code** on any row to open the code.
+- **Download** or **Print** it for a badge or card.
+- Patients scan it to leave a review tied to that employee.
+
+**Token management:**
+
+| Action | When to use |
+|---|---|
+| **Rotate token** | A printed code is lost or compromised — issues a fresh QR and immediately invalidates the old one |
+| **Deactivate / Reactivate** | Temporarily turns a profile on or off |
+
+> The Location set on a profile determines which office's Google review URL
+> a 5-star reviewer is directed to.
+
+> Rotating a token breaks every already-printed QR for that employee —
+> only do it when you mean to.
+"""),
+]
+
 MANUAL_SEEDS = {
     "device_larc":              LARC_MANUAL_SECTIONS,
     "pellets":                  PELLET_MANUAL_SECTIONS,
@@ -1211,6 +1300,7 @@ MANUAL_SEEDS = {
     "billing_insurance_docs":   INSURANCE_DOCS_MANUAL_SECTIONS,
     "chart":                    CHART_MANUAL_SECTIONS,
     "recall":                   RECALL_MANUAL_SECTIONS,
+    "reputation":               REPUTATION_MANUAL_SECTIONS,
 }
 
 

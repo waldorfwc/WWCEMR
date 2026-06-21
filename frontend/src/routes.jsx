@@ -290,6 +290,7 @@ export const ROUTES = [
     { index: true,         element: <AdminReputationReviews />,     module: M.REPUTATION, tier: TIER.VIEW },
     { path: 'leaderboard', element: <AdminReputationLeaderboard />, module: M.REPUTATION, tier: TIER.VIEW },
     { path: 'profiles',    element: <AdminReputationProfiles />,    module: M.REPUTATION, tier: TIER.MANAGE },
+    { path: 'manual',      element: <ModuleManual module="reputation" title="Reputation Management Manual" blurb="Working rules for reviews, leaderboard, and provider profiles." backTo="/marketing" backLabel="Marketing" />, module: M.REPUTATION, tier: TIER.VIEW },
   ]},
 
   // ── Chart / documents / patients ───────────────────────────────
