@@ -544,8 +544,10 @@ block day and time slot directly. The Calendar page also offers an
 "Open a day" drawer with a per-facility time grid and an "available" slot picker.
 
 **Block calendar rules:**
-- Recurring schedules generate block days on a 5-week pattern; "Re-materialize"
-  rebuilds them after schedule or blackout changes.
+- Recurring schedules generate block days in one of three modes — every week,
+  specific weeks of the month (e.g. 1st & 3rd Tuesday), or a hand-curated date
+  list — out to the materialization horizon (180 days by default).
+  "Re-materialize" rebuilds them after schedule or blackout changes.
 - Blackouts block specific dates (holidays auto-seed through 2031; add PTO or
   facility-closed dates manually). "Add Surgery Day" on the Blackouts tab marks
   a one-off date as bookable.
@@ -609,8 +611,9 @@ past its expected window.
 | `unresponsive` | Unresponsive | Auto-set when no date picked past the window |
 
 **Auto-transitions:**
-- A case moves to **Unresponsive** automatically when no date is picked within
-  `unresponsive_after_days` of the pre-op (set in Alerts & Windows).
+- A daily sweep moves a case to **Unresponsive** when no date is picked within
+  `unresponsive_after_days` of the pre-op (set in Alerts & Windows); cases past
+  the window also surface in the dashboard's Unresponsive bucket beforehand.
 - Canceling a case releases its block slot.
 
 **Cancel / Hold drawer:** choosing Cancel or Hold prompts for a reason
