@@ -24,6 +24,7 @@ from datetime import date as _date, datetime, timedelta
 from app.utils.dt import now_utc_naive
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import SessionLocal
@@ -118,7 +119,8 @@ def sweep_stale_assignments(db: Session, *, today: Optional[_date] = None) -> di
     candidates = (db.query(LarcAssignment)
                     .options(joinedload(LarcAssignment.device))
                     .filter(LarcAssignment.is_active.is_(True),
-                            LarcAssignment.created_at <= cutoff,
+                            func.coalesce(LarcAssignment.device_received_at,
+                                          LarcAssignment.created_at) <= cutoff,
                             LarcAssignment.inserted_at.is_(None),
                             LarcAssignment.status.notin_(["billed", "cancelled"]))
                     .all())

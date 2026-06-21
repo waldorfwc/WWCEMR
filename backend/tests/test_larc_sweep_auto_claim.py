@@ -87,3 +87,36 @@ def test_expiry_sweep_claims_patient_owned_device(db):
     assert d.ownership == "wwc_claimed"
     assert d.status == "unassigned"
     assert len(_ownership_events(db, d.id)) == 1
+
+
+def test_stale_sweep_uses_receipt_not_creation_date(db):
+    # Created 400 days ago (old) but received only 30 days ago (< 180):
+    # must NOT be swept, because the clock runs from receipt.
+    dt = _dt(db)
+    d = _device(db, dt, ownership="patient_owned", our_id="P3")
+    _assignment(db, dt, d, created_days_ago=400, received_days_ago=30)
+
+    sweep_stale_assignments(db)
+
+    db.refresh(d)
+    assert d.ownership == "patient_owned"   # not claimed
+    assert d.status == "assigned"           # not reallocated
+
+
+def test_stale_sweep_in_stock_assignment_uses_creation_date(db):
+    # No device_received_at (in-stock allocation). Falls back to created_at,
+    # which is old -> still swept, preserving today's behavior.
+    dt = _dt(db)
+    d = _device(db, dt, ownership="wwc_owned", our_id="W2")
+    a = LarcAssignment(chart_number="67890", patient_name="Roe, Mary",
+                       device_id=d.id, device_type_id=dt.id,
+                       status="new", is_active=True, source_flow="in_stock")
+    db.add(a); db.commit(); db.refresh(a)
+    a.created_at = now_utc_naive() - timedelta(days=400)
+    a.device_received_at = None
+    db.commit()
+
+    sweep_stale_assignments(db)
+
+    db.refresh(d)
+    assert d.status == "unassigned"   # still reallocated via created_at fallback
