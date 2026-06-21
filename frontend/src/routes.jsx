@@ -61,7 +61,7 @@ import LarcDevices from './pages/LarcDevices'
 import LarcDeviceTypes from './pages/LarcDeviceTypes'
 import LarcEodReport from './pages/LarcEodReport'
 import LarcInventoryCount from './pages/LarcInventoryCount'
-import LarcManual from './pages/LarcManual'
+import ModuleManual from './components/manual/ModuleManual'
 import LarcOwed from './pages/LarcOwed'
 import LarcPharmacies from './pages/LarcPharmacies'
 import LarcReports from './pages/LarcReports'
@@ -82,7 +82,6 @@ import PelletAudit from './pages/PelletAudit'
 import PelletCountDetail from './pages/PelletCountDetail'
 import PelletCounts from './pages/PelletCounts'
 import PelletDoseTypes from './pages/PelletDoseTypes'
-import PelletManual from './pages/PelletManual'
 import PelletPatientDetail from './pages/PelletPatientDetail'
 import PelletPatients from './pages/PelletPatients'
 import PelletRecall from './pages/PelletRecall'
@@ -239,7 +238,7 @@ export const ROUTES = [
     { path: 'device-types',    element: <LarcDeviceTypes />,     module: M.LARC, tier: TIER.MANAGE },
     { path: 'eod',             element: <LarcEodReport />,       module: M.LARC, tier: TIER.VIEW },
     { path: 'inventory-count', element: <LarcInventoryCount />,  module: M.LARC, tier: TIER.WORK },
-    { path: 'manual',          element: <LarcManual />,          module: M.LARC, tier: TIER.VIEW },
+    { path: 'manual',          element: <ModuleManual module="device_larc" title="LARC Operating Manual" blurb="Working rules for the WWC LARC inventory + tracking workflow." backTo="/larc" backLabel="LARC dashboard" />, module: M.LARC, tier: TIER.VIEW },
     { path: 'assignments/:id', element: <LarcAssignment />,      module: M.LARC, tier: TIER.WORK },
     { path: 'settings',        element: <LarcSettings />,        module: M.LARC, tier: TIER.MANAGE },
   ]},
@@ -259,7 +258,7 @@ export const ROUTES = [
     { path: 'audit',        element: <PelletAudit />,         module: M.PELLETS, tier: TIER.VIEW },
     { path: 'reports',      element: <PelletReports />,       module: M.PELLETS, tier: TIER.VIEW },
     { path: 'recall',       element: <PelletRecall />,        module: M.PELLETS, tier: TIER.WORK },
-    { path: 'manual',       element: <PelletManual />,        module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'manual',       element: <ModuleManual module="pellets" title="Pellet Operating Manual" blurb="Working rules for the WWC pellet inventory + DEA Schedule III workflow." backTo="/pellets" backLabel="Pellets" />, module: M.PELLETS, tier: TIER.VIEW },
     { path: 'patients',     element: <PelletPatients />,      module: M.PELLETS, tier: TIER.VIEW },
     { path: 'patients/:id', element: <PelletPatientDetail />, module: M.PELLETS, tier: TIER.VIEW },
     { path: 'dose-types',   element: <PelletDoseTypes />,     module: M.PELLETS, tier: TIER.MANAGE },
