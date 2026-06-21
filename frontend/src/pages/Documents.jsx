@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { BookOpen } from 'lucide-react'
 import api from '../utils/api'
 import ChartPatientList from '../components/ChartPatientList'
 import FaxLogPane from './documents/FaxLogPane'
@@ -15,7 +17,7 @@ export default function Documents() {
   return (
     <div>
       {/* Header */}
-      <div className="flex items-baseline justify-between mb-4">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="font-serif font-semibold text-ink text-[22px] tracking-tight m-0">Patient Charts</h1>
           <div className="text-muted text-[12px] mt-0.5">
@@ -24,6 +26,13 @@ export default function Documents() {
             <span className="font-serif text-ink font-semibold text-[14px]">{totalPatients.toLocaleString()}</span> patients
           </div>
         </div>
+        <Link
+          to="/documents/manual"
+          className="flex items-center gap-1 text-sm text-gray-500 hover:text-plum-700 px-1"
+          title="Charts & Documents Manual"
+        >
+          <BookOpen size={14} /> Manual
+        </Link>
       </div>
 
       {/* Two-pane layout */}

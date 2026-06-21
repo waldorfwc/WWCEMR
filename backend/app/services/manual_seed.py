@@ -1056,6 +1056,69 @@ and note by user and timestamp.
 """),
 ]
 
+CHART_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+The **Charts & Documents** module has two panes and two supporting pages:
+
+| Page | Path | What it does |
+|---|---|---|
+| Patient Charts | `/documents` | Left pane: patient list. Right pane: fax log. |
+| Patient Chart | `/chart/:chartNumber` | Indexed documents for one patient; send via fax. |
+| Patients | `/patients` | Directory of all ERA-imported patients with insurance info. |
+| Patient Detail | `/patients/:id` | Billing ledger for one patient. |
+
+The patient list on `/documents` only shows charts that already have indexed
+documents — the header counts total documents and total patients on file.
+Patient records in `/patients` are created automatically when an ERA 835 file
+is imported; there is no manual "add patient" button.
+"""),
+
+    ("chart-lookup", "Finding a Patient / Chart", 20, """\
+**From Patient Charts (`/documents`):**
+
+1. Use the search box in the left pane to filter by **name, chart # or DOB**.
+2. Each row shows the chart number, DOB and document count.
+3. A green **✓** chip means the chart was faxed today; a plum **✓** chip means
+   it was faxed on a prior day.
+4. Click any row to open that patient's chart at `/chart/<number>`.
+
+**From the Patients directory (`/patients`):**
+
+1. Use the search box to find by **name, MRN or insurance ID**.
+2. Results page 50 at a time — the count at the top reflects the full directory.
+3. Each row shows Patient, MRN, DOB, Primary Insurance, Member ID and Secondary.
+4. Click any row (or "View Ledger") to open that patient's billing detail.
+
+> Dates display as MM/DD/YYYY throughout both pages.
+"""),
+
+    ("documents", "Documents Inbox & Fax Workflow", 30, """\
+**Right pane — Recent Faxes log:**
+
+Each row shows when the fax sent, the patient, DOB, chart number, how many
+documents, the document types, the destination fax number, status and who sent it.
+
+**Status values:**
+
+| Status | Meaning |
+|---|---|
+| Queued | Waiting to send |
+| Sent | Transmitted; awaiting delivery confirmation |
+| Delivered | Confirmed received by the destination |
+| Failed | Transmission failed — action required |
+
+**Filter the fax log** by status (All / Queued / Sent / Delivered / Failed) and
+by time window (Last 7 / 30 / 90 days). The list auto-refreshes while any fax
+is still Queued or Sent.
+
+**Retry a failed fax:** click the retry action on the status chip to resend
+without rebuilding the document set — do not start over from the chart.
+
+**Sending a fax:** open a patient's chart (`/chart/<number>`), select the pages
+to include, and fax them from there.
+"""),
+]
+
 MANUAL_SEEDS = {
     "device_larc":              LARC_MANUAL_SECTIONS,
     "pellets":                  PELLET_MANUAL_SECTIONS,
@@ -1064,6 +1127,7 @@ MANUAL_SEEDS = {
     "billing_bank_recon":       BANK_RECON_MANUAL_SECTIONS,
     "billing_missing_charges":  MISSING_CHARGES_MANUAL_SECTIONS,
     "billing_insurance_docs":   INSURANCE_DOCS_MANUAL_SECTIONS,
+    "chart":                    CHART_MANUAL_SECTIONS,
 }
 
 

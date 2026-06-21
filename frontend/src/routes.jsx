@@ -294,6 +294,7 @@ export const ROUTES = [
   // ── Chart / documents / patients ───────────────────────────────
   { path: '/documents',         element: <Documents />,    module: M.CHART, tier: TIER.VIEW,
       nav: { label: 'Charts', order: 20 } },
+  { path: '/documents/manual',  element: <ModuleManual module="chart" title="Charts & Documents Manual" blurb="Working rules for patient charts and the documents workflow." backTo="/documents" backLabel="Documents" />, module: M.CHART, tier: TIER.VIEW },
   { path: '/chart/:chartNumber', element: <PatientChart />, module: M.CHART, tier: TIER.VIEW },
   { path: '/patients',          element: <Patients />,      module: M.CHART, tier: TIER.VIEW },
   { path: '/patients/:id',      element: <PatientDetail />, module: M.CHART, tier: TIER.VIEW },
