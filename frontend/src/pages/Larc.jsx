@@ -132,6 +132,21 @@ export default function Larc() {
         </div>
       </div>
 
+      {/* On-hand by ownership */}
+      <div className="grid grid-cols-3 gap-2 mb-4">
+        {[
+          { label: 'Practice Owned', count: dash?.on_hand_by_ownership?.wwc_owned ?? 0 },
+          { label: 'Patient Owned', count: dash?.on_hand_by_ownership?.patient_owned ?? 0 },
+          { label: 'Practice Claimed', count: dash?.on_hand_by_ownership?.wwc_claimed ?? 0 },
+        ].map(({ label, count }) => (
+          <div key={label} className="card border border-plum-100 bg-plum-50/30 !p-2.5">
+            <div className="text-[11px] uppercase tracking-wide text-plum-700">{label}</div>
+            <div className="text-2xl display-number mt-0.5">{count}</div>
+            <div className="text-[10px] text-gray-500">on hand</div>
+          </div>
+        ))}
+      </div>
+
       {/* On-hand by device type — split by category */}
       {(() => {
         const cats = dash?.device_categories || {}
