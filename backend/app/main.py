@@ -31,6 +31,7 @@ from app.routers import fee_schedule as fee_schedule_router
 from app.models import patient_email as _patient_email_models  # noqa: F401
 from app.models import patient_sms as _patient_sms_models  # noqa: F401
 from app.models import fee_schedule as _fee_schedule_models  # noqa: F401
+from app.models import manual as _manual_models  # noqa: F401
 
 # Per-module tier gates live in app/permissions/dependencies.py. Each
 # include_router below uses `requires_tier(Module.X, Tier.Y)` directly.
