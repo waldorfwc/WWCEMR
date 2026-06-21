@@ -18,7 +18,6 @@ import Consent from './pages/portal/Consent'
 import PortalDocuments from './pages/portal/Documents'
 import Messages from './pages/portal/Messages'
 import PreviewPortal from './pages/portal/PreviewPortal'
-import LarcToBillPreview from './pages/LarcToBillPreview'
 import PelletPortalLogin from './pages/pellet-portal/PelletPortalLogin'
 import PelletPortalVerify from './pages/pellet-portal/PelletPortalVerify'
 import PelletPortalShell from './pages/pellet-portal/PelletPortalShell'
@@ -123,7 +122,6 @@ export default function App() {
         {/* Patient portal — own auth, own shell */}
         {/* Design preview — public, no auth, mock data */}
         <Route path="/portal/preview" element={<PreviewPortal />} />
-        <Route path="/larc/to-bill-preview" element={<LarcToBillPreview />} />
         <Route path="/portal/login" element={<PortalLogin />} />
         <Route path="/portal/verify" element={<PortalVerify />} />
         <Route path="/portal/s/:sid" element={<PortalShell />}>
