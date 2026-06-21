@@ -39,6 +39,7 @@ def init_db():
     from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, surgery_activity, larc, larc_config, larc_payment, billing_document, missing_charge, pellet, pellet_config, recall_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier, bai2, bai2_exclusion, pellet_portal, pellet_payment, pellet_schedule, cron_run, surgery_type  # noqa
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
+    _migrate_manuals_to_unified()
     # Default groups already exist in production; the legacy seed code is
     # retained at _seed_default_groups for traceability but no longer called.
     _migrate_template_targeting()
@@ -70,6 +71,63 @@ def init_db():
     except Exception:
         import logging
         logging.getLogger(__name__).exception("surgery_config_seed failed")
+
+
+def _migrate_manuals_to_unified(db=None):
+    """One-shot, edit-safe copy of the per-module manual tables into the
+    unified manual_sections table. Copies the CURRENT row (incl. practice
+    edits) only when the (module, slug) target doesn't already exist, so it
+    never clobbers and is safe to re-run. Old tables are left as backup."""
+    import datetime as _dt
+    from sqlalchemy import inspect as _inspect, text as _text
+    from app.models.manual import ManualSection
+    from app.utils.dt import now_utc_naive
+
+    def _to_dt(val):
+        """Coerce a raw timestamp value to a Python datetime (or None).
+        SQLite raw SQL returns strings; Postgres returns proper datetimes."""
+        if val is None or isinstance(val, _dt.datetime):
+            return val
+        # SQLite CURRENT_TIMESTAMP format: "YYYY-MM-DD HH:MM:SS"
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S",
+                    "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S.%f"):
+            try:
+                return _dt.datetime.strptime(str(val), fmt)
+            except ValueError:
+                continue
+        return now_utc_naive()  # fallback: shouldn't happen in practice
+
+    own = db is None
+    if own:
+        db = SessionLocal()
+    try:
+        insp = _inspect(db.get_bind())
+        existing_tables = set(insp.get_table_names())
+        sources = [("larc_manual_sections", "device_larc"),
+                   ("pellet_manual_sections", "pellets")]
+        for table, module in sources:
+            if table not in existing_tables:
+                continue
+            have = {s.slug for s in db.query(ManualSection).filter_by(module=module).all()}
+            rows = db.execute(_text(
+                f"SELECT slug, title, body_md, sort_order, created_at, "
+                f"updated_at, updated_by FROM {table}")).mappings().all()
+            added = 0
+            for r in rows:
+                if r["slug"] in have:
+                    continue
+                db.add(ManualSection(
+                    module=module, slug=r["slug"], title=r["title"],
+                    body_md=r["body_md"] or "", sort_order=r["sort_order"] or 0,
+                    created_at=_to_dt(r["created_at"]),
+                    updated_at=_to_dt(r["updated_at"]),
+                    updated_by=r["updated_by"]))
+                added += 1
+            if added:
+                db.commit()
+    finally:
+        if own:
+            db.close()
 
 
 def _backfill_larc_assignment_device_type():
