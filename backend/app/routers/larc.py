@@ -22,6 +22,7 @@ from typing import Optional
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -977,6 +978,49 @@ def list_unallocated_devices(
         }
         for d in rows
     ]
+
+
+ON_HAND_STATUSES = ["unassigned", "assigned", "received"]
+
+
+def _inventory_export_rows(db) -> list[dict]:
+    devs = (db.query(LarcDevice)
+              .options(joinedload(LarcDevice.device_type))
+              .filter(LarcDevice.status.in_(ON_HAND_STATUSES))
+              .order_by(LarcDevice.expiration_date.asc().nullslast())
+              .all())
+    dev_ids = [d.id for d in devs]
+    assignee = {}
+    if dev_ids:
+        for a in (db.query(LarcAssignment)
+                    .filter(LarcAssignment.device_id.in_(dev_ids),
+                            LarcAssignment.is_active.is_(True)).all()):
+            assignee[a.device_id] = f"{a.patient_name or ''} ({a.chart_number or ''})".strip()
+    rows = []
+    for d in devs:
+        rows.append({
+            "Our ID": d.our_id,
+            "Device Type": d.device_type.name if d.device_type else "",
+            "Lot": d.manufacturer_lot or "",
+            "Expiration": d.expiration_date.strftime("%m/%d/%Y") if d.expiration_date else "",
+            "Location": LOCATION_LABELS.get(d.location, d.location or ""),
+            "Ownership": {"patient_owned": "Patient", "wwc_owned": "WWC",
+                          "wwc_claimed": "WWC Claimed"}.get(d.ownership or "wwc_owned", d.ownership),
+            "Status": d.status,
+            "Assignee": assignee.get(d.id, ""),
+        })
+    return rows
+
+
+@router.get("/devices/export.csv")
+def export_devices_csv(db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    from app.services.larc.reports import rows_to_csv
+    rows = _inventory_export_rows(db)
+    csv_text = rows_to_csv(rows)
+    fname = f"larc-inventory-{_date.today().isoformat()}.csv"
+    return StreamingResponse(iter([csv_text]), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 @router.get("/devices/{device_id}")
