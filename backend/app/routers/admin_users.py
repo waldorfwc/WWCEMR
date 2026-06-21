@@ -17,6 +17,9 @@ class CreateUserPayload(BaseModel):
     email: EmailStr
     group: UserGroup
     display_name: Optional[str] = None
+    npi: Optional[str] = None
+    clinician_role: Optional[str] = None
+    credential: Optional[str] = None
 
 
 class UpdateUserPayload(BaseModel):
@@ -315,6 +318,12 @@ def create_user(
         group=payload.group,
         display_name=payload.display_name,
     )
+    if payload.npi is not None:
+        row.npi = payload.npi.strip() or None
+    if payload.clinician_role is not None:
+        row.clinician_role = payload.clinician_role.strip() or None
+    if payload.credential is not None:
+        row.credential = payload.credential.strip() or None
     db.add(row)
     try:
         db.commit()
