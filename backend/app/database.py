@@ -50,6 +50,8 @@ def init_db():
     seed_larc_device_types()
     from app.services.pellet.seed import seed_pellet_dose_types
     seed_pellet_dose_types()
+    from app.services.manual_seed import seed_manuals
+    seed_manuals()
     # Phase B — seed default surgery facilities + procedure templates (idempotent).
     try:
         from app.services.surgery.config_seed import (
