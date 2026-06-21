@@ -674,10 +674,225 @@ Changes affect every surgery.
 """),
 ]
 
+ACTIVE_AR_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+The **Active AR / Claims** module is the primary worklist for working open
+insurance balances. It covers the full AR cycle: importing charges and
+payments, working the claim queue, posting ERAs, managing denials, and
+tracking appeals.
+
+**Pages:**
+
+| Page | Path | Purpose |
+|---|---|---|
+| A/R Dashboard | `/ar` | Aging bars, payer performance, stat cards |
+| Active AR | `/active-ar` | Primary worklist — filter, assign, sort claims |
+| Claims | `/claims` | Legacy PrimeSuite claim list with follow-up tracking |
+| Import | `/import` | Charge Analysis, Claims Analysis, ERA 835 posting |
+| Denials | `/denials` | Denial management + appeal generation |
+| Appeals | `/appeals` | Appeal letter list + submission tracking |
+"""),
+
+    ("import", "Importing Claim & Charge Data", 20, """\
+All claim data originates from file imports — nothing is entered by hand.
+
+**Import order matters:**
+
+1. **Charge Analysis (.xls)** — creates claims and patients from charges.
+   Voided rows and claims already on file (by VisitID) are skipped
+   automatically.
+2. **Claims Analysis (.xls)** — links PrimeSuite Claim IDs and sets claim
+   status, follow-up dates and filing info. Secondary / tertiary records
+   are created as needed. Re-upload any time; Claims Analysis always wins.
+3. **ERA 835 (.835)** — posts payments to existing claims, matched strictly
+   on the linked Claim ID. Reversals, unmatched claims and already-posted
+   checks are flagged before you commit.
+
+> Order matters: Charge Analysis creates the claims, Claims Analysis links
+> the Claim IDs, then ERA 835 posts payments. ERAs only match claims that
+> already have a linked Claim ID.
+
+**Preview before commit:** every upload shows a preview (what will be
+created, linked, posted or skipped) before saving. Nothing is written until
+you click **Commit / Post payments**. The session expires after a few
+minutes — re-upload the file if it times out.
+
+**ERA File Import History:** the bottom of the Import page lists previously
+imported ERA files with payer, check #, amount and claim count.
+"""),
+
+    ("claim-queue", "Claims List & Statuses", 30, """\
+**Active AR** (`/active-ar`) is the primary claims worklist.
+
+**Six summary chips** frame the work:
+
+| Chip | What it shows |
+|---|---|
+| Open | All open claims + total balance |
+| TF Past | Claims past timely-filing deadline — likely uncollectible |
+| TF Urgent ≤14d | Claims within 14 days of TF deadline |
+| TF Soon 15–30d | Claims 15–30 days from TF deadline |
+| Mine | Claims assigned to the current user |
+| Unassigned | Claims with no assignee |
+
+**Workflow tabs** quick-filter by stage: All, New, In Progress, Denials,
+Appeals, Paid, Rebilled in ModMed — each shows a live count.
+
+**Workflow states** (the `Workflow` column):
+
+`new` · `in_progress` · `waiting_payer` · `waiting_patient` · `denied` ·
+`appealed` · `paid` · `rebilled_modmed` · `written_off` · `closed`
+
+**Table columns:** Claim #, Priority (P/S/T), Patient, DOS, Age (days),
+TF dot (color-coded by deadline), Payer/Policy, Billed, Paid, Balance,
+Workflow state, Assigned. A blue dot marks claims updated in the last 24h.
+The latest note appears inline below the claim row.
+
+**Reassign inline:** click the Assigned column cell on any row to change
+who owns the claim without opening it.
+
+**By DOS view:** toggle from Table to "By DOS" to group claims by patient
++ date of service.
+
+**Claims** (`/claims`) is the legacy PrimeSuite claim list. It surfaces a
+follow-up queue (Overdue, Due today, No F/U set), filters by status and
+age bucket, and sorts by follow-up date when in the F/U queue.
+"""),
+
+    ("era-posting", "ERA Payment Posting", 40, """\
+ERA 835 files are posted through the **Import** page (`/import`).
+
+**Flow:**
+1. Drop one or more `.835` files onto the ERA 835 section.
+2. Review the preview — what will be posted, what is unmatched, reversals,
+   and already-posted checks are all flagged before you commit.
+3. Click **Post payments** to write the payments to the database.
+
+Payments are matched strictly on the linked PrimeSuite Claim ID — claims
+without a linked ID (i.e. Claims Analysis not yet imported) will show as
+unmatched in the preview.
+
+**From Active AR:** use **Post Payment** (top right of the Active AR page)
+to post a payment directly to an individual claim without uploading an ERA
+file — useful for one-off manual entries.
+
+**The A/R Dashboard** (`/ar`) shows A/R aging bars (0–30 / 31–60 /
+61–90 / 91–120 / 120+ days), payer performance (collection rate per
+carrier), and four stat cards: Total Outstanding, Collection Rate, 120+
+Days, and Open Denials. It also accepts PrimeSuite A/R Aging, Charge
+Capture, Payment and Claim Status CSV/Excel uploads for a normalized
+summary view.
+
+> Import ERA 835 files first or the aging bars stay empty.
+"""),
+
+    ("denials", "Denials Workflow", 50, """\
+**Denial Management** (`/denials`) tracks denied claims through resolution.
+
+**Header counts:** open denials, dollars at risk, urgent count, overdue count.
+
+**Category cards** tally denials by reason — timely filing, authorization,
+medical necessity, eligibility, duplicate, coding, COB, provider
+credentialing, missing information, benefit limit, non-covered, other.
+Click a card to filter to that category.
+
+**Deadline urgency** on each row:
+- `OVERDUE` badge — appeal deadline already passed
+- Red ⚡ badge — ≤14 days remaining
+- Yellow badge — 15–30 days remaining
+
+**Status filter:** Open · Appealing · Overturned · Upheld · Written Off.
+Tick **Urgent only (≤30 days)** or **Write-off recommended** to focus the list.
+
+**Denial codes:** each row shows its group code + CARC / RARC. Click any
+code or "Explain this denial" to open a drawer that decodes what the
+payer's reason means and what to do next.
+
+**Code prefixes:** CO = Contractual · PR = Patient Responsibility ·
+OA = Other · PI = Payer Initiated.
+
+**Actions per row:**
+- **Generate Appeal** — drafts an appeal letter and opens the claim (only
+  for appealable open denials).
+- **Write Off** — marks an uncollectible denial off after a confirm.
+- **View Claim** — opens the full claim detail.
+
+> Maryland appeals reference MD Insurance Article §15-1005;
+> the MIA help line is 800-492-6116 (shown in the page legend).
+"""),
+
+    ("appeals", "Appeals Workflow", 60, """\
+**Appeal Letters** (`/appeals`) manages drafted and submitted appeal letters.
+
+**Generating an appeal:** go to **Denials**, find an open appealable denial,
+and click **Generate Appeal**. The system drafts a letter and opens the
+claim. The new letter then appears in the Appeals list.
+
+**Letter list (left panel):** each entry shows the status, appeal level,
+deadline and creation date. Click any letter to read it.
+
+**Letter detail (right panel):** shows the full letter body, subject, an
+"AI Generated" tag when applicable, and the appeal deadline.
+
+**Workflow:**
+1. Review the draft — these are AI-generated starting points, not final.
+2. Click **Download** to save the letter as a file.
+3. Mail or fax the downloaded copy to the payer.
+4. Click **Mark Submitted** to record that you sent it; the footer shows
+   the submitted date and any decision notes.
+
+> Marking Submitted only logs that you sent it — actually mail or fax the
+> downloaded copy to the payer.
+"""),
+
+    ("views", "Active AR Views & Filter Presets", 70, """\
+The Active AR page has two layout views and a preset system for saving
+filter combinations.
+
+**Views:**
+- **Table** — flat claim list, 50 per page with Prev/Next pagination.
+- **By DOS** — groups claims by patient + date of service, showing all
+  primary/secondary/tertiary claims for that DOS together.
+
+**Filters (compact bar):**
+- Search by claim #, patient, chart # or policy #
+- Assignee (All / Mine / Unassigned / specific person)
+- Sort: Balance high→low · Age oldest first · DOS newest first ·
+  TF deadline soonest first
+
+**More filters (advanced drawer):**
+- Priority (Primary / Secondary / Tertiary)
+- Age bucket (0–30 / 31–60 / 61–90 / 90+ days)
+- Workflow state
+- Payer and Plan (drop-down of top payers/plans by open balance)
+- TF status (All / Nearing ≤14d / Soon 15–30d / Safe >30d / Past)
+- Include claims >2 years old (hidden by default)
+
+**Saved presets:** click **Save Preset** to name and store the current
+filter combination as a chip. Click a chip to reload it. Star a preset to
+make it your default — it auto-loads on your next visit. Filter state also
+persists across navigation (survives page reload and bouncing to a claim
+detail and back).
+
+**Top Payers panel:** a collapsible section shows up to 12 payers by open
+balance as clickable chips to filter to that payer.
+
+**Actions menu:**
+- **Upload Unpaid Claims** — refreshes the worklist from a Greenway
+  Unpaid Claims XLS export. Existing claims are updated; locally-managed
+  fields (workflow state, assignment, notes) are preserved.
+- **Enrich from Charge Analysis** — uploads a Greenway Charge Analysis XLS
+  to add procedure codes, dx codes, provider NPIs, secondary insurance
+  and DOB to existing claims (by patient + DOS match). Does not create
+  new claims.
+"""),
+]
+
 MANUAL_SEEDS = {
     "device_larc": LARC_MANUAL_SECTIONS,
     "pellets":     PELLET_MANUAL_SECTIONS,
     "surgery":     SURGERY_MANUAL_SECTIONS,
+    "active_ar":   ACTIVE_AR_MANUAL_SECTIONS,
 }
 
 

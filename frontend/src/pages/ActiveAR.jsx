@@ -1,10 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   Search, Upload, Plus, X, MoreHorizontal, ChevronDown,
   ChevronRight, SlidersHorizontal, Layers, MessageSquare,
-  Save, Star, Trash2, SearchX,
+  Save, Star, Trash2, SearchX, BookOpen,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import EmptyState from '../components/EmptyState'
@@ -267,6 +267,13 @@ export default function ActiveAR() {
           )}
         </div>
         <div className="flex gap-2 items-center relative">
+          <Link
+            to="/active-ar/manual"
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-plum-700 px-1"
+            title="Active AR & Claims Manual"
+          >
+            <BookOpen size={14} /> Manual
+          </Link>
           <button
             className="btn-secondary flex items-center gap-1 text-sm"
             onClick={() => setActionsOpen(o => !o)}

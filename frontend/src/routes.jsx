@@ -155,6 +155,7 @@ export const ROUTES = [
   { path: '/ar',             element: <ARDashboard />,    module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/active-ar',      element: <ActiveAR />,       module: M.ACTIVE_AR, tier: TIER.VIEW,
       nav: { label: 'Active AR', order: 30 } },
+  { path: '/active-ar/manual', element: <ModuleManual module="active_ar" title="Active AR & Claims Manual" blurb="Working rules for the claims, denials, appeals, and AR workflow." backTo="/active-ar" backLabel="Active AR" />, module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/active-ar/:id',  element: <ActiveARDetail />, module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/claims',         element: <Claims />,         module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/claims/:id',     element: <ClaimDetail />,    module: M.ACTIVE_AR, tier: TIER.VIEW },
