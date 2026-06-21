@@ -4,12 +4,13 @@ import { Receipt } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import EmptyState from '../components/EmptyState'
 
-export default function LarcToBill() {
+export default function LarcToBill({ mock }) {
   const { data } = useQuery({
     queryKey: ['larc-to-bill'],
     queryFn: () => api.get('/larc/to-bill').then(r => r.data),
+    enabled: !mock,
   })
-  const items = data?.items || []
+  const items = mock ? mock.items : (data?.items || [])
 
   return (
     <div>
