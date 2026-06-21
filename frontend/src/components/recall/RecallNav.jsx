@@ -16,6 +16,7 @@ function navItems() {
   return [
     { to: '/recalls',          label: 'Overview', tier: TIER.WORK, end: true },
     { to: '/recalls/settings', label: 'Settings', tier: TIER.MANAGE },
+    { to: '/recalls/manual',   label: 'Manual',   tier: TIER.VIEW },
   ]
 }
 

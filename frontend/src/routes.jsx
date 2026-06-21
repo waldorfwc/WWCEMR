@@ -198,6 +198,7 @@ export const ROUTES = [
       children: [
     { index: true,      element: <Recalls /> },
     { path: 'settings', element: <RecallSettings />, module: M.RECALL, tier: TIER.MANAGE },
+    { path: 'manual',   element: <ModuleManual module="recall" title="Recall Operating Manual" blurb="Working rules for patient recall lists and outreach." backTo="/recalls" backLabel="Recalls" />, module: M.RECALL, tier: TIER.VIEW },
   ]},
 
   // ── Surgery ────────────────────────────────────────────────────

@@ -1119,6 +1119,88 @@ to include, and fax them from there.
 """),
 ]
 
+RECALL_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+The **Recalls** module works the WWE (Well-Woman Exam) recall queue — patients
+due for a well-woman exam who haven't been seen recently. The goal is to contact
+every active patient, log the outcome, and move them out of the overdue bucket
+once they schedule or complete a visit.
+
+**Queue metrics strip** (top of the page): Active queue count, Overdue ≥24mo,
+Calls today, Calls this week, and Suppressed patients — shows the day's workload
+at a glance.
+
+Managers import fresh recalls with **"Import ModMed WWE report"**.
+"""),
+
+    ("lists", "Recall Lists & Patient Status", 20, """\
+Every patient in the recall list has a **status**:
+
+| Status | Meaning |
+|---|---|
+| Active | In the queue — needs to be worked |
+| Completed | Recall closed (appointment kept or outcome marked complete) |
+| Suppressed | Removed from the queue (some outcomes permanently suppress) |
+
+**Filters & Presets:**
+
+- **Status** — Active queue, Completed, Suppressed, All
+- **Recall type** — filter to a specific recall category
+- **Sort** — e.g. recently due descending, oldest first
+- **Include cooldown** — checkbox to show patients currently in a post-call
+  cooldown window (hidden by default)
+
+Save a filter combination as a **preset chip** and star one as your default —
+it auto-loads on your next visit.
+
+**Lock badge:** a lock icon on a patient row means another staff member has
+already claimed that recall (soft-claim lock — configurable in Settings).
+"""),
+
+    ("outreach", "Outreach Workflow", 30, """\
+1. **Find a patient** — work from the Active queue or search by name/chart #/phone.
+2. **Click-to-dial** — click the patient's phone number to ring your RingCentral
+   extension. Pick up your phone; it connects you to the patient.
+3. **Open the drawer** — click the row (or the "Update" button on a row you're
+   working) to open the recall detail. The drawer shows the patient's Well-Woman
+   Exam history and a caller script.
+4. **Log the outcome** — pick an outcome and add notes. Outcomes labeled
+   **(permanent suppression)** or **(completes recall)** close the patient out
+   permanently.
+
+> A confirm dialog ("Confirm & Remove") guards against accidentally permanently
+> suppressing a patient — read the warning before confirming.
+
+The next caller sees the latest attempt, attempt count, last outcome, and last
+contact date on the list row.
+"""),
+
+    ("settings", "Recall Settings", 40, """\
+**Recall Settings** (Settings tab — Manage access required) has two tabs:
+
+**Thresholds & Windows:**
+
+| Setting | What it controls |
+|---|---|
+| Soft-Claim Lock (Minutes) | How long an opened recall stays locked to one caller before others can pick it up |
+| Overdue Window (Months) | Lookback window for the overdue-recalls metric |
+
+**Outcomes:**
+
+Configures the call-outcome dropdown used when logging a recall. Each outcome
+has a **label**, a **category**, and optionally a cooldown period or reason code:
+
+| Category | Effect |
+|---|---|
+| `neutral` | No status change — call logged, patient stays active |
+| `cooldown` | Patient hidden from the queue for N days (configurable per outcome) |
+| `completed` | Closes the recall — patient moves to Completed status |
+| `permanent` | Permanently suppresses the patient — cannot be re-added |
+
+Add, edit, or remove outcomes, then **Save Changes**.
+"""),
+]
+
 MANUAL_SEEDS = {
     "device_larc":              LARC_MANUAL_SECTIONS,
     "pellets":                  PELLET_MANUAL_SECTIONS,
@@ -1128,6 +1210,7 @@ MANUAL_SEEDS = {
     "billing_missing_charges":  MISSING_CHARGES_MANUAL_SECTIONS,
     "billing_insurance_docs":   INSURANCE_DOCS_MANUAL_SECTIONS,
     "chart":                    CHART_MANUAL_SECTIONS,
+    "recall":                   RECALL_MANUAL_SECTIONS,
 }
 
 
