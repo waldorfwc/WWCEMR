@@ -75,10 +75,10 @@ def _push_to_owed(db: Session, a: LarcAssignment, expires_at: Optional[_date],
         log_audit(db, actor=actor, action="ownership_changed",
                   device=a.device, assignment=a,
                   summary=("Ownership changed: patient owned → wwc claimed. "
-                           f"Reason: auto-claimed on reallocation ({actor})."),
+                           "Reason: auto-claimed on reallocation"),
                   detail={"from": "patient_owned",
                           "to": "wwc_claimed",
-                          "reason": f"auto-claimed on reallocation ({actor})"})
+                          "reason": "auto-claimed on reallocation"})
 
 
 def sweep_expiry_hold(db: Session, *, today: Optional[_date] = None) -> dict:
