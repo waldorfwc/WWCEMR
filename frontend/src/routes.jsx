@@ -66,6 +66,7 @@ import LarcOwed from './pages/LarcOwed'
 import LarcPharmacies from './pages/LarcPharmacies'
 import LarcReports from './pages/LarcReports'
 import LarcSettings from './pages/LarcSettings'
+import LarcToBill from './pages/LarcToBill'
 import LarcNav from './components/larc/LarcNav'
 import ManagerDashboard from './pages/ManagerDashboard'
 import MissingCharges from './pages/MissingCharges'
@@ -230,6 +231,7 @@ export const ROUTES = [
     { path: 'devices',         element: <LarcDevices />,         module: M.LARC, tier: TIER.VIEW },
     { path: 'devices/:id',     element: <LarcDevice />,          module: M.LARC, tier: TIER.VIEW },
     { path: 'checkouts',       element: <LarcCheckouts />,       module: M.LARC, tier: TIER.VIEW },
+    { path: 'to-bill',         element: <LarcToBill />,          module: M.LARC, tier: TIER.VIEW },
     { path: 'owed',            element: <LarcOwed />,            module: M.LARC, tier: TIER.VIEW },
     { path: 'reports',         element: <LarcReports />,         module: M.LARC, tier: TIER.VIEW },
     { path: 'audit',           element: <LarcAudit />,           module: M.LARC, tier: TIER.MANAGE },

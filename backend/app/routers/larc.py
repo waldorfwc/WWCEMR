@@ -1247,6 +1247,47 @@ def list_assignments(
     }
 
 
+@router.get("/to-bill")
+def list_to_bill(db: Session = Depends(get_db),
+                 current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    """Practice-owned devices checked out but not yet billed. `inserted` flags
+    the ones billable now (the /bill endpoint requires status 'inserted').
+    Patient-owned devices are excluded (WWC does not bill insurance for them)."""
+    rows = (db.query(LarcAssignment)
+              .options(joinedload(LarcAssignment.milestones),
+                       joinedload(LarcAssignment.device).joinedload(LarcDevice.device_type))
+              .filter(LarcAssignment.not_deleted(),
+                      LarcAssignment.is_active.is_(True))
+              .all())
+    items = []
+    for a in rows:
+        dev = a.device
+        if not dev or (dev.ownership or "wwc_owned") == "patient_owned":
+            continue
+        by_kind = {m.kind: m for m in (a.milestones or [])}
+
+        def _done(kind):
+            m = by_kind.get(kind)
+            return m is not None and m.status in ("done", "skipped", "not_applicable")
+
+        if not _done("device_checked_out") or _done("billed"):
+            continue
+        co = by_kind.get("device_checked_out")
+        items.append({
+            "assignment_id": str(a.id),
+            "patient_name": a.patient_name,
+            "chart_number": a.chart_number,
+            "device_our_id": dev.our_id,
+            "device_type_name": dev.device_type.name if dev.device_type else None,
+            "device_ownership": dev.ownership or "wwc_owned",
+            "checked_out_at": co.completed_at.isoformat() if (co and co.completed_at) else None,
+            "inserted": _done("device_inserted"),
+            "claim_number": a.claim_number,
+        })
+    items.sort(key=lambda x: x["checked_out_at"] or "")
+    return {"total": len(items), "items": items}
+
+
 @router.post("/assignments/suggest-flow")
 def suggest_assignment_flow(
     payload: SuggestFlowIn,

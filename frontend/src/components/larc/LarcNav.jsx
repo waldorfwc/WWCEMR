@@ -17,6 +17,7 @@ function navItems() {
     { to: '/larc',                 label: 'Overview',        tier: TIER.VIEW, end: true },
     { to: '/larc/devices',         label: 'Devices',         tier: TIER.VIEW },
     { to: '/larc/checkouts',       label: 'Checkouts',       tier: TIER.VIEW },
+    { to: '/larc/to-bill',         label: 'To Bill',         tier: TIER.VIEW },
     { to: '/larc/owed',            label: 'Owed',            tier: TIER.VIEW },
     { to: '/larc/reports',         label: 'Reports',         tier: TIER.VIEW },
     { to: '/larc/inventory-count', label: 'Inventory Count', tier: TIER.WORK },
