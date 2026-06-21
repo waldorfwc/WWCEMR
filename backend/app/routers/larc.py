@@ -22,6 +22,7 @@ from typing import Optional
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -257,6 +258,7 @@ def dashboard(db: Session = Depends(get_db),
     on_hand_by_type: dict = {}
     on_hand_by_location: dict = {loc: 0 for loc in LOCATIONS}
     on_hand_by_category: dict = {"larc": 0, "office_procedure": 0}
+    on_hand_by_ownership: dict = {"wwc_owned": 0, "patient_owned": 0, "wwc_claimed": 0}
     device_categories: dict = {}   # device_type name → category
     for d in devices:
         t = d.device_type.name if d.device_type else "Unknown"
@@ -264,6 +266,7 @@ def dashboard(db: Session = Depends(get_db),
         on_hand_by_type[t] = on_hand_by_type.get(t, 0) + 1
         on_hand_by_location[d.location] = on_hand_by_location.get(d.location, 0) + 1
         on_hand_by_category[cat] = on_hand_by_category.get(cat, 0) + 1
+        on_hand_by_ownership[d.ownership or "wwc_owned"] = on_hand_by_ownership.get(d.ownership or "wwc_owned", 0) + 1
         device_categories[t] = cat
 
     # Reorder alerts — in-stock device types at or below threshold
@@ -343,6 +346,7 @@ def dashboard(db: Session = Depends(get_db),
     return {
         "today": str(today),
         "on_hand_by_type": on_hand_by_type,
+        "on_hand_by_ownership": on_hand_by_ownership,
         "on_hand_by_location": on_hand_by_location,
         "on_hand_by_category": on_hand_by_category,
         "device_categories": device_categories,
@@ -974,6 +978,64 @@ def list_unallocated_devices(
         }
         for d in rows
     ]
+
+
+ON_HAND_STATUSES = ["unassigned", "assigned", "received"]
+
+
+def _inventory_export_rows(db) -> list[dict]:
+    devs = (db.query(LarcDevice)
+              .options(joinedload(LarcDevice.device_type))
+              .filter(LarcDevice.status.in_(ON_HAND_STATUSES))
+              .order_by(LarcDevice.expiration_date.asc().nullslast())
+              .all())
+    dev_ids = [d.id for d in devs]
+    assignee = {}
+    if dev_ids:
+        for a in (db.query(LarcAssignment)
+                    .filter(LarcAssignment.device_id.in_(dev_ids),
+                            LarcAssignment.is_active.is_(True)).all()):
+            assignee[a.device_id] = f"{a.patient_name or ''} ({a.chart_number or ''})".strip()
+    rows = []
+    for d in devs:
+        rows.append({
+            "Our ID": d.our_id,
+            "Device Type": d.device_type.name if d.device_type else "",
+            "Lot": d.manufacturer_lot or "",
+            "Expiration": d.expiration_date.strftime("%m/%d/%Y") if d.expiration_date else "",
+            "Location": LOCATION_LABELS.get(d.location, d.location or ""),
+            "Ownership": {"patient_owned": "Patient", "wwc_owned": "WWC",
+                          "wwc_claimed": "WWC Claimed"}.get(d.ownership or "wwc_owned", d.ownership),
+            "Status": d.status,
+            "Assignee": assignee.get(d.id, ""),
+        })
+    return rows
+
+
+@router.get("/devices/export.csv")
+def export_devices_csv(db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    from app.services.larc.reports import rows_to_csv
+    rows = _inventory_export_rows(db)
+    csv_text = rows_to_csv(rows)
+    fname = f"larc-inventory-{_date.today().isoformat()}.csv"
+    return StreamingResponse(iter([csv_text]), media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@router.get("/devices/export.pdf")
+def export_devices_pdf(db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    from app.services.larc.inventory_export import build_pdf
+    rows = _inventory_export_rows(db)
+    by = current_user.get("email") or "system"
+    pdf = build_pdf(rows, generated_by=by)
+    log_audit(db, actor=by, action="inventory_export",
+              summary=f"Exported {len(rows)} on-hand devices (PDF)")
+    db.commit()
+    fname = f"larc-inventory-{_date.today().isoformat()}.pdf"
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
 
 @router.get("/devices/{device_id}")

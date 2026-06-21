@@ -134,9 +134,166 @@ export default function PracticeSettings({ embedded = false }) {
         </div>
       ))}
 
+      <ProvidersSection />
+
       <div className="text-[11px] text-muted mt-4">
         Empty a field and tab away to clear it. Every change is audit-logged
         (action <span className="font-mono">PRACTICE_SETTING_UPDATED</span>).
+      </div>
+    </div>
+  )
+}
+
+const ROLE_LABELS = { provider: 'Provider', app: 'APP' }
+const CREDENTIALS = ['MD', 'DO', 'NP', 'PA']
+
+function ProvidersSection() {
+  const qc = useQueryClient()
+  const { data: clinicians, isLoading } = useQuery({
+    queryKey: ['clinicians'],
+    queryFn: () => api.get('/admin/users/clinicians').then(r => r.data),
+  })
+
+  const [form, setForm] = useState({
+    display_name: '',
+    email: '',
+    npi: '',
+    clinician_role: 'provider',
+    credential: 'MD',
+  })
+
+  function set(key, value) {
+    setForm(f => ({ ...f, [key]: value }))
+  }
+
+  const addProvider = useMutation({
+    mutationFn: () =>
+      api.post('/admin/users', {
+        email: form.email.trim(),
+        display_name: form.display_name.trim(),
+        group: 'clinical',
+        npi: form.npi.trim(),
+        clinician_role: form.clinician_role,
+        credential: form.credential,
+      }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['clinicians'] })
+      setForm({
+        display_name: '',
+        email: '',
+        npi: '',
+        clinician_role: 'provider',
+        credential: 'MD',
+      })
+    },
+    onError: (e) => {
+      alert(e?.response?.data?.detail || 'Could not add provider')
+    },
+  })
+
+  const canAdd =
+    form.display_name.trim() && form.email.trim() && form.npi.trim() &&
+    !addProvider.isPending
+
+  return (
+    <div className="card mb-4">
+      <h2 className="text-sm font-semibold text-ink mb-3">Providers</h2>
+
+      <div className="mb-4">
+        {isLoading ? (
+          <div className="text-[12px] text-muted">Loading…</div>
+        ) : !clinicians || clinicians.length === 0 ? (
+          <div className="text-[12px] text-muted">No providers yet.</div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {clinicians.map(c => (
+              <div key={c.email}
+                   className="flex items-center justify-between py-1.5 text-sm">
+                <div className="text-ink">
+                  {c.display_name}
+                  {c.credential && (
+                    <span className="text-gray-500">, {c.credential}</span>
+                  )}
+                  <span className="text-[11px] text-muted ml-2">
+                    {ROLE_LABELS[c.clinician_role] || c.clinician_role}
+                  </span>
+                </div>
+                <div className="text-[11px] text-muted font-mono">
+                  NPI {c.npi || '—'}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-gray-100 pt-3">
+        <div className="text-[11px] font-semibold text-gray-600 mb-2">
+          Add Provider
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+          <div>
+            <label className="text-[11px] text-gray-600">Display Name</label>
+            <input
+              type="text"
+              className="input text-sm w-full mt-0.5"
+              value={form.display_name}
+              onChange={e => set('display_name', e.target.value)}
+              placeholder="Dr. Jane Smith"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-gray-600">Email</label>
+            <input
+              type="email"
+              className="input text-sm w-full mt-0.5"
+              value={form.email}
+              onChange={e => set('email', e.target.value)}
+              placeholder="jsmith@waldorfwomenscare.com"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-gray-600">NPI</label>
+            <input
+              type="text"
+              className="input text-sm w-full mt-0.5"
+              value={form.npi}
+              onChange={e => set('npi', e.target.value)}
+              placeholder="1234567890"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] text-gray-600">Role</label>
+            <select
+              className="input text-sm w-full mt-0.5"
+              value={form.clinician_role}
+              onChange={e => set('clinician_role', e.target.value)}
+            >
+              <option value="provider">Provider</option>
+              <option value="app">APP</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[11px] text-gray-600">Credential</label>
+            <select
+              className="input text-sm w-full mt-0.5"
+              value={form.credential}
+              onChange={e => set('credential', e.target.value)}
+            >
+              {CREDENTIALS.map(cr => (
+                <option key={cr} value={cr}>{cr}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <button
+          type="button"
+          className="btn btn-primary text-sm mt-3"
+          disabled={!canAdd}
+          onClick={() => addProvider.mutate()}
+        >
+          {addProvider.isPending ? 'Adding…' : 'Add Provider'}
+        </button>
       </div>
     </div>
   )

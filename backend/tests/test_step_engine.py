@@ -150,14 +150,17 @@ def test_entered_at_not_anchored_to_stale_early_stamp():
     step here is benefits (old); modmed_appt (current step's predecessor)
     has a recent stamp, and the surgery was recently worked (updated_at).
     """
-    old = datetime(2026, 5, 1)            # weeks ago
-    recent = datetime(2026, 6, 11)        # ~yesterday
+    # Anchor to "now" so the test can't rot as the calendar advances
+    # (previously hardcoded 2026-06-11, which goes stale and trips overdue).
+    now = datetime.now()
+    old = now - timedelta(days=41)        # weeks ago
+    recent = now - timedelta(days=1)      # ~yesterday
     # Drive the surgery all the way to the bill step: every earlier step
     # done/n-a. benefits has an OLD stamp; modmed_appt has a RECENT stamp.
     s = _hospital_surgery(
-        benefits_verified_at=date(2026, 5, 1),       # stale early stamp
-        scheduled_date=date(2026, 5, 15),
-        post_op_appt_date=date(2026, 5, 20),
+        benefits_verified_at=(now - timedelta(days=51)).date(),   # stale early stamp
+        scheduled_date=(now - timedelta(days=37)).date(),
+        post_op_appt_date=(now - timedelta(days=32)).date(),
         consent_status="signed",
         calendar_invite_sent_at=old,                 # post_to_hospital
         scheduled_in_modmed_at=recent,               # modmed_appt (recent)
