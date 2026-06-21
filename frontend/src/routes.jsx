@@ -216,6 +216,7 @@ export const ROUTES = [
     { path: 'reports',         element: <SurgeryReports />,        module: M.SURGERY, tier: TIER.VIEW },
     { path: 'messages',       element: <StaffInbox />,          module: M.SURGERY, tier: TIER.WORK },
     { path: 'deleted',        element: <SurgeryDeleted />,      module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'manual',         element: <ModuleManual module="surgery" title="Surgery Operating Manual" blurb="Working rules for the WWC surgery scheduling + billing workflow." backTo="/surgery" backLabel="Surgery" />, module: M.SURGERY, tier: TIER.VIEW },
     { path: ':id',            element: <SurgeryDetail />,       module: M.SURGERY, tier: TIER.VIEW },
   ]},
 

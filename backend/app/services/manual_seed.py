@@ -455,9 +455,226 @@ record. Filter by user, lot, dose, action, or system-only.
 """),
 ]
 
+SURGERY_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+The Surgery module tracks cases from initial intake through billing close-out.
+Two primary settings drive the workflow:
+
+**Facilities:**
+- **MedStar SMHC** — robotic and major minimally-invasive cases.
+- **UM Charles Regional (CRMC)** — minor outpatient or major open cases.
+- **WWC Office Procedure Suite** — in-office procedures, Thursdays only.
+
+Each case moves through numbered milestone cards on the Surgery Detail page.
+The dashboard groups cases into workload buckets by which steps are still open.
+"""),
+
+    ("intake", "Starting a Surgery", 20, """\
+New surgeries are created by bulk import or from the patient chart — not from
+the dashboard. Cases arrive in **Incomplete** status and need to be triaged.
+
+**Required intake fields** (from the Info milestone card):
+
+- Patient name, chart #, DOB, contact info
+- Procedure(s) and ICD-10 diagnosis codes
+- Surgeon and facility
+- Insurance / payer on file
+- Surgery duration (set by the coordinator before the patient picks a date)
+
+**Bulk import:** Upload a ModMed-style patient roster (.xlsx) via Surgery →
+Bulk Import. Always run the Preview (dry-run) first — it shows how many rows
+will create, skip (duplicate active chart #) or error without saving anything.
+Imported cases land in **Incomplete** status.
+
+> Duration defaults from the surgery type or the time extracted from the
+> surgery order. The patient never sees a duration picker — coordinators
+> set it before offering dates.
+"""),
+
+    ("benefits", "Benefits Verification", 30, """\
+The **Benefits & Payment** milestone card contains two sub-sections:
+
+**Benefits calculator:**
+1. Pull the allowed amount from the Fee Schedule (Insurance + CPT).
+2. Enter the patient's deductible, out-of-pocket max, coinsurance and copay.
+3. The system estimates what the patient owes.
+4. "Save + generate PDF" produces the benefits estimate PDF.
+
+**Payment:**
+- Request a Stripe payment link from this card and track the balance.
+
+> If a secondary insurance is on file but its terms are blank, the
+> calculator assumes secondary covers everything and shows $0 owed —
+> an amber warning banner flags this case.
+"""),
+
+    ("consent", "Consents & E-Signatures", 40, """\
+The **Consents** milestone card manages consent collection.
+
+**Sending via BoldSign:**
+1. Click "Send via BoldSign" — the system matches the case's CPT codes
+   (primary match) or procedure keywords (fallback) to templates registered
+   in Surgery Settings → Consent Templates.
+2. One primary consent + any applicable supplemental templates (e.g. Medicaid
+   sterilization) are sent together.
+3. The patient signs electronically; click "View" to see the signed PDF.
+
+**Manual options:**
+- **Mark sent (paper)** — for in-person cases where paper forms are used.
+- **Mark signed (manual)** — to record a consent signed outside the system.
+- **Reset consent** — clears the send record to start over.
+
+> Medicaid sterilization consent must be signed at least 30 and no more
+> than 180 days before the procedure date.
+
+> Consents only send if a template matching the case's procedures is
+> registered in Surgery Settings → Consent Templates. If nothing sends,
+> check the CPT/keyword match there first.
+"""),
+
+    ("scheduling", "Scheduling & Block Calendar", 50, """\
+**Patient self-scheduling (default path):**
+Patients self-schedule via a soft-auth portal (date of birth + last 4 digits
+of phone). They see only days where their procedure fits the facility's
+capacity rules.
+
+**Coordinator-booked:**
+"Schedule for patient" on the Surgery Detail page lets a coordinator pick a
+block day and time slot directly. The Calendar page also offers an
+"Open a day" drawer with a per-facility time grid and an "available" slot picker.
+
+**Block calendar rules:**
+- Recurring schedules generate block days on a 5-week pattern; "Re-materialize"
+  rebuilds them after schedule or blackout changes.
+- Blackouts block specific dates (holidays auto-seed through 2031; add PTO or
+  facility-closed dates manually). "Add Surgery Day" on the Blackouts tab marks
+  a one-off date as bookable.
+
+**Capacity limits (from Settings → Facilities & Capacity):**
+| Facility | Limit |
+|---|---|
+| MedStar | 3 × 180-min OR 2 × 240-min robotic (can't mix) |
+| CRMC | 6 minor OR 2 major per day (can't mix) |
+| Office | Fixed Thursday slot start times |
+
+**Post-op dates:** after a date is booked, set the post-op visit dates
+(Office and/or Telehealth) on the same card.
+
+> The waitlist (Surgery → Waitlist) shows patients hoping for an earlier slot.
+> Click an open date chip to see matches ranked by wait time, then copy the
+> Klara blast and click "Patient claimed" to book.
+"""),
+
+    ("preop-postop", "Pre-Op & Post-Op Steps", 60, """\
+The Surgery Detail page works **top to bottom** through numbered milestone cards.
+The step engine tracks each card's completion and flags cases that fall behind
+their expected window (configurable in Settings → Workflow Steps).
+
+**Hospital pathway milestones (typical order):**
+1. Info — intake complete
+2. Benefits & Payment
+3. Consents
+4. Date selected + post-op scheduled
+5. Hospital Posting / Boarding Slip — generate the facility form, edit fields,
+   fax or email to the hospital; send history records every attempt.
+6. ModMed appointment confirmed
+7. Pre-op labs reported
+8. Welfare call recorded
+9. Bill surgery — record the ModMed claim #
+
+**Optional cards** (appear only when the case needs them):
+- Device (office-procedure device linked from LARC module)
+- Prior Auth
+- Clearance / EKG
+- Assistant Surgeon
+
+**Dashboard:** the Scheduler To-Do page (Surgery → To-Do) shows the single
+next open step for every active surgery with a red "Xd behind" border when
+past its expected window.
+
+> A case is automatically moved to **Unresponsive** status when no date is
+> picked within the configured window after the pre-op (Alerts & Windows tab).
+"""),
+
+    ("statuses", "Status Taxonomy", 70, """\
+| DB value | Display label | Meaning |
+|---|---|---|
+| `incomplete` | Incomplete | Intake not finished — needs triage |
+| `new` | New | Intake done, benefits not started |
+| `in_progress` | Benefits Check | Actively working benefits / payment |
+| `confirmed` | Pre-Surgery | Date booked, working toward procedure day |
+| `completed` | Post-Surgery | Procedure done, billing close-out in progress |
+| `hold` | Hold | Deliberately paused (coordinator hold) |
+| `cancelled` | Canceled | Canceled; releases the block slot |
+| `unresponsive` | Unresponsive | Auto-set when no date picked past the window |
+
+**Auto-transitions:**
+- A case moves to **Unresponsive** automatically when no date is picked within
+  `unresponsive_after_days` of the pre-op (set in Alerts & Windows).
+- Canceling a case releases its block slot.
+
+**Cancel / Hold drawer:** choosing Cancel or Hold prompts for a reason
+(patient, anesthesia, hospital, medical, hold or unresponsive). A
+cancellation fee warning appears if the cancel is within the configured
+window (default: 2 weeks before surgery).
+"""),
+
+    ("billing", "Billing Close-Out", 80, """\
+**On the Surgery Detail page:**
+1. The **ModMed** milestone card records that the appointment exists in ModMed.
+2. The **Labs** card records that pre-op lab results are on file.
+3. The **Bill Surgery** card records the ModMed claim # — entering it
+   moves the case toward Post-Surgery status.
+
+**Payment Posting (Surgery → Payment Posting):**
+Lists Stripe patient payments (balance, FMLA, cancellation or no-show fees)
+that still need posting to ModMed.
+
+Workflow:
+1. Click "How To Post In ModMed" for the step-by-step guide and field
+   cheat-sheet (Amount, Confirmation # to copy from the row).
+2. Post the payment in ModMed.
+3. Type your initials and click "Mark Posted" — stamps initials and time.
+4. Managers can "Un-mark" a row if posted by mistake.
+
+**Fee Schedule (Surgery → Fee Schedule):**
+Holds the contracted allowed dollar amount per Insurance + CPT that feeds the
+benefits calculator. Also contains CCI/MPR edit overrides for bundled CPT pairs.
+
+**Notes and files:** Post timestamped notes and upload files (order, op note,
+path report) from the Surgery Detail page.
+"""),
+
+    ("settings", "Surgery Settings", 90, """\
+Surgery Settings (Surgery → Settings) is practice-wide configuration.
+Changes affect every surgery.
+
+**Tabs:**
+
+| Tab | What it controls |
+|---|---|
+| Alerts & Windows | Overdue threshold, labs/pre-op validity, schedule horizon, cancellation fee amount and window, office capacity, boarding-slip auto-email timing and recipients |
+| Workflow Steps | Named steps and expected days for Hospital and Office pathways — "expected days" is what flags a case as behind |
+| Post-Op Schedules | Visit rules (days after surgery, Office vs Telehealth) matched to a procedure by keyword |
+| Facilities & Capacity | Facility list and daily case limits / office slot times |
+| Clearances & Devices | Clearance types, device types, assistant surgeons, Payer ID → Insurance map |
+| Surgery Types | Each procedure: CPTs, classification, eligible facilities, attached consents |
+| Templates | Procedure, email and SMS templates with editable subject/body and preview |
+| Consent Templates | BoldSign template IDs — matched by CPT codes (primary) or keywords (fallback), with optional facility/insurance conditions; mark "supplemental" to add on top of the primary |
+| Message Templates | Staff-facing message snippets |
+| Google Sync | Connects the surgery calendar to Google |
+
+> If a consent won't send on a case, check the CPT/keyword match in
+> Consent Templates first.
+> Changing expected days in Workflow Steps re-scores which cases show
+> as behind on the dashboard.
+"""),
+]
+
 MANUAL_SEEDS = {
     "device_larc": LARC_MANUAL_SECTIONS,
     "pellets":     PELLET_MANUAL_SECTIONS,
+    "surgery":     SURGERY_MANUAL_SECTIONS,
 }
 
 
