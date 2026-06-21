@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { Banknote, Receipt, FileScan, Stethoscope, Phone } from 'lucide-react'
+import { Banknote, Receipt, FileScan, Stethoscope, Phone, BookOpen } from 'lucide-react'
 
 
 const TABS = [
@@ -8,6 +8,7 @@ const TABS = [
   { to: '/billing/insurance-documents', label: 'Insurance Documents', icon: FileScan },
   { to: '/billing/insurance-contacts',  label: 'Insurance Contacts',  icon: Phone },
   { to: '/billing/code-helper',         label: 'Code Helper',         icon: Stethoscope },
+  { to: '/billing/manual',              label: 'Manual',              icon: BookOpen },
 ]
 
 

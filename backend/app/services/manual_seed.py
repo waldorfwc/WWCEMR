@@ -888,11 +888,62 @@ balance as clickable chips to filter to that payer.
 """),
 ]
 
+BANK_RECON_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+**Bank Reconciliation** converts a bank CSV export into a **BAI2 file** for
+import into ModMed. It does not post payments directly — it produces the
+formatted file that ModMed's bank-recon importer accepts.
+
+**What it handles:**
+
+- Deduplicates against previous runs (same date + amount + last-4 = already
+  imported).
+- Applies sticky exclusions — rows you uncheck stay out of future files until
+  a manager reinstates them.
+- Drops `MERCHANT BNKCD` rows automatically (always excluded).
+
+> Opening Billing lands you on Bank Recon by default.
+"""),
+
+    ("workflow", "Reconciliation Workflow", 20, """\
+1. **Set the Bank / Account Label** — this becomes the BAI2 filename prefix.
+   Must be set before uploading.
+2. **Choose skip toggles** — Skip Withdrawals, Skip ModMed, Skip Stripe,
+   Skip Zero-Amount. These filter rows before the review screen.
+3. **Upload Bank CSV** — drag in a bank export (CSV or TXT). The review screen
+   opens.
+4. **Review transactions** — each row shows the reformatted BAI2 text, amount,
+   method and a status:
+
+   | Status | Meaning |
+   |---|---|
+   | New | Not seen before — included by default |
+   | Already imported | Was in a prior BAI2 file — unchecked by default |
+   | Previously excluded | You unchecked it before — unchecked by default |
+
+   Use **Select All**, **Select None** or **Select Only New (default)**.
+5. **Generate BAI2** — the footer shows the transaction count and dollar total
+   that will be included. Clicking builds and auto-downloads the file for
+   import into ModMed.
+
+**History & Excluded:**
+
+- **Generated BAI2 Files** — lists past runs; download or delete each; expand
+  for skip counts.
+- **Excluded Transactions** — holds sticky exclusions; a manager can
+  **Reinstate** one so it appears again next time.
+
+> Unchecking a brand-new row makes it a sticky exclusion — it stays out of all
+> future BAI2 files until a manager reinstates it.
+"""),
+]
+
 MANUAL_SEEDS = {
-    "device_larc": LARC_MANUAL_SECTIONS,
-    "pellets":     PELLET_MANUAL_SECTIONS,
-    "surgery":     SURGERY_MANUAL_SECTIONS,
-    "active_ar":   ACTIVE_AR_MANUAL_SECTIONS,
+    "device_larc":        LARC_MANUAL_SECTIONS,
+    "pellets":            PELLET_MANUAL_SECTIONS,
+    "surgery":            SURGERY_MANUAL_SECTIONS,
+    "active_ar":          ACTIVE_AR_MANUAL_SECTIONS,
+    "billing_bank_recon": BANK_RECON_MANUAL_SECTIONS,
 }
 
 

@@ -181,6 +181,7 @@ export const ROUTES = [
     // Code Helper is a billing/claims utility — gate on Active AR.
     { path: 'code-helper',         element: <CodeHelper />,         module: M.ACTIVE_AR,          tier: TIER.VIEW },
     { path: 'code-helper/denials', element: <CodeHelperDenials />,  module: M.ACTIVE_AR,          tier: TIER.VIEW },
+    { path: 'manual',              element: <ModuleManual module="billing_bank_recon" title="Bank Reconciliation Manual" blurb="Working rules for the bank reconciliation workflow." backTo="/billing" backLabel="Billing" />, module: M.BANK_RECON, tier: TIER.VIEW },
   ]},
 
   // ── Manager dashboard — checklist owners ───────────────────────
