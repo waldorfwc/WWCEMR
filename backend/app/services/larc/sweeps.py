@@ -8,9 +8,10 @@ Three sweeps:
    any) lands on the Owed list with `expires_at` set to the device's
    expiration_date.
 
-2. **Reallocate stale assignments** — assignments that haven't been
-   inserted within 180 days of creation get their device freed; the
-   patient goes on the Owed list.
+2. **Reallocate stale assignments** — assignments not inserted within
+   180 days of device receipt (falling back to creation date when no
+   receipt is recorded) get their device freed; the patient goes on the
+   Owed list, and a patient-owned device is auto-claimed as WWC Claimed.
 
 3. **Pharmacy SLA follow-up** — pharmacy orders faxed >14 days ago with
    no device received yet are flagged for staff follow-up (writes an
@@ -24,6 +25,7 @@ from datetime import date as _date, datetime, timedelta
 from app.utils.dt import now_utc_naive
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import SessionLocal
@@ -66,6 +68,17 @@ def _push_to_owed(db: Session, a: LarcAssignment, expires_at: Optional[_date],
               device=a.device, assignment=a,
               summary=summary,
               detail={"expires_at": str(expires_at) if expires_at else None})
+    # Auto-claim: a patient-owned device pulled back to the Owed list is
+    # now WWC's to bill. (wwc_owned / wwc_claimed are left as-is.)
+    if a.device.ownership == "patient_owned":
+        a.device.ownership = "wwc_claimed"
+        log_audit(db, actor=actor, action="ownership_changed",
+                  device=a.device, assignment=a,
+                  summary=("Ownership changed: patient owned → wwc claimed. "
+                           "Reason: auto-claimed on reallocation"),
+                  detail={"from": "patient_owned",
+                          "to": "wwc_claimed",
+                          "reason": "auto-claimed on reallocation"})
 
 
 def sweep_expiry_hold(db: Session, *, today: Optional[_date] = None) -> dict:
@@ -107,7 +120,8 @@ def sweep_stale_assignments(db: Session, *, today: Optional[_date] = None) -> di
     candidates = (db.query(LarcAssignment)
                     .options(joinedload(LarcAssignment.device))
                     .filter(LarcAssignment.is_active.is_(True),
-                            LarcAssignment.created_at <= cutoff,
+                            func.coalesce(LarcAssignment.device_received_at,
+                                          LarcAssignment.created_at) <= cutoff,
                             LarcAssignment.inserted_at.is_(None),
                             LarcAssignment.status.notin_(["billed", "cancelled"]))
                     .all())
