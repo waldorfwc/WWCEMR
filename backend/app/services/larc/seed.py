@@ -251,6 +251,32 @@ to (often a provider). This is the chain of custody.
 > **Unacknowledged checkouts** panel.
 """),
 
+    ("checkout-quick-action", "Check Out a Device (quick action)", 45, """\
+The **Check Out a Device** button sits in the top-right of every LARC page,
+next to *Start LARC Process* and *Add Device* (LARC Work access). It opens a
+drawer listing every device that's **ready to check out** — an active
+assignment with an on-hand device and no pending checkout.
+
+For each patient:
+
+1. Read the device's **Our ID off the physical label** and type it in.
+2. Optionally record who you're handing it to (**Given to**).
+3. Click **Check out**.
+
+Typing the label ID is the safeguard — it must match the device bound to that
+patient, so the wrong unit can't be checked out. This is a **direct checkout**:
+it bypasses the standard request gates (DOB / same-day appt / benefits) and
+records the checkout immediately, which is the fast path for the common
+"device is here, patient is in the room" case. The "given to" chain-of-custody
+still applies.
+
+The same ready-to-check-out list also appears on the **Overview** tab and on
+**My Checklist**, so you can work from wherever you are.
+
+> For the gated request flow (DOB + same-day-appt + benefits checks, with
+> manager approval when a gate fails), see **Device check-out rules** above.
+"""),
+
     ("defective", "Defective device → manufacturer return", 50, """\
 When insertion fails with the device used (`failed_used`), the device is
 presumed defective. The assignment shows a red **Defective device — replacement
@@ -283,6 +309,44 @@ Assigned devices that haven't been inserted for **180 days** get reallocated:
 Devices within **365 days of expiry** also get reallocated automatically
 (so we don't risk inserting near-expired product). This is checked by a
 daily sweep at 9:15 AM.
+
+> The **180-day** clock now runs from when the device was **received**, not
+> from when the request was created — see *Device ownership & WWC Claimed*.
+"""),
+
+    ("device-ownership", "Device ownership & WWC Claimed", 65, """\
+Every device carries an **ownership** classification that decides whether WWC
+bills insurance for it:
+
+| Ownership | Meaning | WWC bills insurance? |
+|---|---|---|
+| **WWC Owned** | WWC purchased the device outright. | Yes |
+| **Patient Owned** | The patient or their pharmacy benefit paid (pharmacy-order devices). | **No** |
+| **WWC Claimed** | Originally patient-owned, but WWC has claimed it (patient didn't use it in time, or declined). | Yes |
+
+The badge shows on the device page; the original payer is kept in the
+**Purchased by patient** field for patient-owned and WWC-claimed devices.
+
+**Automatic claiming (sweeps).** When a reallocation sweep pulls a device back
+to the Owed list, a **patient-owned** device is **automatically reclassified as
+WWC Claimed** (WWC-owned devices are left as-is — "claimed" only applies to a
+device the patient originally paid for). This happens on both sweeps:
+
+- **Unused after receipt** — a pharmacy device not used **180 days after it was
+  received** is reallocated and claimed. (The clock runs from device receipt,
+  not from when the request was created.)
+- **Near expiry** — a device within 365 days of expiry is reallocated and, if
+  patient-owned, claimed.
+
+Each auto-claim writes an `ownership_changed` row to the audit log (actor
+`system:stale-sweep` / `system:expiry-sweep`), and the patient lands on the
+**Owed list**.
+
+**Manual claiming.** A manager can claim a device by hand from the device page:
+click **change** next to the ownership badge, choose **WWC Claimed**, and record
+a reason (e.g. "patient confirmed she no longer wants it inserted"). The reason
+is required and is written to the audit trail. Use this the moment a patient
+explicitly declines — you don't have to wait for the sweep.
 """),
 
     ("dashboard", "Dashboard buckets", 70, """\
