@@ -1,6 +1,9 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Plus } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { MODULE, TIER } from '../../routes.jsx'
+import StartLarcProcessDrawer from './StartLarcProcessDrawer'
 
 
 // Page links rendered on every /larc page. Each carries the minimum tier
@@ -41,6 +44,8 @@ function navClass({ isActive }) {
 export default function LarcNav() {
   const { tier } = useCurrentUser()
   const items = navItems().filter(it => tier(MODULE.LARC, it.tier))
+  const [startOpen, setStartOpen] = useState(false)
+  const navigate = useNavigate()
 
   return (
     <div>
@@ -53,7 +58,11 @@ export default function LarcNav() {
           ))}
         </nav>
         {tier(MODULE.LARC, TIER.WORK) && (
-          <div className="pb-1.5">
+          <div className="pb-1.5 flex items-center gap-2">
+            <button className="btn-primary text-sm flex items-center gap-1"
+                    onClick={() => setStartOpen(true)}>
+              <Plus size={13} /> Start LARC Process
+            </button>
             <NavLink to="/larc/devices?add=1"
                      className="btn-secondary text-sm flex items-center gap-1">
               + Add Device
@@ -63,6 +72,10 @@ export default function LarcNav() {
       </div>
 
       <Outlet />
+
+      {startOpen && <StartLarcProcessDrawer
+        onClose={() => setStartOpen(false)}
+        onCreated={(id) => { setStartOpen(false); navigate('/larc/assignments/' + id) }} />}
     </div>
   )
 }
