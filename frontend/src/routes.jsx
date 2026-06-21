@@ -61,7 +61,7 @@ import LarcDevices from './pages/LarcDevices'
 import LarcDeviceTypes from './pages/LarcDeviceTypes'
 import LarcEodReport from './pages/LarcEodReport'
 import LarcInventoryCount from './pages/LarcInventoryCount'
-import LarcManual from './pages/LarcManual'
+import ModuleManual from './components/manual/ModuleManual'
 import LarcOwed from './pages/LarcOwed'
 import LarcPharmacies from './pages/LarcPharmacies'
 import LarcReports from './pages/LarcReports'
@@ -82,7 +82,6 @@ import PelletAudit from './pages/PelletAudit'
 import PelletCountDetail from './pages/PelletCountDetail'
 import PelletCounts from './pages/PelletCounts'
 import PelletDoseTypes from './pages/PelletDoseTypes'
-import PelletManual from './pages/PelletManual'
 import PelletPatientDetail from './pages/PelletPatientDetail'
 import PelletPatients from './pages/PelletPatients'
 import PelletRecall from './pages/PelletRecall'
@@ -156,6 +155,7 @@ export const ROUTES = [
   { path: '/ar',             element: <ARDashboard />,    module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/active-ar',      element: <ActiveAR />,       module: M.ACTIVE_AR, tier: TIER.VIEW,
       nav: { label: 'Active AR', order: 30 } },
+  { path: '/active-ar/manual', element: <ModuleManual module="active_ar" title="Active AR & Claims Manual" blurb="Working rules for the claims, denials, appeals, and AR workflow." backTo="/active-ar" backLabel="Active AR" />, module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/active-ar/:id',  element: <ActiveARDetail />, module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/claims',         element: <Claims />,         module: M.ACTIVE_AR, tier: TIER.VIEW },
   { path: '/claims/:id',     element: <ClaimDetail />,    module: M.ACTIVE_AR, tier: TIER.VIEW },
@@ -176,11 +176,14 @@ export const ROUTES = [
     { path: '',                  element: <Navigate to="bank-recon" replace /> },
     { path: 'bank-recon',         element: <BankRecon />,           module: M.BANK_RECON,         tier: TIER.VIEW },
     { path: 'missing-charges',    element: <MissingCharges />,      module: M.MISSING_CHARGES,    tier: TIER.VIEW },
+    { path: 'missing-charges/manual', element: <ModuleManual module="billing_missing_charges" title="Missing Charges Manual" blurb="Working rules for charge-capture review." backTo="/billing/missing-charges" backLabel="Missing Charges" />, module: M.MISSING_CHARGES, tier: TIER.VIEW },
     { path: 'insurance-documents', element: <InsuranceDocuments />, module: M.INSURANCE_DOCS,     tier: TIER.VIEW },
+    { path: 'insurance-documents/manual', element: <ModuleManual module="billing_insurance_docs" title="Insurance Documents Manual" blurb="Working rules for insurance correspondence and billing documents." backTo="/billing/insurance-documents" backLabel="Insurance Documents" />, module: M.INSURANCE_DOCS, tier: TIER.VIEW },
     { path: 'insurance-contacts',  element: <InsuranceContacts />,  module: M.INSURANCE_CONTACTS, tier: TIER.VIEW },
     // Code Helper is a billing/claims utility — gate on Active AR.
     { path: 'code-helper',         element: <CodeHelper />,         module: M.ACTIVE_AR,          tier: TIER.VIEW },
     { path: 'code-helper/denials', element: <CodeHelperDenials />,  module: M.ACTIVE_AR,          tier: TIER.VIEW },
+    { path: 'manual',              element: <ModuleManual module="billing_bank_recon" title="Bank Reconciliation Manual" blurb="Working rules for the bank reconciliation workflow." backTo="/billing" backLabel="Billing" />, module: M.BANK_RECON, tier: TIER.VIEW },
   ]},
 
   // ── Manager dashboard — checklist owners ───────────────────────
@@ -195,6 +198,7 @@ export const ROUTES = [
       children: [
     { index: true,      element: <Recalls /> },
     { path: 'settings', element: <RecallSettings />, module: M.RECALL, tier: TIER.MANAGE },
+    { path: 'manual',   element: <ModuleManual module="recall" title="Recall Operating Manual" blurb="Working rules for patient recall lists and outreach." backTo="/recalls" backLabel="Recalls" />, module: M.RECALL, tier: TIER.VIEW },
   ]},
 
   // ── Surgery ────────────────────────────────────────────────────
@@ -217,6 +221,7 @@ export const ROUTES = [
     { path: 'reports',         element: <SurgeryReports />,        module: M.SURGERY, tier: TIER.VIEW },
     { path: 'messages',       element: <StaffInbox />,          module: M.SURGERY, tier: TIER.WORK },
     { path: 'deleted',        element: <SurgeryDeleted />,      module: M.SURGERY, tier: TIER.MANAGE },
+    { path: 'manual',         element: <ModuleManual module="surgery" title="Surgery Operating Manual" blurb="Working rules for the WWC surgery scheduling + billing workflow." backTo="/surgery" backLabel="Surgery" />, module: M.SURGERY, tier: TIER.VIEW },
     { path: ':id',            element: <SurgeryDetail />,       module: M.SURGERY, tier: TIER.VIEW },
   ]},
 
@@ -239,7 +244,7 @@ export const ROUTES = [
     { path: 'device-types',    element: <LarcDeviceTypes />,     module: M.LARC, tier: TIER.MANAGE },
     { path: 'eod',             element: <LarcEodReport />,       module: M.LARC, tier: TIER.VIEW },
     { path: 'inventory-count', element: <LarcInventoryCount />,  module: M.LARC, tier: TIER.WORK },
-    { path: 'manual',          element: <LarcManual />,          module: M.LARC, tier: TIER.VIEW },
+    { path: 'manual',          element: <ModuleManual module="device_larc" title="LARC Operating Manual" blurb="Working rules for the WWC LARC inventory + tracking workflow." backTo="/larc" backLabel="LARC dashboard" />, module: M.LARC, tier: TIER.VIEW },
     { path: 'assignments/:id', element: <LarcAssignment />,      module: M.LARC, tier: TIER.WORK },
     { path: 'settings',        element: <LarcSettings />,        module: M.LARC, tier: TIER.MANAGE },
   ]},
@@ -259,7 +264,7 @@ export const ROUTES = [
     { path: 'audit',        element: <PelletAudit />,         module: M.PELLETS, tier: TIER.VIEW },
     { path: 'reports',      element: <PelletReports />,       module: M.PELLETS, tier: TIER.VIEW },
     { path: 'recall',       element: <PelletRecall />,        module: M.PELLETS, tier: TIER.WORK },
-    { path: 'manual',       element: <PelletManual />,        module: M.PELLETS, tier: TIER.VIEW },
+    { path: 'manual',       element: <ModuleManual module="pellets" title="Pellet Operating Manual" blurb="Working rules for the WWC pellet inventory + DEA Schedule III workflow." backTo="/pellets" backLabel="Pellets" />, module: M.PELLETS, tier: TIER.VIEW },
     { path: 'patients',     element: <PelletPatients />,      module: M.PELLETS, tier: TIER.VIEW },
     { path: 'patients/:id', element: <PelletPatientDetail />, module: M.PELLETS, tier: TIER.VIEW },
     { path: 'dose-types',   element: <PelletDoseTypes />,     module: M.PELLETS, tier: TIER.MANAGE },
@@ -273,6 +278,7 @@ export const ROUTES = [
       children: [
     { index: true,    element: <AdminTraining embedded />,      module: M.TRAINING, tier: TIER.VIEW },
     { path: 'cards',  element: <AdminTrainingCards embedded />,  module: M.TRAINING, tier: TIER.MANAGE },
+    { path: 'manual', element: <ModuleManual module="training" title="Training Operating Manual" blurb="Working rules for training cards and completion tracking." backTo="/training" backLabel="Training" />, module: M.TRAINING, tier: TIER.VIEW },
   ]},
 
   // ── Marketing (reputation / reviews) ───────────────────────────
@@ -285,11 +291,13 @@ export const ROUTES = [
     { index: true,         element: <AdminReputationReviews />,     module: M.REPUTATION, tier: TIER.VIEW },
     { path: 'leaderboard', element: <AdminReputationLeaderboard />, module: M.REPUTATION, tier: TIER.VIEW },
     { path: 'profiles',    element: <AdminReputationProfiles />,    module: M.REPUTATION, tier: TIER.MANAGE },
+    { path: 'manual',      element: <ModuleManual module="reputation" title="Reputation Management Manual" blurb="Working rules for reviews, leaderboard, and provider profiles." backTo="/marketing" backLabel="Marketing" />, module: M.REPUTATION, tier: TIER.VIEW },
   ]},
 
   // ── Chart / documents / patients ───────────────────────────────
   { path: '/documents',         element: <Documents />,    module: M.CHART, tier: TIER.VIEW,
       nav: { label: 'Charts', order: 20 } },
+  { path: '/documents/manual',  element: <ModuleManual module="chart" title="Charts & Documents Manual" blurb="Working rules for patient charts and the documents workflow." backTo="/documents" backLabel="Documents" />, module: M.CHART, tier: TIER.VIEW },
   { path: '/chart/:chartNumber', element: <PatientChart />, module: M.CHART, tier: TIER.VIEW },
   { path: '/patients',          element: <Patients />,      module: M.CHART, tier: TIER.VIEW },
   { path: '/patients/:id',      element: <PatientDetail />, module: M.CHART, tier: TIER.VIEW },

@@ -14,8 +14,9 @@ import { MODULE, TIER } from '../../routes.jsx'
 // cycle is resolved by then) — same pattern the surgery/pellet nav files use.
 function navItems() {
   return [
-    { to: '/training',       label: 'Overview', tier: TIER.VIEW, end: true },
-    { to: '/training/cards', label: 'Cards',    tier: TIER.MANAGE },
+    { to: '/training',        label: 'Overview', tier: TIER.VIEW, end: true },
+    { to: '/training/cards',  label: 'Cards',    tier: TIER.MANAGE },
+    { to: '/training/manual', label: 'Manual',   tier: TIER.VIEW },
   ]
 }
 

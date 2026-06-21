@@ -17,6 +17,7 @@ function navItems() {
     { to: '/marketing',             label: 'Reviews',     tier: TIER.VIEW,   end: true },
     { to: '/marketing/leaderboard', label: 'Leaderboard', tier: TIER.VIEW },
     { to: '/marketing/profiles',    label: 'Profiles',    tier: TIER.MANAGE },
+    { to: '/marketing/manual',      label: 'Manual',      tier: TIER.VIEW },
   ]
 }
 

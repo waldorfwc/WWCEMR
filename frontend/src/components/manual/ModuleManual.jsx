@@ -4,31 +4,57 @@ import { Link } from 'react-router-dom'
 import { ArrowLeft, BookOpen, ChevronRight, Edit3, Plus, Save, Trash2, X } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import api, { fmt } from '../utils/api'
-import { useCurrentUser } from '../hooks/useCurrentUser'
-import { MODULE, TIER } from '../routes.jsx'
+import api, { fmt } from '../../utils/api'
+import { useCurrentUser } from '../../hooks/useCurrentUser'
+import { TIER } from '../../routes.jsx'
 
+const MANUAL_STALE_AFTER_DAYS = 180
 
 function renderMarkdown(md) {
   const raw = marked.parse(md || '', { breaks: true, gfm: true })
   return DOMPurify.sanitize(raw)
 }
 
+function isStale(updated_at) {
+  if (!updated_at) return false
+  return (Date.now() - new Date(updated_at).getTime()) > MANUAL_STALE_AFTER_DAYS * 864e5
+}
 
-export default function LarcManual() {
+
+/**
+ * Shared operating manual component. Used by LARC and Pellet manual routes
+ * (and any future module manual). Fetches from /api/manual?module=<module>
+ * and posts/patches/deletes via /api/manual and /api/manual/{id}.
+ *
+ * Props:
+ *   module    – backend module slug, e.g. "device_larc" or "pellets"
+ *   title     – page heading
+ *   blurb     – sub-heading description line
+ *   backTo    – breadcrumb link path (default "/")
+ *   backLabel – breadcrumb link label (default "Back")
+ */
+export default function ModuleManual({
+  module,
+  title,
+  blurb,
+  backTo = '/',
+  backLabel = 'Back',
+}) {
   const qc = useQueryClient()
   const { tier } = useCurrentUser()
-  const canEdit = tier(MODULE.LARC, TIER.MANAGE)
+  const canEdit = tier(module, TIER.MANAGE)
   const [editingId, setEditingId] = useState(null)
   const [adding, setAdding] = useState(false)
 
+  const queryKey = ['manual', module]
+
   const { data: sections = [], isLoading } = useQuery({
-    queryKey: ['larc-manual'],
-    queryFn: () => api.get('/larc/manual').then(r => r.data),
+    queryKey,
+    queryFn: () => api.get('/manual', { params: { module } }).then(r => r.data),
   })
 
   const toc = useMemo(
-    () => sections.map(s => ({ id: s.id, slug: s.slug, title: s.title })),
+    () => sections.map(s => ({ id: s.id, slug: s.slug, title: s.title, updated_at: s.updated_at })),
     [sections]
   )
 
@@ -36,16 +62,17 @@ export default function LarcManual() {
     <div className="max-w-4xl mx-auto">
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <Link to="/larc" className="text-muted hover:text-plum-700">
+          <Link to={backTo} aria-label={backLabel} title={backLabel}
+                className="text-muted hover:text-plum-700">
             <ArrowLeft size={18} />
           </Link>
           <div>
             <h1 className="font-serif text-[24px] font-semibold text-ink m-0 flex items-center gap-2">
               <BookOpen size={22} className="text-plum-700" />
-              LARC Operating Manual
+              {title}
             </h1>
             <div className="text-muted text-[12px] mt-0.5">
-              Working rules for the WWC LARC inventory + tracking workflow.
+              {blurb}
               {canEdit && ' Click any section to edit.'}
             </div>
           </div>
@@ -67,6 +94,9 @@ export default function LarcManual() {
               <a key={s.id} href={`#${s.slug}`}
                  className="text-plum-700 hover:underline flex items-center gap-1">
                 <ChevronRight size={11} /> {s.title}
+                {isStale(s.updated_at) && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 ml-1">Review</span>
+                )}
               </a>
             ))}
           </div>
@@ -83,15 +113,16 @@ export default function LarcManual() {
           editing={editingId === s.id}
           onStartEdit={() => setEditingId(s.id)}
           onCancel={() => setEditingId(null)}
-          onSaved={() => { setEditingId(null); qc.invalidateQueries({ queryKey: ['larc-manual'] }) }}
-          onDeleted={() => qc.invalidateQueries({ queryKey: ['larc-manual'] })}
+          onSaved={() => { setEditingId(null); qc.invalidateQueries({ queryKey }) }}
+          onDeleted={() => qc.invalidateQueries({ queryKey })}
         />
       ))}
 
       {adding && (
         <AddSectionForm
+          module={module}
           onClose={() => setAdding(false)}
-          onSaved={() => { setAdding(false); qc.invalidateQueries({ queryKey: ['larc-manual'] }) }}
+          onSaved={() => { setAdding(false); qc.invalidateQueries({ queryKey }) }}
         />
       )}
 
@@ -109,15 +140,17 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
   const [sortOrder, setSortOrder] = useState(section.sort_order)
   const [previewing, setPreviewing] = useState(false)
 
+  const stale = isStale(section.updated_at)
+
   const save = useMutation({
-    mutationFn: () => api.patch(`/larc/manual/${section.id}`, {
+    mutationFn: () => api.patch(`/manual/${section.id}`, {
       title, body_md: body, sort_order: Number(sortOrder),
     }).then(r => r.data),
     onSuccess: onSaved,
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
   const remove = useMutation({
-    mutationFn: () => api.delete(`/larc/manual/${section.id}`),
+    mutationFn: () => api.delete(`/manual/${section.id}`),
     onSuccess: onDeleted,
     onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
   })
@@ -126,8 +159,11 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
     return (
       <section id={section.slug} className="card mb-4 scroll-mt-24">
         <div className="flex items-baseline justify-between mb-2 gap-2">
-          <h2 className="font-serif text-[18px] font-semibold text-ink m-0">
+          <h2 className="font-serif text-[18px] font-semibold text-ink m-0 flex items-center gap-2">
             {section.title}
+            {stale && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">Review</span>
+            )}
           </h2>
           {canEdit && (
             <button onClick={onStartEdit}
@@ -136,6 +172,13 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
             </button>
           )}
         </div>
+        {section.updated_at && (
+          <div className="text-[10px] text-gray-400 mb-2">
+            Updated {fmt.date(section.updated_at)}
+            {section.updated_by && section.updated_by !== 'system:seed'
+              && ` by ${section.updated_by.split('@')[0]}`}
+          </div>
+        )}
         <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-gray-800
                           [&>h1]:font-serif [&>h2]:font-serif [&>h3]:font-serif
                           [&>blockquote]:border-l-4 [&>blockquote]:border-plum-300
@@ -150,11 +193,6 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
                           [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2
                           [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2"
              dangerouslySetInnerHTML={{ __html: renderMarkdown(section.body_md) }} />
-        <div className="text-[10px] text-gray-400 mt-3">
-          Last edited {fmt.date(section.updated_at)}
-          {section.updated_by && section.updated_by !== 'system:seed'
-            && ` by ${section.updated_by.split('@')[0]}`}
-        </div>
       </section>
     )
   }
@@ -194,7 +232,7 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
                     placeholder="Markdown supported: # headings · **bold** · *italic* · - lists · | tables | · `code` · > quotes" />
         )}
         <div className="flex items-center justify-between">
-          <button onClick={() => { if (confirm(`Delete section "${section.title}"?`)) remove.mutate() }}
+          <button onClick={() => { if (window.confirm(`Delete section "${section.title}"?`)) remove.mutate() }}
                   className="text-[11px] text-red-700 hover:underline flex items-center gap-1">
             <Trash2 size={10} /> Delete section
           </button>
@@ -214,14 +252,14 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
 }
 
 
-function AddSectionForm({ onClose, onSaved }) {
+function AddSectionForm({ module, onClose, onSaved }) {
   const [slug, setSlug] = useState('')
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [sortOrder, setSortOrder] = useState(1000)
   const create = useMutation({
-    mutationFn: () => api.post('/larc/manual', {
-      slug, title, body_md: body, sort_order: Number(sortOrder),
+    mutationFn: () => api.post('/manual', {
+      module, slug, title, body_md: body, sort_order: Number(sortOrder),
     }).then(r => r.data),
     onSuccess: onSaved,
     onError: (e) => alert(e?.response?.data?.detail || 'Add failed'),

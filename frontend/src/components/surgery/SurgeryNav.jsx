@@ -26,6 +26,7 @@ function navItems() {
     { to: '/surgery/payment-posting', label: 'Payment Posting', tier: TIER.WORK },
     { to: '/surgery/reports',         label: 'Reports',         tier: TIER.VIEW },
     { to: '/surgery/messages',       label: 'Messages',       tier: TIER.WORK, badge: 'messages' },
+    { to: '/surgery/manual',         label: 'Manual',         tier: TIER.VIEW },
     { to: '/surgery/settings',       label: 'Settings',       tier: TIER.MANAGE },
   ]
 }

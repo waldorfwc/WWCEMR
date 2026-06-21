@@ -42,7 +42,7 @@ from app.database import get_db
 from app.models.larc import (
     LarcAssignment, LarcAuditEvent, LarcCheckout, LarcDevice,
     LarcDeviceType, LarcEnrollmentEnvelope, LarcInventoryCount,
-    LarcManualSection, LarcMilestone, LarcOwedPatient, LarcPharmacy,
+    LarcMilestone, LarcOwedPatient, LarcPharmacy,
 )
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
@@ -3689,95 +3689,6 @@ def end_of_day_report(
 
 
 # ─── Audit log query ────────────────────────────────────────────────
-
-# ─── Editable manual / operating procedures ────────────────────────
-
-@router.get("/manual")
-def list_manual_sections(db: Session = Depends(get_db),
-                          current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
-    rows = (db.query(LarcManualSection)
-              .order_by(LarcManualSection.sort_order, LarcManualSection.title).all())
-    return [
-        {
-            "id": str(s.id), "slug": s.slug, "title": s.title,
-            "body_md": s.body_md, "sort_order": s.sort_order,
-            "updated_at": s.updated_at.isoformat() if s.updated_at else None,
-            "updated_by": s.updated_by,
-        }
-        for s in rows
-    ]
-
-
-class ManualSectionIn(BaseModel):
-    slug: str
-    title: str
-    body_md: str = ""
-    sort_order: int = 0
-
-
-@router.post("/manual", status_code=201)
-def create_manual_section(payload: ManualSectionIn,
-                            db: Session = Depends(get_db),
-                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
-    slug = payload.slug.strip().lower().replace(" ", "-")
-    if not slug or not payload.title.strip():
-        raise HTTPException(status_code=422, detail="slug and title are required")
-    existing = db.query(LarcManualSection).filter(LarcManualSection.slug == slug).first()
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Section '{slug}' already exists")
-    by = current_user.get("email") or "system"
-    row = LarcManualSection(
-        slug=slug, title=payload.title.strip(),
-        body_md=payload.body_md, sort_order=payload.sort_order,
-        updated_by=by,
-    )
-    db.add(row); db.commit(); db.refresh(row)
-    return {"id": str(row.id), "slug": row.slug}
-
-
-class ManualSectionPatch(BaseModel):
-    title: Optional[str] = None
-    body_md: Optional[str] = None
-    sort_order: Optional[int] = None
-
-
-@router.patch("/manual/{section_id}")
-def patch_manual_section(section_id: str, payload: ManualSectionPatch,
-                          db: Session = Depends(get_db),
-                          current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
-    s = db.query(LarcManualSection).filter(LarcManualSection.id == section_id).first()
-    if not s:
-        raise HTTPException(status_code=404, detail="section not found")
-    data = payload.model_dump(exclude_unset=True)
-    for k, v in data.items():
-        setattr(s, k, v)
-    s.updated_by = current_user.get("email") or "system"
-    db.commit(); db.refresh(s)
-    return {"id": str(s.id)}
-
-
-@router.delete("/manual/{section_id}", status_code=204)
-def delete_manual_section(section_id: str,
-                            db: Session = Depends(get_db),
-                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.MANAGE))):
-    s = db.query(LarcManualSection).filter(LarcManualSection.id == section_id).first()
-    if not s:
-        raise HTTPException(status_code=404, detail="section not found")
-    log_audit(
-        db,
-        actor=current_user.get("email") or "system",
-        action="manual_section_deleted",
-        summary=f"Deleted LARC operating-procedure section: {s.title!r}",
-        detail={
-            "section_id":  str(s.id),
-            "title":       s.title,
-            "body_excerpt": (s.body_md or "")[:240],
-            "sort_order":  s.sort_order,
-        },
-    )
-    db.delete(s); db.commit()
-    return None
-
 
 @router.get("/audit")
 def list_audit(
