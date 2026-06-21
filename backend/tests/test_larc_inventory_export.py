@@ -27,3 +27,14 @@ def test_export_csv_on_hand_with_assignee(client, db):
     assert "W-BILL" not in text
     assert "Doe, Jane" in text
     assert "LOT9" in text
+
+
+def test_export_pdf_returns_pdf(client, db):
+    dt = _dt(db)
+    db.add(LarcDevice(our_id="W-UN", device_type_id=dt.id, status="unassigned",
+                      ownership="wwc_owned", manufacturer_lot="LOT1", location="white_plains"))
+    db.commit()
+    r = client.get("/api/larc/devices/export.pdf")
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content[:4] == b"%PDF"

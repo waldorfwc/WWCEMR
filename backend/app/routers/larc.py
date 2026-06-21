@@ -22,7 +22,7 @@ from typing import Optional
 
 from typing import Annotated
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -1021,6 +1021,21 @@ def export_devices_csv(db: Session = Depends(get_db),
     fname = f"larc-inventory-{_date.today().isoformat()}.csv"
     return StreamingResponse(iter([csv_text]), media_type="text/csv",
                              headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@router.get("/devices/export.pdf")
+def export_devices_pdf(db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.VIEW))):
+    from app.services.larc.inventory_export import build_pdf
+    rows = _inventory_export_rows(db)
+    by = current_user.get("email") or "system"
+    pdf = build_pdf(rows, generated_by=by)
+    log_audit(db, actor=by, action="inventory_export",
+              summary=f"Exported {len(rows)} on-hand devices (PDF)")
+    db.commit()
+    fname = f"larc-inventory-{_date.today().isoformat()}.pdf"
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{fname}"'})
 
 
 @router.get("/devices/{device_id}")
