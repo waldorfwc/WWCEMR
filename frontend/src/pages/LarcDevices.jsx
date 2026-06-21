@@ -72,6 +72,14 @@ export default function LarcDevices() {
 
   const devices = data?.devices || []
 
+  async function downloadExport(path, filename) {
+    const res = await api.get(path, { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const a = document.createElement('a')
+    a.href = url; a.download = filename; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div>
       <Link to="/larc" className="text-[12px] text-muted hover:underline flex items-center gap-1 mb-2">
@@ -90,6 +98,14 @@ export default function LarcDevices() {
               <Printer size={13} /> Print {selected.size} label{selected.size === 1 ? '' : 's'}
             </a>
           )}
+          <button className="btn-secondary text-sm"
+                  onClick={() => downloadExport('/larc/devices/export.csv', 'larc-inventory.csv')}>
+            Export CSV
+          </button>
+          <button className="btn-secondary text-sm"
+                  onClick={() => downloadExport('/larc/devices/export.pdf', 'larc-inventory.pdf')}>
+            Export PDF
+          </button>
           <button className="btn-secondary text-sm flex items-center gap-1"
                   onClick={() => setBulkAdding(true)}>
             <Layers size={13} /> Bulk add
