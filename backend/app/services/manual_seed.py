@@ -1,4 +1,16 @@
-"""Per-module manual seed content for the unified manual system."""
+"""Per-module manual seed content for the unified manual system.
+
+HOUSE STYLE: short, operational, task-oriented markdown per workflow stage —
+tables for catalogs, numbered steps for workflows, ``>`` callouts for gotchas.
+Describe real behavior only; ~300-900 chars per section.
+
+KEEP IN SYNC: when a module's behavior changes, update that module's manual
+section(s) in the same change. Editing a section here only affects fresh
+installs (the seed is additive — it never overwrites existing rows); to change
+a section that already exists in a running database, edit it in-app at
+/<module>/manual (MANAGE) or via the /api/manual API. The in-app "Review"
+badge flags sections older than MANUAL_STALE_AFTER_DAYS as a backstop.
+"""
 from app.database import SessionLocal
 from app.models.manual import ManualSection
 
