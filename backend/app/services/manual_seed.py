@@ -1290,6 +1290,58 @@ that person's unique review QR code.
 """),
 ]
 
+TRAINING_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+The **Training** module tracks certification status for every training-gated
+checklist task across the staff. A task will only be assigned to an employee
+once they hold an active certification for it — gaps here mean those tasks
+won't generate for that person.
+
+**Two views of the same data:**
+
+| View | Path | Best for |
+|---|---|---|
+| Matrix | `/training` | Scanning coverage at a glance — tasks × employees in a color-coded grid |
+| Cards | `/training/cards` | Managing one task at a time — authorizing trainers and certifying individuals or groups |
+
+Training tasks (and whether they require a certification) are configured in
+**Admin → Checklist Templates**.
+"""),
+
+    ("cards", "Training Cards — Certifying Employees", 20, """\
+The **Cards** view (`/training/cards`) shows one card per training-gated task.
+
+**Coverage banner** counts Tasks total, Fully covered, Has gaps, and
+Expiring ≤30d. Click **Has gaps** or **Expiring ≤30d** to filter. Search by
+task title with "Filter tasks…".
+
+**Each card shows:**
+
+- **Trainers** — staff authorized to certify others for this task.
+- **Certified** — employees with an active cert (chips with an amber border
+  mean the cert expires within 30 days).
+- **Pending** — awaiting trainee confirmation or trainer signoff.
+- **X missing** — click to expand the list of uncertified employees; click
+  any email to certify that person immediately.
+
+**Add to a task (bottom of each card):**
+
+| Action | How |
+|---|---|
+| Authorize a trainer | Pick "one employee" → **+ Trainer** |
+| Certify one employee | Pick "one employee" → **+ Certify** |
+| Certify a whole group | Pick "whole group" → **+ Certify whole group** (already-certified members are skipped) |
+| Revoke a whole group | Pick "whole group" → **Revoke group** (use when an SOP changes and everyone must re-train) |
+
+**Matrix view** (`/training`) is the same data as a grid — each row is a
+task, each column is an employee, and the colored cell shows cert status.
+Click any cell to open the certify / authorize / revoke drawer.
+
+> "Edit Task" and "Checklist Templates" links on each card open the
+> underlying template in a new tab (Admin → Checklist Templates).
+"""),
+]
+
 MANUAL_SEEDS = {
     "device_larc":              LARC_MANUAL_SECTIONS,
     "pellets":                  PELLET_MANUAL_SECTIONS,
@@ -1301,6 +1353,7 @@ MANUAL_SEEDS = {
     "chart":                    CHART_MANUAL_SECTIONS,
     "recall":                   RECALL_MANUAL_SECTIONS,
     "reputation":               REPUTATION_MANUAL_SECTIONS,
+    "training":                 TRAINING_MANUAL_SECTIONS,
 }
 
 

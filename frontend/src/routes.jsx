@@ -278,6 +278,7 @@ export const ROUTES = [
       children: [
     { index: true,    element: <AdminTraining embedded />,      module: M.TRAINING, tier: TIER.VIEW },
     { path: 'cards',  element: <AdminTrainingCards embedded />,  module: M.TRAINING, tier: TIER.MANAGE },
+    { path: 'manual', element: <ModuleManual module="training" title="Training Operating Manual" blurb="Working rules for training cards and completion tracking." backTo="/training" backLabel="Training" />, module: M.TRAINING, tier: TIER.VIEW },
   ]},
 
   // ── Marketing (reputation / reviews) ───────────────────────────
