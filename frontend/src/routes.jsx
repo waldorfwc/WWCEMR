@@ -178,6 +178,7 @@ export const ROUTES = [
     { path: 'missing-charges',    element: <MissingCharges />,      module: M.MISSING_CHARGES,    tier: TIER.VIEW },
     { path: 'missing-charges/manual', element: <ModuleManual module="billing_missing_charges" title="Missing Charges Manual" blurb="Working rules for charge-capture review." backTo="/billing/missing-charges" backLabel="Missing Charges" />, module: M.MISSING_CHARGES, tier: TIER.VIEW },
     { path: 'insurance-documents', element: <InsuranceDocuments />, module: M.INSURANCE_DOCS,     tier: TIER.VIEW },
+    { path: 'insurance-documents/manual', element: <ModuleManual module="billing_insurance_docs" title="Insurance Documents Manual" blurb="Working rules for insurance correspondence and billing documents." backTo="/billing/insurance-documents" backLabel="Insurance Documents" />, module: M.INSURANCE_DOCS, tier: TIER.VIEW },
     { path: 'insurance-contacts',  element: <InsuranceContacts />,  module: M.INSURANCE_CONTACTS, tier: TIER.VIEW },
     // Code Helper is a billing/claims utility — gate on Active AR.
     { path: 'code-helper',         element: <CodeHelper />,         module: M.ACTIVE_AR,          tier: TIER.VIEW },

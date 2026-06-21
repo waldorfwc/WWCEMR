@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import {
   Upload, FileScan, Search, X, Check, ChevronLeft, ChevronRight,
   Users, MessageSquare, History, Lock, FileText, Edit3, Trash2, Save,
-  ZoomIn, ZoomOut, RotateCcw, RotateCw, Maximize,
+  ZoomIn, ZoomOut, RotateCcw, RotateCw, Maximize, BookOpen,
 } from 'lucide-react'
 import { Document, Page, pdfjs } from 'react-pdf'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
@@ -133,10 +134,19 @@ export default function InsuranceDocuments() {
           <h2 className="text-base font-semibold text-gray-800">Insurance Documents</h2>
           <span className="text-[11px] text-gray-500">({data?.total ?? 0})</span>
         </div>
-        <button className="btn-primary text-sm flex items-center gap-1"
-                onClick={() => setUploading(true)}>
-          <Upload size={13} /> Upload document
-        </button>
+        <div className="flex gap-2 items-center">
+          <Link
+            to="/billing/insurance-documents/manual"
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-plum-700 px-1"
+            title="Insurance Documents Manual"
+          >
+            <BookOpen size={14} /> Manual
+          </Link>
+          <button className="btn-primary text-sm flex items-center gap-1"
+                  onClick={() => setUploading(true)}>
+            <Upload size={13} /> Upload document
+          </button>
+        </div>
       </div>
 
       {/* Filters */}

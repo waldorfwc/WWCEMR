@@ -999,6 +999,63 @@ This moves the row to *Billed* and clears it from the open list.
 """),
 ]
 
+INSURANCE_DOCS_MANUAL_SECTIONS = [
+    ("overview", "Overview", 10, """\
+**Insurance Documents** is the shared inbox for faxed and manually uploaded
+insurance documents — paper EOBs, patient payments, denial letters, and other
+correspondence.
+
+Each document has a **Classification** (Paper EOB, Patient Payment, Insurance
+Letter, Denial, Other), a **Status** (New → In Progress → Worked), and an optional
+**Assignee**. Unassigned documents are visible to everyone with billing access.
+
+> Documents are never deleted by default — admins can delete from the viewer,
+> but the action is permanent and irreversible.
+"""),
+
+    ("upload", "Uploading & Classifying Documents", 20, """\
+1. Click **+ Upload document** in the header.
+2. Pick a PDF or image file (JPEG, PNG, etc.).
+3. Set the **Classification** — or leave it at *Other* and tick
+   **Auto-classify with AI** to let the system guess.
+4. Optionally assign the document to one or more staff members; leave blank
+   to make it visible to all billing users.
+5. Click **Upload**.
+
+> If the system detects an identical file already on record, it shows a
+> **Possible duplicate** warning with the existing document's name, date and
+> uploader. Click **Upload anyway** to force-add it, or cancel.
+
+**To rename a file** without opening the viewer: hover the row and click the
+pencil icon that appears next to the filename.
+"""),
+
+    ("retrieval", "Finding & Working Documents", 30, """\
+**Filters** across the top narrow the list:
+
+| Filter | Options |
+|---|---|
+| Status | New · In Progress · Worked (multi-select toggles) |
+| Classification | Paper EOB · Patient Payment · Insurance Letter · Denial · Other |
+| Assigned to me | Shows only your documents |
+| Unassigned only | Shows documents no one has claimed yet |
+
+Sort by **Type** or **Uploaded** date by clicking the column header.
+
+**Working a document:**
+1. Click any row to open the viewer (page through, zoom, rotate).
+2. In the right panel, correct the **Classification** if needed.
+3. **Assign** the document to yourself (or teammates) so two people don't work
+   the same fax.
+4. Add **Notes** to record what you did or what's outstanding.
+5. Click **Mark in progress** while you're working it, then **Mark as Worked**
+   when done.
+
+The **Access log** at the bottom of the panel records every open, status change
+and note by user and timestamp.
+"""),
+]
+
 MANUAL_SEEDS = {
     "device_larc":              LARC_MANUAL_SECTIONS,
     "pellets":                  PELLET_MANUAL_SECTIONS,
@@ -1006,6 +1063,7 @@ MANUAL_SEEDS = {
     "active_ar":                ACTIVE_AR_MANUAL_SECTIONS,
     "billing_bank_recon":       BANK_RECON_MANUAL_SECTIONS,
     "billing_missing_charges":  MISSING_CHARGES_MANUAL_SECTIONS,
+    "billing_insurance_docs":   INSURANCE_DOCS_MANUAL_SECTIONS,
 }
 
 
