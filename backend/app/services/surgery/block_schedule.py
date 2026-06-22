@@ -2,8 +2,8 @@
 
 Materializer: walks all active BlockSchedule rows and creates concrete
 BlockDay rows for the next N days, skipping any office-wide blackout
-(US holidays seeded in surgery_holiday_seed) and any facility-scoped
-blackout (e.g. "MedStar block cancelled 6/3").
+(US holidays + PTO entered as blackout rows by staff) and any
+facility-scoped blackout (e.g. "MedStar block cancelled 6/3").
 
 Capacity rules (codified):
 
