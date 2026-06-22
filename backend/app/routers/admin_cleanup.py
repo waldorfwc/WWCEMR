@@ -26,7 +26,7 @@ from datetime import date as _date, datetime, time as _time
 from app.database import get_db
 from app.permissions.dependencies import requires_super_admin
 from app.models.larc import LarcAssignment, LarcDevice, LarcOwedPatient
-from app.models.surgery import Surgery, BlockDay, SurgeryMilestone, SurgeryConsentEnvelope
+from app.models.surgery import Surgery, BlockDay, SurgeryMilestone
 from app.models.pellet import PelletPatient
 from app.utils.dt import now_utc_naive
 from app.services.audit_service import log_action
@@ -554,20 +554,6 @@ def silent_schedule(payload: _SilentScheduleIn,
         "dry_run":       payload.dry_run,
         "results":       results,
     }
-
-
-@router.get("/docusign-open-count")
-def docusign_open_count(db: Session = Depends(get_db),
-                        current_user: dict = Depends(requires_super_admin())):
-    """Post-deploy sanity check: count legacy DocuSign consent envelopes that
-    are still open (not in a terminal state). Should be 0 — confirms no legacy
-    envelopes were stranded by the DocuSign rip-out."""
-    _TERMINAL = ("signed", "completed", "declined", "voided")
-    count = (db.query(func.count(SurgeryConsentEnvelope.id))
-               .filter(SurgeryConsentEnvelope.docusign_envelope_id.isnot(None))
-               .filter(~SurgeryConsentEnvelope.status.in_(_TERMINAL))
-               .scalar())
-    return {"open_docusign_envelopes": int(count or 0)}
 
 
 @router.get("/billing-doc-duplicate-hashes")
