@@ -51,7 +51,7 @@ class LarcDeviceType(Base):
     reorder_threshold = Column(Integer, nullable=True)             # in_stock only
     reorder_quantity = Column(Integer, nullable=True)              # how many to order when below threshold
     # Bayer devices (Mirena/Skyla/Kyleena) share an enrollment form template
-    enrollment_form_template = Column(String(200), nullable=True)  # docusign_template_id or path
+    enrollment_form_template = Column(String(200), nullable=True)  # boldsign template id or path
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
 

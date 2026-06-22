@@ -4942,7 +4942,7 @@ function ConsentPanel({ surgery }) {
             </button>
           </>
         )}
-        {!isSigned && envelopes.some(e => (e.provider || 'boldsign') !== 'docusign') && (
+        {!isSigned && envelopes.length > 0 && (
           <button className="btn-secondary text-xs flex items-center gap-1"
                   onClick={() => boldsignSync.mutate()}
                   disabled={boldsignSync.isPending}
