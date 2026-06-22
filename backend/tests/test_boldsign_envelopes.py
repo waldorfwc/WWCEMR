@@ -66,6 +66,40 @@ def test_build_signer_payload_includes_patient(db):
     assert signers[0]["signerRole"] == "Patient"
 
 
+def _clear_consent_env(monkeypatch):
+    for v in ("CONSENT_PROVIDER_EMAIL", "CONSENT_PROVIDER_NAME",
+              "CONSENT_WITNESS_EMAIL", "CONSENT_WITNESS_NAME",
+              "DOCUSIGN_PROVIDER_EMAIL", "DOCUSIGN_PROVIDER_NAME",
+              "DOCUSIGN_WITNESS_EMAIL", "DOCUSIGN_WITNESS_NAME"):
+        monkeypatch.delenv(v, raising=False)
+
+
+def test_signer_payload_provider_and_witness_from_consent_env(db, monkeypatch):
+    """BoldSign reads the provider + witness sender contacts from CONSENT_*."""
+    _clear_consent_env(monkeypatch)
+    monkeypatch.setenv("CONSENT_PROVIDER_EMAIL", "provider@wwc.com")
+    monkeypatch.setenv("CONSENT_PROVIDER_NAME", "Dr. Provider")
+    monkeypatch.setenv("CONSENT_WITNESS_EMAIL", "witness@wwc.com")
+    monkeypatch.setenv("CONSENT_WITNESS_NAME", "The Witness")
+    signers = _build_signer_payload(_make_surgery(db), _make_template(db))
+    by_role = {r["signerRole"]: r for r in signers}
+    assert by_role["Provider"]["signerEmail"] == "provider@wwc.com"
+    assert by_role["Provider"]["signerName"] == "Dr. Provider"
+    assert by_role["Witness"]["signerEmail"] == "witness@wwc.com"
+    assert by_role["Witness"]["signerName"] == "The Witness"
+
+
+def test_signer_payload_ignores_legacy_docusign_env(db, monkeypatch):
+    """The DOCUSIGN_* fallback is removed: setting only the legacy vars adds
+    no provider/witness signer (proves boldsign no longer reads DOCUSIGN_*)."""
+    _clear_consent_env(monkeypatch)
+    monkeypatch.setenv("DOCUSIGN_PROVIDER_EMAIL", "legacy@wwc.com")
+    monkeypatch.setenv("DOCUSIGN_WITNESS_EMAIL", "legacy-w@wwc.com")
+    signers = _build_signer_payload(_make_surgery(db), _make_template(db))
+    roles = {r["signerRole"] for r in signers}
+    assert roles == {"Patient"}
+
+
 def test_send_creates_envelope_row_and_calls_email_hook(db, monkeypatch):
     monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
     s = _make_surgery(db)
