@@ -16,13 +16,18 @@ export PATH="/opt/homebrew/share/google-cloud-sdk/bin:$PATH"
 
 PROJECT="wwc-solutions"
 REGION="us-east4"
-IMAGE="us-east4-docker.pkg.dev/${PROJECT}/app/backend:v3"
+# Mirror whatever image the backend SERVICE currently runs, so re-running
+# this never downgrades the jobs to a stale hardcoded tag.
+IMAGE=$(gcloud run services describe backend --region="$REGION" \
+  --project="$PROJECT" --format="value(spec.template.spec.containers[0].image)")
 WORKER_SA="worker@${PROJECT}.iam.gserviceaccount.com"
 TZ="America/New_York"
 
-# Build the secrets flag dynamically — mirrors what backend has.
+# Build the secrets flag dynamically — mirrors what backend has, minus the
+# consent-* sender secrets which only the backend SERVICE needs (no job runs
+# the consent/enrollment code that reads them).
 SECRETS_FLAG=$(gcloud secrets list --project="$PROJECT" --format="value(name)" \
-  | grep -v -E "^(cloudsql-postgres-root-password|database-url)$" \
+  | grep -v -E "^(cloudsql-postgres-root-password|database-url|consent-provider-email|consent-provider-name|consent-witness-email|consent-witness-name)$" \
   | awk '{env=toupper($1); gsub("-","_",env); printf "%s=%s:latest,",env,$1}' \
   | sed 's/,$//')
 ALL_SECRETS="DATABASE_URL=database-url:latest,${SECRETS_FLAG}"
