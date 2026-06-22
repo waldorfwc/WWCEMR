@@ -88,23 +88,10 @@ def list_clinicians(db: Session = Depends(get_db),
                     current_user: dict = Depends(get_current_user)):
     """Active users with a non-blank NPI — populates the LARC enrollment
     pickers (Inserting Provider + APP). Front-end filters/groups by
-    `clinician_role`. Returns email/display_name/npi/clinician_role/is_active."""
-    rows = (db.query(User)
-              .filter(User.is_active.is_(True),
-                      User.npi.isnot(None),
-                      User.npi != "")
-              .all())
-    rows.sort(key=lambda u: (u.clinician_role or "zz", u.display_name or u.email))
-    return [
-        {
-            "email": u.email,
-            "display_name": u.display_name or u.email,
-            "npi": u.npi,
-            "clinician_role": u.clinician_role,
-            "credential": u.credential,
-        }
-        for u in rows
-    ]
+    `clinician_role`. (LARC Work staff use GET /larc/clinicians, which returns
+    the same list — this admin route is super-admin only.)"""
+    from app.services.clinicians import active_clinicians
+    return active_clinicians(db)
 
 
 @router.patch("/{email}")
