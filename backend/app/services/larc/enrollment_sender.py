@@ -81,14 +81,12 @@ def _fallback_provider_email() -> str:
     """Used when assignment.inserting_provider_email is blank."""
     return (os.environ.get("CONSENT_LARC_PROVIDER_EMAIL")
             or os.environ.get("CONSENT_PROVIDER_EMAIL")
-            or os.environ.get("DOCUSIGN_PROVIDER_EMAIL")
             or "").strip()
 
 
 def _fallback_provider_name() -> str:
     return (os.environ.get("CONSENT_LARC_PROVIDER_NAME")
             or os.environ.get("CONSENT_PROVIDER_NAME")
-            or os.environ.get("DOCUSIGN_PROVIDER_NAME")
             or "Dr. Aryian Cooke").strip()
 
 

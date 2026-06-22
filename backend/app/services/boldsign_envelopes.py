@@ -239,14 +239,10 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
         "roleIndex": 1,
         "existingFormFields": patient_prefill,
     }]
-    # Provider / Witness sender contact is provisioned via env vars. The
-    # Cloud Run service still has the legacy DOCUSIGN_* names; preferred
-    # going forward is CONSENT_*. Read both so we don't have to coordinate
-    # a renaming.
-    provider_email = (os.environ.get("CONSENT_PROVIDER_EMAIL")
-                      or os.environ.get("DOCUSIGN_PROVIDER_EMAIL") or "").strip()
+    # Provider / Witness sender contact is provisioned via the CONSENT_*
+    # env vars on the Cloud Run service.
+    provider_email = os.environ.get("CONSENT_PROVIDER_EMAIL", "").strip()
     provider_name = (os.environ.get("CONSENT_PROVIDER_NAME")
-                      or os.environ.get("DOCUSIGN_PROVIDER_NAME")
                       or "Dr. Aryian Cooke").strip()
     if provider_email:
         roles.append({
@@ -258,10 +254,8 @@ def _build_signer_payload(s: Surgery, template: ConsentTemplate) -> list[dict]:
             "roleIndex": 2,
             "existingFormFields": provider_prefill,
         })
-    witness_email = (os.environ.get("CONSENT_WITNESS_EMAIL")
-                      or os.environ.get("DOCUSIGN_WITNESS_EMAIL") or "").strip()
+    witness_email = os.environ.get("CONSENT_WITNESS_EMAIL", "").strip()
     witness_name = (os.environ.get("CONSENT_WITNESS_NAME")
-                     or os.environ.get("DOCUSIGN_WITNESS_NAME")
                      or "Witness").strip()
     if witness_email:
         roles.append({
