@@ -376,8 +376,9 @@ def _missing_charges_weekly_emails():
             return
         from app.services.missing_charges_email import send_provider_emails
         report = send_provider_emails(db, triggered_by="system:weekly-cron")
-        log.info("Missing-charges weekly email run: %d providers, %d sent, %d skipped",
-                 len(report["providers"]), report["sent_count"], report["skipped_count"])
+        logging.getLogger(__name__).info(
+            "Missing-charges weekly email run: %d providers, %d sent, %d skipped",
+            len(report["providers"]), report["sent_count"], report["skipped_count"])
     finally:
         db.close()
 
