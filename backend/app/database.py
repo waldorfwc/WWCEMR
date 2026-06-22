@@ -36,7 +36,7 @@ def get_db():
 
 
 def init_db():
-    from app.models import patient, claim, payment, denial, appeal, audit, document, patient_directory, clinical, payment_analysis, fax_log, practice_config, user, adjustment_code_reference, import_audit, groups, checklist, recall, training, google_sync, surgery, surgery_activity, larc, larc_config, larc_payment, billing_document, missing_charge, pellet, pellet_config, recall_config, state_transition, idempotency, personal_task, code_helper, patient_portal, module_tier, bai2, bai2_exclusion, pellet_portal, pellet_payment, pellet_schedule, cron_run, surgery_type  # noqa
+    import app.models  # noqa: F401 — importing the package auto-imports every model submodule, registering all tables in Base.metadata
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
     _migrate_manuals_to_unified()
