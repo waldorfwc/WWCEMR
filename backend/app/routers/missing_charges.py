@@ -263,6 +263,30 @@ def dashboard(db: Session = Depends(get_db),
     }
 
 
+# ─── Triage recipients setting ──────────────────────────────────────
+
+class TriageRecipientsIn(BaseModel):
+    recipients: list[str] = []
+
+
+@router.get("/triage-recipients")
+def get_triage_recipients_endpoint(
+        db: Session = Depends(get_db),
+        current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.MANAGE))):
+    from app.services.missing_charges_triage import get_triage_recipients
+    return {"recipients": get_triage_recipients(db)}
+
+
+@router.put("/triage-recipients")
+def put_triage_recipients_endpoint(
+        payload: TriageRecipientsIn,
+        db: Session = Depends(get_db),
+        current_user: dict = Depends(requires_tier(Module.MISSING_CHARGES, Tier.MANAGE))):
+    from app.services.missing_charges_triage import set_triage_recipients, get_triage_recipients
+    set_triage_recipients(db, ",".join(payload.recipients))
+    return {"recipients": get_triage_recipients(db)}
+
+
 # ─── Detail / patch / notes ─────────────────────────────────────────
 
 def _load(db: Session, charge_id: str) -> MissingCharge:
