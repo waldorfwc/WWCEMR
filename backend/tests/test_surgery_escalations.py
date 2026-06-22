@@ -27,7 +27,9 @@ def _behind_hospital_surgery(db, **over):
         procedures=[{"cpt": "58571", "description": "TLH"}],
         diagnoses=[{"icd": "D25.9"}], estimated_minutes=180,
         eligible_facilities=["medstar"], selected_facility="medstar",
-        preop_date=date(2026, 6, 1), auth_status="approved",
+        # Anchored relative to today so it can't rot as the calendar advances
+        # (was hardcoded date(2026, 6, 1), which drifts further into the past).
+        preop_date=date.today() - timedelta(days=21), auth_status="approved",
         status="in_progress",
         benefits_verified_at=None,            # → benefits step is the current todo
         updated_at=datetime.utcnow() - timedelta(days=21),
