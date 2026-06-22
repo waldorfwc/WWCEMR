@@ -25,7 +25,7 @@ export default function StartLarcProcessDrawer({ onClose, onCreated }) {
   })
   const { data: clinicians } = useQuery({
     queryKey: ['clinicians'],
-    queryFn: () => api.get('/admin/users/clinicians').then(r => r.data),
+    queryFn: () => api.get('/larc/clinicians').then(r => r.data),
     staleTime: 60_000,
   })
   const { data: config } = useQuery({

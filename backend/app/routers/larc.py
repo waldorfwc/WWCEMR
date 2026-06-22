@@ -481,6 +481,17 @@ def list_device_types(db: Session = Depends(get_db),
     return [_device_type_dict(t) for t in rows]
 
 
+@router.get("/clinicians")
+def list_larc_clinicians(db: Session = Depends(get_db),
+                          current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Active clinicians (users with an NPI) for the LARC enrollment pickers —
+    the same list as Admin → Users, but reachable with LARC Work. The admin
+    route (/admin/users/clinicians) is super-admin only, which blanked the
+    'Requested By' picker in Start LARC Process for non-admin staff."""
+    from app.services.clinicians import active_clinicians
+    return active_clinicians(db)
+
+
 class DeviceTypeIn(BaseModel):
     name: str
     manufacturer: Optional[str] = None

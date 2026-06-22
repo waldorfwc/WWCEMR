@@ -625,7 +625,7 @@ function ClinicianPicker({ a, kind }) {
 
   const { data: clinicians = [] } = useQuery({
     queryKey: ['larc-clinicians'],
-    queryFn: () => api.get('/admin/users/clinicians').then(r => r.data),
+    queryFn: () => api.get('/larc/clinicians').then(r => r.data),
     staleTime: 60_000,
   })
 
