@@ -545,9 +545,17 @@ def _resolve_app(a: LarcAssignment,
 
 
 def _resolve_template_spec_for_assignment(db: Session, a: LarcAssignment):
-    """Return the _TemplateSpec for this assignment's device type, or None
-    if the device type has no configured enrollment template. (Extracted
-    from send_enrollment_envelope so the preview resolver shares it.)"""
+    """Resolve this assignment's enrollment template, end to end.
+
+    Returns a 3-tuple ``(dt, template_id, spec)`` where:
+      - ``dt`` is the LarcDeviceType (from the attached device, or looked
+        up by ``device_type_id``), or None if neither is set;
+      - ``template_id`` is ``dt.enrollment_form_template``, or None;
+      - ``spec`` is ``_TEMPLATE_SPECS.get(template_id)``, or None.
+
+    This is the single copy of the device-type → template lookup; both
+    the send path and the preview resolver consume it. Callers that need
+    actionable errors (send) layer their own raises on the None values."""
     from app.models.larc import LarcDeviceType
     dt = None
     if a.device and a.device.device_type:
@@ -557,11 +565,11 @@ def _resolve_template_spec_for_assignment(db: Session, a: LarcAssignment):
                 .filter(LarcDeviceType.id == a.device_type_id)
                 .first())
     if not dt:
-        return None
+        return None, None, None
     template_id = dt.enrollment_form_template
     if not template_id:
-        return None
-    return _TEMPLATE_SPECS.get(template_id)
+        return dt, None, None
+    return dt, template_id, _TEMPLATE_SPECS.get(template_id)
 
 
 def _fmt_date_mdY(d) -> str:
@@ -583,7 +591,7 @@ def resolve_enrollment_preview(db: Session, a: LarcAssignment) -> dict:
     app_name = a.app_name or s.get("app_name") or ""
     app_npi = a.app_npi or s.get("app_npi") or ""
 
-    spec = _resolve_template_spec_for_assignment(db, a)
+    _, _, spec = _resolve_template_spec_for_assignment(db, a)
 
     rows = [
         ("Patient Name", a.patient_name or
@@ -716,29 +724,21 @@ def send_enrollment_envelope(
             f"id={(live_existing.boldsign_envelope_id or '')[:8]}…). "
             f"Void it before sending a new one.")
 
-    # Prerequisites — resolve device_type. Pharmacy-order assignments
-    # are created with device_id=NULL (the physical device hasn't shipped
-    # yet) but device_type_id is pinned at creation so we can pick the
-    # template up front.
-    from app.models.larc import LarcDeviceType
-    dt = None
-    if assignment.device and assignment.device.device_type:
-        dt = assignment.device.device_type
-    elif assignment.device_type_id:
-        dt = (db.query(LarcDeviceType)
-                .filter(LarcDeviceType.id == assignment.device_type_id)
-                .first())
+    # Prerequisites — resolve device_type → template → spec in one lookup.
+    # Pharmacy-order assignments are created with device_id=NULL (the
+    # physical device hasn't shipped yet) but device_type_id is pinned at
+    # creation so we can pick the template up front. The shared resolver
+    # returns None for any missing layer; we raise actionable errors here.
+    dt, template_id, spec = _resolve_template_spec_for_assignment(db, assignment)
     if not dt:
         raise LarcEnrollmentError(
             "Assignment has no device_type — set device_type_id on the "
             "assignment (or attach a device) before sending."
         )
-    template_id = dt.enrollment_form_template
     if not template_id:
         raise LarcEnrollmentError(
             f"No BoldSign template ID configured for device type {dt.name!r}."
         )
-    spec = _resolve_template_spec_for_assignment(db, assignment)
     if spec is None:
         raise LarcEnrollmentError(
             f"Enrollment template {template_id} (device {dt.name!r}) has no "
