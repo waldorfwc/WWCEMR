@@ -8,6 +8,7 @@ import {
 import api, { fmt } from '../utils/api'
 import LoadingState from '../components/LoadingState'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
+import EnrollmentPreviewModal from '../components/larc/EnrollmentPreviewModal'
 
 
 const MILESTONE_ICON = {
@@ -542,6 +543,7 @@ function EnrollmentSentBody({ a }) {
   const [dispense, setDispense] = useState(false)
   const [providerContact, setProviderContact] = useState(false)
   const [error, setError] = useState(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   const send = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/send-enrollment`, {
@@ -593,11 +595,18 @@ function EnrollmentSentBody({ a }) {
                 disabled={send.isPending}>
           {send.isPending ? 'Sending…' : 'Send Enrollment via BoldSign'}
         </button>
+        <button className="btn-secondary text-[11px]"
+                onClick={() => setShowPreview(true)}>
+          Preview Form
+        </button>
       </div>
       {error && (
         <div className="text-[11px] text-danger bg-red-50 border border-red-200 rounded px-2 py-1.5">
           {error}
         </div>
+      )}
+      {showPreview && (
+        <EnrollmentPreviewModal assignmentId={a.id} onClose={() => setShowPreview(false)} />
       )}
     </div>
   )
