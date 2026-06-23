@@ -36,6 +36,28 @@ function invalidateLarcLists(qc, assignmentId) {
   qc.invalidateQueries({ queryKey: ['larc-owed'] })
 }
 
+// Map an edit-url 409 `reason` (the envelope status, or 'boldsign_rejected')
+// to a specific, actionable message instead of one catch-all line.
+function editBlockMessage(reason) {
+  switch (reason) {
+    case 'signed':
+    case 'faxed':
+    case 'fax_failed':
+      return 'This form is already signed — void and resend to make changes.'
+    case 'voided':
+      return 'This form was voided. Send a new enrollment instead.'
+    case 'declined':
+      return 'This form was declined. Send a new enrollment instead.'
+    case 'failed':
+    case 'pending':
+      return "This form isn't in an editable state yet. Try again in a moment, or resend."
+    case 'boldsign_rejected':
+      return "Couldn't open the editor — BoldSign declined the request. Try again; if it keeps happening, void and resend."
+    default:
+      return "This form can't be edited right now. Void and resend if you need to make changes."
+  }
+}
+
 
 export default function LarcAssignment() {
   const { id } = useParams()
@@ -746,7 +768,7 @@ function EnrollmentEnvelopeStatus({ a, env }) {
       window.open(r.data.url, '_blank', 'noopener')
     } catch (e) {
       if (e?.response?.status === 409) {
-        setEditErr('This form can no longer be edited because signing has progressed. Void and resend instead.')
+        setEditErr(editBlockMessage(e?.response?.data?.detail?.reason))
       } else {
         setEditErr('Could not open the editor. Try again.')
       }
