@@ -56,3 +56,19 @@ def test_reminder_sends_email_to_recipients(db, monkeypatch):
     rep = mct.send_triage_reminders(db)
     assert rep["count"] == 2 and rep["oldest_days"] >= 4
     assert calls and calls[0][0] == "a@wwc.com"
+
+
+def test_cron_entrypoint_is_idempotent_per_day(db, monkeypatch):
+    _new_row(db, "M1")
+    set_triage_recipients(db, "a@wwc.com")
+    monkeypatch.setattr(mct, "send_email", lambda *a, **k: True)
+    monkeypatch.setattr(mct, "send_slack_dm", lambda *a, **k: False)
+    import app.services.fax_poller as fp
+    monkeypatch.setattr(fp, "SessionLocal", lambda: db)   # entrypoint opens its own session
+    calls = {"n": 0}
+    real = mct.send_triage_reminders
+    monkeypatch.setattr(mct, "send_triage_reminders",
+                        lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1), real(*a, **k))[1])
+    fp._missing_charges_triage_reminder()
+    fp._missing_charges_triage_reminder()   # same day → claim_cron_run blocks the 2nd
+    assert calls["n"] == 1

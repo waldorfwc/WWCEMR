@@ -1,4 +1,5 @@
 """Poll RingCentral for outstanding fax statuses and update FaxLog rows."""
+import logging
 import os
 from datetime import datetime, timedelta
 from app.utils.dt import now_utc_naive
@@ -359,6 +360,11 @@ def start_scheduler() -> BackgroundScheduler:
     sched.add_job(_missing_charges_weekly_emails, "cron",
                   day_of_week="mon", hour=8, minute=0,
                   id="missing_charges_weekly", max_instances=1, coalesce=True)
+    # Missing-charges triage reminder — Thursday 8 AM weekly (ahead of the
+    # Monday provider email) so billers triage new rows in time.
+    sched.add_job(_missing_charges_triage_reminder, "cron",
+                  day_of_week="thu", hour=8, minute=0,
+                  id="missing_charges_triage_reminder", max_instances=1, coalesce=True)
     # Phase I — daily patient surgery reminders at 8 AM.
     sched.add_job(_reminder_job, "cron", hour=8, minute=0,
                   id="surgery_reminder_sweep", replace_existing=True,
@@ -379,6 +385,20 @@ def _missing_charges_weekly_emails():
         logging.getLogger(__name__).info(
             "Missing-charges weekly email run: %d providers, %d sent, %d skipped",
             len(report["providers"]), report["sent_count"], report["skipped_count"])
+    finally:
+        db.close()
+
+
+def _missing_charges_triage_reminder():
+    from datetime import date
+    db = SessionLocal()
+    try:
+        from app.services.cron_lock import claim_cron_run
+        if not claim_cron_run(db, "missing_charges_triage_reminder", date.today().isoformat()):
+            return
+        from app.services.missing_charges_triage import send_triage_reminders
+        report = send_triage_reminders(db, triggered_by="system:weekly-cron")
+        logging.getLogger(__name__).info("Missing-charges triage reminder: %s", report)
     finally:
         db.close()
 
