@@ -1038,7 +1038,7 @@ function VisitCard({ visit, patient, qc }) {
   )
 
   const isReopened = !!visit.reopened_at
-  const canReopen = canManage && ['inserted', 'billed'].includes(visit.status) && !isReopened
+  const canReopen = canManage && ['inserted', 'billed', 'cancelled'].includes(visit.status) && !isReopened
 
   function invalidatePellet() {
     qc.invalidateQueries({ queryKey: ['pellet-patient', patient.id] })

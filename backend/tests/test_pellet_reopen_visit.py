@@ -137,11 +137,76 @@ def test_close_reopen_inserted_returns_to_inserted(client_factory, db):
     assert r.json()["status"] == "inserted"
 
 
-def test_reopen_cancelled_now_rejected(client_factory, db):
-    p = _patient(db); v = _visit(db, p, status="cancelled")
+def test_reopen_cancelled_repulls_returned_dose(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt, qty=10)
+    v = _visit(db, p, status="cancelled")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="returned", lot_id=lot.id)
+    db.add(d); db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "wrongly cancelled"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "in_progress"
+    assert body["pre_reopen_status"] == "cancelled"
+    assert _stock(db, lot).doses_on_hand == 7   # 10 - 3 re-pulled
+    db.refresh(d); assert d.status == "pulled"
+
+
+def test_reopen_cancelled_insufficient_stock_409_atomic(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt, qty=2)
+    v = _visit(db, p, status="cancelled")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="returned", lot_id=lot.id)
+    db.add(d); db.commit(); db.refresh(d)
     client = _client(client_factory, db)
     r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "x"})
     assert r.status_code == 409
+    db.refresh(v); db.refresh(d)
+    assert v.status == "cancelled" and v.reopened_at is None
+    assert _stock(db, lot).doses_on_hand == 2
+    assert d.status == "returned"
+
+
+def test_reopen_cancelled_no_returned_doses_moves_no_stock(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt, qty=10)
+    v = _visit(db, p, status="cancelled")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="inserted", lot_id=lot.id)
+    db.add(d); db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "x"})
+    assert r.status_code == 200
+    assert _stock(db, lot).doses_on_hand == 10
+    db.refresh(d); assert d.status == "inserted"
+
+
+def test_reopen_cancelled_historical_is_stock_neutral(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt, qty=10)
+    v = _visit(db, p, status="cancelled", historical=True)
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="returned", lot_id=lot.id)
+    db.add(d); db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "x"})
+    assert r.status_code == 200
+    assert _stock(db, lot).doses_on_hand == 10
+    db.refresh(d); assert d.status == "pulled"
+
+
+def test_reopen_cancelled_then_close_returns_inserted_no_extra_stock(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt, qty=10)
+    v = _visit(db, p, status="cancelled")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="returned", lot_id=lot.id)
+    db.add(d); db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "x"})
+    assert _stock(db, lot).doses_on_hand == 7
+    r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
+    assert r.json()["status"] == "inserted"
+    assert _stock(db, lot).doses_on_hand == 7
+    db.refresh(d); assert d.status == "inserted"
 
 
 def _work_user(db):
