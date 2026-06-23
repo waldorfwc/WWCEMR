@@ -122,6 +122,22 @@ def _safe_redirect(url: Optional[str]) -> Optional[str]:
     return None
 
 
+def download_envelope_pdf(env: LarcEnrollmentEnvelope) -> tuple[bytes, str]:
+    """Fetch the current PDF for an envelope from BoldSign (works at any
+    status). Returns (pdf_bytes, filename). Raises LarcEnrollmentError on
+    failure."""
+    if not _is_configured():
+        raise LarcEnrollmentError("BoldSign API key not configured")
+    with _http() as c:
+        r = c.get("/v1/document/download",
+                  params={"documentId": env.boldsign_envelope_id})
+    if r.status_code >= 300:
+        raise LarcEnrollmentError(
+            f"BoldSign download {r.status_code}: {r.text[:200]}")
+    short = (env.boldsign_envelope_id or "doc")[:8]
+    return r.content, f"enrollment-{short}.pdf"
+
+
 def create_embedded_edit_url(env: LarcEnrollmentEnvelope, *,
                              redirect_url: Optional[str] = None) -> str:
     """Get a BoldSign embedded edit URL for an existing/sent document.

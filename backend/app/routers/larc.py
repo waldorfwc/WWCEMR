@@ -2094,6 +2094,26 @@ def enrollment_edit_url(envelope_id: str,
     return {"url": url}
 
 
+@router.get("/envelopes/{envelope_id}/document")
+def enrollment_document(envelope_id: str,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Stream the enrollment envelope's current PDF inline for viewing."""
+    env = (db.query(LarcEnrollmentEnvelope)
+             .filter(LarcEnrollmentEnvelope.id == envelope_id).first())
+    if env is None:
+        raise HTTPException(status_code=404, detail="envelope not found")
+    from app.services.larc.enrollment_sender import (
+        download_envelope_pdf, LarcEnrollmentError,
+    )
+    try:
+        pdf, filename = download_envelope_pdf(env)
+    except LarcEnrollmentError:
+        raise HTTPException(status_code=502, detail="document_unavailable")
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{filename}"'})
+
+
 _INSURANCE_CARD_ALLOWED_MIME = {
     "image/jpeg", "image/jpg", "image/png", "image/webp",
     "image/heic", "image/heif", "application/pdf",

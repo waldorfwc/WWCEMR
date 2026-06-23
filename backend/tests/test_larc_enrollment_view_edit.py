@@ -132,3 +132,31 @@ def test_edit_url_409_when_boldsign_rejects(client_factory, db, monkeypatch):
         r = client.get(f"/api/larc/envelopes/{env.id}/edit-url")
     assert r.status_code == 409
     assert r.json()["detail"]["reason"] == "boldsign_rejected"
+
+
+def test_document_endpoint_streams_pdf(client_factory, db, monkeypatch):
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+    u = _work_user(db); a = _pharmacy_assignment(db); env = _envelope(db, a, status="signed")
+    resp = MagicMock(status_code=200, content=b"%PDF-1.7 fake")
+    fake = MagicMock()
+    fake.__enter__.return_value.get.return_value = resp
+    client = client_factory(user=u)
+    with patch("app.services.larc.enrollment_sender._http", return_value=fake), \
+         patch("app.services.larc.enrollment_sender._is_configured", return_value=True):
+        r = client.get(f"/api/larc/envelopes/{env.id}/document")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content == b"%PDF-1.7 fake"
+
+
+def test_document_endpoint_502_on_boldsign_error(client_factory, db, monkeypatch):
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+    u = _work_user(db); a = _pharmacy_assignment(db); env = _envelope(db, a, status="sent")
+    resp = MagicMock(status_code=422, text="not ready")
+    fake = MagicMock()
+    fake.__enter__.return_value.get.return_value = resp
+    client = client_factory(user=u)
+    with patch("app.services.larc.enrollment_sender._http", return_value=fake), \
+         patch("app.services.larc.enrollment_sender._is_configured", return_value=True):
+        r = client.get(f"/api/larc/envelopes/{env.id}/document")
+    assert r.status_code == 502
