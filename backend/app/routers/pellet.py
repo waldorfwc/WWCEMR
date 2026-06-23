@@ -3606,6 +3606,10 @@ def _visit_missing_lot(v) -> bool:
     return any(d.lot_id is None for d in doses)
 
 
+def _patient_has_missing_lot(p) -> bool:
+    return any(_visit_missing_lot(v) for v in (p.visits or []))
+
+
 def _visit_dict(v: PelletVisit, include_milestones: bool = True,
                   include_doses: bool = True) -> dict:
     out = {
@@ -3726,7 +3730,8 @@ def create_patient(payload: PatientIn,
 
 
 PATIENT_VIEWS = ["roster", "last_visits", "upcoming", "recall_due",
-                 "needs_mammo", "needs_dosing", "ready", "paid", "unpaid"]
+                 "needs_mammo", "needs_dosing", "ready", "paid", "unpaid",
+                 "missing_lot"]
 
 
 @router.get("/patient-view-counts")
@@ -3768,6 +3773,8 @@ def patient_view_counts(
         if (x["active_visit_id"]
             and x["active_visit_payment_status"] in ("not_sent", "sent")):
             out["unpaid"] += 1
+        if _patient_has_missing_lot(p):
+            out["missing_lot"] += 1
     return out
 
 
@@ -3885,6 +3892,10 @@ def list_patients(
         decorated = [(p, x) for (p, x) in decorated
                       if x["active_visit_id"]
                          and x["active_visit_payment_status"] in ("not_sent", "sent")]
+        decorated.sort(key=lambda t: t[0].patient_name)
+
+    elif view == "missing_lot":
+        decorated = [(p, x) for (p, x) in decorated if _patient_has_missing_lot(p)]
         decorated.sort(key=lambda t: t[0].patient_name)
 
     else:  # roster

@@ -371,3 +371,23 @@ def test_dose_correction_historical_no_stock_audit_events(client_factory, db):
                     .count())
     assert ret_count == 0, "historical correction must not emit stock return event"
     assert pull_count == 0, "historical correction must not emit stock pull event"
+
+
+def test_missing_lot_count_and_view(client_factory, db):
+    p1 = _patient(db)
+    _visit(db, p1, status="inserted")  # zero doses → missing
+    p2 = PelletPatient(patient_name="Ok, Pat", chart_number="222",
+                       patient_dob=date(1980, 1, 1))
+    db.add(p2); db.commit(); db.refresh(p2)
+    dt = _dose_type(db); lot = _lot(db, dt)
+    v2 = _visit(db, p2, status="inserted")
+    db.add(PelletVisitDose(visit_id=v2.id, dose_type_id=dt.id, quantity=1,
+                           position=1, status="inserted", lot_id=lot.id))
+    db.commit()
+    client = _client(client_factory, db)
+    counts = client.get("/api/pellets/patient-view-counts").json()
+    assert counts["missing_lot"] == 1
+    lst = client.get("/api/pellets/patients?view=missing_lot").json()
+    rows = lst if isinstance(lst, list) else lst.get("patients", lst.get("items", []))
+    names = [row["patient_name"] for row in rows]
+    assert "Tober, Catrina" in names and "Ok, Pat" not in names
