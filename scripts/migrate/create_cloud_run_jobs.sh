@@ -25,9 +25,11 @@ TZ="America/New_York"
 
 # Build the secrets flag dynamically — mirrors what backend has, minus the
 # consent-* sender secrets which only the backend SERVICE needs (no job runs
-# the consent/enrollment code that reads them).
+# the consent/enrollment code that reads them), and minus the stripe-* secrets
+# which only the backend SERVICE (Stripe webhook) reads — the worker SA isn't
+# granted accessor on them, so mounting them would fail job deploys.
 SECRETS_FLAG=$(gcloud secrets list --project="$PROJECT" --format="value(name)" \
-  | grep -v -E "^(cloudsql-postgres-root-password|database-url|consent-provider-email|consent-provider-name|consent-witness-email|consent-witness-name)$" \
+  | grep -v -E "^(cloudsql-postgres-root-password|database-url|consent-provider-email|consent-provider-name|consent-witness-email|consent-witness-name|stripe-secret-key|stripe-webhook-secret)$" \
   | awk '{env=toupper($1); gsub("-","_",env); printf "%s=%s:latest,",env,$1}' \
   | sed 's/,$//')
 ALL_SECRETS="DATABASE_URL=database-url:latest,${SECRETS_FLAG}"
