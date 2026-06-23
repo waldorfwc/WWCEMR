@@ -5899,7 +5899,7 @@ def _load_visit(db: Session, visit_id: str) -> PelletVisit:
     return v
 
 
-_REOPENABLE_STATUSES = {"inserted", "billed"}
+_REOPENABLE_STATUSES = {"inserted", "billed", "cancelled"}
 
 
 class ReopenIn(BaseModel):
@@ -5922,6 +5922,35 @@ def reopen_visit(visit_id: str, payload: ReopenIn,
     if not reason:
         raise HTTPException(status_code=422, detail="reason is required")
     by = current_user.get("email") or "system"
+    # Un-cancel: reopening a cancelled visit reverses what cancel did to stock.
+    # cancel_visit credited stock back only for the doses it set to "returned";
+    # re-pull exactly those (restoring them to "pulled") so the visit becomes a
+    # normal reopened visit with no "returned" doses left. Atomic: a shortfall
+    # 409s and the whole re-pull is rolled back — never a partial un-cancel.
+    if v.status == "cancelled":
+        returned_doses = [d for d in (v.doses or []) if d.status == "returned"]
+        location = (_require_visit_location(v)
+                    if (returned_doses and not v.is_historical) else v.location)
+        try:
+            for d in returned_doses:
+                if (not v.is_historical) and d.lot_id:
+                    stock = _get_or_create_stock(db, d.lot_id, location)
+                    _adjust_stock(db, stock, -(d.quantity))
+                    _audit(db, actor=by, action="visit_uncancel_repull",
+                           lot_id=d.lot_id, location=location,
+                           delta_doses=-(d.quantity),
+                           summary=(f"Re-pulled {d.quantity} "
+                                    f"{d.dose_type.label if d.dose_type else ''} "
+                                    f"from stock (visit un-cancelled)"),
+                           detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
+                d.status = "pulled"
+                d.pulled_at = now_utc_naive()
+                d.pulled_by = by
+                d.resolved_at = None
+                d.resolved_by = None
+        except HTTPException:
+            db.rollback()
+            raise
     v.pre_reopen_status = v.status
     v.reopened_at = now_utc_naive()
     v.reopened_by = by
