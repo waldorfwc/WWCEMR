@@ -1009,6 +1009,33 @@ This moves the row to *Billed* and clears it from the open list.
 > Billed rows can be **Reopened** from the detail drawer if a claim # was
 > entered in error.
 """),
+
+    ("triage-reminders", "Triage Reminders", 30, """\
+New rows sit in **New** until someone triages them. To make sure they don't
+pile up unnoticed, the system sends a **weekly triage reminder**.
+
+**When it runs:** every **Thursday at 8:00 AM**, but only if there are
+untriaged **New** rows. If the queue is clear, no reminder goes out — you'll
+never get an empty nudge.
+
+**Where it goes:** each configured recipient gets both an **email and a Slack
+DM** with the current untriaged count and a link straight to the New-filtered
+list, ready to work.
+
+**The "Triage Now" banner:** whenever any rows are in **New**, a banner appears
+at the top of the Missing Charges dashboard. Click **Triage Now** to jump
+straight to the untriaged rows.
+
+**Setting recipients** *(managers only)*:
+1. Open the **Triage Reminder Recipients** card on the dashboard.
+2. Add the email of each person who should receive the weekly nudge, then save.
+3. With no recipients set, the weekly job still runs but sends nothing — set at
+   least one person to turn reminders on.
+
+> This is separate from the Monday **provider** emails. The triage reminder is
+> an internal nudge to your billers about un-triaged rows; the provider email
+> asks providers to confirm rows you've already marked *Needs to be billed*.
+"""),
 ]
 
 INSURANCE_DOCS_MANUAL_SECTIONS = [
