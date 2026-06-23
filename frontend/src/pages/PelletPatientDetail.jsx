@@ -1024,6 +1024,9 @@ function VisitCard({ visit, patient, qc }) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [cancelOpen, setCancelOpen]         = useState(false)
 
+  const { tier } = useCurrentUser()
+  const canManage = tier(MODULE.PELLETS, TIER.MANAGE)
+
   const doses = visit.doses || []
   const hasPlanned = doses.some(d => d.status === 'planned')
   const hasPulled = doses.some(d => ['pulled', 'added'].includes(d.status))
@@ -1034,13 +1037,47 @@ function VisitCard({ visit, patient, qc }) {
     (visit.milestones || []).map(m => [m.kind, m])
   )
 
+  const isReopened = !!visit.reopened_at
+  const canReopen = canManage && ['inserted', 'billed'].includes(visit.status) && !isReopened
+
+  function invalidatePellet() {
+    qc.invalidateQueries({ queryKey: ['pellet-patient', patient.id] })
+    qc.invalidateQueries({ queryKey: ['pellet-patient-counts'] })
+  }
+
+  const reopen = useMutation({
+    mutationFn: (reason) =>
+      api.post(`/pellets/visits/${visit.id}/reopen`, { reason }).then(r => r.data),
+    onSuccess: invalidatePellet,
+    onError: (e) => alert(e?.response?.data?.detail || 'Reopen failed'),
+  })
+
+  const closeReopen = useMutation({
+    mutationFn: () =>
+      api.post(`/pellets/visits/${visit.id}/close-reopen`).then(r => r.data),
+    onSuccess: invalidatePellet,
+    onError: (e) => alert(e?.response?.data?.detail || 'Could not close editing'),
+  })
+
+  function handleReopen() {
+    const reason = window.prompt('Reason for reopening?')
+    if (reason && reason.trim()) {
+      reopen.mutate(reason.trim())
+    }
+  }
+
   return (
     <div className="card mb-3">
       <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-1">
+          <h2 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
             <Pill size={14} className="text-plum-700"/>
             Active visit · {visit.visit_kind}
+            {visit.missing_lot && (
+              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">
+                Missing Lot
+              </span>
+            )}
           </h2>
           <div className="text-[12px] text-gray-500">
             Status: <strong>{visit.status.replace(/_/g, ' ')}</strong>
@@ -1050,6 +1087,15 @@ function VisitCard({ visit, patient, qc }) {
           </div>
         </div>
         <div className="flex items-center gap-1.5">
+          {canReopen && (
+            <button
+              className="text-[11px] flex items-center gap-1 py-1 px-2 rounded border border-amber-300 bg-white hover:bg-amber-50 text-amber-700"
+              onClick={handleReopen}
+              disabled={reopen.isPending}
+              title="Reopen this visit to correct dose lots or quantities">
+              <Edit3 size={11}/> Reopen Visit
+            </button>
+          )}
           <button className="btn-secondary text-[11px] flex items-center gap-1 py-1 px-2"
                   onClick={() => setRescheduleOpen(true)}
                   title="Reschedule this visit">
@@ -1063,8 +1109,28 @@ function VisitCard({ visit, patient, qc }) {
         </div>
       </div>
 
+      {/* Reopened banner */}
+      {isReopened && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded border border-amber-300 bg-amber-50 px-3 py-2">
+          <div className="text-[12px] text-amber-900">
+            <strong>Reopened</strong>
+            {visit.reopened_by && <> by {visit.reopened_by.split('@')[0]}</>}
+            {visit.reopened_reason && <> — {visit.reopened_reason}</>}
+            . Editing enabled.
+          </div>
+          <button
+            className="text-[11px] flex items-center gap-1 py-1 px-2 rounded border border-amber-400 bg-white hover:bg-amber-100 text-amber-800 shrink-0"
+            onClick={() => closeReopen.mutate()}
+            disabled={closeReopen.isPending}>
+            {closeReopen.isPending ? 'Closing…' : 'Done Editing'}
+          </button>
+        </div>
+      )}
+
       {/* Dose card — visible block */}
       <DoseCardBlock visit={visit}
+                       isReopened={isReopened}
+                       qc={qc}
                        onFillBag={() => setBagOpen(true)}
                        onAddMid={() => setAddMidOpen(true)}
                        onDispose={(d) => setDisposeDose(d)} />
@@ -1365,7 +1431,7 @@ const DOSE_STATUS_TONES = {
 }
 
 
-function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
+function DoseCardBlock({ visit, isReopened, qc, onFillBag, onAddMid, onDispose }) {
   const doses = visit.doses || []
   const planned = doses.filter(d => d.status === 'planned')
   const hasProposed = doses.some(d => ['planned', 'pulled'].includes(d.status))
@@ -1373,6 +1439,7 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
                        doses.some(d => ['pulled', 'added'].includes(d.status))
   const [swapDose, setSwapDose] = useState(null)
   const [correctDose, setCorrectDose] = useState(null)   // retroactive identify-lot
+  const [reopenCorrectDose, setReopenCorrectDose] = useState(null)  // reopen-mode dose correction
   const [editProposedOpen, setEditProposedOpen] = useState(false)
   const { tier } = useCurrentUser()
   const canCorrectLot = tier(MODULE.PELLETS, TIER.MANAGE)
@@ -1442,10 +1509,17 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
                       <Replace size={11}/>
                     </button>
                   )}
-                  {!isSwappable && canCorrectLot && (
+                  {!isSwappable && canCorrectLot && !isReopened && (
                     <button className="text-amber-700 hover:bg-amber-50 p-0.5 rounded"
                             title="Correct lot retroactively (manager only) — for fixing a lot that wasn't captured at pre-bag time"
                             onClick={() => setCorrectDose(d)}>
+                      <Edit3 size={11}/>
+                    </button>
+                  )}
+                  {isReopened && !isSwappable && (
+                    <button className="text-amber-700 hover:bg-amber-50 p-0.5 rounded"
+                            title="Correct lot and quantity (visit is reopened)"
+                            onClick={() => setReopenCorrectDose(d)}>
                       <Edit3 size={11}/>
                     </button>
                   )}
@@ -1475,6 +1549,14 @@ function DoseCardBlock({ visit, onFillBag, onAddMid, onDispose }) {
           visit={visit}
           dose={correctDose}
           onClose={() => setCorrectDose(null)}
+        />
+      )}
+      {reopenCorrectDose && (
+        <ReopenDoseCorrectDrawer
+          visit={visit}
+          dose={reopenCorrectDose}
+          qc={qc}
+          onClose={() => setReopenCorrectDose(null)}
         />
       )}
       {editProposedOpen && (
@@ -1858,6 +1940,124 @@ function CorrectLotDrawer({ visit, dose, onClose }) {
               {error}
             </div>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ── Reopen-mode dose correction (lot + quantity) ──────────────────
+
+function ReopenDoseCorrectDrawer({ visit, dose, qc, onClose }) {
+  // Lets a manager correct lot and/or quantity on a dose while the visit
+  // is in the reopened state. Calls PATCH /pellets/visits/{vid}/doses/{did}.
+  const [lotId, setLotId] = useState(dose.lot_id || '')
+  const [quantity, setQuantity] = useState(dose.quantity)
+  const [error, setError] = useState(null)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['reopen-lot-options', dose.dose_type_id, visit.location],
+    queryFn: () => api.get('/pellets/lots', {
+      params: { dose_type_id: dose.dose_type_id, location: visit.location },
+    }).then(r => r.data),
+  })
+
+  const lots = data?.lots || []
+
+  const correctDose = useMutation({
+    mutationFn: ({ lot_id, quantity: qty }) =>
+      api.patch(`/pellets/visits/${visit.id}/doses/${dose.id}`,
+                { lot_id: lot_id || null, quantity: Number(qty) }).then(r => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['pellet-patient', visit.patient_id] })
+      qc.invalidateQueries({ queryKey: ['pellet-patient-counts'] })
+      onClose()
+    },
+    onError: (e) => {
+      const d = e?.response?.data?.detail
+      setError(typeof d === 'string' ? d : (e?.message || 'Could not update dose'))
+    },
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/30" />
+      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+           onClick={e => e.stopPropagation()}>
+        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-[15px] font-semibold text-gray-900">
+              Correct Dose · {dose.dose_label}
+            </h2>
+            <div className="text-[11px] text-amber-700 uppercase tracking-wide">
+              Reopen mode — manager only
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <div className="text-[12px] bg-amber-50 border border-amber-200 rounded p-2 text-amber-900">
+            This visit is <strong>reopened</strong>. Change the lot and/or quantity
+            to reconcile inventory — stock is rebalanced automatically.
+          </div>
+
+          <div>
+            <label className="block text-[11px] uppercase text-gray-500 mb-1">Quantity</label>
+            <input
+              type="number" min="1"
+              className="input text-sm w-full font-mono"
+              value={quantity}
+              onChange={e => setQuantity(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-[11px] uppercase text-gray-500 mb-1">Lot</label>
+            {isLoading ? (
+              <div className="text-[12px] text-gray-500 italic">Loading lots…</div>
+            ) : lots.length === 0 ? (
+              <div className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                No lots of {dose.dose_label} found for {visit.location}.
+              </div>
+            ) : (
+              <select
+                className="input text-sm w-full"
+                value={lotId}
+                onChange={e => setLotId(e.target.value)}>
+                <option value="">— no lot / keep current —</option>
+                {lots.map(l => {
+                  const stockHere = l.balances?.[visit.location] || 0
+                  const isCurrent = String(l.id) === String(dose.lot_id)
+                  return (
+                    <option key={l.id} value={l.id}>
+                      {isCurrent ? '★ ' : ''}lot {l.qualgen_lot_number}
+                      {l.expiration_date ? ` · exp ${fmt.date(l.expiration_date)}` : ''}
+                      {' · '}{stockHere} on hand{isCurrent ? ' (current)' : ''}
+                    </option>
+                  )
+                })}
+              </select>
+            )}
+          </div>
+
+          {error && (
+            <div className="text-[12px] text-red-700 bg-red-50 border border-red-200 rounded p-2">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button onClick={onClose} className="btn-secondary text-sm">Cancel</button>
+            <button
+              onClick={() => correctDose.mutate({ lot_id: lotId, quantity })}
+              disabled={correctDose.isPending || !quantity || Number(quantity) < 1}
+              className="btn-primary text-sm flex items-center gap-1">
+              <Save size={12}/>{correctDose.isPending ? 'Saving…' : 'Save Correction'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

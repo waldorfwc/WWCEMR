@@ -585,6 +585,11 @@ def _apply_lightweight_migrations():
         # 36-char assignment id doesn't fit chart_number's String(20)).
         ("patient_emails", "larc_assignment_id", "CHAR(36)"),
         ("patient_sms", "larc_assignment_id", "CHAR(36)"),
+        # Pellet visit reopen tracking
+        ("pellet_visits", "reopened_at",       "DATETIME"),
+        ("pellet_visits", "reopened_by",       "VARCHAR(120)"),
+        ("pellet_visits", "reopened_reason",   "TEXT"),
+        ("pellet_visits", "pre_reopen_status", "VARCHAR(20)"),
     ]
     insp = inspect(engine)
     existing_tables = set(insp.get_table_names())

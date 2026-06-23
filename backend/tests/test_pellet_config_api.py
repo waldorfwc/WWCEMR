@@ -70,3 +70,27 @@ def test_stale_visit_days_override_changes_sweep(client, db):
 
     res2 = sweep_stale_visits(db)
     assert res2["visits_cancelled"] == 0
+
+
+def test_stale_sweep_skips_reopened_visit(client, db):
+    """A reopened visit is transiently in_progress while a manager corrects it.
+    Even when it's stale and has a planned dose, the nightly sweep must NOT
+    auto-cancel it out from under the correction."""
+    from app.utils.dt import now_utc_naive
+
+    dt = PelletDoseType(hormone="estradiol", dose_mg=12.5, label="Estradiol 12.5mg")
+    db.add(dt); db.flush()
+    p = PelletPatient(patient_name="Test Reopened", chart_number="REOPEN-1")
+    db.add(p); db.flush()
+    v = PelletVisit(patient_id=p.id, status="in_progress",
+                    scheduled_date=date.today() - timedelta(days=8),
+                    reopened_at=now_utc_naive(), reopened_by="mgr@x.com",
+                    reopened_reason="fix lot", pre_reopen_status="billed")
+    db.add(v); db.flush()
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, status="planned", quantity=1)
+    db.add(d); db.commit()
+    vid = v.id
+
+    res = sweep_stale_visits(db)
+    assert res["visits_cancelled"] == 0
+    assert db.query(PelletVisit).get(vid).status == "in_progress"
