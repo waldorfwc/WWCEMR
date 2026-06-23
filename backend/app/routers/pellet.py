@@ -4982,6 +4982,10 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
         new_dt_id = payload.dose_type_id or str(d.dose_type_id)
         location = v.location
 
+        # Capture before overwriting so audit events reference the original values.
+        old_lot_id = str(d.lot_id) if d.lot_id else None
+        old_quantity = d.quantity
+
         if not v.is_historical:
             if new_lot_id and not location:
                 raise HTTPException(
@@ -4991,20 +4995,34 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
             if d.lot_id and location:
                 old_stock = _get_or_create_stock(db, d.lot_id, location)
                 _adjust_stock(db, old_stock, d.quantity)
+                _audit(db, actor=by, action="dose_correction_return",
+                       lot_id=old_lot_id, location=location,
+                       delta_doses=old_quantity,
+                       summary=(f"Dose correction: returned {old_quantity} dose(s) "
+                                f"to lot {old_lot_id}"),
+                       detail={"visit_id": str(v.id), "dose_id": str(d.id)})
             # Pull from the new lot (validates availability; 409 if insufficient)
             if new_lot_id:
                 lot, stock = _specific_lot_with_stock(
                     db, new_lot_id, new_dt_id, new_qty, location)
                 _adjust_stock(db, stock, -(new_qty))
+                _audit(db, actor=by, action="dose_correction_pull",
+                       lot_id=new_lot_id, location=location,
+                       delta_doses=-(new_qty),
+                       summary=(f"Dose correction: pulled {new_qty} dose(s) "
+                                f"from lot {new_lot_id}"),
+                       detail={"visit_id": str(v.id), "dose_id": str(d.id)})
 
         d.lot_id = new_lot_id
         d.quantity = new_qty
         d.dose_type_id = new_dt_id
         d.resolved_at = d.resolved_at or now_utc_naive()
         d.resolved_by = by
+        # Summary event (human-readable; always emitted regardless of stock movement)
         _audit(db, actor=by, action="dose_corrected", lot_id=new_lot_id, location=location,
                summary="Corrected dose on reopened visit",
                detail={"visit_id": str(v.id), "dose_id": str(d.id),
+                       "old_lot_id": old_lot_id, "old_qty": old_quantity,
                        "new_lot_id": new_lot_id, "new_qty": new_qty})
         db.commit(); db.refresh(v)
         return _visit_dict(v)

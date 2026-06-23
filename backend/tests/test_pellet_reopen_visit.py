@@ -2,7 +2,7 @@ from datetime import date
 from app.models.user import User
 from app.models.pellet import (
     PelletPatient, PelletVisit, PelletVisitDose, PelletDoseType,
-    PelletLot, PelletStock,
+    PelletLot, PelletStock, PelletAuditEvent,
 )
 from app.routers.pellet import _visit_missing_lot
 
@@ -212,3 +212,162 @@ def test_correct_dose_requires_reopened(client_factory, db):
     r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
                      json={"lot_id": str(lot.id)})
     assert r.status_code == 409
+
+
+# ── Part B: legacy (non-reopened) lot-swap path regression tests ──────────
+# Note: using the existing superadmin _mgr user for all three tests.
+# The endpoint requires Tier.WORK; super_admin satisfies that. The point
+# of these tests is to pin the planned/pulled restriction, the confirmed-
+# dose 409, and the mandatory lot_id 422 so they can't silently regress.
+
+def test_legacy_swap_lot_on_pulled_dose_reconciles_stock(client_factory, db):
+    """WORK user can swap lot on a pulled dose of a non-reopened in_progress
+    visit; stock on both lots reconciles and response has the narrow dose dict."""
+    p = _patient(db); dt = _dose_type(db)
+    lot_a = _lot(db, dt, qty=5, number="LA-1")
+    lot_b = _lot(db, dt, qty=5, number="LB-1")
+    v = _visit(db, p, status="in_progress")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=2,
+                        position=1, status="pulled", lot_id=lot_a.id)
+    db.add(d)
+    # Simulate that 2 were already pulled from lot_a → it has 3 remaining.
+    _stock(db, lot_a).doses_on_hand = 3
+    db.commit(); db.refresh(d)
+
+    client = _client(client_factory, db)
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot_b.id)})
+    assert r.status_code == 200
+    body = r.json()
+    assert "dose_id" in body
+    assert "lot_id" in body
+    assert "qualgen_lot_number" in body
+    # old lot returned → back to 5; new lot pulled → 3 remaining
+    db.expire_all()
+    assert _stock(db, lot_a).doses_on_hand == 5
+    assert _stock(db, lot_b).doses_on_hand == 3
+
+
+def test_legacy_swap_lot_on_planned_dose_reconciles_stock(client_factory, db):
+    """WORK user can also swap lot on a *planned* dose of a non-reopened visit."""
+    p = _patient(db); dt = _dose_type(db)
+    lot_a = _lot(db, dt, qty=10, number="LP-A")
+    lot_b = _lot(db, dt, qty=8, number="LP-B")
+    v = _visit(db, p, status="in_progress")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="planned", lot_id=lot_a.id)
+    db.add(d)
+    _stock(db, lot_a).doses_on_hand = 7
+    db.commit(); db.refresh(d)
+
+    client = _client(client_factory, db)
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot_b.id)})
+    assert r.status_code == 200
+    db.expire_all()
+    assert _stock(db, lot_a).doses_on_hand == 10
+    assert _stock(db, lot_b).doses_on_hand == 5
+
+
+def test_legacy_swap_lot_confirmed_dose_returns_409(client_factory, db):
+    """Legacy path returns 409 when the dose status is confirmed (inserted)."""
+    p = _patient(db); dt = _dose_type(db)
+    lot_a = _lot(db, dt, qty=5, number="LC-A")
+    lot_b = _lot(db, dt, qty=5, number="LC-B")
+    v = _visit(db, p, status="in_progress")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=1,
+                        position=1, status="inserted", lot_id=lot_a.id)
+    db.add(d); db.commit(); db.refresh(d)
+
+    client = _client(client_factory, db)
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot_b.id)})
+    assert r.status_code == 409
+
+
+def test_legacy_swap_lot_omitting_lot_id_returns_422(client_factory, db):
+    """Legacy path returns 422 when lot_id is omitted (mandatory on that path)."""
+    p = _patient(db); dt = _dose_type(db)
+    lot_a = _lot(db, dt, qty=5, number="LM-A")
+    v = _visit(db, p, status="in_progress")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=1,
+                        position=1, status="pulled", lot_id=lot_a.id)
+    db.add(d); db.commit(); db.refresh(d)
+
+    client = _client(client_factory, db)
+    # Send empty body — lot_id is not provided
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}", json={})
+    assert r.status_code == 422
+
+
+# ── Part C: assert per-lot delta audit events on the reopened correction path ─
+
+def test_dose_correction_swap_emits_per_lot_audit_events(client_factory, db):
+    """After a non-historical A→B dose correction on a reopened visit,
+    two PelletAuditEvent rows must exist:
+      - action="dose_correction_return"  with delta_doses=+old_qty  on old lot
+      - action="dose_correction_pull"   with delta_doses=-new_qty  on new lot
+    """
+    p = _patient(db); dt = _dose_type(db)
+    lot_a = _lot(db, dt, qty=5, number="AUD-A")
+    lot_b = _lot(db, dt, qty=5, number="AUD-B")
+    v = _visit(db, p, status="inserted")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=2,
+                        position=1, status="inserted", lot_id=lot_a.id)
+    db.add(d)
+    _stock(db, lot_a).doses_on_hand = 3
+    db.commit(); db.refresh(d)
+
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "audit-test"})
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot_b.id)})
+    assert r.status_code == 200
+
+    # Query audit events for these two new actions
+    db.expire_all()
+    ret_event = (db.query(PelletAuditEvent)
+                   .filter(PelletAuditEvent.action == "dose_correction_return")
+                   .first())
+    pull_event = (db.query(PelletAuditEvent)
+                    .filter(PelletAuditEvent.action == "dose_correction_pull")
+                    .first())
+
+    assert ret_event is not None, "missing dose_correction_return audit event"
+    assert pull_event is not None, "missing dose_correction_pull audit event"
+
+    # Return event: +old_qty on old lot
+    assert str(ret_event.lot_id) == str(lot_a.id)
+    assert ret_event.delta_doses == 2      # old quantity returned
+
+    # Pull event: -new_qty on new lot
+    assert str(pull_event.lot_id) == str(lot_b.id)
+    assert pull_event.delta_doses == -2    # new quantity pulled
+
+
+def test_dose_correction_historical_no_stock_audit_events(client_factory, db):
+    """Historical visit correction emits dose_corrected but NOT
+    dose_correction_return or dose_correction_pull (nothing moved)."""
+    p = _patient(db); dt = _dose_type(db)
+    lot_a = _lot(db, dt, qty=5, number="HIST-A")
+    lot_b = _lot(db, dt, qty=5, number="HIST-B")
+    v = _visit(db, p, status="inserted", historical=True)
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=2,
+                        position=1, status="inserted", lot_id=lot_a.id)
+    db.add(d); db.commit(); db.refresh(d)
+
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "hist-test"})
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot_b.id)})
+    assert r.status_code == 200
+
+    db.expire_all()
+    ret_count = (db.query(PelletAuditEvent)
+                   .filter(PelletAuditEvent.action == "dose_correction_return")
+                   .count())
+    pull_count = (db.query(PelletAuditEvent)
+                    .filter(PelletAuditEvent.action == "dose_correction_pull")
+                    .count())
+    assert ret_count == 0, "historical correction must not emit stock return event"
+    assert pull_count == 0, "historical correction must not emit stock pull event"
