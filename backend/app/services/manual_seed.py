@@ -472,8 +472,8 @@ Disposal writes a row to the audit log and decrements stock immediately.
 """),
 
     ("reopen-correct-visit", "Reopening & Correcting a Past Visit", 65, """\
-A completed visit (inserted or billed) can be reopened by a manager to fix
-mistakes such as a missing or wrong lot number.
+A completed visit (inserted or billed) — or a cancelled one — can be reopened
+by a manager to fix mistakes such as a missing or wrong lot number.
 
 **Reopen:** On the visit, click **Reopen Visit** and enter a reason. The visit
 moves to an editable state (a banner shows who reopened it and why).
@@ -484,7 +484,10 @@ swap) — so fixing a missing lot also corrects your on-hand counts. Historical
 (pre-system) visits are recorded only; they never move stock.
 
 **Close:** Click **Done Editing**. The visit returns to its prior status — a
-billed visit stays billed; an inserted visit stays inserted.
+billed visit stays billed; an inserted visit stays inserted. Reopening a
+cancelled visit un-cancels it — the pellets it returned to stock are pulled back
+out, and it completes as inserted when you close. If there isn't enough on hand
+to pull them back, the reopen is blocked until you receive stock.
 
 **Finding visits to fix:** the **Missing Lot** tab on the pellet dashboard lists
 visits that were inserted or billed without a lot recorded.
