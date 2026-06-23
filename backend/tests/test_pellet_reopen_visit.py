@@ -76,3 +76,73 @@ def test_missing_lot_false_for_historical(db):
 def test_missing_lot_false_for_non_completed(db):
     p = _patient(db); v = _visit(db, p, status="in_progress")
     assert _visit_missing_lot(v) is False
+
+
+def _client(client_factory, db):
+    return client_factory(user=_mgr(db))
+
+
+def test_reopen_inserted_visit_flips_to_in_progress(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="inserted")
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "missing lot"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "in_progress"
+    assert body["pre_reopen_status"] == "inserted"
+    assert body["reopened_by"] and body["reopened_reason"] == "missing lot"
+
+
+def test_reopen_rejects_non_completed(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="in_progress")
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "x"})
+    assert r.status_code == 409
+
+
+def test_reopen_requires_reason(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="inserted")
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "  "})
+    assert r.status_code == 422
+
+
+def test_reopen_twice_409(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="inserted")
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "a"})
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "b"})
+    assert r.status_code == 409
+
+
+def test_close_reopen_billed_returns_to_billed(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="billed")
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "fix"})
+    r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
+    assert r.status_code == 200
+    assert r.json()["status"] == "billed"
+    assert r.json()["reopened_at"] is None
+
+
+def test_close_reopen_inserted_returns_to_inserted(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="inserted")
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "fix"})
+    r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
+    assert r.json()["status"] == "inserted"
+
+
+def test_close_reopen_from_cancelled_goes_inserted(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="cancelled")
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "un-cancel"})
+    r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
+    assert r.json()["status"] == "inserted"
+
+
+def test_close_reopen_not_reopened_409(client_factory, db):
+    p = _patient(db); v = _visit(db, p, status="inserted")
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
+    assert r.status_code == 409

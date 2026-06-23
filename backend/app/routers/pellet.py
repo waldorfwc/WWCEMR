@@ -5793,6 +5793,87 @@ def bill_visit(visit_id: str, payload: BillIn,
     return _visit_dict(v)
 
 
+# Reopen + close-reopen — MANAGE-gated correction workflow ---------------
+
+def _load_visit(db: Session, visit_id: str) -> PelletVisit:
+    v = (db.query(PelletVisit)
+           .options(joinedload(PelletVisit.doses))
+           .filter(PelletVisit.id == visit_id).first())
+    if v is None:
+        raise HTTPException(status_code=404, detail="visit not found")
+    return v
+
+
+_REOPENABLE_STATUSES = {"inserted", "billed", "cancelled"}
+
+
+class ReopenIn(BaseModel):
+    reason: str
+
+
+@router.post("/visits/{visit_id}/reopen")
+def reopen_visit(visit_id: str, payload: ReopenIn,
+                 db: Session = Depends(get_db),
+                 current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    """Reopen a completed/cancelled visit so a manager can correct it. Flips
+    status to in_progress and records what to return to on close."""
+    v = _load_visit(db, visit_id)
+    if v.reopened_at is not None:
+        raise HTTPException(status_code=409, detail="visit is already reopened")
+    if v.status not in _REOPENABLE_STATUSES:
+        raise HTTPException(status_code=409,
+                            detail=f"cannot reopen a visit in status {v.status}")
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="reason is required")
+    by = current_user.get("email") or "system"
+    v.pre_reopen_status = v.status
+    v.reopened_at = now_utc_naive()
+    v.reopened_by = by
+    v.reopened_reason = reason
+    v.status = "in_progress"
+    _audit(db, actor=by, action="visit_reopened",
+           summary=f"Reopened visit (was {v.pre_reopen_status})",
+           detail={"visit_id": str(v.id), "pre_status": v.pre_reopen_status,
+                   "reason": reason})
+    db.commit(); db.refresh(v)
+    return _visit_dict(v)
+
+
+@router.post("/visits/{visit_id}/close-reopen")
+def close_reopen(visit_id: str,
+                 db: Session = Depends(get_db),
+                 current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.MANAGE))):
+    """Finish a reopen: finalize any dangling doses to inserted and return the
+    visit to its prior completed status (billed stays billed; everything else,
+    including reopened-from-cancelled, completes to inserted)."""
+    v = _load_visit(db, visit_id)
+    if v.reopened_at is None:
+        raise HTTPException(status_code=409, detail="visit is not reopened")
+    by = current_user.get("email") or "system"
+    now = now_utc_naive()
+    target = "billed" if v.pre_reopen_status == "billed" else "inserted"
+    for d in (v.doses or []):
+        if d.status in ("planned", "pulled", "added"):
+            d.status = "inserted"
+            d.resolved_at = d.resolved_at or (v.inserted_at or now)
+            d.resolved_by = d.resolved_by or by
+    if target == "inserted" and v.inserted_at is None:
+        v.inserted_at = now
+        v.inserted_by = by
+    prior = v.pre_reopen_status
+    v.status = target
+    v.reopened_at = None
+    v.reopened_by = None
+    v.reopened_reason = None
+    v.pre_reopen_status = None
+    _audit(db, actor=by, action="visit_reopen_closed",
+           summary=f"Closed reopen → {target}",
+           detail={"visit_id": str(v.id), "from_reopen_of": prior, "to": target})
+    db.commit(); db.refresh(v)
+    return _visit_dict(v)
+
+
 # Revert one workflow step — reversible status, audited ---------------
 
 class RevertIn(BaseModel):
