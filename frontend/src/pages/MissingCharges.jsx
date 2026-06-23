@@ -121,6 +121,7 @@ export default function MissingCharges() {
   const { data: triageCfg } = useQuery({
     queryKey: ['mc-triage-recipients'],
     queryFn: () => api.get('/billing/missing-charges/triage-recipients').then(r => r.data),
+    enabled: canDelete,   // MANAGE-only; avoid a 403 for non-managers
   })
   const [recipientsInput, setRecipientsInput] = useState('')
   useEffect(() => {
@@ -300,7 +301,8 @@ export default function MissingCharges() {
         </div>
       </div>
 
-      {/* Triage Reminder Recipients */}
+      {/* Triage Reminder Recipients (MANAGE only — save is MANAGE-gated server-side) */}
+      {canDelete && (
       <div className="card !p-3 mb-3">
         <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Triage Reminder Recipients</div>
         <div className="flex items-center gap-2">
@@ -313,6 +315,7 @@ export default function MissingCharges() {
         </div>
         <div className="text-[10px] text-gray-500 mt-1">Weekly (Thu 8am) email + Slack DM when untriaged charges exist.</div>
       </div>
+      )}
 
       {/* Table */}
       <div className="card !p-0 overflow-hidden">
