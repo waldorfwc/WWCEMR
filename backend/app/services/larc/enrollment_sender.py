@@ -51,6 +51,11 @@ class LarcEnrollmentError(Exception):
     pass
 
 
+class EnrollmentNotEditable(Exception):
+    """BoldSign refused an embedded-edit URL for this document (already
+    completed / declined / revoked, or otherwise locked)."""
+
+
 # ─── HTTP / config ────────────────────────────────────────────────
 
 def _api_key() -> str:
@@ -88,6 +93,63 @@ def _fallback_provider_name() -> str:
     return (os.environ.get("CONSENT_LARC_PROVIDER_NAME")
             or os.environ.get("CONSENT_PROVIDER_NAME")
             or "Dr. Aryian Cooke").strip()
+
+
+# ─── Embedded edit URL ─────────────────────────────────────────────
+
+# Hosts a redirect URL may target after editing, to avoid open redirect.
+# Suffix match; extend via env if a new domain is added.
+_ALLOWED_REDIRECT_SUFFIXES = tuple(
+    h.strip() for h in os.environ.get(
+        "ALLOWED_REDIRECT_HOSTS",
+        "waldorfwomenscare.com,run.app,localhost",
+    ).split(",") if h.strip()
+)
+
+
+def _safe_redirect(url: Optional[str]) -> Optional[str]:
+    """Return url only if it's an https/http URL whose host ends with an
+    allowed suffix; otherwise None (BoldSign uses its default)."""
+    if not url:
+        return None
+    from urllib.parse import urlparse
+    p = urlparse(url)
+    if p.scheme not in ("https", "http") or not p.hostname:
+        return None
+    if any(p.hostname == sfx or p.hostname.endswith("." + sfx)
+           for sfx in _ALLOWED_REDIRECT_SUFFIXES):
+        return url
+    return None
+
+
+def create_embedded_edit_url(env: LarcEnrollmentEnvelope, *,
+                             redirect_url: Optional[str] = None) -> str:
+    """Get a BoldSign embedded edit URL for an existing/sent document.
+    Raises EnrollmentNotEditable if BoldSign rejects the request."""
+    if not _is_configured():
+        raise LarcEnrollmentError("BoldSign API key not configured")
+    body: dict = {
+        "viewOption": "PreparePage",
+        "showToolbar": True,
+        "showSaveButton": True,
+        "showSendButton": True,
+        "showPreviewButton": True,
+    }
+    rd = _safe_redirect(redirect_url)
+    if rd:
+        body["redirectUrl"] = rd
+    with _http() as c:
+        r = c.post("/v1/document/createEmbeddedEditUrl",
+                   params={"documentId": env.boldsign_envelope_id},
+                   json=body)
+    if r.status_code >= 300:
+        raise EnrollmentNotEditable(
+            f"BoldSign edit-url {r.status_code}: {r.text[:200]}")
+    data = r.json()
+    url = data.get("editFormUrl") or data.get("url") or data.get("embeddedEditUrl")
+    if not url:
+        raise EnrollmentNotEditable(f"BoldSign response missing edit url: {data!r}")
+    return url
 
 
 # ─── Patient-name parsing ──────────────────────────────────────────

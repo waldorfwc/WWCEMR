@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock, patch
 from app.models.user import User
 from app.models.larc import LarcAssignment, LarcEnrollmentEnvelope
 from app.services.larc.enrollment_sender import resolve_enrollment_preview
@@ -82,3 +83,52 @@ def test_preview_endpoint_rejects_non_pharmacy_flow(client_factory, db):
     client = client_factory(user=u)
     r = client.get(f"/api/larc/assignments/{a.id}/enrollment/preview")
     assert r.status_code == 400
+
+
+def _envelope(db, a, status="sent", doc_id="bs_doc_1"):
+    env = LarcEnrollmentEnvelope(
+        assignment_id=a.id,
+        boldsign_template_id="9af154d6-0bc7-43f6-bf94-175b7daf27e6",
+        boldsign_envelope_id=doc_id,
+        status=status,
+    )
+    db.add(env); db.commit(); db.refresh(env)
+    return env
+
+
+def test_edit_url_returns_url_when_editable(client_factory, db, monkeypatch):
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+    u = _work_user(db); a = _pharmacy_assignment(db); env = _envelope(db, a, status="sent")
+    resp = MagicMock(status_code=200)
+    resp.json.return_value = {"editFormUrl": "https://app.boldsign.com/edit/abc"}
+    fake = MagicMock()
+    fake.__enter__.return_value.post.return_value = resp
+    client = client_factory(user=u)
+    with patch("app.services.larc.enrollment_sender._http", return_value=fake), \
+         patch("app.services.larc.enrollment_sender._is_configured", return_value=True):
+        r = client.get(f"/api/larc/envelopes/{env.id}/edit-url"
+                       "?redirect=https://app.waldorfwomenscare.com/larc/assignments/x")
+    assert r.status_code == 200
+    assert r.json()["url"] == "https://app.boldsign.com/edit/abc"
+
+
+def test_edit_url_409_when_fully_signed(client_factory, db):
+    u = _work_user(db); a = _pharmacy_assignment(db); env = _envelope(db, a, status="signed")
+    client = client_factory(user=u)
+    r = client.get(f"/api/larc/envelopes/{env.id}/edit-url")
+    assert r.status_code == 409
+    assert r.json()["detail"]["detail"] == "not_editable"
+
+
+def test_edit_url_409_when_boldsign_rejects(client_factory, db, monkeypatch):
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+    u = _work_user(db); a = _pharmacy_assignment(db); env = _envelope(db, a, status="sent")
+    resp = MagicMock(status_code=400, text="cannot edit")
+    fake = MagicMock()
+    fake.__enter__.return_value.post.return_value = resp
+    client = client_factory(user=u)
+    with patch("app.services.larc.enrollment_sender._http", return_value=fake), \
+         patch("app.services.larc.enrollment_sender._is_configured", return_value=True):
+        r = client.get(f"/api/larc/envelopes/{env.id}/edit-url")
+    assert r.status_code == 409
+    assert r.json()["detail"]["reason"] == "boldsign_rejected"
