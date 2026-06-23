@@ -721,6 +721,38 @@ function ClinicianPicker({ a, kind }) {
 
 
 function EnrollmentEnvelopeStatus({ a, env }) {
+  const qc = useQueryClient()
+  const [showPreview, setShowPreview] = useState(false)
+  const [editErr, setEditErr] = useState(null)
+  const editable = env.status === 'sent' || env.status === 'partially_signed'
+
+  const viewForm = async () => {
+    const r = await api.get(`/larc/envelopes/${env.id}/document`, { responseType: 'blob' })
+    const url = URL.createObjectURL(r.data)
+    window.open(url, '_blank', 'noopener')
+  }
+
+  const openEdit = async () => {
+    setEditErr(null)
+    try {
+      const redirect = window.location.href
+      const r = await api.get(`/larc/envelopes/${env.id}/edit-url`, { params: { redirect } })
+      window.open(r.data.url, '_blank', 'noopener')
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        setEditErr('This form can no longer be edited because signing has progressed. Void and resend instead.')
+      } else {
+        setEditErr('Could not open the editor. Try again.')
+      }
+    }
+  }
+
+  useEffect(() => {
+    const onFocus = () => invalidateLarcLists(qc, a.id)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [qc, a.id])
+
   // Step states: 'pending' | 'signed' | 'declined' | 'voided'
   const steps = [
     { label: 'Reception', at: env.receptionist_signed_at },
@@ -772,6 +804,17 @@ function EnrollmentEnvelopeStatus({ a, env }) {
       )}
       {env.voided_at && (
         <div className="text-gray-500 italic">Voided {fmt.date(env.voided_at)}</div>
+      )}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button className="btn-secondary text-[11px]" onClick={viewForm}>View Form</button>
+        <button className="btn-secondary text-[11px]" onClick={() => setShowPreview(true)}>Preview</button>
+        {editable && (
+          <button className="btn-secondary text-[11px]" onClick={openEdit}>Edit Form</button>
+        )}
+      </div>
+      {editErr && <div className="text-[11px] text-danger">{editErr}</div>}
+      {showPreview && (
+        <EnrollmentPreviewModal assignmentId={a.id} onClose={() => setShowPreview(false)} />
       )}
     </div>
   )
