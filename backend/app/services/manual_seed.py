@@ -52,6 +52,8 @@ goes out empty.
 **After sending:**
 - **View Form** opens the current PDF in a new tab — including partially-signed
   state — so you can confirm what each signer sees.
+- **Preview** reopens the same field summary (with blank-field flags) for a quick
+  text check of what's on the form, without opening the PDF.
 - **Edit Form** opens the form in BoldSign's editor so you can correct fields and
   re-send in place. This is available until signing completes; once everyone has
   signed (or the form is voided/declined), Edit Form disappears — at that point
