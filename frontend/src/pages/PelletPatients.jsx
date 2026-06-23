@@ -21,6 +21,7 @@ const VIEWS = [
   { k: 'ready',        l: 'Ready to insert',  icon: CheckCircle2 },
   { k: 'paid',         l: 'Paid',             icon: DollarSign },
   { k: 'unpaid',       l: 'Unpaid',           icon: DollarSign },
+  { k: 'missing_lot',  l: 'Missing Lot',      icon: AlertTriangle, alert: true },
 ]
 
 
@@ -145,19 +146,26 @@ export default function PelletPatients() {
             const Icon = t.icon
             const active = view === t.k
             const cnt = counts.data?.[t.k]
+            const hasAlert = t.alert && cnt > 0
             return (
               <button key={t.k} type="button"
                        onClick={() => setView(t.k)}
                        className={`flex items-center gap-1.5 px-3 py-2 text-[12px] border-b-2 transition whitespace-nowrap ${
                          active
                            ? 'border-plum-700 text-plum-700 font-medium'
-                           : 'border-transparent text-gray-500 hover:text-plum-700 hover:border-plum-200'
+                           : hasAlert
+                             ? 'border-transparent text-amber-700 hover:text-amber-800 hover:border-amber-300'
+                             : 'border-transparent text-gray-500 hover:text-plum-700 hover:border-plum-200'
                        }`}>
                 <Icon size={13} />
                 {t.l}
                 {cnt != null && (
                   <span className={`ml-1 text-[10px] px-1.5 py-0 rounded ${
-                    active ? 'bg-plum-100 text-plum-800' : 'bg-gray-100 text-gray-600'
+                    active
+                      ? 'bg-plum-100 text-plum-800'
+                      : hasAlert
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-gray-100 text-gray-600'
                   }`}>
                     {cnt}
                   </span>
@@ -1038,6 +1046,24 @@ function viewColumns(view) {
       render: p => p.active_visit_scheduled_date
         ? <span className="text-[12px]">{fmt.date(p.active_visit_scheduled_date)}</span>
         : <span className="text-gray-400 italic">—</span>
+    },
+  ]
+
+  if (view === 'missing_lot') return [
+    Patient, Type,
+    {
+      key: 'last_visit', label: 'Last Visit',
+      render: p => p.last_visit_date
+        ? <span className="text-[12px]">{fmt.date(p.last_visit_date)}</span>
+        : <span className="text-gray-400 italic">—</span>
+    },
+    {
+      key: 'missing_lot', label: 'Missing Lot',
+      render: p => (
+        <span className="text-[11px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded">
+          {p.missing_lot_count != null ? `${p.missing_lot_count} visit${p.missing_lot_count === 1 ? '' : 's'}` : 'missing lot'}
+        </span>
+      ),
     },
   ]
 
