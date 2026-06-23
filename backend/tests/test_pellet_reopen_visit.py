@@ -146,3 +146,69 @@ def test_close_reopen_not_reopened_409(client_factory, db):
     client = _client(client_factory, db)
     r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
     assert r.status_code == 409
+
+
+def _stock(db, lot, loc="white_plains"):
+    return (db.query(PelletStock)
+              .filter(PelletStock.lot_id == lot.id, PelletStock.location == loc)
+              .first())
+
+
+def test_correct_dose_binds_lot_and_decrements_stock(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt, qty=10)
+    v = _visit(db, p, status="inserted")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="inserted", lot_id=None)
+    db.add(d); db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "lot"})
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot.id)})
+    assert r.status_code == 200
+    assert _stock(db, lot).doses_on_hand == 7
+
+
+def test_correct_dose_swap_returns_old_and_pulls_new(client_factory, db):
+    p = _patient(db); dt = _dose_type(db)
+    lot_a = _lot(db, dt, qty=5, number="A")
+    lot_b = _lot(db, dt, qty=5, number="B")
+    v = _visit(db, p, status="inserted")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=2,
+                        position=1, status="inserted", lot_id=lot_a.id)
+    db.add(d)
+    _stock(db, lot_a).doses_on_hand = 3
+    db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "swap"})
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot_b.id)})
+    assert r.status_code == 200
+    assert _stock(db, lot_a).doses_on_hand == 5
+    assert _stock(db, lot_b).doses_on_hand == 3
+
+
+def test_correct_dose_historical_is_stock_neutral(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt, qty=10)
+    v = _visit(db, p, status="inserted", historical=True)
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=3,
+                        position=1, status="inserted", lot_id=None)
+    db.add(d); db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "lot"})
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot.id)})
+    assert r.status_code == 200
+    assert _stock(db, lot).doses_on_hand == 10
+    db.refresh(d); assert str(d.lot_id) == str(lot.id)
+
+
+def test_correct_dose_requires_reopened(client_factory, db):
+    p = _patient(db); dt = _dose_type(db); lot = _lot(db, dt)
+    v = _visit(db, p, status="inserted")
+    d = PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=1,
+                        position=1, status="inserted", lot_id=None)
+    db.add(d); db.commit(); db.refresh(d)
+    client = _client(client_factory, db)
+    r = client.patch(f"/api/pellets/visits/{v.id}/doses/{d.id}",
+                     json={"lot_id": str(lot.id)})
+    assert r.status_code == 409

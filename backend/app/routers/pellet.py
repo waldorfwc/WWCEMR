@@ -4880,7 +4880,12 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
     pos = max([d.position for d in v.doses], default=0) + 1
     location = _require_visit_location(v)
 
-    if is_confirmed_visit:
+    # Historical visits never touch live stock — even when status is in_progress
+    # (e.g. a reopened historical visit). Confirmed non-historical visits also
+    # skip stock (manager back-fill). Live, non-historical, in-progress visits
+    # pull from inventory.
+    stock_neutral = is_confirmed_visit or v.is_historical
+    if stock_neutral:
         # Historical/manager-edit record — no stock impact
         d = PelletVisitDose(
             visit_id=v.id, dose_type_id=dt.id, quantity=payload.quantity,
@@ -4927,26 +4932,84 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
 class DoseLotChangeIn(BaseModel):
     """Body for PATCH /visits/{visit_id}/doses/{dose_id} — swap the lot
     on a still-proposed (planned/pulled) dose. Mutates stock: returns
-    the old lot's reserve and pulls from the new lot."""
-    lot_id: str
+    the old lot's reserve and pulls from the new lot.
+
+    When the visit is reopened this body is also accepted for correction
+    (lot_id, quantity, and dose_type_id are all optional in that context)."""
+    lot_id:       Optional[str] = None
+    quantity:     Optional[int] = None
+    dose_type_id: Optional[str] = None
 
 
 @router.patch("/visits/{visit_id}/doses/{dose_id}")
 def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
                       db: Session = Depends(get_db),
                       current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
-    """Swap the lot assigned to a proposed (planned/pulled) dose.
-    Returns the old lot's reserve and pulls from the new lot. Provider
-    in-room reassignment — common when the provider wants a different
-    expiration or label. Confirmed doses require `pellet:manage`."""
+    """Unified dose-patch endpoint.
+
+    • Non-reopened visit → lot-swap on a planned/pulled dose (provider
+      in-room reassignment). lot_id is required; returns the old lot's
+      reserve and pulls from the new lot.
+
+    • Reopened visit → dose correction (any status). Corrects lot, qty,
+      or dose type on a confirmed dose after a manager reopen. Returns
+      the old lot to stock and pulls the new one. Historical visits are
+      stock-neutral (metadata-only). Requires `pellet:manage`."""
     d = (db.query(PelletVisitDose).options(joinedload(PelletVisitDose.dose_type))
            .filter(PelletVisitDose.id == dose_id,
                    PelletVisitDose.visit_id == visit_id).first())
     if not d:
         raise HTTPException(status_code=404, detail="dose entry not found")
-    v = db.query(PelletVisit).filter(PelletVisit.id == visit_id).first()
+    v = (db.query(PelletVisit).options(joinedload(PelletVisit.doses))
+           .filter(PelletVisit.id == visit_id).first())
     if not v:
         raise HTTPException(status_code=404, detail="visit not found")
+
+    by = current_user.get("email") or "system"
+
+    # ── Reopened-visit correction path ────────────────────────────────────
+    if v.reopened_at is not None:
+        if not _is_admin(db, current_user):
+            raise HTTPException(
+                status_code=403,
+                detail="Correcting a dose on a reopened visit requires pellet:manage.")
+
+        new_qty = payload.quantity if payload.quantity is not None else d.quantity
+        if new_qty is None or new_qty < 1:
+            raise HTTPException(status_code=422, detail="quantity must be >= 1")
+        new_lot_id = payload.lot_id if payload.lot_id is not None else (
+            str(d.lot_id) if d.lot_id else None)
+        new_dt_id = payload.dose_type_id or str(d.dose_type_id)
+        location = v.location
+
+        if not v.is_historical:
+            if new_lot_id and not location:
+                raise HTTPException(
+                    status_code=409,
+                    detail="visit has no location — cannot pull from inventory")
+            # Return the old lot's doses to stock (if it had one and we have a location)
+            if d.lot_id and location:
+                old_stock = _get_or_create_stock(db, d.lot_id, location)
+                _adjust_stock(db, old_stock, d.quantity)
+            # Pull from the new lot (validates availability; 409 if insufficient)
+            if new_lot_id:
+                lot, stock = _specific_lot_with_stock(
+                    db, new_lot_id, new_dt_id, new_qty, location)
+                _adjust_stock(db, stock, -(new_qty))
+
+        d.lot_id = new_lot_id
+        d.quantity = new_qty
+        d.dose_type_id = new_dt_id
+        d.resolved_at = d.resolved_at or now_utc_naive()
+        d.resolved_by = by
+        _audit(db, actor=by, action="dose_corrected", lot_id=new_lot_id, location=location,
+               summary="Corrected dose on reopened visit",
+               detail={"visit_id": str(v.id), "dose_id": str(d.id),
+                       "new_lot_id": new_lot_id, "new_qty": new_qty})
+        db.commit(); db.refresh(v)
+        return _visit_dict(v)
+
+    # ── Non-reopened lot-swap path (planned/pulled doses only) ────────────
     if d.status in CONFIRMED_DOSE_STATUSES and not _is_admin(db, current_user):
         raise HTTPException(
             status_code=403,
@@ -4956,8 +5019,11 @@ def change_dose_lot(visit_id: str, dose_id: str, payload: DoseLotChangeIn,
             status_code=409,
             detail=(f"Only proposed (planned/pulled) doses can have their lot "
                     f"swapped (this one is {d.status})."))
+    if not payload.lot_id:
+        raise HTTPException(
+            status_code=422,
+            detail="lot_id is required for a lot swap on a non-reopened visit.")
 
-    by = current_user.get("email") or "system"
     location = _require_visit_location(v)
 
     new_lot, new_stock = _specific_lot_with_stock(
