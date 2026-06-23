@@ -40,6 +40,24 @@ Device request and benefits checks arrive as ModMed Tasks (no integration).
 7. **Billed** — record the ModMed claim # to close the assignment.
 """),
 
+    ("enrollment-view-edit", "Viewing & Editing the Enrollment Form", 32, """\
+Once you've filled in the patient, insurance, and provider details, you can
+check and manage the BoldSign enrollment form right from the assignment card.
+
+**Preview before sending:** Click **Preview Form** to see exactly what will be
+filled in. Any blank fields are flagged at the top — fix the missing data
+(Practice Profile or patient demographics) before sending so the form never
+goes out empty.
+
+**After sending:**
+- **View Form** opens the current PDF in a new tab — including partially-signed
+  state — so you can confirm what each signer sees.
+- **Edit Form** opens the form in BoldSign's editor so you can correct fields and
+  re-send in place. This is available until signing completes; once everyone has
+  signed (or the form is voided/declined), Edit Form disappears — at that point
+  void the envelope and send a fresh one.
+"""),
+
     ("office-procedure-overview", "Office Procedure Devices — overview", 35, """\
 **Office Procedure Devices** are single-use surgical instruments consumed
 during an in-office procedure. They share the same locked cabinet, audit
