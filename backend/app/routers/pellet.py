@@ -5302,6 +5302,19 @@ def fill_bag(visit_id: str, payload: BagFillIn,
             raise HTTPException(status_code=422,
                                 detail=f"lot {lot.qualgen_lot_number} doesn't match dose {d.dose_type.label}")
 
+        # A dose may already hold a reservation — Set Dose Card pre-pulls a
+        # dose (decrements stock, assigns a lot) but leaves status='planned'.
+        # Return that reservation before pulling so fill-bag can't
+        # double-decrement: same lot -> net zero, different lot -> a clean swap.
+        if d.lot_id is not None:
+            prev_stock = _get_or_create_stock(db, d.lot_id, visit_location)
+            _adjust_stock(db, prev_stock, d.quantity)
+            _audit(db, actor=by, action="dose_proposed_return",
+                    lot_id=d.lot_id, location=visit_location, delta_doses=d.quantity,
+                    summary=(f"Returned prior reservation of {d.quantity} "
+                             f"{d.dose_type.label if d.dose_type else ''} (fill-bag re-pull)"),
+                    detail={"visit_id": str(v.id), "visit_dose_id": str(d.id)})
+
         stock = _get_or_create_stock(db, lot.id, visit_location)
         if stock.doses_on_hand < d.quantity:
             raise HTTPException(status_code=409,
@@ -5432,9 +5445,11 @@ def confirm_doses_as_planned(visit_id: str,
     location = _require_visit_location(v)
     now = now_utc_naive()
 
-    # First pass: validate every planned dose has a FIFO lot available.
+    # First pass: validate every NOT-YET-RESERVED planned dose has a FIFO lot
+    # available. A planned dose that already has a lot was pre-pulled (Set Dose
+    # Card) and must NOT be pulled again — skip it here and below.
     for d in proposed:
-        if d.status == "planned":
+        if d.status == "planned" and d.lot_id is None:
             pair = _earliest_lot_with_stock(db, d.dose_type_id, d.quantity, location)
             if not pair:
                 raise HTTPException(
@@ -5446,7 +5461,7 @@ def confirm_doses_as_planned(visit_id: str,
     # Second pass: assign + decrement + mark inserted.
     pulled_count = 0
     for d in proposed:
-        if d.status == "planned":
+        if d.status == "planned" and d.lot_id is None:
             # Stock can be consumed between the validate pass and here by a
             # concurrent visit. Surface a clean 409 instead of a TypeError
             # 500 on the None return. (Fable audit #11.)
