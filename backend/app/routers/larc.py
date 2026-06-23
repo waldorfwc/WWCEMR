@@ -2014,6 +2014,20 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
     return _assignment_dict(a, include_milestones=True)
 
 
+@router.get("/assignments/{assignment_id}/enrollment/preview")
+def enrollment_preview(assignment_id: str,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Resolved enrollment-form field values + blank-field warnings, so
+    reception can confirm nothing sends blank. Works before or after send."""
+    a = _load_assignment(db, assignment_id)
+    if a.source_flow != "pharmacy_order":
+        raise HTTPException(status_code=400,
+                            detail="Enrollment only applies to pharmacy_order flow")
+    from app.services.larc.enrollment_sender import resolve_enrollment_preview
+    return resolve_enrollment_preview(db, a)
+
+
 @router.post("/envelopes/{envelope_id}/refax")
 def refax_envelope(envelope_id: str,
                    db: Session = Depends(get_db),

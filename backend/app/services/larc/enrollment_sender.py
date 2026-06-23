@@ -544,6 +544,83 @@ def _resolve_app(a: LarcAssignment,
     return name, npi
 
 
+def _resolve_template_spec_for_assignment(db: Session, a: LarcAssignment):
+    """Return the _TemplateSpec for this assignment's device type, or None
+    if the device type has no configured enrollment template. (Extracted
+    from send_enrollment_envelope so the preview resolver shares it.)"""
+    from app.models.larc import LarcDeviceType
+    dt = None
+    if a.device and a.device.device_type:
+        dt = a.device.device_type
+    elif a.device_type_id:
+        dt = (db.query(LarcDeviceType)
+                .filter(LarcDeviceType.id == a.device_type_id)
+                .first())
+    if not dt:
+        return None
+    template_id = dt.enrollment_form_template
+    if not template_id:
+        return None
+    return _TEMPLATE_SPECS.get(template_id)
+
+
+def _fmt_date_mdY(d) -> str:
+    return d.strftime("%m/%d/%Y") if d else ""
+
+
+def resolve_enrollment_preview(db: Session, a: LarcAssignment) -> dict:
+    """Human-readable summary of the values that would populate the
+    enrollment form, with blank-field flags. Drives the card's Preview.
+
+    Reads the same sources the field builders use (assignment columns +
+    PracticeConfig) so the preview matches what gets sent, without
+    reverse-mapping BoldSign's opaque field IDs."""
+    s = get_all_practice_settings(db)
+
+    provider_name = a.inserting_provider_name or (
+        f"{s.get('provider_first_name') or ''} {s.get('provider_last_name') or ''}".strip())
+    provider_npi = a.inserting_provider_npi or s.get("provider_npi") or ""
+    app_name = a.app_name or s.get("app_name") or ""
+    app_npi = a.app_npi or s.get("app_npi") or ""
+
+    spec = _resolve_template_spec_for_assignment(db, a)
+
+    rows = [
+        ("Patient Name", a.patient_name or
+            f"{a.patient_first_name or ''} {a.patient_last_name or ''}".strip()),
+        ("Patient DOB", _fmt_date_mdY(a.patient_dob)),
+        ("Patient Email", a.patient_email or ""),
+        ("Patient Address", " ".join(p for p in [
+            a.patient_address, a.patient_city,
+            f"{a.patient_state or ''} {a.patient_zip or ''}".strip()] if p)),
+        ("Primary Insurance", a.primary_insurance or ""),
+        ("Policy #", a.insurance_policy_no or ""),
+        ("Group #", a.insurance_group_no or ""),
+        ("Inserting Provider", provider_name),
+        ("Inserting Provider NPI", provider_npi),
+        ("APP Name", app_name),
+        ("APP NPI", app_npi),
+        ("Practice Name", s.get("practice_name") or ""),
+        ("Practice Fax", s.get("practice_fax") or ""),
+    ]
+    fields = [{"label": lbl, "value": val, "blank": (val is None or val == "")}
+              for lbl, val in rows]
+    blanks = [f["label"] for f in fields if f["blank"]]
+
+    sendable = True
+    if not a.patient_email:
+        sendable = False
+        if "Patient Email" not in blanks:
+            blanks.append("Patient Email")
+
+    return {
+        "template": spec.nice_name if spec else None,
+        "fields": fields,
+        "blanks": blanks,
+        "sendable": sendable,
+    }
+
+
 def void_live_envelopes_for_assignment(
     db: Session,
     assignment: LarcAssignment,
@@ -661,7 +738,7 @@ def send_enrollment_envelope(
         raise LarcEnrollmentError(
             f"No BoldSign template ID configured for device type {dt.name!r}."
         )
-    spec = _TEMPLATE_SPECS.get(template_id)
+    spec = _resolve_template_spec_for_assignment(db, assignment)
     if spec is None:
         raise LarcEnrollmentError(
             f"Enrollment template {template_id} (device {dt.name!r}) has no "
