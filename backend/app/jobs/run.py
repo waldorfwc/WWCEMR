@@ -129,6 +129,12 @@ def missing_charges_weekly():
     _missing_charges_weekly_emails()
 
 
+@register("missing_charges_triage_reminder")
+def missing_charges_triage_reminder():
+    from app.services.fax_poller import _missing_charges_triage_reminder
+    _missing_charges_triage_reminder()
+
+
 @register("bank_recon_sweep")
 def bank_recon_sweep():
     """Hourly sweep of bank-recon-csv/ — deletes consumed preview CSVs

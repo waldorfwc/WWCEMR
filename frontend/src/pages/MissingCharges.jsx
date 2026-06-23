@@ -91,6 +91,8 @@ export default function MissingCharges() {
   const [emailingProviders, setEmailingProviders] = useState(false)
   const [openId, setOpenId] = useState(null)
 
+  const qc = useQueryClient()
+
   const { data: picks } = useQuery({
     queryKey: ['mc-picklists'],
     queryFn: () => api.get('/billing/missing-charges/picklists').then(r => r.data),
@@ -115,6 +117,22 @@ export default function MissingCharges() {
 
   const charges = data?.charges || []
   const statusLabel = (v) => picks?.statuses?.find(s => s.v === v)?.l || v
+
+  const { data: triageCfg } = useQuery({
+    queryKey: ['mc-triage-recipients'],
+    queryFn: () => api.get('/billing/missing-charges/triage-recipients').then(r => r.data),
+    enabled: canDelete,   // MANAGE-only; avoid a 403 for non-managers
+  })
+  const [recipientsInput, setRecipientsInput] = useState('')
+  useEffect(() => {
+    if (triageCfg?.recipients) setRecipientsInput(triageCfg.recipients.join(', '))
+  }, [triageCfg])
+  const saveRecipients = useMutation({
+    mutationFn: () => api.put('/billing/missing-charges/triage-recipients',
+      { recipients: recipientsInput.split(',').map(s => s.trim()).filter(Boolean) }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['mc-triage-recipients'] }),
+    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
+  })
 
   return (
     <div>
@@ -143,6 +161,21 @@ export default function MissingCharges() {
           </button>
         </div>
       </div>
+
+      {/* Untriaged banner */}
+      {(dash?.by_status?.new ?? 0) > 0 && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded border border-amber-300 bg-amber-50 px-3 py-2">
+          <div className="text-[13px] text-amber-900">
+            <strong>{dash.by_status.new}</strong> untriaged charge{dash.by_status.new === 1 ? '' : 's'} —
+            triage them so the responsible providers get billed.
+          </div>
+          <button
+            className="btn-primary text-xs whitespace-nowrap"
+            onClick={() => setFilters({ ...filters, status: 'new', open_only: false })}>
+            Triage Now
+          </button>
+        </div>
+      )}
 
       {/* Status counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 mb-3">
@@ -267,6 +300,22 @@ export default function MissingCharges() {
           </button>
         </div>
       </div>
+
+      {/* Triage Reminder Recipients (MANAGE only — save is MANAGE-gated server-side) */}
+      {canDelete && (
+      <div className="card !p-3 mb-3">
+        <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-1">Triage Reminder Recipients</div>
+        <div className="flex items-center gap-2">
+          <input className="input text-xs flex-1" placeholder="biller@wwc.com, biller2@wwc.com"
+                 value={recipientsInput} onChange={e => setRecipientsInput(e.target.value)} />
+          <button className="btn-secondary text-xs" disabled={saveRecipients.isPending}
+                  onClick={() => saveRecipients.mutate()}>
+            {saveRecipients.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+        <div className="text-[10px] text-gray-500 mt-1">Weekly (Thu 8am) email + Slack DM when untriaged charges exist.</div>
+      </div>
+      )}
 
       {/* Table */}
       <div className="card !p-0 overflow-hidden">

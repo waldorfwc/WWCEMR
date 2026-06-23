@@ -45,6 +45,7 @@ JOBS=(
   "larc-sweeps            15 9 * * 1-5     larc_sweeps"
   "pellet-stale-sweep     30 0 * * *       pellet_stale_sweep"
   "missing-charges-weekly 0 8 * * 1        missing_charges_weekly"
+  "missing-charges-triage 0 8 * * 4        missing_charges_triage_reminder"
 )
 
 create_or_update_job() {
