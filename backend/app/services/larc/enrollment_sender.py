@@ -51,6 +51,11 @@ class LarcEnrollmentError(Exception):
     pass
 
 
+class EnrollmentNotEditable(Exception):
+    """BoldSign refused an embedded-edit URL for this document (already
+    completed / declined / revoked, or otherwise locked)."""
+
+
 # ─── HTTP / config ────────────────────────────────────────────────
 
 def _api_key() -> str:
@@ -88,6 +93,79 @@ def _fallback_provider_name() -> str:
     return (os.environ.get("CONSENT_LARC_PROVIDER_NAME")
             or os.environ.get("CONSENT_PROVIDER_NAME")
             or "Dr. Aryian Cooke").strip()
+
+
+# ─── Embedded edit URL ─────────────────────────────────────────────
+
+# Hosts a redirect URL may target after editing, to avoid open redirect.
+# Suffix match; extend via env if a new domain is added.
+_ALLOWED_REDIRECT_SUFFIXES = tuple(
+    h.strip() for h in os.environ.get(
+        "ALLOWED_REDIRECT_HOSTS",
+        "waldorfwomenscare.com,run.app,localhost",
+    ).split(",") if h.strip()
+)
+
+
+def _safe_redirect(url: Optional[str]) -> Optional[str]:
+    """Return url only if it's an https/http URL whose host ends with an
+    allowed suffix; otherwise None (BoldSign uses its default)."""
+    if not url:
+        return None
+    from urllib.parse import urlparse
+    p = urlparse(url)
+    if p.scheme not in ("https", "http") or not p.hostname:
+        return None
+    if any(p.hostname == sfx or p.hostname.endswith("." + sfx)
+           for sfx in _ALLOWED_REDIRECT_SUFFIXES):
+        return url
+    return None
+
+
+def download_envelope_pdf(env: LarcEnrollmentEnvelope) -> tuple[bytes, str]:
+    """Fetch the current PDF for an envelope from BoldSign (works at any
+    status). Returns (pdf_bytes, filename). Raises LarcEnrollmentError on
+    failure."""
+    if not _is_configured():
+        raise LarcEnrollmentError("BoldSign API key not configured")
+    with _http() as c:
+        r = c.get("/v1/document/download",
+                  params={"documentId": env.boldsign_envelope_id})
+    if r.status_code >= 300:
+        raise LarcEnrollmentError(
+            f"BoldSign download {r.status_code}: {r.text[:200]}")
+    short = (env.boldsign_envelope_id or "doc")[:8]
+    return r.content, f"enrollment-{short}.pdf"
+
+
+def create_embedded_edit_url(env: LarcEnrollmentEnvelope, *,
+                             redirect_url: Optional[str] = None) -> str:
+    """Get a BoldSign embedded edit URL for an existing/sent document.
+    Raises EnrollmentNotEditable if BoldSign rejects the request."""
+    if not _is_configured():
+        raise LarcEnrollmentError("BoldSign API key not configured")
+    body: dict = {
+        "viewOption": "PreparePage",
+        "showToolbar": True,
+        "showSaveButton": True,
+        "showSendButton": True,
+        "showPreviewButton": True,
+    }
+    rd = _safe_redirect(redirect_url)
+    if rd:
+        body["redirectUrl"] = rd
+    with _http() as c:
+        r = c.post("/v1/document/createEmbeddedEditUrl",
+                   params={"documentId": env.boldsign_envelope_id},
+                   json=body)
+    if r.status_code >= 300:
+        raise EnrollmentNotEditable(
+            f"BoldSign edit-url {r.status_code}: {r.text[:200]}")
+    data = r.json()
+    url = data.get("editFormUrl") or data.get("url") or data.get("embeddedEditUrl")
+    if not url:
+        raise EnrollmentNotEditable(f"BoldSign response missing edit url: {data!r}")
+    return url
 
 
 # ─── Patient-name parsing ──────────────────────────────────────────
@@ -544,6 +622,94 @@ def _resolve_app(a: LarcAssignment,
     return name, npi
 
 
+def _resolve_template_spec_for_assignment(db: Session, a: LarcAssignment):
+    """Resolve this assignment's enrollment template, end to end.
+
+    Returns a 3-tuple ``(dt, template_id, spec)`` where:
+      - ``dt`` is the LarcDeviceType (from the attached device, or looked
+        up by ``device_type_id``), or None if neither is set;
+      - ``template_id`` is ``dt.enrollment_form_template``, or None;
+      - ``spec`` is ``_TEMPLATE_SPECS.get(template_id)``, or None.
+
+    This is the single copy of the device-type → template lookup; both
+    the send path and the preview resolver consume it. Callers that need
+    actionable errors (send) layer their own raises on the None values."""
+    from app.models.larc import LarcDeviceType
+    dt = None
+    if a.device and a.device.device_type:
+        dt = a.device.device_type
+    elif a.device_type_id:
+        dt = (db.query(LarcDeviceType)
+                .filter(LarcDeviceType.id == a.device_type_id)
+                .first())
+    if not dt:
+        return None, None, None
+    template_id = dt.enrollment_form_template
+    if not template_id:
+        return dt, None, None
+    return dt, template_id, _TEMPLATE_SPECS.get(template_id)
+
+
+def _fmt_date_mdY(d) -> str:
+    return d.strftime("%m/%d/%Y") if d else ""
+
+
+def resolve_enrollment_preview(db: Session, a: LarcAssignment) -> dict:
+    """Human-readable summary of the values that would populate the
+    enrollment form, with blank-field flags. Drives the card's Preview.
+
+    Reads the same sources the field builders use (assignment columns +
+    PracticeConfig) so the preview matches what gets sent, without
+    reverse-mapping BoldSign's opaque field IDs."""
+    s = get_all_practice_settings(db)
+
+    # Mirror the send path's strip-then-fallback (_resolve_provider /
+    # _resolve_app) so the preview shows exactly what would send. A
+    # whitespace-only override must NOT read as a filled value here when
+    # the sender would strip it and fall back to PracticeConfig.
+    provider_name = (a.inserting_provider_name or "").strip() or (
+        f"{s.get('provider_first_name') or ''} {s.get('provider_last_name') or ''}".strip())
+    provider_npi = (a.inserting_provider_npi or "").strip() or (s.get("provider_npi") or "")
+    app_name, app_npi = _resolve_app(a, s)
+
+    _, _, spec = _resolve_template_spec_for_assignment(db, a)
+
+    rows = [
+        ("Patient Name", a.patient_name or
+            f"{a.patient_first_name or ''} {a.patient_last_name or ''}".strip()),
+        ("Patient DOB", _fmt_date_mdY(a.patient_dob)),
+        ("Patient Email", a.patient_email or ""),
+        ("Patient Address", " ".join(p for p in [
+            a.patient_address, a.patient_city,
+            f"{a.patient_state or ''} {a.patient_zip or ''}".strip()] if p)),
+        ("Primary Insurance", a.primary_insurance or ""),
+        ("Policy #", a.insurance_policy_no or ""),
+        ("Group #", a.insurance_group_no or ""),
+        ("Inserting Provider", provider_name),
+        ("Inserting Provider NPI", provider_npi),
+        ("APP Name", app_name),
+        ("APP NPI", app_npi),
+        ("Practice Name", s.get("practice_name") or ""),
+        ("Practice Fax", s.get("practice_fax") or ""),
+    ]
+    fields = [{"label": lbl, "value": val, "blank": (val is None or val == "")}
+              for lbl, val in rows]
+    blanks = [f["label"] for f in fields if f["blank"]]
+
+    sendable = True
+    if not a.patient_email:
+        sendable = False
+        if "Patient Email" not in blanks:
+            blanks.append("Patient Email")
+
+    return {
+        "template": spec.nice_name if spec else None,
+        "fields": fields,
+        "blanks": blanks,
+        "sendable": sendable,
+    }
+
+
 def void_live_envelopes_for_assignment(
     db: Session,
     assignment: LarcAssignment,
@@ -639,29 +805,21 @@ def send_enrollment_envelope(
             f"id={(live_existing.boldsign_envelope_id or '')[:8]}…). "
             f"Void it before sending a new one.")
 
-    # Prerequisites — resolve device_type. Pharmacy-order assignments
-    # are created with device_id=NULL (the physical device hasn't shipped
-    # yet) but device_type_id is pinned at creation so we can pick the
-    # template up front.
-    from app.models.larc import LarcDeviceType
-    dt = None
-    if assignment.device and assignment.device.device_type:
-        dt = assignment.device.device_type
-    elif assignment.device_type_id:
-        dt = (db.query(LarcDeviceType)
-                .filter(LarcDeviceType.id == assignment.device_type_id)
-                .first())
+    # Prerequisites — resolve device_type → template → spec in one lookup.
+    # Pharmacy-order assignments are created with device_id=NULL (the
+    # physical device hasn't shipped yet) but device_type_id is pinned at
+    # creation so we can pick the template up front. The shared resolver
+    # returns None for any missing layer; we raise actionable errors here.
+    dt, template_id, spec = _resolve_template_spec_for_assignment(db, assignment)
     if not dt:
         raise LarcEnrollmentError(
             "Assignment has no device_type — set device_type_id on the "
             "assignment (or attach a device) before sending."
         )
-    template_id = dt.enrollment_form_template
     if not template_id:
         raise LarcEnrollmentError(
             f"No BoldSign template ID configured for device type {dt.name!r}."
         )
-    spec = _TEMPLATE_SPECS.get(template_id)
     if spec is None:
         raise LarcEnrollmentError(
             f"Enrollment template {template_id} (device {dt.name!r}) has no "

@@ -2014,6 +2014,20 @@ def send_enrollment(assignment_id: str, payload: EnrollmentSendIn = EnrollmentSe
     return _assignment_dict(a, include_milestones=True)
 
 
+@router.get("/assignments/{assignment_id}/enrollment/preview")
+def enrollment_preview(assignment_id: str,
+                       db: Session = Depends(get_db),
+                       current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Resolved enrollment-form field values + blank-field warnings, so
+    reception can confirm nothing sends blank. Works before or after send."""
+    a = _load_assignment(db, assignment_id)
+    if a.source_flow != "pharmacy_order":
+        raise HTTPException(status_code=400,
+                            detail="Enrollment only applies to pharmacy_order flow")
+    from app.services.larc.enrollment_sender import resolve_enrollment_preview
+    return resolve_enrollment_preview(db, a)
+
+
 @router.post("/envelopes/{envelope_id}/refax")
 def refax_envelope(envelope_id: str,
                    db: Session = Depends(get_db),
@@ -2040,6 +2054,64 @@ def refax_envelope(envelope_id: str,
         # already has fax_status=fax_failed + last_fax_error.
         raise HTTPException(status_code=502, detail=result.get("error"))
     return result
+
+
+# Envelope statuses where an embedded edit still makes sense. Once fully
+# signed / faxed / voided / declined, editing is closed -> 409.
+_EDITABLE_ENVELOPE_STATUSES = {"sent", "partially_signed"}
+
+
+@router.get("/envelopes/{envelope_id}/edit-url")
+def enrollment_edit_url(envelope_id: str,
+                        redirect: Optional[str] = Query(default=None),
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Issue a BoldSign embedded edit URL so reception can edit a sent
+    envelope in place. 409 if the envelope is no longer editable."""
+    env = (db.query(LarcEnrollmentEnvelope)
+             .filter(LarcEnrollmentEnvelope.id == envelope_id).first())
+    if env is None:
+        raise HTTPException(status_code=404, detail="envelope not found")
+    if env.status not in _EDITABLE_ENVELOPE_STATUSES:
+        raise HTTPException(status_code=409,
+                            detail={"detail": "not_editable", "reason": env.status})
+    from app.services.larc.enrollment_sender import (
+        create_embedded_edit_url, EnrollmentNotEditable,
+    )
+    try:
+        url = create_embedded_edit_url(env, redirect_url=redirect)
+    except EnrollmentNotEditable:
+        raise HTTPException(status_code=409,
+                            detail={"detail": "not_editable", "reason": "boldsign_rejected"})
+    by = current_user.get("email") or "system"
+    assignment = (db.query(LarcAssignment)
+                    .filter(LarcAssignment.id == env.assignment_id).first())
+    log_audit(db, actor=by, action="enrollment_edit_url_issued",
+              assignment=assignment,
+              summary=f"Issued BoldSign edit URL for envelope {env.id}",
+              detail={"envelope_id": str(env.id)})
+    db.commit()
+    return {"url": url}
+
+
+@router.get("/envelopes/{envelope_id}/document")
+def enrollment_document(envelope_id: str,
+                        db: Session = Depends(get_db),
+                        current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Stream the enrollment envelope's current PDF inline for viewing."""
+    env = (db.query(LarcEnrollmentEnvelope)
+             .filter(LarcEnrollmentEnvelope.id == envelope_id).first())
+    if env is None:
+        raise HTTPException(status_code=404, detail="envelope not found")
+    from app.services.larc.enrollment_sender import (
+        download_envelope_pdf, LarcEnrollmentError,
+    )
+    try:
+        pdf, filename = download_envelope_pdf(env)
+    except LarcEnrollmentError:
+        raise HTTPException(status_code=502, detail="document_unavailable")
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="{filename}"'})
 
 
 _INSURANCE_CARD_ALLOWED_MIME = {

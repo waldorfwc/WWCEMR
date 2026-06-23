@@ -8,6 +8,7 @@ import {
 import api, { fmt } from '../utils/api'
 import LoadingState from '../components/LoadingState'
 import { OWNERSHIP_TONES, OWNERSHIP_LABELS } from './LarcDevices'
+import EnrollmentPreviewModal from '../components/larc/EnrollmentPreviewModal'
 
 
 const MILESTONE_ICON = {
@@ -542,6 +543,7 @@ function EnrollmentSentBody({ a }) {
   const [dispense, setDispense] = useState(false)
   const [providerContact, setProviderContact] = useState(false)
   const [error, setError] = useState(null)
+  const [showPreview, setShowPreview] = useState(false)
 
   const send = useMutation({
     mutationFn: () => api.post(`/larc/assignments/${a.id}/send-enrollment`, {
@@ -593,11 +595,18 @@ function EnrollmentSentBody({ a }) {
                 disabled={send.isPending}>
           {send.isPending ? 'Sending…' : 'Send Enrollment via BoldSign'}
         </button>
+        <button className="btn-secondary text-[11px]"
+                onClick={() => setShowPreview(true)}>
+          Preview Form
+        </button>
       </div>
       {error && (
         <div className="text-[11px] text-danger bg-red-50 border border-red-200 rounded px-2 py-1.5">
           {error}
         </div>
+      )}
+      {showPreview && (
+        <EnrollmentPreviewModal assignmentId={a.id} onClose={() => setShowPreview(false)} />
       )}
     </div>
   )
@@ -712,6 +721,44 @@ function ClinicianPicker({ a, kind }) {
 
 
 function EnrollmentEnvelopeStatus({ a, env }) {
+  const qc = useQueryClient()
+  const [showPreview, setShowPreview] = useState(false)
+  const [editErr, setEditErr] = useState(null)
+  const editable = env.status === 'sent' || env.status === 'partially_signed'
+
+  const viewForm = async () => {
+    setEditErr(null)
+    try {
+      const r = await api.get(`/larc/envelopes/${env.id}/document`, { responseType: 'blob' })
+      const url = URL.createObjectURL(r.data)
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      setEditErr('Could not open the form. It may not be ready yet — try again.')
+    }
+  }
+
+  const openEdit = async () => {
+    setEditErr(null)
+    try {
+      const redirect = window.location.href
+      const r = await api.get(`/larc/envelopes/${env.id}/edit-url`, { params: { redirect } })
+      window.open(r.data.url, '_blank', 'noopener')
+    } catch (e) {
+      if (e?.response?.status === 409) {
+        setEditErr('This form can no longer be edited because signing has progressed. Void and resend instead.')
+      } else {
+        setEditErr('Could not open the editor. Try again.')
+      }
+    }
+  }
+
+  useEffect(() => {
+    const onFocus = () => invalidateLarcLists(qc, a.id)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [qc, a.id])
+
   // Step states: 'pending' | 'signed' | 'declined' | 'voided'
   const steps = [
     { label: 'Reception', at: env.receptionist_signed_at },
@@ -763,6 +810,17 @@ function EnrollmentEnvelopeStatus({ a, env }) {
       )}
       {env.voided_at && (
         <div className="text-gray-500 italic">Voided {fmt.date(env.voided_at)}</div>
+      )}
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button className="btn-secondary text-[11px]" onClick={viewForm}>View Form</button>
+        <button className="btn-secondary text-[11px]" onClick={() => setShowPreview(true)}>Preview</button>
+        {editable && (
+          <button className="btn-secondary text-[11px]" onClick={openEdit}>Edit Form</button>
+        )}
+      </div>
+      {editErr && <div className="text-[11px] text-danger">{editErr}</div>}
+      {showPreview && (
+        <EnrollmentPreviewModal assignmentId={a.id} onClose={() => setShowPreview(false)} />
       )}
     </div>
   )
