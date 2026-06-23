@@ -727,9 +727,15 @@ function EnrollmentEnvelopeStatus({ a, env }) {
   const editable = env.status === 'sent' || env.status === 'partially_signed'
 
   const viewForm = async () => {
-    const r = await api.get(`/larc/envelopes/${env.id}/document`, { responseType: 'blob' })
-    const url = URL.createObjectURL(r.data)
-    window.open(url, '_blank', 'noopener')
+    setEditErr(null)
+    try {
+      const r = await api.get(`/larc/envelopes/${env.id}/document`, { responseType: 'blob' })
+      const url = URL.createObjectURL(r.data)
+      window.open(url, '_blank', 'noopener')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      setEditErr('Could not open the form. It may not be ready yet — try again.')
+    }
   }
 
   const openEdit = async () => {
