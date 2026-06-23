@@ -585,11 +585,14 @@ def resolve_enrollment_preview(db: Session, a: LarcAssignment) -> dict:
     reverse-mapping BoldSign's opaque field IDs."""
     s = get_all_practice_settings(db)
 
-    provider_name = a.inserting_provider_name or (
+    # Mirror the send path's strip-then-fallback (_resolve_provider /
+    # _resolve_app) so the preview shows exactly what would send. A
+    # whitespace-only override must NOT read as a filled value here when
+    # the sender would strip it and fall back to PracticeConfig.
+    provider_name = (a.inserting_provider_name or "").strip() or (
         f"{s.get('provider_first_name') or ''} {s.get('provider_last_name') or ''}".strip())
-    provider_npi = a.inserting_provider_npi or s.get("provider_npi") or ""
-    app_name = a.app_name or s.get("app_name") or ""
-    app_npi = a.app_npi or s.get("app_npi") or ""
+    provider_npi = (a.inserting_provider_npi or "").strip() or (s.get("provider_npi") or "")
+    app_name, app_npi = _resolve_app(a, s)
 
     _, _, spec = _resolve_template_spec_for_assignment(db, a)
 

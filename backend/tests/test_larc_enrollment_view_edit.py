@@ -47,6 +47,18 @@ def test_resolve_preview_flags_blanks(db):
     assert "Inserting Provider NPI" in out["blanks"]
 
 
+def test_resolve_preview_whitespace_override_reads_as_blank(db):
+    # A whitespace-only override would be .strip()'d to empty on send and
+    # fall back to PracticeConfig; the preview must agree (not show it as
+    # a filled value), or it defeats the point of the preview.
+    a = _pharmacy_assignment(db, inserting_provider_npi="   ")
+    out = resolve_enrollment_preview(db, a)
+    labels = {f["label"]: f for f in out["fields"]}
+    assert labels["Inserting Provider NPI"]["value"] == ""
+    assert labels["Inserting Provider NPI"]["blank"] is True
+    assert "Inserting Provider NPI" in out["blanks"]
+
+
 def test_resolve_preview_not_sendable_without_patient_email(db):
     a = _pharmacy_assignment(db, patient_email=None)
     out = resolve_enrollment_preview(db, a)
