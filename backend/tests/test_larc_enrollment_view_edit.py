@@ -112,6 +112,24 @@ def test_edit_url_returns_url_when_editable(client_factory, db, monkeypatch):
     assert r.json()["url"] == "https://app.boldsign.com/edit/abc"
 
 
+def test_edit_url_parses_boldsigns_real_editurl_key(client_factory, db, monkeypatch):
+    # Regression: BoldSign returns the URL under "editUrl" (201). The parser
+    # must accept it — previously it only looked for editFormUrl/url/
+    # embeddedEditUrl, so every Edit Form click 409'd on an editable doc.
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+    u = _work_user(db); a = _pharmacy_assignment(db); env = _envelope(db, a, status="sent")
+    resp = MagicMock(status_code=201)
+    resp.json.return_value = {"editUrl": "https://app.boldsign.com/document/embed/?x=1"}
+    fake = MagicMock()
+    fake.__enter__.return_value.post.return_value = resp
+    client = client_factory(user=u)
+    with patch("app.services.larc.enrollment_sender._http", return_value=fake), \
+         patch("app.services.larc.enrollment_sender._is_configured", return_value=True):
+        r = client.get(f"/api/larc/envelopes/{env.id}/edit-url")
+    assert r.status_code == 200
+    assert r.json()["url"] == "https://app.boldsign.com/document/embed/?x=1"
+
+
 def test_edit_url_409_when_fully_signed(client_factory, db):
     u = _work_user(db); a = _pharmacy_assignment(db); env = _envelope(db, a, status="signed")
     client = client_factory(user=u)

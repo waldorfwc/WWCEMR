@@ -159,11 +159,19 @@ def create_embedded_edit_url(env: LarcEnrollmentEnvelope, *,
                    params={"documentId": env.boldsign_envelope_id},
                    json=body)
     if r.status_code >= 300:
+        # Log the real BoldSign reason — the router collapses this into a
+        # generic 409, so without this the actual cause is lost.
+        log.warning("BoldSign createEmbeddedEditUrl rejected for %s: %s %s",
+                    env.boldsign_envelope_id, r.status_code, r.text[:300])
         raise EnrollmentNotEditable(
             f"BoldSign edit-url {r.status_code}: {r.text[:200]}")
     data = r.json()
-    url = data.get("editFormUrl") or data.get("url") or data.get("embeddedEditUrl")
+    # BoldSign returns the URL under `editUrl`; accept the documented aliases too.
+    url = (data.get("editUrl") or data.get("editFormUrl")
+           or data.get("url") or data.get("embeddedEditUrl"))
     if not url:
+        log.warning("BoldSign createEmbeddedEditUrl 2xx but no url key for %s: %r",
+                    env.boldsign_envelope_id, data)
         raise EnrollmentNotEditable(f"BoldSign response missing edit url: {data!r}")
     return url
 
