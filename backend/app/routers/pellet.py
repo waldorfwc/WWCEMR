@@ -4882,10 +4882,10 @@ def append_visit_dose(visit_id: str, payload: DoseAppendIn,
 
     by = current_user.get("email") or "system"
     is_confirmed_visit = v.status in ("inserted", "billed")
-    if is_confirmed_visit and not _is_admin(db, current_user):
+    if (is_confirmed_visit or v.reopened_at is not None) and not _is_admin(db, current_user):
         raise HTTPException(
             status_code=403,
-            detail="This visit is confirmed — only a manager can edit doses.",
+            detail="Only a manager can edit doses on a confirmed or reopened visit.",
         )
 
     pos = max([d.position for d in v.doses], default=0) + 1
@@ -5899,7 +5899,7 @@ def _load_visit(db: Session, visit_id: str) -> PelletVisit:
     return v
 
 
-_REOPENABLE_STATUSES = {"inserted", "billed", "cancelled"}
+_REOPENABLE_STATUSES = {"inserted", "billed"}
 
 
 class ReopenIn(BaseModel):

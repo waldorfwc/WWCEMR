@@ -1,10 +1,14 @@
 from datetime import date
-from app.models.user import User
+from app.models.user import User, UserGroup
+from app.models.module_tier import UserModuleOverride
 from app.models.pellet import (
     PelletPatient, PelletVisit, PelletVisitDose, PelletDoseType,
     PelletLot, PelletStock, PelletAuditEvent,
 )
 from app.routers.pellet import _visit_missing_lot
+
+PELLETS = "pellets"
+WORK = 20
 
 
 def _mgr(db):
@@ -133,12 +137,37 @@ def test_close_reopen_inserted_returns_to_inserted(client_factory, db):
     assert r.json()["status"] == "inserted"
 
 
-def test_close_reopen_from_cancelled_goes_inserted(client_factory, db):
+def test_reopen_cancelled_now_rejected(client_factory, db):
     p = _patient(db); v = _visit(db, p, status="cancelled")
     client = _client(client_factory, db)
-    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "un-cancel"})
-    r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
-    assert r.json()["status"] == "inserted"
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "x"})
+    assert r.status_code == 409
+
+
+def _work_user(db):
+    """Non-admin user with only WORK tier on pellets."""
+    u = User(email="work@waldorfwomenscare.com", display_name="Work User",
+             group=UserGroup.CLINICAL, is_super_admin=False)
+    db.add(u); db.flush()
+    db.add(UserModuleOverride(user_email=u.email, module=PELLETS,
+                              tier=WORK, added_by="test"))
+    db.commit()
+    return u
+
+
+def test_append_dose_to_reopened_visit_requires_manager(client_factory, db):
+    """A WORK-tier user must get 403 when appending a dose to a reopened visit."""
+    p = _patient(db)
+    dt = _dose_type(db)
+    v = _visit(db, p, status="inserted")
+    # Manager reopens the visit first
+    mgr_client = _client(client_factory, db)
+    mgr_client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "correction"})
+    # Now a WORK user tries to append — must be denied
+    work_client = client_factory(user=_work_user(db))
+    r = work_client.post(f"/api/pellets/visits/{v.id}/doses",
+                         json={"dose_type_id": str(dt.id), "quantity": 1})
+    assert r.status_code == 403
 
 
 def test_close_reopen_not_reopened_409(client_factory, db):
