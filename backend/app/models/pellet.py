@@ -653,6 +653,13 @@ class PelletVisit(Base):
     # blocker query. The dose detail is free-form text only.
     is_historical   = Column(Boolean, default=False, nullable=False)
 
+    # Reopen tracking — a manager can reopen a completed/cancelled visit to
+    # correct it; these record the open state and what status to return to.
+    reopened_at       = Column(DateTime, nullable=True)
+    reopened_by       = Column(String(120), nullable=True)
+    reopened_reason   = Column(Text, nullable=True)
+    pre_reopen_status = Column(String(20), nullable=True)
+
     patient = relationship("PelletPatient", back_populates="visits")
     doses = relationship("PelletVisitDose",
                           back_populates="visit",

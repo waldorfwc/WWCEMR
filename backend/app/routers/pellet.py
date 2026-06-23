@@ -3594,6 +3594,18 @@ def _patient_dict(p: PelletPatient, include_visits: bool = False,
     return out
 
 
+def _visit_missing_lot(v) -> bool:
+    """A real, completed visit that lacks lot data — zero dose rows or any
+    dose without a lot. Historical backfills are excluded (knowingly
+    incomplete, not a data error)."""
+    if v.is_historical or v.status not in ("inserted", "billed"):
+        return False
+    doses = v.doses or []
+    if not doses:
+        return True
+    return any(d.lot_id is None for d in doses)
+
+
 def _visit_dict(v: PelletVisit, include_milestones: bool = True,
                   include_doses: bool = True) -> dict:
     out = {
@@ -3625,6 +3637,11 @@ def _visit_dict(v: PelletVisit, include_milestones: bool = True,
         "billed_by":           v.billed_by,
         "notes":               v.notes,
         "is_historical":       bool(v.is_historical),
+        "reopened_at":         v.reopened_at.isoformat() if v.reopened_at else None,
+        "reopened_by":         v.reopened_by,
+        "reopened_reason":     v.reopened_reason,
+        "pre_reopen_status":   v.pre_reopen_status,
+        "missing_lot":         _visit_missing_lot(v),
         "created_at":          v.created_at.isoformat() if v.created_at else None,
         "created_by":          v.created_by,
     }
