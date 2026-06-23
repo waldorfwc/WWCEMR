@@ -144,6 +144,21 @@ export default function MissingCharges() {
         </div>
       </div>
 
+      {/* Untriaged banner */}
+      {(dash?.by_status?.new ?? 0) > 0 && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded border border-amber-300 bg-amber-50 px-3 py-2">
+          <div className="text-[13px] text-amber-900">
+            <strong>{dash.by_status.new}</strong> untriaged charge{dash.by_status.new === 1 ? '' : 's'} —
+            triage them so the responsible providers get billed.
+          </div>
+          <button
+            className="btn-primary text-xs whitespace-nowrap"
+            onClick={() => setFilters({ ...filters, status: 'new', open_only: false })}>
+            Triage Now
+          </button>
+        </div>
+      )}
+
       {/* Status counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 mb-3">
         {(picks?.statuses || []).map(s => {
