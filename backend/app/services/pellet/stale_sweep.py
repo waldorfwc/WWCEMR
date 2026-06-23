@@ -66,6 +66,9 @@ def sweep_stale_visits(db: Session, *,
                     .filter(PelletVisit.scheduled_date.isnot(None),
                             PelletVisit.scheduled_date <= cutoff,
                             PelletVisit.status.in_(["new", "rescheduled", "in_progress"]),
+                            # A reopened visit is transiently in_progress while a
+                            # manager corrects it — never auto-cancel it mid-fix.
+                            PelletVisit.reopened_at.is_(None),
                             PelletVisitDose.status.in_(["planned", "pulled"]))
                     .distinct().all())
 

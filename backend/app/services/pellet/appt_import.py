@@ -252,7 +252,10 @@ def import_appointments(
         candidates = (db.query(PelletVisit)
                         .filter(PelletVisit.scheduled_date >= min_d,
                                 PelletVisit.scheduled_date <= max_d,
-                                PelletVisit.status == "in_progress")
+                                PelletVisit.status == "in_progress",
+                                # A reopened visit is transiently in_progress while
+                                # a manager corrects it — never auto-cancel it.
+                                PelletVisit.reopened_at.is_(None))
                         .all())
         for v in candidates:
             p = db.query(PelletPatient).filter(PelletPatient.id == v.patient_id).first()
