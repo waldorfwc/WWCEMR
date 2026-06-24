@@ -82,3 +82,52 @@ def test_merge_lot_carries_real_exp_onto_placeholder_canonical(db):
     db.refresh(dst)
     assert dst.expiration_date == date(2027, 9, 1)
     assert _oh(db, dst, "brandywine") == 4
+
+
+from app.models.user import User
+
+_WITNESS_EMAIL = "witness@waldorfwomenscare.com"
+
+
+def _mgr(db):
+    u = User(email="dedup@waldorfwomenscare.com", display_name="D", is_super_admin=True)
+    db.add(u); db.commit()
+    # Also create the witness user so controlled-lot verify passes
+    w = User(email=_WITNESS_EMAIL, display_name="W", is_super_admin=True)
+    db.add(w); db.commit()
+    return u
+
+
+def _receive_and_verify(client, dt, *, number, loc, doses, exp="2027-03-01"):
+    r = client.post("/api/pellets/receipts", json={
+        "location": loc, "is_unscheduled": True, "notes": "test receive",
+        "lots": [{"dose_type_id": str(dt.id), "qualgen_lot_number": number,
+                  "expiration_date": exp, "doses_received": doses}],
+    })
+    assert r.status_code == 201, r.text
+    rid = r.json()["receipt_id"]
+    v = client.post(f"/api/pellets/receipts/{rid}/verify-manifest",
+                    json={"witness_user": _WITNESS_EMAIL})
+    assert v.status_code == 200, v.text
+    return rid
+
+
+def test_verify_merges_second_receipt_of_same_lot_same_office(client_factory, db):
+    dt = _dt(db); u = _mgr(db); client = client_factory(user=u)
+    _receive_and_verify(client, dt, number="LZ", loc="white_plains", doses=10)
+    _receive_and_verify(client, dt, number="LZ", loc="white_plains", doses=6)
+    lots = db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "LZ").all()
+    assert len(lots) == 1
+    assert _oh(db, lots[0], "white_plains") == 16
+    assert lots[0].doses_originally_received == 16
+
+
+def test_verify_keeps_same_lot_at_two_offices_separate(client_factory, db):
+    dt = _dt(db); u = _mgr(db); client = client_factory(user=u)
+    _receive_and_verify(client, dt, number="LX", loc="white_plains", doses=10)
+    _receive_and_verify(client, dt, number="LX", loc="brandywine", doses=7)
+    lots = db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "LX").all()
+    assert len(lots) == 2
+    by_loc = {l.location: l for l in lots}
+    assert _oh(db, by_loc["white_plains"], "white_plains") == 10
+    assert _oh(db, by_loc["brandywine"], "brandywine") == 7
