@@ -120,6 +120,29 @@ def test_staff_thread_payload_exposes_read_by_staff_at(client, db):
     assert msgs[0]["read_by_staff_at"] is not None
 
 
+def test_staff_thread_reports_notify_status(client, db):
+    # consent + phone -> can notify
+    ok = _seed_surgery(db, chart="OK", name="Okay", phone="+12405550000")
+    ok.sms_consent = True
+    db.commit()
+    body = client.get(f"/api/staff/surgeries/{ok.id}/messages").json()
+    assert body["can_notify"] is True and body["notify_block"] is None
+
+    # consent off -> blocked: no_consent
+    nc = _seed_surgery(db, chart="NC", name="NoConsent", phone="+12405550001")
+    nc.sms_consent = False
+    db.commit()
+    body = client.get(f"/api/staff/surgeries/{nc.id}/messages").json()
+    assert body["can_notify"] is False and body["notify_block"] == "no_consent"
+
+    # consent on but no phone -> blocked: no_phone
+    np = _seed_surgery(db, chart="NP", name="NoPhone", phone="")
+    np.sms_consent = True
+    db.commit()
+    body = client.get(f"/api/staff/surgeries/{np.id}/messages").json()
+    assert body["can_notify"] is False and body["notify_block"] == "no_phone"
+
+
 def test_staff_inbox_read_view_lists_only_fully_read_threads(client, db):
     s_unread = _seed_surgery(db, chart="U", name="Unreadly")
     s_read = _seed_surgery(db, chart="R", name="Readly")

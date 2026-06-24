@@ -63,7 +63,21 @@ def staff_thread(
               .filter(SurgeryMessage.surgery_id == surgery_id)
               .order_by(SurgeryMessage.sent_at.asc())
               .all())
-    return {"messages": [_to_dict(m) for m in msgs]}
+    # Whether a staff reply will actually notify the patient by SMS. Mirrors
+    # the gate in send_patient_sms (consent + a phone on file); surfaced so the
+    # reply UI can warn that the patient won't get the "message waiting" SMS.
+    has_phone = bool((s.cell_phone or "").strip())
+    if not s.sms_consent:
+        notify_block = "no_consent"
+    elif not has_phone:
+        notify_block = "no_phone"
+    else:
+        notify_block = None
+    return {
+        "messages": [_to_dict(m) for m in msgs],
+        "can_notify": notify_block is None,
+        "notify_block": notify_block,
+    }
 
 
 @router.post("/surgeries/{surgery_id}/messages/mark-read")

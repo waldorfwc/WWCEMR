@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, AlertTriangle } from 'lucide-react'
 import api from '../utils/api'
 
 export default function MessagesSection({ sid, flat = false }) {
@@ -106,7 +106,16 @@ export default function MessagesSection({ sid, flat = false }) {
                   rows={3}
                   placeholder="Reply to patient…"
                   className="w-full text-sm rounded border-gray-300" />
-      <div className="flex justify-end mt-2">
+      <div className="flex items-center justify-end gap-2 mt-2">
+        {thread && thread.can_notify === false && (
+          <span className="flex items-center gap-1 text-xs text-amber-700"
+                title="The reply is saved to the portal thread, but the patient won't get the 'new message' SMS.">
+            <AlertTriangle size={13} />
+            {thread.notify_block === 'no_phone'
+              ? "Won't notify — no phone on file"
+              : "Won't notify — no SMS consent"}
+          </span>
+        )}
         <button onClick={() => draft.trim() && send.mutate(draft.trim())}
                  disabled={!draft.trim() || send.isPending}
                  className="btn-primary text-sm">
