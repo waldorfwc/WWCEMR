@@ -122,15 +122,14 @@ def test_verify_merges_second_receipt_of_same_lot_same_office(client_factory, db
     assert lots[0].doses_originally_received == 16
 
 
-def test_verify_keeps_same_lot_at_two_offices_separate(client_factory, db):
+def test_verify_merges_same_lot_across_offices(client_factory, db):
     dt = _dt(db); u = _mgr(db); client = client_factory(user=u)
     _receive_and_verify(client, dt, number="LX", loc="white_plains", doses=10)
     _receive_and_verify(client, dt, number="LX", loc="brandywine", doses=7)
     lots = db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "LX").all()
-    assert len(lots) == 2
-    by_loc = {l.location: l for l in lots}
-    assert _oh(db, by_loc["white_plains"], "white_plains") == 10
-    assert _oh(db, by_loc["brandywine"], "brandywine") == 7
+    assert len(lots) == 1                       # Model A: one shared lot
+    assert _oh(db, lots[0], "white_plains") == 10
+    assert _oh(db, lots[0], "brandywine") == 7  # stock tracked per office on the one lot
 
 
 # ---------------------------------------------------------------------------
@@ -142,23 +141,18 @@ from app.models.pellet import PelletTransfer, PelletDisposal, PelletCountLine
 
 def test_dedup_migration_merges_existing_duplicates(db):
     dt = _dt(db)
-    # 3 dups at white_plains: placeholder-exp + two with real exp
     a = _lot(db, dt, number="DUP", loc="white_plains", exp=UNKNOWN_EXP, orig=40, on_hand=0)
     b = _lot(db, dt, number="DUP", loc="white_plains", exp=date(2027, 6, 1), orig=10, on_hand=4)
     c = _lot(db, dt, number="DUP", loc="white_plains", exp=date(2027, 6, 1), orig=5, on_hand=2)
-    # and one at brandywine (must stay separate)
     e = _lot(db, dt, number="DUP", loc="brandywine", exp=date(2027, 6, 1), orig=3, on_hand=1)
     stats = dedup_lots(db, actor="system:test", dry_run=False)
     db.commit()
-    wp = (db.query(PelletLot)
-            .filter(PelletLot.qualgen_lot_number == "DUP", PelletLot.location == "white_plains").all())
-    assert len(wp) == 1
-    assert _oh(db, wp[0], "white_plains") == 6
-    assert wp[0].expiration_date == date(2027, 6, 1)
-    bw = (db.query(PelletLot)
-            .filter(PelletLot.qualgen_lot_number == "DUP", PelletLot.location == "brandywine").all())
-    assert len(bw) == 1
-    assert stats["groups_merged"] == 1 and stats["lots_deleted"] == 2
+    lots = db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "DUP").all()
+    assert len(lots) == 1                                  # all 4 -> 1 shared lot
+    assert _oh(db, lots[0], "white_plains") == 6           # 0 + 4 + 2
+    assert _oh(db, lots[0], "brandywine") == 1             # brandywine stock on the same lot
+    assert lots[0].expiration_date == date(2027, 6, 1)     # real exp, not placeholder
+    assert stats["groups_merged"] == 1 and stats["lots_deleted"] == 3
 
 
 def test_dedup_migration_is_idempotent(db):
@@ -178,6 +172,30 @@ def test_dedup_migration_dry_run_writes_nothing(db):
     stats = dedup_lots(db, actor="t", dry_run=True); db.commit()
     assert db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "DR").count() == 2  # unchanged
     assert len(stats["plan"]) == 1   # but the plan was computed
+
+
+def test_backfill_location_falls_back_to_modal_dose_visit(db):
+    # Guard the else-branch: a lot with no stock row AND no receipt must derive
+    # its location from the modal office of its doses' visits. This branch uses
+    # PelletVisitDose — a dropped import here is a latent NameError on the real
+    # migration (every other test lot has a stock row, so only this hits it).
+    dt = _dt(db)
+    lot = PelletLot(dose_type_id=dt.id, qualgen_lot_number="NOLOC",
+                    expiration_date=UNKNOWN_EXP, doses_originally_received=3,
+                    location=None, receipt_id=None)
+    db.add(lot); db.flush()
+    p = PelletPatient(patient_name="B", chart_number="C2", patient_dob=date(1980, 1, 1))
+    db.add(p); db.flush()
+    v = PelletVisit(patient_id=p.id, visit_kind="initial", status="inserted",
+                    location="brandywine", scheduled_date=date(2026, 6, 1))
+    db.add(v); db.flush()
+    db.add(PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=1,
+                           position=1, status="inserted", lot_id=lot.id))
+    db.commit()
+    n = backfill_lot_locations(db); db.commit()
+    db.refresh(lot)
+    assert n == 1
+    assert lot.location == "brandywine"
 
 
 def test_merge_lot_repoints_transfer_disposal_countline(db):

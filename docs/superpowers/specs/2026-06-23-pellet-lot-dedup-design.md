@@ -2,13 +2,43 @@
 
 **Date:** 2026-06-23
 **Module:** Pellet (DEA Schedule III inventory)
-**Status:** Approved (brainstorm complete)
+**Status:** Approved — **REVISED 2026-06-24 to Model A** (see revision note below)
+
+## ⚠ REVISION 2026-06-24 — switched from Model B (per-office lots) to Model A (one shared lot)
+
+The Model-B dry-run skipped 9 of 10 duplicate groups because their lots' doses
+span offices. A read-only investigation showed that's mostly a **data-quality
+artifact, not real multi-office dispensing**: `visit.location` is unreliable
+(White Plains 5,052 visits vs Brandywine 203 vs Arlington 22 — `white_plains`
+is effectively a default), a lot's stock office often ≠ its dominant-dose office,
+and only ~19% of doses on multi-office lots (177/945) are at a non-dominant
+office, mostly 1–3-dose stragglers. Only 150/1,206 patients are genuinely
+multi-office. So **per-office lot identity rests on bad location data.**
+
+**Model A:** one `PelletLot` per `(qualgen_lot_number, dose_type_id)`, with stock
+still tracked per office via `PelletStock` (lot × location — unchanged). Cross-office
+doses simply hang off the one shared lot. Concrete deltas from the text below:
+- **Merge key** = `(qualgen_lot_number, dose_type_id)` — **drop office/location**.
+- **`verify_manifest`** merges a freshly-verified lot into the canonical matching
+  `(number, dose_type)` regardless of office.
+- **Migration**: group by `(number, dose_type)`; **REMOVE the single-office guard**
+  and the location-backfill dependency; `merge_lot` is unchanged (it already sums
+  stock per office).
+- **`PelletLot.location`** becomes informational (the receiving office stamped at
+  receipt time), **not** part of lot identity. Keep the column; stop using it for
+  grouping.
+- **Tests**: same lot received+verified at two offices → **ONE** lot with two stock
+  rows (was two lots under B); migration consolidates all duplicate groups.
+
+Everything else below stands; where it says "per office" / "single-office guard" /
+"merge key includes location," apply the deltas above.
 
 ## Goal
 
 End duplicate pellet lots: **prevent** new ones at receiving, and **merge** the
-existing duplicates — keyed per office — preserving every stock total and
-chain-of-custody link, with a full audit trail.
+existing duplicates — keyed by lot number + strength (one shared lot, stock per
+office) — preserving every stock total and chain-of-custody link, with a full
+audit trail.
 
 ## Background
 
