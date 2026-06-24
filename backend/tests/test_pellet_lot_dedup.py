@@ -131,3 +131,75 @@ def test_verify_keeps_same_lot_at_two_offices_separate(client_factory, db):
     by_loc = {l.location: l for l in lots}
     assert _oh(db, by_loc["white_plains"], "white_plains") == 10
     assert _oh(db, by_loc["brandywine"], "brandywine") == 7
+
+
+# ---------------------------------------------------------------------------
+# Task 4: one-time dedup migration
+# ---------------------------------------------------------------------------
+from scripts.pellet_lot_dedup import dedup_lots, backfill_lot_locations
+from app.models.pellet import PelletTransfer, PelletDisposal, PelletCountLine
+
+
+def test_dedup_migration_merges_existing_duplicates(db):
+    dt = _dt(db)
+    # 3 dups at white_plains: placeholder-exp + two with real exp
+    a = _lot(db, dt, number="DUP", loc="white_plains", exp=UNKNOWN_EXP, orig=40, on_hand=0)
+    b = _lot(db, dt, number="DUP", loc="white_plains", exp=date(2027, 6, 1), orig=10, on_hand=4)
+    c = _lot(db, dt, number="DUP", loc="white_plains", exp=date(2027, 6, 1), orig=5, on_hand=2)
+    # and one at brandywine (must stay separate)
+    e = _lot(db, dt, number="DUP", loc="brandywine", exp=date(2027, 6, 1), orig=3, on_hand=1)
+    stats = dedup_lots(db, actor="system:test", dry_run=False)
+    db.commit()
+    wp = (db.query(PelletLot)
+            .filter(PelletLot.qualgen_lot_number == "DUP", PelletLot.location == "white_plains").all())
+    assert len(wp) == 1
+    assert _oh(db, wp[0], "white_plains") == 6
+    assert wp[0].expiration_date == date(2027, 6, 1)
+    bw = (db.query(PelletLot)
+            .filter(PelletLot.qualgen_lot_number == "DUP", PelletLot.location == "brandywine").all())
+    assert len(bw) == 1
+    assert stats["groups_merged"] == 1 and stats["lots_deleted"] == 2
+
+
+def test_dedup_migration_is_idempotent(db):
+    dt = _dt(db)
+    _lot(db, dt, number="X", loc="white_plains", exp=date(2027, 1, 1), orig=5, on_hand=5)
+    _lot(db, dt, number="X", loc="white_plains", exp=date(2027, 1, 1), orig=5, on_hand=5)
+    dedup_lots(db, actor="t", dry_run=False); db.commit()
+    stats2 = dedup_lots(db, actor="t", dry_run=False); db.commit()
+    assert stats2["groups_merged"] == 0
+    assert db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "X").count() == 1
+
+
+def test_dedup_migration_dry_run_writes_nothing(db):
+    dt = _dt(db)
+    _lot(db, dt, number="DR", loc="white_plains", exp=date(2027, 1, 1), orig=5, on_hand=5)
+    _lot(db, dt, number="DR", loc="white_plains", exp=date(2027, 1, 1), orig=5, on_hand=5)
+    stats = dedup_lots(db, actor="t", dry_run=True); db.commit()
+    assert db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "DR").count() == 2  # unchanged
+    assert len(stats["plan"]) == 1   # but the plan was computed
+
+
+def test_merge_lot_repoints_transfer_disposal_countline(db):
+    # Permanent guard: a future edit to merge_lot's _FK_MODELS can't silently
+    # drop one of these three (other tests only cover dose + audit).
+    dt = _dt(db)
+    dst = _lot(db, dt, number="FK", loc="white_plains", exp=date(2027, 1, 1), orig=10, on_hand=5)
+    src = _lot(db, dt, number="FK", loc="white_plains", exp=date(2027, 1, 1), orig=5, on_hand=2)
+    # PelletTransfer: NOT-NULL = lot_id, from_location, to_location, doses, sent_by
+    db.add(PelletTransfer(lot_id=src.id, from_location="white_plains",
+                          to_location="brandywine", doses=1, sent_by="t"))
+    # PelletDisposal: NOT-NULL = lot_id, location, doses, reason, performed_by
+    db.add(PelletDisposal(lot_id=src.id, location="white_plains", doses=1,
+                          reason="dropped", performed_by="t"))
+    # PelletCountLine: NOT-NULL = count_id, lot_id, expected_doses
+    from app.models.pellet import PelletCount
+    cnt = PelletCount(location="white_plains", started_by="t")
+    db.add(cnt); db.flush()
+    db.add(PelletCountLine(count_id=cnt.id, lot_id=src.id, expected_doses=2))
+    db.commit()
+    merge_lot(db, src=src, dst=dst, actor="t"); db.commit()
+    assert db.query(PelletTransfer).filter(PelletTransfer.lot_id == dst.id).count() == 1
+    assert db.query(PelletDisposal).filter(PelletDisposal.lot_id == dst.id).count() == 1
+    assert db.query(PelletCountLine).filter(PelletCountLine.lot_id == dst.id).count() == 1
+    assert db.query(PelletLot).filter(PelletLot.id == src.id).first() is None
