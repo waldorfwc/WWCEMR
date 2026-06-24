@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, init_db
 from app.models.pellet import (
-    PelletLot, PelletReceipt, PelletStock,
+    PelletLot, PelletReceipt, PelletStock, PelletVisitDose,
 )
 from app.services.pellet.lot_merge import merge_lot, UNKNOWN_EXP
 

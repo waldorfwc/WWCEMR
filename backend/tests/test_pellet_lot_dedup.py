@@ -174,6 +174,30 @@ def test_dedup_migration_dry_run_writes_nothing(db):
     assert len(stats["plan"]) == 1   # but the plan was computed
 
 
+def test_backfill_location_falls_back_to_modal_dose_visit(db):
+    # Guard the else-branch: a lot with no stock row AND no receipt must derive
+    # its location from the modal office of its doses' visits. This branch uses
+    # PelletVisitDose — a dropped import here is a latent NameError on the real
+    # migration (every other test lot has a stock row, so only this hits it).
+    dt = _dt(db)
+    lot = PelletLot(dose_type_id=dt.id, qualgen_lot_number="NOLOC",
+                    expiration_date=UNKNOWN_EXP, doses_originally_received=3,
+                    location=None, receipt_id=None)
+    db.add(lot); db.flush()
+    p = PelletPatient(patient_name="B", chart_number="C2", patient_dob=date(1980, 1, 1))
+    db.add(p); db.flush()
+    v = PelletVisit(patient_id=p.id, visit_kind="initial", status="inserted",
+                    location="brandywine", scheduled_date=date(2026, 6, 1))
+    db.add(v); db.flush()
+    db.add(PelletVisitDose(visit_id=v.id, dose_type_id=dt.id, quantity=1,
+                           position=1, status="inserted", lot_id=lot.id))
+    db.commit()
+    n = backfill_lot_locations(db); db.commit()
+    db.refresh(lot)
+    assert n == 1
+    assert lot.location == "brandywine"
+
+
 def test_merge_lot_repoints_transfer_disposal_countline(db):
     # Permanent guard: a future edit to merge_lot's _FK_MODELS can't silently
     # drop one of these three (other tests only cover dose + audit).
