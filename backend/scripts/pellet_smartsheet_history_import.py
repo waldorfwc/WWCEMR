@@ -220,9 +220,9 @@ def main():
         # Catalogs
         dose_by_key = {(t.hormone, float(t.dose_mg)): t
                        for t in db.query(PelletDoseType).all()}
-        lots_by_number = {l.qualgen_lot_number.strip(): l
+        lots_by_number = {(l.qualgen_lot_number.strip(), str(l.dose_type_id), l.location): l
                           for l in db.query(PelletLot).all()
-                          if l.qualgen_lot_number}
+                          if l.qualgen_lot_number and l.location}
         patients_by_chart = {(p.chart_number or "").strip().lstrip("0"): p
                              for p in db.query(PelletPatient).all()}
         already_imported = {v.smartsheet_row_id
@@ -349,11 +349,12 @@ def main():
                         if not rd["lot_raw"]:
                             skip_reasons[f"{row_kind}_no_lot"] += 1
                             continue
-                        lot = lots_by_number.get(rd["lot_raw"])
+                        lot = lots_by_number.get((rd["lot_raw"], str(rd["dose_type"].id), location))
                         if not lot:
                             lot = PelletLot(
                                 qualgen_lot_number=rd["lot_raw"],
                                 dose_type_id=rd["dose_type"].id,
+                                location=location,
                                 doses_originally_received=rd["qty"],
                                 expiration_date=UNKNOWN_EXP,
                                 received_at=datetime.combine(
@@ -362,7 +363,7 @@ def main():
                                 notes="Auto-created from Smartsheet history import",
                             )
                             db.add(lot); db.flush()
-                            lots_by_number[rd["lot_raw"]] = lot
+                            lots_by_number[(rd["lot_raw"], str(rd["dose_type"].id), location)] = lot
                             stats["lots_auto_created"] += 1
                         if row_kind == "disposal":
                             db.add(PelletDisposal(
@@ -488,13 +489,14 @@ def main():
                               .count())
 
                 for pos, rd in enumerate(row_doses, start=base_pos):
-                    lot = lots_by_number.get(rd["lot_raw"]) if rd["lot_raw"] else None
+                    lot = lots_by_number.get((rd["lot_raw"], str(rd["dose_type"].id), location)) if rd["lot_raw"] else None
                     if not lot and rd["lot_raw"]:
                         # New lot referenced in history that's not in PelletLot
                         # yet — create with placeholder exp.
                         lot = PelletLot(
                             qualgen_lot_number=rd["lot_raw"],
                             dose_type_id=rd["dose_type"].id,
+                            location=location,
                             doses_originally_received=rd["qty"],
                             expiration_date=UNKNOWN_EXP,
                             received_at=datetime.combine(date_v or _date.today(), datetime.min.time()),
@@ -502,7 +504,7 @@ def main():
                             notes="Auto-created from Smartsheet history import",
                         )
                         db.add(lot); db.flush()
-                        lots_by_number[rd["lot_raw"]] = lot
+                        lots_by_number[(rd["lot_raw"], str(rd["dose_type"].id), location)] = lot
                         stats["lots_auto_created"] += 1
 
                     db.add(PelletVisitDose(

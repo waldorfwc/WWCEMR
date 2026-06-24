@@ -95,6 +95,9 @@ class PelletLot(Base):
     # future controlled-substance cost report.
     unit_cost                   = Column(Numeric(10, 2), nullable=True)   # per pack
     cost_per_dose               = Column(Numeric(10, 4), nullable=True)
+    # Which office this lot belongs to (model B: one lot record per office).
+    # Stamped at receipt time; backfilled for legacy rows by the dedup migration.
+    location                    = Column(String(40), nullable=True)
 
     dose_type = relationship("PelletDoseType")
     stock_rows = relationship("PelletStock", cascade="all, delete-orphan",

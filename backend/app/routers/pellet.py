@@ -1564,6 +1564,7 @@ def create_receipt(payload: ReceiptIn,
             receipt_id=r.id,
             received_by=by,
             notes=lot.notes,
+            location=r.location,
         )
         db.add(l); db.flush()
         _audit(db, actor=by, action="lot_received",
@@ -1679,6 +1680,22 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
                delta_doses=l.doses_originally_received,
                summary=f"Stock +{l.doses_originally_received} {l.dose_type.label if l.dose_type else ''} "
                        f"lot {l.qualgen_lot_number} → {r.location}")
+
+    # Dedup: fold each freshly-verified lot into the pre-existing canonical for
+    # its (number, dose_type, office). Keeps one lot record per office (model B)
+    # so receiving the same lot twice can't create duplicates. The merge also
+    # moves its just-credited stock onto the canonical.
+    from app.services.pellet.lot_merge import merge_lot
+    for l in list(lots):
+        canonical = (db.query(PelletLot)
+                       .filter(PelletLot.qualgen_lot_number == l.qualgen_lot_number,
+                               PelletLot.dose_type_id == l.dose_type_id,
+                               PelletLot.location == r.location,
+                               PelletLot.id != l.id)
+                       .order_by(PelletLot.received_at.asc())
+                       .first())
+        if canonical is not None:
+            merge_lot(db, src=l, dst=canonical, actor=by)
 
     # Advance order status if applicable
     if order:

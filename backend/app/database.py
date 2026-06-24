@@ -459,6 +459,7 @@ def _apply_lightweight_migrations():
         # Pellet: per-lot acquisition cost (copied from order line at verify time)
         ("pellet_lots", "unit_cost",     "NUMERIC(10,2)"),
         ("pellet_lots", "cost_per_dose", "NUMERIC(10,4)"),
+        ("pellet_lots", "location", "VARCHAR(40)"),
         # Pellet count: witness at start (separate from finish) + scope toggle
         ("pellet_counts", "witness_user_start", "VARCHAR(120)"),
         ("pellet_counts", "scope",              "VARCHAR(30) DEFAULT 'all'"),
