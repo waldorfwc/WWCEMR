@@ -8,8 +8,9 @@ from datetime import datetime
 from app.utils.dt import now_utc_naive
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 import os
@@ -41,6 +42,8 @@ def _to_dict(m: SurgeryMessage) -> dict:
         "author_email": m.author_email,
         "body":         m.body,
         "sent_at":      m.sent_at.isoformat() if m.sent_at else None,
+        "read_by_staff_at":   m.read_by_staff_at.isoformat() if m.read_by_staff_at else None,
+        "read_by_patient_at": m.read_by_patient_at.isoformat() if m.read_by_patient_at else None,
     }
 
 
@@ -123,21 +126,48 @@ def staff_send(
 
 @router.get("/messages/inbox")
 def staff_inbox(
+    view: str = Query("unread"),
+    q: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
 ):
-    """Surgeries with at least one unread patient message, newest first.
-    Collapse to one row per surgery (most recent unread)."""
-    rows = (db.query(SurgeryMessage, Surgery)
+    """Patient-message threads, one row per surgery, newest patient message
+    first.
+
+    view='unread' (default): surgeries with at least one UNREAD patient
+      message — this is what the global Messages badge counts, so the
+      no-arg call must keep this exact behavior.
+    view='read': surgeries whose patient messages are ALL read (no unread
+      left) — lets a scheduler revisit a thread after it leaves the badge.
+    q: case-insensitive filter on patient name or chart number.
+    """
+    if view not in ("unread", "read"):
+        raise HTTPException(status_code=422, detail="view must be 'unread' or 'read'")
+
+    base = (db.query(SurgeryMessage, Surgery)
               .join(Surgery, Surgery.id == SurgeryMessage.surgery_id)
-              .filter(SurgeryMessage.author_kind == "patient",
-                       SurgeryMessage.read_by_staff_at.is_(None))
-              .order_by(SurgeryMessage.sent_at.desc())
-              .all())
+              .filter(SurgeryMessage.author_kind == "patient"))
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        base = base.filter(or_(Surgery.patient_name.ilike(like),
+                               Surgery.chart_number.ilike(like)))
+    if view == "unread":
+        base = base.filter(SurgeryMessage.read_by_staff_at.is_(None))
+    rows = base.order_by(SurgeryMessage.sent_at.desc()).all()
+
+    # For the 'read' view, exclude any surgery that still has an unread
+    # patient message (a thread is "read" only when nothing is outstanding).
+    unread_sids: set = set()
+    if view == "read":
+        unread_sids = {sid for (sid,) in db.query(SurgeryMessage.surgery_id)
+                       .filter(SurgeryMessage.author_kind == "patient",
+                               SurgeryMessage.read_by_staff_at.is_(None)).all()}
+
     seen: set = set()
     out = []
     for m, s in rows:
-        if s.id in seen: continue
+        if s.id in seen or s.id in unread_sids:
+            continue
         seen.add(s.id)
         out.append({
             "surgery_id":    str(s.id),
@@ -146,4 +176,4 @@ def staff_inbox(
             "last_body":     m.body[:80],
             "last_sent_at":  m.sent_at.isoformat() if m.sent_at else None,
         })
-    return {"rows": out, "count": len(out)}
+    return {"rows": out, "count": len(out), "view": view}

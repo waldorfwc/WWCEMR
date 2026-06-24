@@ -15,18 +15,25 @@ export default function MessagesSection({ sid, flat = false }) {
     staleTime: 10_000,
   })
 
-  // The backend marks unread patient messages as read every time the
-  // staff thread is fetched. Without this, the global Messages-link
-  // badge keeps the old count cached until its 60s refetchInterval ticks.
-  // Drop the cache whenever the thread payload changes so the badge
-  // reflects the actual unread state right after you open the drawer.
+  // Marking patient messages read is an explicit POST (backend GET has no
+  // side effects — Fable M3). When the open thread still has unread patient
+  // messages, fire it once so read_by_staff_at gets set and the shared
+  // Messages badge clears; then refresh the inbox. Gated on an actual unread
+  // message so the 30s thread refetch doesn't re-POST after everything's read.
+  const markRead = useMutation({
+    mutationFn: () =>
+      api.post(`/staff/surgeries/${sid}/messages/mark-read`).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['staff-inbox'] }),
+  })
   useEffect(() => {
-    if (!thread) return
-    const hadPatientMsg = (thread.messages || []).some(m => m.author_kind === 'patient')
-    if (hadPatientMsg) {
-      qc.invalidateQueries({ queryKey: ['staff-inbox'] })
+    if (!thread?.messages) return
+    const hasUnreadPatientMsg = thread.messages.some(
+      m => m.author_kind === 'patient' && !m.read_by_staff_at)
+    if (hasUnreadPatientMsg && !markRead.isPending) {
+      markRead.mutate()
     }
-  }, [thread, qc])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread])
 
   const { data: templates } = useQuery({
     queryKey: ['message-templates'],

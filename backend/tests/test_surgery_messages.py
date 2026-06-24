@@ -104,3 +104,68 @@ def test_staff_messages_inbox_drops_once_staff_views(client, db):
     client.post(f"/api/staff/surgeries/{s.id}/messages/mark-read")
     assert not any(r["surgery_id"] == str(s.id)
                       for r in client.get("/api/staff/messages/inbox").json()["rows"])
+
+
+def test_staff_thread_payload_exposes_read_by_staff_at(client, db):
+    """The frontend gates its mark-read POST on this field, so the thread
+    payload must expose it (null until read, set after)."""
+    s = _seed_surgery(db)
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="patient", body="q"))
+    db.commit()
+    msgs = client.get(f"/api/staff/surgeries/{s.id}/messages").json()["messages"]
+    assert "read_by_staff_at" in msgs[0]
+    assert msgs[0]["read_by_staff_at"] is None
+    client.post(f"/api/staff/surgeries/{s.id}/messages/mark-read")
+    msgs = client.get(f"/api/staff/surgeries/{s.id}/messages").json()["messages"]
+    assert msgs[0]["read_by_staff_at"] is not None
+
+
+def test_staff_inbox_read_view_lists_only_fully_read_threads(client, db):
+    s_unread = _seed_surgery(db, chart="U", name="Unreadly")
+    s_read = _seed_surgery(db, chart="R", name="Readly")
+    db.add(SurgeryMessage(surgery_id=s_unread.id, author_kind="patient", body="hi"))
+    db.add(SurgeryMessage(surgery_id=s_read.id, author_kind="patient", body="hi"))
+    db.commit()
+    client.post(f"/api/staff/surgeries/{s_read.id}/messages/mark-read")
+
+    read_rows = client.get("/api/staff/messages/inbox?view=read").json()["rows"]
+    read_sids = [r["surgery_id"] for r in read_rows]
+    assert str(s_read.id) in read_sids       # fully-read thread shows under "read"
+    assert str(s_unread.id) not in read_sids  # still-unread thread does NOT
+
+    unread_rows = client.get("/api/staff/messages/inbox?view=unread").json()["rows"]
+    unread_sids = [r["surgery_id"] for r in unread_rows]
+    assert str(s_unread.id) in unread_sids
+    assert str(s_read.id) not in unread_sids
+
+
+def test_staff_inbox_read_view_excludes_thread_with_any_unread(client, db):
+    """A thread with one read + one unread patient message is NOT 'read'."""
+    s = _seed_surgery(db)
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="patient", body="first"))
+    db.commit()
+    client.post(f"/api/staff/surgeries/{s.id}/messages/mark-read")
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="patient", body="second"))
+    db.commit()
+    read_sids = [r["surgery_id"]
+                 for r in client.get("/api/staff/messages/inbox?view=read").json()["rows"]]
+    assert str(s.id) not in read_sids
+    unread_sids = [r["surgery_id"]
+                   for r in client.get("/api/staff/messages/inbox?view=unread").json()["rows"]]
+    assert str(s.id) in unread_sids
+
+
+def test_staff_inbox_search_filters_by_name_or_chart(client, db):
+    s1 = _seed_surgery(db, chart="C100", name="Alice Adams")
+    s2 = _seed_surgery(db, chart="C200", name="Bob Brown")
+    db.add(SurgeryMessage(surgery_id=s1.id, author_kind="patient", body="hi"))
+    db.add(SurgeryMessage(surgery_id=s2.id, author_kind="patient", body="hi"))
+    db.commit()
+    by_name = client.get("/api/staff/messages/inbox?q=alice").json()["rows"]
+    assert [r["surgery_id"] for r in by_name] == [str(s1.id)]
+    by_chart = client.get("/api/staff/messages/inbox?q=C200").json()["rows"]
+    assert [r["surgery_id"] for r in by_chart] == [str(s2.id)]
+
+
+def test_staff_inbox_rejects_bad_view(client, db):
+    assert client.get("/api/staff/messages/inbox?view=bogus").status_code == 422
