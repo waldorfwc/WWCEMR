@@ -1461,8 +1461,11 @@ def portal_messages_get(
     payload = auth.decode_portal_token(token) or {}
     is_preview = (payload.get("viewer") or "").startswith("staff:")
 
+    # Staff-only internal notes must NEVER reach the patient. `isnot(True)`
+    # also covers any legacy row where the column is null.
     msgs = (db.query(SurgeryMessage)
-              .filter(SurgeryMessage.surgery_id == surgery_id)
+              .filter(SurgeryMessage.surgery_id == surgery_id,
+                      SurgeryMessage.internal.isnot(True))
               .order_by(SurgeryMessage.sent_at.asc())
               .all())
     if not is_preview:

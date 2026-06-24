@@ -1291,6 +1291,30 @@ def test_portal_messages_get_marks_staff_as_read_for_patient(client, db):
     assert all(m.read_by_patient_at is not None for m in staff_msgs)
 
 
+def test_portal_messages_get_never_returns_internal_notes(client, db):
+    """Privacy boundary: staff-only internal notes must NEVER reach the patient."""
+    from app.services.patient_portal_auth import issue_portal_token
+    from app.models.surgery_message import SurgeryMessage
+    s = _seed_surgery(db)
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="staff",
+                          author_email="x@y", body="Visible reply"))
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="staff",
+                          author_email="x@y", internal=True,
+                          body="SECRET internal note — do not show patient"))
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="patient",
+                          body="patient question"))
+    db.commit()
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/messages",
+                   headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    bodies = [m["body"] for m in r.json()["messages"]]
+    assert "Visible reply" in bodies
+    assert "patient question" in bodies
+    assert all("SECRET internal note" not in b for b in bodies)
+    assert len(bodies) == 2     # internal note excluded entirely
+
+
 def test_portal_messages_get_in_staff_preview_skips_mark_read(client, db):
     """Preview mode (#154) must NOT mutate patient's unread state."""
     from app.services.patient_portal_auth import issue_portal_token

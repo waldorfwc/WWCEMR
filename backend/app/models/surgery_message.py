@@ -2,7 +2,7 @@
 from datetime import datetime
 from app.utils.dt import now_utc_naive
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text
 
 from app.database import Base
 from app.models.guid import GUID, new_uuid
@@ -20,6 +20,9 @@ class SurgeryMessage(Base):
                                     nullable=False)
     author_kind         = Column(String(20), nullable=False)
     author_email        = Column(String(200), nullable=True)
+    # Staff-only internal note: rendered in the staff thread but NEVER
+    # returned to the patient portal, and never triggers an SMS notify.
+    internal            = Column(Boolean, default=False, nullable=False)
     body                = Column(Text, nullable=False)
     sent_at             = Column(DateTime, default=now_utc_naive,
                                     nullable=False)

@@ -120,6 +120,43 @@ def test_staff_thread_payload_exposes_read_by_staff_at(client, db):
     assert msgs[0]["read_by_staff_at"] is not None
 
 
+def test_staff_internal_note_persists_flag_and_sends_no_sms(client, db):
+    s = _seed_surgery(db)
+    db.commit()
+    with patch("app.services.patient_sms.send_sms",
+                return_value="SM999") as mock_sms:
+        r = client.post(f"/api/staff/surgeries/{s.id}/messages",
+                        json={"body": "watch for no-show", "internal": True})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["internal"] is True and body["author_kind"] == "staff"
+    assert not mock_sms.called          # internal notes never notify the patient
+    row = db.query(SurgeryMessage).filter(SurgeryMessage.surgery_id == s.id).one()
+    assert row.internal is True
+
+
+def test_staff_normal_reply_still_sends_sms(client, db):
+    s = _seed_surgery(db)
+    db.commit()
+    with patch("app.services.patient_sms.send_sms", return_value="SM1") as mock_sms:
+        client.post(f"/api/staff/surgeries/{s.id}/messages",
+                    json={"body": "real reply"})  # internal defaults to False
+    assert mock_sms.called
+
+
+def test_staff_mark_unread_resurfaces_thread(client, db):
+    s = _seed_surgery(db)
+    db.add(SurgeryMessage(surgery_id=s.id, author_kind="patient", body="?"))
+    db.commit()
+    client.post(f"/api/staff/surgeries/{s.id}/messages/mark-read")
+    assert not any(r["surgery_id"] == str(s.id)
+                   for r in client.get("/api/staff/messages/inbox").json()["rows"])
+    mu = client.post(f"/api/staff/surgeries/{s.id}/messages/mark-unread")
+    assert mu.status_code == 200 and mu.json()["unmarked"] == 1
+    assert any(r["surgery_id"] == str(s.id)
+               for r in client.get("/api/staff/messages/inbox").json()["rows"])
+
+
 def test_staff_thread_reports_notify_status(client, db):
     # consent + phone -> can notify
     ok = _seed_surgery(db, chart="OK", name="Okay", phone="+12405550000")

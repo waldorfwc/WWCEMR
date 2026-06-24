@@ -33,6 +33,9 @@ PORTAL_URL = os.environ.get("PATIENT_PORTAL_URL",
 
 class MessagePayload(BaseModel):
     body: str
+    # When true the message is a staff-only internal note: hidden from the
+    # patient portal and sends no SMS notification.
+    internal: bool = False
 
 
 def _to_dict(m: SurgeryMessage) -> dict:
@@ -40,6 +43,7 @@ def _to_dict(m: SurgeryMessage) -> dict:
         "id":           str(m.id),
         "author_kind":  m.author_kind,
         "author_email": m.author_email,
+        "internal":     bool(m.internal),
         "body":         m.body,
         "sent_at":      m.sent_at.isoformat() if m.sent_at else None,
         "read_by_staff_at":   m.read_by_staff_at.isoformat() if m.read_by_staff_at else None,
@@ -101,6 +105,27 @@ def staff_mark_read(
     return {"marked": len(msgs)}
 
 
+@router.post("/surgeries/{surgery_id}/messages/mark-unread")
+def staff_mark_unread(
+    surgery_id: str,
+    db: Session = Depends(get_db),
+    user: dict = Depends(requires_tier(Module.SURGERY, Tier.WORK)),
+):
+    """Flip this thread's patient messages back to unread so it returns to the
+    Messages inbox/badge — for flagging a thread to follow up on later."""
+    if not db.query(Surgery).filter(Surgery.id == surgery_id).first():
+        raise HTTPException(status_code=404, detail="surgery not found")
+    msgs = (db.query(SurgeryMessage)
+              .filter(SurgeryMessage.surgery_id == surgery_id,
+                      SurgeryMessage.author_kind == "patient",
+                      SurgeryMessage.read_by_staff_at.isnot(None))
+              .all())
+    for m in msgs:
+        m.read_by_staff_at = None
+    db.commit()
+    return {"unmarked": len(msgs)}
+
+
 @router.post("/surgeries/{surgery_id}/messages")
 def staff_send(
     surgery_id: str,
@@ -118,23 +143,27 @@ def staff_send(
         surgery_id=s.id,
         author_kind="staff",
         author_email=user["email"],
+        internal=bool(payload.internal),
         body=body,
     )
     db.add(m); db.commit(); db.refresh(m)
-    # Route the patient-notification SMS through send_patient_sms so it
-    # honors the consent gate and writes the PatientSms audit row.
-    # Previously this called send_sms() directly, bypassing both.
-    # (Fable recalls audit H1.)
-    try:
-        send_patient_sms(
-            db, kind=None, surgery=s, context={},
-            ad_hoc_body=(f"WWC has a new message for you. Sign in at "
-                          f"{PORTAL_URL} to read it."),
-            sent_by=user["email"],
-        )
-    except Exception:
-        import logging
-        logging.getLogger(__name__).exception("portal P6 SMS notify failed")
+    # Internal notes are staff-only: never visible to the patient and never
+    # notified by SMS. Only a real patient-facing reply notifies.
+    if not m.internal:
+        # Route the patient-notification SMS through send_patient_sms so it
+        # honors the consent gate and writes the PatientSms audit row.
+        # Previously this called send_sms() directly, bypassing both.
+        # (Fable recalls audit H1.)
+        try:
+            send_patient_sms(
+                db, kind=None, surgery=s, context={},
+                ad_hoc_body=(f"WWC has a new message for you. Sign in at "
+                              f"{PORTAL_URL} to read it."),
+                sent_by=user["email"],
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).exception("portal P6 SMS notify failed")
     return _to_dict(m)
 
 

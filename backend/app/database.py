@@ -360,6 +360,9 @@ def _apply_lightweight_migrations():
         # Hospital Posting (boarding slip) editor overrides — persist
         # field-by-field corrections the coordinator made on the form.
         ("surgeries", "boarding_slip_overrides",      "JSON"),
+        # Staff-only internal note flag on a surgery message (hidden from
+        # the patient portal; no SMS notify). Defaults to a visible message.
+        ("surgery_messages", "internal", "BOOLEAN DEFAULT 0 NOT NULL"),
         # Per-file send log (fax/email events) for any SurgeryFile that
         # gets shipped externally — boarding slips, modifier-22 letters,
         # clearance forms, etc.
