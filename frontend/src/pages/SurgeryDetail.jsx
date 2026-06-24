@@ -50,6 +50,13 @@ export default function SurgeryDetail() {
   const [showPortalInvite, setShowPortalInvite] = useState(false)
   const [showMessages, setShowMessages] = useState(false)
 
+  // Deep-link from the Messages inbox (/surgery/:id#messages) opens the
+  // Messages panel directly, so the reply box is visible immediately instead
+  // of landing on the details page with no obvious way to respond.
+  useEffect(() => {
+    if (window.location.hash === '#messages') setShowMessages(true)
+  }, [])
+
   const { data: tpl } = useQuery({
     queryKey: ['surgery-templates'],
     queryFn: () => api.get('/surgery/picklists/procedure-templates').then(r => r.data.templates),
