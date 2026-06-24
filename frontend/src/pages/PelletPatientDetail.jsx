@@ -58,6 +58,14 @@ export default function PelletPatientDetail() {
     }
   }
 
+  const sendPortalAccess = useMutation({
+    mutationFn: () =>
+      api.post(`/pellets/patients/${id}/portal-access/send`).then(r => r.data),
+    onSuccess: (d) => alert(`Portal access emailed to ${d.sent_to}`),
+    onError: (e) =>
+      alert(e?.response?.data?.detail || 'Could not send portal access.'),
+  })
+
   if (isLoading) return <LoadingState />
   if (!p) return <div className="p-6 text-red-600">Patient not found.</div>
 
@@ -101,6 +109,12 @@ export default function PelletPatientDetail() {
                     className="text-xs px-2 py-1 rounded border bg-white border-border-subtle text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
                     title="Open this patient's portal in a new tab (read-only)">
               <Eye size={11} /> View as Patient
+            </button>
+            <button type="button" onClick={() => sendPortalAccess.mutate()}
+                    disabled={sendPortalAccess.isPending}
+                    className="text-xs px-2 py-1 rounded border bg-white border-border-subtle text-gray-600 hover:border-plum-300 hover:bg-plum-50 flex items-center gap-1"
+                    title="Email the patient their pellet portal login link">
+              <Send size={11} /> {sendPortalAccess.isPending ? 'Sending…' : 'Send Portal Access'}
             </button>
             <TypeBadge patient={p} qc={qc} />
             <StatusBadge patient={p} qc={qc} />

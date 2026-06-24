@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import patch
 import pytest
 from app.models.pellet import PelletPatient
 from app.services.pellet import portal_auth
@@ -48,4 +49,27 @@ def test_mint_preview_token(client, db, patient):
 
 def test_mint_404_unknown_patient(client, db):
     r = client.post("/api/pellets/patients/00000000-0000-0000-0000-000000000000/portal-preview-token")
+    assert r.status_code == 404
+
+
+def test_send_portal_access_emails_login_link(client, db, patient):
+    patient.patient_email = "jane@example.com"; db.commit()
+    with patch("app.services.patient_email.send_email", return_value=True) as m:
+        r = client.post(f"/api/pellets/patients/{patient.id}/portal-access/send")
+    assert r.status_code == 200, r.text
+    assert r.json()["sent_to"] == "jane@example.com"
+    assert m.called
+    to_email, subject, html = m.call_args[0][:3]
+    assert to_email == "jane@example.com"
+    assert "pellet-portal/login" in html
+
+
+def test_send_portal_access_422_when_no_email(client, db, patient):
+    # fixture patient has no patient_email
+    r = client.post(f"/api/pellets/patients/{patient.id}/portal-access/send")
+    assert r.status_code == 422
+
+
+def test_send_portal_access_404_unknown_patient(client, db):
+    r = client.post("/api/pellets/patients/00000000-0000-0000-0000-000000000000/portal-access/send")
     assert r.status_code == 404

@@ -1553,6 +1553,62 @@ def portal_preview_token(assignment_id: str,
     return {"token": token, "assignment_id": str(a.id)}
 
 
+@router.post("/assignments/{assignment_id}/portal-access/send")
+def send_larc_portal_access(assignment_id: str,
+                            db: Session = Depends(get_db),
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Email the patient a link to the LARC portal login page (mirrors the
+    surgery 'Send Portal Access'). This is the manual companion to the
+    automatic enrollment-step notification."""
+    import os
+    a = db.query(LarcAssignment).filter(LarcAssignment.id == assignment_id).first()
+    if a is None:
+        raise HTTPException(status_code=404, detail="assignment not found")
+    if not a.patient_email:
+        raise HTTPException(status_code=422,
+                            detail="No email on file for this patient.")
+    base = (os.environ.get("APP_BASE_URL") or "https://gw.waldorfwomenscare.com").rstrip("/")
+    portal_url = f"{base}/larc-portal/login"
+    first = (a.patient_first_name
+             or (a.patient_name or "there").split(",")[-1].strip().split(" ")[0]
+             or "there")
+    html = f"""
+    <p>Hello {first},</p>
+    <p>You now have access to your Waldorf Women's Care LARC portal. From there
+    you can complete your enrollment, sign consent, pay your balance, and review
+    your documents.</p>
+    <p><a href="{portal_url}"
+           style="background:#7c3aed;color:#fff;padding:10px 18px;
+                  border-radius:8px;text-decoration:none;display:inline-block;">
+        Open my LARC portal
+    </a></p>
+    <p>To log in you'll need:</p>
+    <ul>
+      <li>Your <strong>date of birth</strong></li>
+      <li>The <strong>last 4 digits</strong> of the phone number we have on file</li>
+    </ul>
+    <p>If anything doesn't work, call our office at 240-252-2140.</p>
+    <p>Thank you,<br/>Waldorf Women's Care</p>
+    """
+    from app.services.patient_email import send_patient_email
+    rec = send_patient_email(
+        db, kind=None, to_email=a.patient_email, context={},
+        sent_by=(current_user.get("email") or "system"),
+        chart_number=a.chart_number,
+        ad_hoc_subject="Your LARC portal access",
+        ad_hoc_html=html,
+    )
+    if rec is not None:
+        rec.larc_assignment_id = a.id
+        db.commit()
+    email = (current_user.get("email") or "").lower().strip() or None
+    log_action(db, action="NOTIFY", resource_type="larc_assignment",
+               resource_id=str(a.id), patient_id=a.chart_number or None,
+               user_id=email, user_name=current_user.get("name") or email,
+               description=f"LARC portal access emailed to {a.patient_email}")
+    return {"ok": True, "sent_to": a.patient_email}
+
+
 # ─── Milestone helpers + endpoints ──────────────────────────────────
 
 def _get_milestone(a: LarcAssignment, kind: str) -> Optional[LarcMilestone]:

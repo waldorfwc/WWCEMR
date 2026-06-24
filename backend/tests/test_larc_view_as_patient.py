@@ -1,4 +1,5 @@
 from datetime import date
+from unittest.mock import patch
 from app.models.larc import LarcAssignment, LarcDeviceType
 from app.services.larc import portal_auth
 
@@ -35,4 +36,28 @@ def test_preview_token_is_read_only(client, db):
 
 def test_mint_404_for_unknown(client, db):
     r = client.post("/api/larc/assignments/00000000-0000-0000-0000-000000000000/portal-preview-token")
+    assert r.status_code == 404
+
+
+def test_send_portal_access_emails_login_link(client, db):
+    a = _a(db)
+    a.patient_email = "pat@example.com"; db.commit()
+    with patch("app.services.patient_email.send_email", return_value=True) as m:
+        r = client.post(f"/api/larc/assignments/{a.id}/portal-access/send")
+    assert r.status_code == 200, r.text
+    assert r.json()["sent_to"] == "pat@example.com"
+    assert m.called
+    to_email, subject, html = m.call_args[0][:3]
+    assert to_email == "pat@example.com"
+    assert "larc-portal/login" in html
+
+
+def test_send_portal_access_422_when_no_email(client, db):
+    a = _a(db)   # no patient_email on the fixture
+    r = client.post(f"/api/larc/assignments/{a.id}/portal-access/send")
+    assert r.status_code == 422
+
+
+def test_send_portal_access_404_for_unknown(client, db):
+    r = client.post("/api/larc/assignments/00000000-0000-0000-0000-000000000000/portal-access/send")
     assert r.status_code == 404

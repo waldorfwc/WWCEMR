@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowLeft, AlertTriangle, Check, CheckCircle2, Circle, Clock,
-  ChevronDown, ChevronUp, Edit3, Package, RotateCcw, X, SkipForward, FileText, Eye,
+  ChevronDown, ChevronUp, Edit3, Package, RotateCcw, X, SkipForward, FileText, Eye, Send,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import LoadingState from '../components/LoadingState'
@@ -116,6 +116,19 @@ export default function LarcAssignment() {
                 window.open('/larc-portal/home?staff_token=' + encodeURIComponent(res.data.token), '_blank')
               }}>
               <Eye size={12} /> View as patient
+            </button>
+            <button
+              className="btn-secondary text-[11px] flex items-center gap-1"
+              title="Email the patient their LARC portal login link"
+              onClick={async () => {
+                try {
+                  const res = await api.post(`/larc/assignments/${a.id}/portal-access/send`)
+                  alert(`Portal access emailed to ${res.data.sent_to}`)
+                } catch (e) {
+                  alert(e?.response?.data?.detail || 'Could not send portal access.')
+                }
+              }}>
+              <Send size={12} /> Send portal access
             </button>
             <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded ${
               a.source_flow === 'office_procedure'

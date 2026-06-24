@@ -4028,6 +4028,55 @@ def portal_preview_token(patient_id: str, db: Session = Depends(get_db),
     return {"token": token, "pellet_patient_id": str(p.id)}
 
 
+@router.post("/patients/{patient_id}/portal-access/send")
+def send_pellet_portal_access(
+    patient_id: str, db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK)),
+):
+    """Email the patient a link to the pellet portal login page (mirrors the
+    surgery 'Send Portal Access'). Self-service login at /pellet-portal/login."""
+    p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
+    if p is None:
+        raise HTTPException(status_code=404, detail="patient not found")
+    if not p.patient_email:
+        raise HTTPException(status_code=422,
+                            detail="No email on file for this patient.")
+    portal_url = "https://gw.waldorfwomenscare.com/pellet-portal/login"
+    first = (p.patient_name or "there").split(",")[-1].strip().split(" ")[0] or "there"
+    html = f"""
+    <p>Hello {first},</p>
+    <p>You now have access to your Waldorf Women's Care pellet portal. From
+    there you can complete your mammogram and lab requirements, sign consent,
+    pay your balance, and schedule your insertion.</p>
+    <p><a href="{portal_url}"
+           style="background:#7c3aed;color:#fff;padding:10px 18px;
+                  border-radius:8px;text-decoration:none;display:inline-block;">
+        Open my pellet portal
+    </a></p>
+    <p>To log in you'll need:</p>
+    <ul>
+      <li>Your <strong>date of birth</strong></li>
+      <li>The <strong>last 4 digits</strong> of the phone number we have on file</li>
+    </ul>
+    <p>If anything doesn't work, call our office at 240-252-2140.</p>
+    <p>Thank you,<br/>Waldorf Women's Care</p>
+    """
+    from app.services.patient_email import send_patient_email
+    send_patient_email(
+        db, kind=None, to_email=p.patient_email, context={},
+        sent_by=(current_user.get("email") or "system"),
+        chart_number=p.chart_number,
+        ad_hoc_subject="Your pellet portal access",
+        ad_hoc_html=html,
+    )
+    email = (current_user.get("email") or "").lower().strip() or None
+    log_action(db, action="NOTIFY", resource_type="pellet_patient",
+               resource_id=str(p.id), patient_id=p.chart_number or None,
+               user_id=email, user_name=current_user.get("name") or email,
+               description=f"Pellet portal access emailed to {p.patient_email}")
+    return {"ok": True, "sent_to": p.patient_email}
+
+
 # Prerequisite verification — mammogram + labs
 
 class MammoIn(BaseModel):
