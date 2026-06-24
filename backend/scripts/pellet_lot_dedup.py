@@ -1,5 +1,6 @@
-"""One-time: merge duplicate pellet lots (same qualgen_lot_number + dose_type +
-office) into a single canonical record. Backfills PelletLot.location first.
+"""One-time: merge duplicate pellet lots (same qualgen_lot_number + dose_type)
+into a single canonical record — Model A. Backfills PelletLot.location first
+(informational only; no longer gates grouping).
 
 Idempotent — re-running after a clean merge is a no-op. Run with --dry-run to
 print the plan without writing (the default); pass --apply to commit changes.
@@ -8,8 +9,7 @@ Canonical per group: prefer a receipt-backed lot with a real (non-placeholder)
 expiration; tie-break by earliest received_at.
 
 Safety: asserts total stock doses and total doses_originally_received are
-unchanged across the run; skips (and reports) any lot whose stock/doses span
-more than one office.
+unchanged across the run.
 """
 from __future__ import annotations
 
@@ -24,25 +24,9 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, init_db
 from app.models.pellet import (
-    PelletLot, PelletReceipt, PelletStock, PelletVisitDose,
+    PelletLot, PelletReceipt, PelletStock,
 )
 from app.services.pellet.lot_merge import merge_lot, UNKNOWN_EXP
-
-
-def _lot_offices(db: Session, lot: PelletLot) -> set:
-    """Distinct offices a lot touches: its stock rows + its doses' visit
-    locations. Used to detect a lot spanning >1 office (unsafe to auto-merge)."""
-    offices = set(
-        loc for (loc,) in db.query(PelletStock.location)
-                            .filter(PelletStock.lot_id == lot.id).all())
-    rows = (db.query(PelletVisitDose)
-              .filter(PelletVisitDose.lot_id == lot.id).all())
-    for d in rows:
-        # d.visit is a real relationship on PelletVisitDose
-        v = d.visit
-        if v is not None and v.location:
-            offices.add(v.location)
-    return offices
 
 
 def backfill_lot_locations(db: Session) -> int:
@@ -87,25 +71,19 @@ def dedup_lots(db: Session, *, actor: str = "system:lot-dedup",
     total_orig_before = sum(
         (lot.doses_originally_received or 0) for lot in db.query(PelletLot).all())
 
+    # Model A: group by (number, dose_type) only — location is informational.
+    # All lots with the same number+dose_type merge into one shared lot; stock
+    # stays per office via PelletStock rows.
     groups: dict = defaultdict(list)
     for lot in db.query(PelletLot).all():
-        if lot.location is None:
-            continue  # un-backfillable; left for manual review
-        groups[(lot.qualgen_lot_number, str(lot.dose_type_id), lot.location)].append(lot)
+        groups[(lot.qualgen_lot_number, str(lot.dose_type_id))].append(lot)
 
-    stats = {"groups_seen": 0, "groups_merged": 0, "lots_deleted": 0,
-             "skipped_multi_office": [], "plan": []}
+    stats = {"groups_seen": 0, "groups_merged": 0, "lots_deleted": 0, "plan": []}
 
     for key, lots in groups.items():
         if len(lots) < 2:
             continue
         stats["groups_seen"] += 1
-        # Single-office guard: every lot in the group must touch only this office.
-        office = key[2]
-        bad = [str(l.id) for l in lots if (_lot_offices(db, l) - {office})]
-        if bad:
-            stats["skipped_multi_office"].append({"key": key, "lots": bad})
-            continue
 
         # Canonical: receipt-backed + real exp first; tie-break earliest received_at.
         def rank(l: PelletLot):
@@ -152,10 +130,6 @@ def main() -> None:
         print(f"  duplicate groups: {stats['groups_seen']}")
         print(f"  groups merged:    {stats['groups_merged']}")
         print(f"  lots deleted:     {stats['lots_deleted']}")
-        if stats["skipped_multi_office"]:
-            print(
-                f"  SKIPPED (multi-office, manual review): "
-                f"{stats['skipped_multi_office']}")
         for p in stats["plan"]:
             print(
                 f"   {p['key']}: keep {p['canonical'][:8]}, "

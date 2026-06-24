@@ -122,15 +122,14 @@ def test_verify_merges_second_receipt_of_same_lot_same_office(client_factory, db
     assert lots[0].doses_originally_received == 16
 
 
-def test_verify_keeps_same_lot_at_two_offices_separate(client_factory, db):
+def test_verify_merges_same_lot_across_offices(client_factory, db):
     dt = _dt(db); u = _mgr(db); client = client_factory(user=u)
     _receive_and_verify(client, dt, number="LX", loc="white_plains", doses=10)
     _receive_and_verify(client, dt, number="LX", loc="brandywine", doses=7)
     lots = db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "LX").all()
-    assert len(lots) == 2
-    by_loc = {l.location: l for l in lots}
-    assert _oh(db, by_loc["white_plains"], "white_plains") == 10
-    assert _oh(db, by_loc["brandywine"], "brandywine") == 7
+    assert len(lots) == 1                       # Model A: one shared lot
+    assert _oh(db, lots[0], "white_plains") == 10
+    assert _oh(db, lots[0], "brandywine") == 7  # stock tracked per office on the one lot
 
 
 # ---------------------------------------------------------------------------
@@ -142,23 +141,18 @@ from app.models.pellet import PelletTransfer, PelletDisposal, PelletCountLine
 
 def test_dedup_migration_merges_existing_duplicates(db):
     dt = _dt(db)
-    # 3 dups at white_plains: placeholder-exp + two with real exp
     a = _lot(db, dt, number="DUP", loc="white_plains", exp=UNKNOWN_EXP, orig=40, on_hand=0)
     b = _lot(db, dt, number="DUP", loc="white_plains", exp=date(2027, 6, 1), orig=10, on_hand=4)
     c = _lot(db, dt, number="DUP", loc="white_plains", exp=date(2027, 6, 1), orig=5, on_hand=2)
-    # and one at brandywine (must stay separate)
     e = _lot(db, dt, number="DUP", loc="brandywine", exp=date(2027, 6, 1), orig=3, on_hand=1)
     stats = dedup_lots(db, actor="system:test", dry_run=False)
     db.commit()
-    wp = (db.query(PelletLot)
-            .filter(PelletLot.qualgen_lot_number == "DUP", PelletLot.location == "white_plains").all())
-    assert len(wp) == 1
-    assert _oh(db, wp[0], "white_plains") == 6
-    assert wp[0].expiration_date == date(2027, 6, 1)
-    bw = (db.query(PelletLot)
-            .filter(PelletLot.qualgen_lot_number == "DUP", PelletLot.location == "brandywine").all())
-    assert len(bw) == 1
-    assert stats["groups_merged"] == 1 and stats["lots_deleted"] == 2
+    lots = db.query(PelletLot).filter(PelletLot.qualgen_lot_number == "DUP").all()
+    assert len(lots) == 1                                  # all 4 -> 1 shared lot
+    assert _oh(db, lots[0], "white_plains") == 6           # 0 + 4 + 2
+    assert _oh(db, lots[0], "brandywine") == 1             # brandywine stock on the same lot
+    assert lots[0].expiration_date == date(2027, 6, 1)     # real exp, not placeholder
+    assert stats["groups_merged"] == 1 and stats["lots_deleted"] == 3
 
 
 def test_dedup_migration_is_idempotent(db):

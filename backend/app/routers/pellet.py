@@ -1682,15 +1682,15 @@ def verify_manifest(receipt_id: str, payload: VerifyManifestIn,
                        f"lot {l.qualgen_lot_number} → {r.location}")
 
     # Dedup: fold each freshly-verified lot into the pre-existing canonical for
-    # its (number, dose_type, office). Keeps one lot record per office (model B)
-    # so receiving the same lot twice can't create duplicates. The merge also
-    # moves its just-credited stock onto the canonical.
+    # its (number, dose_type) — Model A: one shared lot regardless of office.
+    # Stock is tracked per office via PelletStock; PelletLot.location is
+    # informational (receiving office) only. The merge also moves its
+    # just-credited stock onto the canonical.
     from app.services.pellet.lot_merge import merge_lot
     for l in list(lots):
         canonical = (db.query(PelletLot)
                        .filter(PelletLot.qualgen_lot_number == l.qualgen_lot_number,
                                PelletLot.dose_type_id == l.dose_type_id,
-                               PelletLot.location == r.location,
                                PelletLot.id != l.id)
                        .order_by(PelletLot.received_at.asc())
                        .first())
