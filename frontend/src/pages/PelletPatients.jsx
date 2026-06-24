@@ -15,7 +15,6 @@ const VIEWS = [
   { k: 'upcoming',     l: 'Upcoming',         icon: Clock },
   { k: 'roster',       l: 'All patients',     icon: Users },
   { k: 'last_visits',  l: 'Last visits',      icon: Calendar },
-  { k: 'recall_due',   l: 'Recall due',       icon: AlertTriangle },
   { k: 'needs_mammo',  l: 'Needs mammo',      icon: AlertTriangle },
   { k: 'needs_dosing', l: 'Needs dosing',     icon: Pill },
   { k: 'ready',        l: 'Ready to insert',  icon: CheckCircle2 },
@@ -953,22 +952,6 @@ function viewColumns(view) {
       render: p => p.active_visit_has_doses
         ? <span className="text-[11px] text-green-700">{p.active_visit_doses_pulled} pulled · {p.active_visit_doses_planned} planned</span>
         : <span className="text-[11px] text-amber-700 italic">no doses yet</span>
-    },
-  ]
-
-  if (view === 'recall_due') return [
-    Patient, Type,
-    {
-      key: 'last', label: 'Last visit',
-      render: p => <span className="text-[12px]">{fmt.date(p.last_visit_date)}</span>
-    },
-    {
-      key: 'interval', label: 'Interval (mo)', right: true,
-      render: p => <span className="text-[11px] font-mono">{p.recall_interval_months}</span>
-    },
-    {
-      key: 'overdue', label: 'Days since', right: true,
-      render: p => <span className="text-[12px] font-mono text-red-700 font-semibold">{p.days_since_last_visit}</span>
     },
   ]
 
