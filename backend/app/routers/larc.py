@@ -2986,9 +2986,9 @@ def list_ready_to_checkout(db: Session = Depends(get_db),
 @router.get("/checkouts/returnable")
 def list_returnable_devices(db: Session = Depends(get_db),
                             current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
-    """Active assignments whose device is currently OUT — checked out (LARC) or
-    assigned (office procedure) — and so can be returned to stock. Powers the
-    nav 'Return a Device' drawer."""
+    """Active assignments whose device is currently CHECKED OUT — so its status
+    can be updated (returned to stock, flagged defective, etc.). Powers the nav
+    'Update Device Status' drawer."""
     rows = (db.query(LarcAssignment)
               .options(joinedload(LarcAssignment.device).joinedload(LarcDevice.device_type))
               .filter(LarcAssignment.device_id.isnot(None),
@@ -2998,7 +2998,7 @@ def list_returnable_devices(db: Session = Depends(get_db),
     out = []
     for a in rows:
         d = a.device
-        if not d or d.status not in ("checked_out", "assigned"):
+        if not d or d.status != "checked_out":
             continue
         cat = (d.device_type.category if d.device_type else None) or "larc"
         out.append({

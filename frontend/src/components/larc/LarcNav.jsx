@@ -77,7 +77,7 @@ export default function LarcNav() {
             </button>
             <button className="btn-secondary text-sm flex items-center gap-1"
                     onClick={() => setReturnOpen(true)}>
-              <RotateCcw size={13} /> Return a Device
+              <RotateCcw size={13} /> Update Device Status
             </button>
           </div>
         )}

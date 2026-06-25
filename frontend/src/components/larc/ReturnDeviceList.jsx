@@ -70,7 +70,7 @@ function ReturnRow({ row, qc }) {
       <div className="flex justify-end">
         <button className="btn-primary text-[11px]"
                 onClick={() => save.mutate()} disabled={save.isPending}>
-          {save.isPending ? 'Returning…' : 'Return to stock'}
+          {save.isPending ? 'Updating…' : 'Update status'}
         </button>
       </div>
     </div>

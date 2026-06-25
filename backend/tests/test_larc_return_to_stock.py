@@ -10,7 +10,7 @@ from app.models.larc import LarcDevice, LarcDeviceType, LarcAssignment
 
 def _setup(db, category="larc", device_status="checked_out", *, with_device=True,
            oid="D-RT1"):
-    dt = LarcDeviceType(name=f"Type-{category}", category=category,
+    dt = LarcDeviceType(name=f"Type-{category}-{oid}", category=category,
                         default_flow="in_stock", is_active=True)
     db.add(dt); db.commit(); db.refresh(dt)
     d = None
@@ -79,16 +79,17 @@ def test_return_reason_requires_an_allocated_device(client, db):
     assert r.status_code == 422
 
 
-def test_returnable_endpoint_lists_out_devices(client, db):
-    # A checked-out LARC device → returnable; an in-stock device → not.
+def test_returnable_lists_only_checked_out_devices(client, db):
+    # Only checked-out devices appear; an 'assigned' (not-yet-checked-out)
+    # device does not.
     a_out, _, _ = _setup(db, "larc", device_status="checked_out", oid="D-OUT1")
-    _setup(db, "office_procedure", device_status="assigned", oid="D-OUT2")  # also returnable
-    # An unassigned device with no active out-status should not appear.
+    a_assigned, _, _ = _setup(db, "larc", device_status="assigned", oid="D-OUT2")
     rows = client.get("/api/larc/checkouts/returnable").json()
     ids = [r["assignment_id"] for r in rows]
     assert str(a_out.id) in ids
+    assert str(a_assigned.id) not in ids
     assert all("device_our_id" in r and "category" in r for r in rows)
-    assert len(rows) == 2
+    assert len(rows) == 1
 
 
 def test_returnable_excludes_inserted(client, db):
