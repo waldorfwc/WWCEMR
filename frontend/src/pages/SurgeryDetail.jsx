@@ -4056,16 +4056,26 @@ function PriorAuthCardBody({ surgery }) {
   const qc = useQueryClient()
   const [authNum, setAuthNum] = useState(surgery.auth_number || '')
   const [authStatus, setAuthStatus] = useState(surgery.auth_status || 'not_required')
+  const [saved, setSaved] = useState('')
+
+  // Re-sync local fields when the surgery is refetched (so the saved value
+  // sticks and an external change doesn't get masked by stale local state).
+  useEffect(() => { setAuthNum(surgery.auth_number || '') }, [surgery.auth_number])
+  useEffect(() => { setAuthStatus(surgery.auth_status || 'not_required') }, [surgery.auth_status])
+
+  const flashSaved = (what) => { setSaved(what); setTimeout(() => setSaved(''), 2000) }
 
   const patchStatus = useMutation({
     mutationFn: () => api.patch(`/surgery/${surgery.id}`,
                                   { auth_status: authStatus }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }); flashSaved('status') },
+    onError: (e) => alert(e?.response?.data?.detail || 'Could not save auth status.'),
   })
   const patchNum = useMutation({
     mutationFn: () => api.patch(`/surgery/${surgery.id}`,
                                   { auth_number: authNum }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['surgery', surgery.id] }); flashSaved('number') },
+    onError: (e) => alert(e?.response?.data?.detail || 'Could not save auth number.'),
   })
 
   const STATUS_TONE = {
@@ -4114,6 +4124,7 @@ function PriorAuthCardBody({ surgery }) {
                 disabled={patchStatus.isPending}>
           {patchStatus.isPending ? 'Saving…' : 'Save status'}
         </button>
+        {saved === 'status' && <span className="text-[11px] text-green-600">Saved ✓</span>}
       </div>
 
       <FilesPanel surgery={surgery} kindFilter="prior_auth" label="Prior Auth Response" />
@@ -4132,6 +4143,7 @@ function PriorAuthCardBody({ surgery }) {
                   disabled={patchNum.isPending || authNum === (surgery.auth_number || '')}>
             {patchNum.isPending ? 'Saving…' : 'Save'}
           </button>
+          {saved === 'number' && <span className="text-[11px] text-green-600">Saved ✓</span>}
         </div>
       </div>
     </div>
