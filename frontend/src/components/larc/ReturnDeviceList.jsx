@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import api from '../../utils/api'
+import api, { fmt } from '../../utils/api'
 
 
 // Reasons by device category — match the consolidated /outcome handlers.
@@ -68,6 +68,7 @@ function ReturnRow({ row, qc }) {
       {row.checked_out_by && (
         <div className="text-[11px] text-gray-500">
           Checked out by {row.checked_out_by.split('@')[0]}
+          {row.checked_out_at && <> on {fmt.date(row.checked_out_at)}</>}
           {row.given_to && <> · given to {row.given_to}</>}
         </div>
       )}
