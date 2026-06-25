@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { Plus, PackageCheck } from 'lucide-react'
+import { Plus, PackageCheck, RotateCcw } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { MODULE, TIER } from '../../routes.jsx'
 import StartLarcProcessDrawer from './StartLarcProcessDrawer'
 import CheckoutDeviceDrawer from './CheckoutDeviceDrawer'
+import ReturnDeviceDrawer from './ReturnDeviceDrawer'
 
 
 // Page links rendered on every /larc page. Each carries the minimum tier
@@ -47,6 +48,7 @@ export default function LarcNav() {
   const items = navItems().filter(it => tier(MODULE.LARC, it.tier))
   const [startOpen, setStartOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [returnOpen, setReturnOpen] = useState(false)
   const navigate = useNavigate()
 
   return (
@@ -73,6 +75,10 @@ export default function LarcNav() {
                     onClick={() => setCheckoutOpen(true)}>
               <PackageCheck size={13} /> Check Out a Device
             </button>
+            <button className="btn-secondary text-sm flex items-center gap-1"
+                    onClick={() => setReturnOpen(true)}>
+              <RotateCcw size={13} /> Return a Device
+            </button>
           </div>
         )}
       </div>
@@ -84,6 +90,7 @@ export default function LarcNav() {
         onCreated={(id) => { setStartOpen(false); navigate('/larc/assignments/' + id) }} />}
 
       {checkoutOpen && <CheckoutDeviceDrawer onClose={() => setCheckoutOpen(false)} />}
+      {returnOpen && <ReturnDeviceDrawer onClose={() => setReturnOpen(false)} />}
     </div>
   )
 }

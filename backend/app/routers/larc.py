@@ -2983,6 +2983,37 @@ def list_ready_to_checkout(db: Session = Depends(get_db),
     return out
 
 
+@router.get("/checkouts/returnable")
+def list_returnable_devices(db: Session = Depends(get_db),
+                            current_user: dict = Depends(requires_tier(Module.LARC, Tier.WORK))):
+    """Active assignments whose device is currently OUT — checked out (LARC) or
+    assigned (office procedure) — and so can be returned to stock. Powers the
+    nav 'Return a Device' drawer."""
+    rows = (db.query(LarcAssignment)
+              .options(joinedload(LarcAssignment.device).joinedload(LarcDevice.device_type))
+              .filter(LarcAssignment.device_id.isnot(None),
+                      LarcAssignment.status.notin_(["billed", "cancelled", "inserted"]),
+                      LarcAssignment.is_active == True)
+              .all())
+    out = []
+    for a in rows:
+        d = a.device
+        if not d or d.status not in ("checked_out", "assigned"):
+            continue
+        cat = (d.device_type.category if d.device_type else None) or "larc"
+        out.append({
+            "assignment_id": str(a.id),
+            "patient_name": a.patient_name,
+            "chart_number": a.chart_number,
+            "device_our_id": d.our_id,
+            "device_status": d.status,
+            "device_type_name": d.device_type.name if d.device_type else None,
+            "category": cat,
+        })
+    out.sort(key=lambda r: (r["patient_name"] or ""))
+    return out
+
+
 class CheckoutDirectIn(BaseModel):
     device_our_id: str
     given_to: Optional[str] = None
