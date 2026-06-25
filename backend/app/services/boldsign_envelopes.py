@@ -411,6 +411,14 @@ def send_consent_envelopes(
     if not _is_configured():
         raise BoldSignEnvelopeError("BoldSign API key not configured")
 
+    # The patient is the first signer; BoldSign identifies every signer by
+    # email, so a missing email can't produce a valid envelope. Fail early with
+    # a clear message instead of letting BoldSign 400 into a 'failed' row.
+    if not (s.email or "").strip():
+        raise BoldSignEnvelopeError(
+            "No email address on file for this patient. Add the patient's "
+            "email before sending consent for e-signature.")
+
     # Curated selection is authoritative (intake-consents). When the surgery
     # has a non-empty consent_template_ids list, send exactly those templates
     # (skipping inactive/missing). Otherwise fall back to the matcher.
@@ -666,16 +674,22 @@ def reconcile_surgery_consent(db: Session, s: Surgery) -> None:
     envs = list(s.consent_envelopes or [])
     if not envs:
         return
-    # Envelopes in a terminal non-signed state (voided / expired / declined)
-    # are out of the running — they represent no outstanding patient action, so
-    # they must NOT block a surgery whose remaining ACTIVE consents are all
-    # signed. (Previously `all(signed)` counted these too, leaving consent_status
-    # stuck at 'sent' forever — and disagreeing with the scheduler-notify path,
-    # which already ignores terminal-non-signed envelopes when it reports
-    # all_signed.)
-    TERMINAL_NONSIGNED = ("voided", "expired", "declined")
-    active = [e for e in envs if (e.status or "").lower() not in TERMINAL_NONSIGNED]
-    if active and all(e.status == "signed" for e in active):
+    # Voided / expired envelopes are out of the running — removed by staff or
+    # timed out, they carry no outstanding action and must NOT block a surgery
+    # whose remaining ACTIVE consents are signed. (Previously `all(signed)`
+    # counted them, stranding consent_status at 'sent' forever.)
+    #
+    # A DECLINED envelope is different: the patient refused, so it must SURFACE
+    # — consent_status becomes 'declined', never auto-'signed'. This also fixes
+    # the all-declined case that previously left consent_status stale.
+    IGNORED = ("voided", "expired")
+    active = [e for e in envs if (e.status or "").lower() not in IGNORED]
+    if not active:
+        return  # nothing but voided/expired — leave as-is for staff to resend
+    if any((e.status or "").lower() == "declined" for e in active):
+        s.consent_status = "declined"
+        return
+    if all(e.status == "signed" for e in active):
         s.consent_status = "signed"
         latest = max((e.signed_at for e in active if e.signed_at), default=None)
         s.consent_signed_at = latest or now_utc_naive()

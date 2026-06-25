@@ -1686,15 +1686,22 @@ const CONSENT_LABELS = {
 function ConsentStatusCell({ surgery }) {
   const status = surgery.consent_status || 'not_required'
   const envelopes = surgery.consent_envelopes || []
+  // Mirror the backend reconcile: voided/expired envelopes are out of the
+  // running; a declined envelope must surface (not be swallowed by "Sent").
+  const active = envelopes.filter(e => !['voided', 'expired'].includes(e.status))
   const isSigned = status === 'signed' || status === 'completed'
-    || (envelopes.length > 0 && envelopes.every(e => e.status === 'signed'))
-  const isSent = envelopes.length > 0 && !isSigned
+    || (active.length > 0 && active.every(e => e.status === 'signed'))
+  const isDeclined = !isSigned
+    && (status === 'declined' || active.some(e => e.status === 'declined'))
+  const isSent = !isSigned && !isDeclined
+    && active.some(e => e.status === 'sent' || e.status === 'delivered')
   const tone = isSigned ? 'bg-green-100 text-green-700'
+    : isDeclined ? 'bg-red-100 text-red-700'
     : isSent ? 'bg-blue-100 text-blue-700'
-    : status === 'declined' || status === 'voided' ? 'bg-red-100 text-red-700'
     : status === 'required' ? 'bg-amber-100 text-amber-700'
     : 'bg-gray-100 text-gray-600'
-  const label = isSigned ? 'Signed' : isSent ? 'Sent' : (CONSENT_LABELS[status] || status)
+  const label = isSigned ? 'Signed' : isDeclined ? 'Declined'
+    : isSent ? 'Sent' : (CONSENT_LABELS[status] || status)
   return (
     <button onClick={() => jumpTo('consent')}
             className="flex items-center gap-1 text-left group">

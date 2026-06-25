@@ -304,3 +304,46 @@ def test_reconcile_all_terminal_unsigned_not_signed(db):
     db.refresh(s)
     reconcile_surgery_consent(db, s)
     assert s.consent_status != "signed"
+
+
+def test_reconcile_all_declined_is_declined(db):
+    # Finding #1: all-declined must surface as 'declined', not stay stale.
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "declined", idx=1)
+    _mk_env(db, s, "declined", idx=2)
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status == "declined"
+
+
+def test_reconcile_signed_plus_declined_surfaces_declined(db):
+    # A patient refusal must NOT be swallowed by a co-signed envelope.
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "signed", idx=1, signed_at=_dt.datetime(2026, 6, 1, 12, 0))
+    _mk_env(db, s, "declined", idx=2)
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status == "declined"
+
+
+def test_reconcile_all_voided_left_unchanged(db):
+    # Only voided/expired (no active envelopes) — staff will resend; leave as-is.
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "voided", idx=1)
+    _mk_env(db, s, "expired", idx=2)
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status == "sent"
+
+
+def test_send_consent_requires_patient_email(db, monkeypatch):
+    # Finding #2: a missing patient email fails early with a clear message
+    # instead of a BoldSign 400 into a 'failed' row.
+    monkeypatch.setenv("BOLDSIGN_API_KEY", "xxx")
+    s = Surgery(chart_number="9", patient_name="No Email", email=None,
+                procedures=[{"description": "Robotic hysterectomy"}],
+                status="confirmed")
+    db.add(s); db.commit(); db.refresh(s)
+    with pytest.raises(BoldSignEnvelopeError) as ei:
+        send_consent_envelopes(db, s)
+    assert "email" in str(ei.value).lower()
