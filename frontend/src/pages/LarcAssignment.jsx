@@ -130,6 +130,7 @@ export default function LarcAssignment() {
               }}>
               <Send size={12} /> Send portal access
             </button>
+            <ReturnDeviceButton a={a} />
             <span className={`text-[11px] uppercase tracking-wide px-2 py-1 rounded ${
               a.source_flow === 'office_procedure'
                 ? 'bg-teal-100 text-teal-700'
@@ -1120,6 +1121,71 @@ function NotifyBody({ a }) {
 // Read-only status for the device-checkout milestone. The check-out action itself
 // now lives on the LARC dashboard ("Devices Ready to Check Out") and My Checklist;
 // this card just reflects whether the device has been checked out yet.
+// Always-visible header action: return a currently-allocated device to stock
+// with a category-appropriate reason. Posts to the consolidated /outcome flow.
+function ReturnDeviceButton({ a }) {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const isOffice = a.category === 'office_procedure'
+  const REASONS = isOffice
+    ? [
+        { v: 'failed_unused',      l: 'Returned unused — back to stock' },
+        { v: 'returned_defective', l: 'Returned defective — manufacturer return' },
+      ]
+    : [
+        { v: 'appointment_canceled', l: 'Appointment canceled — keep patient' },
+        { v: 'returned_mistake',     l: 'Wrong device — keep patient' },
+        { v: 'failed_used',          l: 'Failed insertion — flag for replacement' },
+      ]
+  const [reason, setReason] = useState(REASONS[0].v)
+  const [notes, setNotes] = useState('')
+  const save = useMutation({
+    mutationFn: () => api.post(`/larc/assignments/${a.id}/outcome`,
+      { outcome: reason, notes: notes || null }).then(r => r.data),
+    onSuccess: () => { setOpen(false); setNotes(''); invalidateLarcLists(qc, a.id) },
+    onError: (e) => alert(e?.response?.data?.detail || 'Return failed'),
+  })
+
+  // Only when a device is currently allocated and the assignment isn't already
+  // used/closed.
+  if (!a.device_id || !a.is_active || ['inserted', 'billed'].includes(a.status)) {
+    return null
+  }
+  return (
+    <div className="relative">
+      <button className="btn-secondary text-[11px] flex items-center gap-1"
+              title="Return this device to stock"
+              onClick={() => setOpen(o => !o)}>
+        <RotateCcw size={12} /> Return device
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-72 bg-white border border-border-subtle
+                        rounded-lg shadow-lg p-3 space-y-2 text-[12px]">
+          <div className="font-medium text-gray-800">
+            Return device {a.device_our_id && <span className="font-mono">#{a.device_our_id}</span>}
+          </div>
+          <select className="input text-[12px] w-full" value={reason}
+                  onChange={e => setReason(e.target.value)}>
+            {REASONS.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
+          </select>
+          <textarea className="input text-[11px] w-full" rows={2}
+                    placeholder="Notes (optional)"
+                    value={notes} onChange={e => setNotes(e.target.value)} />
+          <div className="flex justify-end gap-2 pt-1">
+            <button className="text-[11px] text-gray-500 hover:text-gray-700"
+                    onClick={() => setOpen(false)}>Cancel</button>
+            <button className="btn-primary text-[11px]"
+                    onClick={() => save.mutate()} disabled={save.isPending}>
+              {save.isPending ? 'Returning…' : 'Return device'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function CheckedOutStatusBody({ a }) {
   const done = !!a.milestones?.find(m => m.kind === 'device_checked_out' && m.status === 'done')
   if (done) {
@@ -1162,40 +1228,27 @@ function OutcomeBody({ a }) {
     )
   }
 
-  const isOffice = a.category === 'office_procedure'
   return (
     <div className="space-y-2 text-[12px]">
       <select className="input text-[12px] w-full" value={outcome}
               onChange={e => setOutcome(e.target.value)}>
-        {isOffice ? (
-          <>
-            <option value="inserted">Used / performed (success)</option>
-            <option value="failed_unused">Returned unused — device back to stock</option>
-            <option value="returned_defective">Returned defective — manufacturer return</option>
-            <option value="other">Other (notes required)</option>
-          </>
-        ) : (
-          <>
-            <option value="inserted">Inserted (success)</option>
-            <option value="appointment_canceled">Appointment canceled — return device, keep patient</option>
-            <option value="returned_mistake">Returned — wrong device, keep patient</option>
-            <option value="failed_unused">Failed insertion — device unused (returns to stock)</option>
-            <option value="failed_used">Failed insertion — device used (flag for replacement)</option>
-            <option value="patient_no_show">Patient no-show</option>
-            <option value="patient_canceled">Patient canceled</option>
-            <option value="office_canceled">Office canceled</option>
-            <option value="lost">Device lost</option>
-            <option value="other">Other (notes required)</option>
-          </>
-        )}
+        <option value="inserted">Inserted (success)</option>
+        <option value="appointment_canceled">Appointment canceled — return device, keep patient</option>
+        <option value="returned_mistake">Returned — wrong device, keep patient</option>
+        <option value="failed_unused">Failed insertion — device unused (returns to stock)</option>
+        <option value="failed_used">Failed insertion — device used (flag for replacement)</option>
+        <option value="patient_no_show">Patient no-show</option>
+        <option value="patient_canceled">Patient canceled</option>
+        <option value="office_canceled">Office canceled</option>
+        <option value="lost">Device lost</option>
+        <option value="other">Other (notes required)</option>
       </select>
-      {(outcome === 'other' || outcome === 'lost' || outcome === 'failed_used'
-        || outcome === 'returned_defective') && (
+      {(outcome === 'other' || outcome === 'lost' || outcome === 'failed_used') && (
         <textarea className="input text-[11px] w-full" rows={2}
                   placeholder={outcome === 'other' ? 'Required — what happened?' : 'Notes (optional)'}
                   value={notes} onChange={e => setNotes(e.target.value)} />
       )}
-      {(outcome === 'lost' || outcome === 'failed_used' || outcome === 'returned_defective') && (
+      {(outcome === 'lost' || outcome === 'failed_used') && (
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-gray-600">Loss value ($)</span>
           <input type="number" step="0.01" className="input text-[12px] w-24 font-mono"
