@@ -155,6 +155,12 @@ def _assignment_dict(a: LarcAssignment, include_milestones: bool = False) -> dic
         "device_type_id": str(a.device_type_id) if a.device_type_id else None,
         "device_our_id": a.device.our_id if a.device else None,
         "device_type_name": _resolve_device_type_name(a),
+        # Drives the category-aware return/outcome picker (larc vs office_procedure).
+        "category": (
+            (a.device_type.category if getattr(a, "device_type", None) else None)
+            or (a.device.device_type.category if a.device and a.device.device_type else None)
+            or "larc"
+        ),
         "device_ownership": (a.device.ownership if a.device else None),
         "device_received_date":
             (str(a.device.purchase_date) if a.device and a.device.purchase_date else None),
@@ -1880,6 +1886,12 @@ class OutcomeIn(BaseModel):
 VALID_OUTCOMES = {
     "inserted", "failed_unused", "failed_used", "patient_no_show",
     "patient_canceled", "office_canceled", "lost", "other",
+    # Return-to-stock reasons, consolidated into the outcome flow:
+    #   appointment_canceled / returned_mistake — LARC: device back to stock,
+    #     assignment STAYS with the patient (re-assignable).
+    #   returned_defective — office procedure: device to the manufacturer-return
+    #     queue, assignment closed (device freed to the general pool).
+    "appointment_canceled", "returned_mistake", "returned_defective",
 }
 
 
@@ -1899,6 +1911,22 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
         raise HTTPException(status_code=422, detail=f"outcome must be one of {sorted(VALID_OUTCOMES)}")
     if payload.outcome == "other" and not (payload.notes and payload.notes.strip()):
         raise HTTPException(status_code=422, detail="notes required when outcome='other'")
+
+    # Return-to-stock reasons act on the currently-allocated device and are
+    # category-scoped, so guard both before mutating anything.
+    RETURN_REASONS = ("appointment_canceled", "returned_mistake", "returned_defective")
+    if payload.outcome in RETURN_REASONS:
+        if not a.device:
+            raise HTTPException(status_code=422,
+                detail="No device is currently allocated to this assignment.")
+        _cat = ((a.device.device_type.category if a.device.device_type else None)
+                or "larc")
+        if payload.outcome in ("appointment_canceled", "returned_mistake") and _cat != "larc":
+            raise HTTPException(status_code=422,
+                detail="This return reason applies to LARC devices only.")
+        if payload.outcome == "returned_defective" and _cat != "office_procedure":
+            raise HTTPException(status_code=422,
+                detail="This return reason applies to office-procedure devices only.")
 
     _block_if_closed_or_billed(a, action="change outcome")
 
@@ -1927,6 +1955,35 @@ def record_outcome(assignment_id: str, payload: OutcomeIn,
         if a.device:
             a.device.status = "defective"
         # Stays active until replacement chain is started
+    elif payload.outcome in ("appointment_canceled", "returned_mistake"):
+        # LARC return that KEEPS the assignment with the patient: the device
+        # goes back to the general stock pool and the assignment drops to
+        # in_progress so a device can be re-allocated to this same patient.
+        _dev = a.device
+        if _dev:
+            _dev.status = "unassigned"
+            log_audit(db, actor=by, action="device_returned_to_stock",
+                      device=_dev, assignment=a,
+                      summary=(f"{a.patient_name}: device #{_dev.our_id} returned "
+                               f"to stock ({payload.outcome}); assignment kept"))
+        # Clear via the relationship — setting device_id alone can be overridden
+        # by the loaded relationship on flush.
+        a.device = None
+        a.status = "in_progress"
+        a.is_active = True
+        a.failure_reason = None      # the assignment continues — not a failure
+        for _k in ("device_checked_out", "device_inserted"):
+            _m = _get_milestone(a, _k)
+            if _m and _m.status == "done":
+                _mark_milestone(a, _k, status="pending", by=by)
+    elif payload.outcome == "returned_defective":
+        # Office-procedure defective return: device to the manufacturer-return
+        # queue (status 'defective'); assignment closed — the device is freed to
+        # the general pool, not held for this patient.
+        a.status = "failed_used"     # known terminal status; reports treat as failed
+        if a.device:
+            a.device.status = "defective"
+        a.is_active = False
     elif payload.outcome in ("patient_no_show", "patient_canceled", "office_canceled"):
         a.status = payload.outcome
         if a.device:

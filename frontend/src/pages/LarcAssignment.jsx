@@ -1162,25 +1162,40 @@ function OutcomeBody({ a }) {
     )
   }
 
+  const isOffice = a.category === 'office_procedure'
   return (
     <div className="space-y-2 text-[12px]">
       <select className="input text-[12px] w-full" value={outcome}
               onChange={e => setOutcome(e.target.value)}>
-        <option value="inserted">Inserted (success)</option>
-        <option value="failed_unused">Failed insertion — device unused (returns to stock)</option>
-        <option value="failed_used">Failed insertion — device used (defective → return to manufacturer)</option>
-        <option value="patient_no_show">Patient no-show</option>
-        <option value="patient_canceled">Patient canceled</option>
-        <option value="office_canceled">Office canceled</option>
-        <option value="lost">Device lost</option>
-        <option value="other">Other (notes required)</option>
+        {isOffice ? (
+          <>
+            <option value="inserted">Used / performed (success)</option>
+            <option value="failed_unused">Returned unused — device back to stock</option>
+            <option value="returned_defective">Returned defective — manufacturer return</option>
+            <option value="other">Other (notes required)</option>
+          </>
+        ) : (
+          <>
+            <option value="inserted">Inserted (success)</option>
+            <option value="appointment_canceled">Appointment canceled — return device, keep patient</option>
+            <option value="returned_mistake">Returned — wrong device, keep patient</option>
+            <option value="failed_unused">Failed insertion — device unused (returns to stock)</option>
+            <option value="failed_used">Failed insertion — device used (flag for replacement)</option>
+            <option value="patient_no_show">Patient no-show</option>
+            <option value="patient_canceled">Patient canceled</option>
+            <option value="office_canceled">Office canceled</option>
+            <option value="lost">Device lost</option>
+            <option value="other">Other (notes required)</option>
+          </>
+        )}
       </select>
-      {(outcome === 'other' || outcome === 'lost' || outcome === 'failed_used') && (
+      {(outcome === 'other' || outcome === 'lost' || outcome === 'failed_used'
+        || outcome === 'returned_defective') && (
         <textarea className="input text-[11px] w-full" rows={2}
                   placeholder={outcome === 'other' ? 'Required — what happened?' : 'Notes (optional)'}
                   value={notes} onChange={e => setNotes(e.target.value)} />
       )}
-      {(outcome === 'lost' || outcome === 'failed_used') && (
+      {(outcome === 'lost' || outcome === 'failed_used' || outcome === 'returned_defective') && (
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-gray-600">Loss value ($)</span>
           <input type="number" step="0.01" className="input text-[12px] w-24 font-mono"
