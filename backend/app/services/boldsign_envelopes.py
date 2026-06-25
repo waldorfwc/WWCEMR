@@ -666,12 +666,21 @@ def reconcile_surgery_consent(db: Session, s: Surgery) -> None:
     envs = list(s.consent_envelopes or [])
     if not envs:
         return
-    if all(e.status == "signed" for e in envs):
+    # Envelopes in a terminal non-signed state (voided / expired / declined)
+    # are out of the running — they represent no outstanding patient action, so
+    # they must NOT block a surgery whose remaining ACTIVE consents are all
+    # signed. (Previously `all(signed)` counted these too, leaving consent_status
+    # stuck at 'sent' forever — and disagreeing with the scheduler-notify path,
+    # which already ignores terminal-non-signed envelopes when it reports
+    # all_signed.)
+    TERMINAL_NONSIGNED = ("voided", "expired", "declined")
+    active = [e for e in envs if (e.status or "").lower() not in TERMINAL_NONSIGNED]
+    if active and all(e.status == "signed" for e in active):
         s.consent_status = "signed"
-        latest = max((e.signed_at for e in envs if e.signed_at), default=None)
+        latest = max((e.signed_at for e in active if e.signed_at), default=None)
         s.consent_signed_at = latest or now_utc_naive()
         return
-    if any(e.status in ("sent", "delivered", "signed") for e in envs):
+    if any(e.status in ("sent", "delivered", "signed") for e in active):
         if s.consent_status != "signed":
             s.consent_status = "sent"
 

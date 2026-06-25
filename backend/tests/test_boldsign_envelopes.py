@@ -241,3 +241,66 @@ def test_facility_match_office_list_matches_only_office(db):
 
     s.selected_facility = "medstar"
     assert select_template_id(s, db) is None
+
+
+# ─── reconcile_surgery_consent: terminal-non-signed envelopes must not block ──
+import datetime as _dt
+from app.services.boldsign_envelopes import reconcile_surgery_consent
+
+
+def _mk_env(db, s, status, *, idx=0, signed_at=None):
+    t = _make_template(db, name=f"tmpl-{idx}-{status}",
+                       boldsign_template_id=f"bs_t_{idx}")
+    e = SurgeryConsentEnvelope(surgery_id=s.id, template_id=t.id, status=status,
+                               boldsign_envelope_id=f"bs_doc_{idx}_{status}",
+                               signed_at=signed_at)
+    db.add(e); db.commit()
+    return e
+
+
+def test_reconcile_signed_plus_voided_is_signed(db):
+    # THE BUG: a voided envelope alongside a signed one must NOT block 'signed'.
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "signed", idx=1, signed_at=_dt.datetime(2026, 6, 1, 12, 0))
+    _mk_env(db, s, "voided", idx=2)
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status == "signed"
+    assert s.consent_signed_at is not None
+
+
+def test_reconcile_signed_plus_expired_is_signed(db):
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "signed", idx=1, signed_at=_dt.datetime(2026, 6, 1, 12, 0))
+    _mk_env(db, s, "expired", idx=2)
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status == "signed"
+
+
+def test_reconcile_signed_plus_pending_stays_sent(db):
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "signed", idx=1, signed_at=_dt.datetime(2026, 6, 1, 12, 0))
+    _mk_env(db, s, "sent", idx=2)
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status == "sent"
+
+
+def test_reconcile_all_signed_uses_latest_timestamp(db):
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "signed", idx=1, signed_at=_dt.datetime(2026, 6, 1, 12, 0))
+    _mk_env(db, s, "signed", idx=2, signed_at=_dt.datetime(2026, 6, 2, 12, 0))
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status == "signed"
+    assert s.consent_signed_at == _dt.datetime(2026, 6, 2, 12, 0)
+
+
+def test_reconcile_all_terminal_unsigned_not_signed(db):
+    s = _make_surgery(db); s.consent_status = "sent"; db.commit()
+    _mk_env(db, s, "voided", idx=1)
+    _mk_env(db, s, "declined", idx=2)
+    db.refresh(s)
+    reconcile_surgery_consent(db, s)
+    assert s.consent_status != "signed"
