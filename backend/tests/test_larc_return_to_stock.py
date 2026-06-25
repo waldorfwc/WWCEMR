@@ -98,3 +98,16 @@ def test_returnable_excludes_inserted(client, db):
     client.post(f"/api/larc/assignments/{a.id}/outcome", json={"outcome": "inserted"})
     rows = client.get("/api/larc/checkouts/returnable").json()
     assert str(a.id) not in [r["assignment_id"] for r in rows]
+
+
+def test_returnable_includes_checkout_user(client, db):
+    from app.models.larc import LarcCheckout
+    a, d, _ = _setup(db, "larc", device_status="checked_out", oid="D-CO1")
+    db.add(LarcCheckout(device_id=d.id, assignment_id=a.id,
+                        requested_by="ma@waldorfwomenscare.com",
+                        approval_status="approved", given_to="Dr. Cooke"))
+    db.commit()
+    rows = client.get("/api/larc/checkouts/returnable").json()
+    row = next(r for r in rows if r["assignment_id"] == str(a.id))
+    assert row["checked_out_by"] == "ma@waldorfwomenscare.com"
+    assert row["given_to"] == "Dr. Cooke"

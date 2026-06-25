@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Package, User, FileText, Printer, Trash2, X, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Package, User, FileText, Printer, Trash2, X } from 'lucide-react'
 import api, { fmt } from '../utils/api'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 import { MODULE, TIER } from '../routes.jsx'
@@ -14,7 +14,6 @@ export default function LarcDevice() {
   const qc = useQueryClient()
   const { tier } = useCurrentUser()
   const canManage = tier(MODULE.LARC, TIER.MANAGE)
-  const canWork = tier(MODULE.LARC, TIER.WORK)
   const { data: d, isLoading, error } = useQuery({
     queryKey: ['larc-device', id],
     queryFn: () => api.get(`/larc/devices/${id}`).then(r => r.data),
@@ -92,7 +91,6 @@ export default function LarcDevice() {
                 change
               </button>
             )}
-            {canWork && <DeviceReturnButton d={d} />}
             <span className="text-[11px] uppercase tracking-wide bg-plum-100 text-plum-700 px-2 py-1 rounded">
               {d.status.replace(/_/g, ' ')}
             </span>
@@ -334,76 +332,6 @@ function Field({ label, children }) {
     <div>
       <div className="text-[11px] uppercase tracking-wide text-gray-400 mb-0.5">{label}</div>
       <div className="text-gray-800">{children}</div>
-    </div>
-  )
-}
-
-
-// Return a currently-allocated device to stock with a category-appropriate
-// reason. Resolves the device's active assignment and posts to the consolidated
-// /outcome flow.
-function DeviceReturnButton({ d }) {
-  const qc = useQueryClient()
-  const [open, setOpen] = useState(false)
-  const active = (d.assignments || []).find(a => a.is_active)
-  const isOffice = d.category === 'office_procedure'
-  const REASONS = isOffice
-    ? [
-        { v: 'failed_unused',      l: 'Returned unused — back to stock' },
-        { v: 'returned_defective', l: 'Returned defective — manufacturer return' },
-      ]
-    : [
-        { v: 'appointment_canceled', l: 'Appointment canceled — keep patient' },
-        { v: 'returned_mistake',     l: 'Wrong device — keep patient' },
-        { v: 'failed_used',          l: 'Failed insertion — flag for replacement' },
-      ]
-  const [reason, setReason] = useState(REASONS[0].v)
-  const [notes, setNotes] = useState('')
-  const save = useMutation({
-    mutationFn: () => api.post(`/larc/assignments/${active.id}/outcome`,
-      { outcome: reason, notes: notes || null }).then(r => r.data),
-    onSuccess: () => {
-      setOpen(false); setNotes('')
-      qc.invalidateQueries({ queryKey: ['larc-device', d.id] })
-      qc.invalidateQueries({ queryKey: ['larc-devices'] })
-      qc.invalidateQueries({ queryKey: ['larc-audit-for-device', d.id] })
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'Return failed'),
-  })
-
-  // Only when the device is currently out (checked out / assigned) AND there's
-  // an active assignment to act on.
-  if (!['checked_out', 'assigned'].includes(d.status) || !active) return null
-
-  return (
-    <div className="relative">
-      <button
-        className="text-xs px-2 py-1 rounded border border-plum-300 bg-white text-plum-700 hover:bg-plum-50 flex items-center gap-1"
-        title="Return this device to stock"
-        onClick={() => setOpen(o => !o)}>
-        <RotateCcw size={12} /> Return to stock
-      </button>
-      {open && (
-        <div className="absolute right-0 z-20 mt-1 w-72 bg-white border border-border-subtle
-                        rounded-lg shadow-lg p-3 space-y-2 text-[12px] text-left normal-case tracking-normal">
-          <div className="font-medium text-gray-800">Return device <span className="font-mono">#{d.our_id}</span></div>
-          <select className="input text-[12px] w-full" value={reason}
-                  onChange={e => setReason(e.target.value)}>
-            {REASONS.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
-          </select>
-          <textarea className="input text-[11px] w-full" rows={2}
-                    placeholder="Notes (optional)"
-                    value={notes} onChange={e => setNotes(e.target.value)} />
-          <div className="flex justify-end gap-2 pt-1">
-            <button className="text-[11px] text-gray-500 hover:text-gray-700"
-                    onClick={() => setOpen(false)}>Cancel</button>
-            <button className="btn-primary text-[11px]"
-                    onClick={() => save.mutate()} disabled={save.isPending}>
-              {save.isPending ? 'Returning…' : 'Return to stock'}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

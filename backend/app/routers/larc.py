@@ -3001,6 +3001,13 @@ def list_returnable_devices(db: Session = Depends(get_db),
         if not d or d.status != "checked_out":
             continue
         cat = (d.device_type.category if d.device_type else None) or "larc"
+        # Who checked it out — the open (not-yet-outcomed) approved checkout.
+        co = (db.query(LarcCheckout)
+                .filter(LarcCheckout.assignment_id == a.id,
+                        LarcCheckout.outcome.is_(None),
+                        LarcCheckout.approval_status.in_(["approved", "auto_approved"]))
+                .order_by(LarcCheckout.requested_at.desc())
+                .first())
         out.append({
             "assignment_id": str(a.id),
             "patient_name": a.patient_name,
@@ -3009,6 +3016,10 @@ def list_returnable_devices(db: Session = Depends(get_db),
             "device_status": d.status,
             "device_type_name": d.device_type.name if d.device_type else None,
             "category": cat,
+            "checked_out_by": co.requested_by if co else None,
+            "checked_out_at": (co.requested_at.isoformat()
+                               if co and co.requested_at else None),
+            "given_to": co.given_to if co else None,
         })
     out.sort(key=lambda r: (r["patient_name"] or ""))
     return out

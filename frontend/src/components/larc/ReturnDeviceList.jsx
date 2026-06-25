@@ -4,13 +4,17 @@ import api from '../../utils/api'
 
 
 // Reasons by device category — match the consolidated /outcome handlers.
+// 'inserted' ties into the same insertion path the detail page uses (marks the
+// device inserted + advances the assignment).
 const REASONS = {
   larc: [
+    { v: 'inserted',             l: 'Inserted (success)' },
     { v: 'appointment_canceled', l: 'Appointment canceled — keep patient' },
     { v: 'returned_mistake',     l: 'Wrong device — keep patient' },
     { v: 'failed_used',          l: 'Failed insertion — flag for replacement' },
   ],
   office_procedure: [
+    { v: 'inserted',           l: 'Used / performed (success)' },
     { v: 'failed_unused',      l: 'Returned unused — back to stock' },
     { v: 'returned_defective', l: 'Returned defective — manufacturer return' },
   ],
@@ -61,6 +65,12 @@ function ReturnRow({ row, qc }) {
           {' · '}{(row.device_status || '').replace(/_/g, ' ')}
         </div>
       </div>
+      {row.checked_out_by && (
+        <div className="text-[11px] text-gray-500">
+          Checked out by {row.checked_out_by.split('@')[0]}
+          {row.given_to && <> · given to {row.given_to}</>}
+        </div>
+      )}
       <select className="input text-[12px] w-full" value={reason}
               onChange={e => setReason(e.target.value)}>
         {reasons.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
