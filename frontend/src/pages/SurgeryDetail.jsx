@@ -5019,6 +5019,7 @@ function BenefitsPanel({ surgery }) {
   const [form, setForm] = useState({
     deductible:        surgery.deductible || '',
     deductible_met:    surgery.deductible_met || '',
+    deductible_waived: !!surgery.deductible_waived,
     copay:             surgery.copay || '',
     coinsurance_pct:   surgery.coinsurance_pct || '',
     oop_max:           surgery.oop_max || '',
@@ -5026,6 +5027,7 @@ function BenefitsPanel({ surgery }) {
     allowed_amount:    surgery.allowed_amount || '',
     secondary_deductible:       surgery.secondary_deductible || '',
     secondary_deductible_met:   surgery.secondary_deductible_met || '',
+    secondary_deductible_waived: !!surgery.secondary_deductible_waived,
     secondary_copay:            surgery.secondary_copay || '',
     secondary_coinsurance_pct:  surgery.secondary_coinsurance_pct || '',
     secondary_oop_max:          surgery.secondary_oop_max || '',
@@ -5076,9 +5078,12 @@ function BenefitsPanel({ surgery }) {
     }
   }
   const calc = useMemo(() => {
+    // "Deductible does not apply" → the deductible (and its met-progress) drop
+    // to $0 for that payer's pass.
     const primary = _payerShare(
       num('allowed_amount'),
-      num('deductible'), num('deductible_met'),
+      form.deductible_waived ? 0 : num('deductible'),
+      form.deductible_waived ? 0 : num('deductible_met'),
       num('copay'),
       num('coinsurance_pct'),
       num('oop_max'), num('oop_met'),
@@ -5088,7 +5093,8 @@ function BenefitsPanel({ surgery }) {
     if (hasSecondary) {
       secondary = _payerShare(
         primary.patient_owed,
-        num('secondary_deductible'), num('secondary_deductible_met'),
+        form.secondary_deductible_waived ? 0 : num('secondary_deductible'),
+        form.secondary_deductible_waived ? 0 : num('secondary_deductible_met'),
         num('secondary_copay'),
         num('secondary_coinsurance_pct'),
         num('secondary_oop_max'), num('secondary_oop_met'),
@@ -5114,6 +5120,7 @@ function BenefitsPanel({ surgery }) {
     mutationFn: () => api.post(`/surgery/${surgery.id}/benefits`, {
       deductible: numOrNull(form.deductible),
       deductible_met: numOrNull(form.deductible_met),
+      deductible_waived: !!form.deductible_waived,
       copay: numOrNull(form.copay),
       coinsurance_pct: numOrNull(form.coinsurance_pct),
       oop_max: numOrNull(form.oop_max),
@@ -5121,6 +5128,7 @@ function BenefitsPanel({ surgery }) {
       allowed_amount: numOrNull(form.allowed_amount),
       secondary_deductible:       numOrNull(form.secondary_deductible),
       secondary_deductible_met:   numOrNull(form.secondary_deductible_met),
+      secondary_deductible_waived: !!form.secondary_deductible_waived,
       secondary_copay:            numOrNull(form.secondary_copay),
       secondary_coinsurance_pct:  numOrNull(form.secondary_coinsurance_pct),
       secondary_oop_max:          numOrNull(form.secondary_oop_max),
@@ -5186,10 +5194,12 @@ function BenefitsPanel({ surgery }) {
                       hint="What insurance considers reasonable for this procedure" />
         <DollarInput label="Deductible (annual)"
                       value={form.deductible}
-                      onChange={v => update('deductible', v)} />
+                      onChange={v => update('deductible', v)}
+                      disabled={form.deductible_waived} />
         <DollarInput label="Deductible met"
                       value={form.deductible_met}
                       onChange={v => update('deductible_met', v)}
+                      disabled={form.deductible_waived}
                       hint="What patient has paid toward deductible YTD" />
         <PercentInput label="Coinsurance %"
                        value={form.coinsurance_pct}
@@ -5207,6 +5217,14 @@ function BenefitsPanel({ surgery }) {
                       onChange={v => update('oop_met', v)} />
       </div>
 
+      <label className="inline-flex items-center gap-2 text-[12px] text-gray-800 mb-3">
+        <input type="checkbox"
+                checked={!!form.deductible_waived}
+                onChange={e => update('deductible_waived', e.target.checked)} />
+        Deductible does not apply
+        <span className="text-[11px] text-gray-400">(treats deductible as $0 — patient owes copay + coinsurance)</span>
+      </label>
+
       {hasSecondary && (
         <>
           <div className="text-[11px] uppercase tracking-wide text-plum-700 font-semibold mb-2">
@@ -5215,10 +5233,12 @@ function BenefitsPanel({ surgery }) {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs mb-3">
             <DollarInput label="Secondary deductible (annual)"
                           value={form.secondary_deductible}
-                          onChange={v => update('secondary_deductible', v)} />
+                          onChange={v => update('secondary_deductible', v)}
+                          disabled={form.secondary_deductible_waived} />
             <DollarInput label="Secondary deductible met"
                           value={form.secondary_deductible_met}
-                          onChange={v => update('secondary_deductible_met', v)} />
+                          onChange={v => update('secondary_deductible_met', v)}
+                          disabled={form.secondary_deductible_waived} />
             <PercentInput label="Secondary coinsurance %"
                            value={form.secondary_coinsurance_pct}
                            onChange={v => update('secondary_coinsurance_pct', v)} />
@@ -5232,6 +5252,12 @@ function BenefitsPanel({ surgery }) {
                           value={form.secondary_oop_met}
                           onChange={v => update('secondary_oop_met', v)} />
           </div>
+          <label className="inline-flex items-center gap-2 text-[12px] text-gray-800 mb-3">
+            <input type="checkbox"
+                    checked={!!form.secondary_deductible_waived}
+                    onChange={e => update('secondary_deductible_waived', e.target.checked)} />
+            Secondary deductible does not apply
+          </label>
         </>
       )}
 
@@ -5347,17 +5373,18 @@ function BenefitsPanel({ surgery }) {
 }
 
 
-function DollarInput({ label, value, onChange, hint }) {
+function DollarInput({ label, value, onChange, hint, disabled = false }) {
   return (
-    <div>
+    <div className={disabled ? 'opacity-50' : ''}>
       <label className="text-[11px] uppercase tracking-wide text-gray-500 block mb-1">
         {label}
       </label>
       <div className="relative">
         <span className="absolute left-2 top-1.5 text-gray-400">$</span>
         <input type="number" min="0" step="0.01"
-                className="input text-xs font-mono pl-5 w-full"
-                value={value}
+                disabled={disabled}
+                className="input text-xs font-mono pl-5 w-full disabled:bg-gray-100"
+                value={disabled ? '' : value}
                 onChange={e => onChange(e.target.value)} />
       </div>
       {hint && <div className="text-[11px] text-gray-400 mt-0.5">{hint}</div>}

@@ -264,6 +264,8 @@ def _surgery_dict(db: Session, s: Surgery, *,
         "amount_paid": str(s.amount_paid) if s.amount_paid is not None else "0",
         "deductible": (str(s.deductible) if s.deductible is not None else None),
         "deductible_met": (str(s.deductible_met) if s.deductible_met is not None else None),
+        "deductible_waived": bool(s.deductible_waived),
+        "secondary_deductible_waived": bool(s.secondary_deductible_waived),
         "copay": (str(s.copay) if s.copay is not None else None),
         "coinsurance_pct": (str(s.coinsurance_pct) if s.coinsurance_pct is not None else None),
         "oop_max": (str(s.oop_max) if s.oop_max is not None else None),
@@ -4935,6 +4937,7 @@ class BenefitsPayload(BaseModel):
     inputs and refine later."""
     deductible:      Optional[DollarAmount]  = None    # annual plan deductible
     deductible_met:  Optional[DollarAmount]  = None    # patient progress
+    deductible_waived: Optional[bool]        = None    # "deductible does not apply"
     copay:           Optional[DollarAmount]  = None    # fixed copay
     coinsurance_pct: Optional[PercentAmount] = None    # 20.0 = 20%
     oop_max:         Optional[DollarAmount]  = None    # annual OOP max
@@ -4944,6 +4947,7 @@ class BenefitsPayload(BaseModel):
     # the primary responsibility by what secondary covers.
     secondary_deductible:      Optional[DollarAmount]  = None
     secondary_deductible_met:  Optional[DollarAmount]  = None
+    secondary_deductible_waived: Optional[bool]        = None
     secondary_copay:           Optional[DollarAmount]  = None
     secondary_coinsurance_pct: Optional[PercentAmount] = None
     secondary_oop_max:         Optional[DollarAmount]  = None
@@ -5074,16 +5078,25 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
 
     has_secondary = _has_real_secondary(s.secondary_insurance)
 
+    # "Deductible does not apply" — payload wins, else the saved flag. When
+    # waived, the deductible (and its met-progress) are forced to $0 so the
+    # patient owes only copay + coinsurance on the allowed amount.
+    ded_waived = (payload.deductible_waived if payload.deductible_waived is not None
+                  else bool(s.deductible_waived))
+    sec_ded_waived = (payload.secondary_deductible_waived
+                      if payload.secondary_deductible_waived is not None
+                      else bool(s.secondary_deductible_waived))
+
     breakdown = _calc_patient_responsibility(
         allowed_amount=_g("allowed_amount"),
-        deductible=_g("deductible"),
-        deductible_met=_g("deductible_met"),
+        deductible=(0.0 if ded_waived else _g("deductible")),
+        deductible_met=(0.0 if ded_waived else _g("deductible_met")),
         copay=_g("copay"),
         coinsurance_pct=_g("coinsurance_pct"),
         oop_max=_g("oop_max"),
         oop_met=_g("oop_met"),
-        secondary_deductible=_g("secondary_deductible"),
-        secondary_deductible_met=_g("secondary_deductible_met"),
+        secondary_deductible=(0.0 if sec_ded_waived else _g("secondary_deductible")),
+        secondary_deductible_met=(0.0 if sec_ded_waived else _g("secondary_deductible_met")),
         secondary_copay=_g("secondary_copay"),
         secondary_coinsurance_pct=_g("secondary_coinsurance_pct"),
         secondary_oop_max=_g("secondary_oop_max"),
@@ -5102,6 +5115,10 @@ def benefits_endpoint(surgery_id: str, payload: BenefitsPayload,
             v = getattr(payload, field, None)
             if v is not None:
                 setattr(s, field, v)
+        if payload.deductible_waived is not None:
+            s.deductible_waived = payload.deductible_waived
+        if payload.secondary_deductible_waived is not None:
+            s.secondary_deductible_waived = payload.secondary_deductible_waived
         if payload.card_on_file is not None:
             s.card_on_file = payload.card_on_file
         s.patient_responsibility = breakdown["patient_responsibility"]

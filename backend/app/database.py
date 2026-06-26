@@ -363,6 +363,9 @@ def _apply_lightweight_migrations():
         # Staff-only internal note flag on a surgery message (hidden from
         # the patient portal; no SMS notify). Defaults to a visible message.
         ("surgery_messages", "internal", "BOOLEAN DEFAULT 0 NOT NULL"),
+        # Benefits calc: "deductible does not apply" waivers (primary + secondary).
+        ("surgeries", "deductible_waived", "BOOLEAN DEFAULT 0 NOT NULL"),
+        ("surgeries", "secondary_deductible_waived", "BOOLEAN DEFAULT 0 NOT NULL"),
         # Per-file send log (fax/email events) for any SurgeryFile that
         # gets shipped externally — boarding slips, modifier-22 letters,
         # clearance forms, etc.

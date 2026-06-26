@@ -293,6 +293,9 @@ class Surgery(Base, SoftDeleteMixin):
     benefits_expires_on = Column(Date, nullable=True)
     deductible = Column(Numeric(10, 2), nullable=True)
     deductible_met = Column(Numeric(10, 2), nullable=True)
+    # "Deductible does not apply" — when true the calc treats the (primary)
+    # deductible as $0 regardless of the entered amount.
+    deductible_waived = Column(Boolean, default=False, nullable=False)
     copay = Column(Numeric(10, 2), nullable=True)
     coinsurance_pct = Column(Numeric(5, 2), nullable=True)   # 20.00 = 20%
     oop_max = Column(Numeric(10, 2), nullable=True)
@@ -305,6 +308,7 @@ class Surgery(Base, SoftDeleteMixin):
     # then secondary covers its share of what primary left.
     secondary_deductible       = Column(Numeric(10, 2), nullable=True)
     secondary_deductible_met   = Column(Numeric(10, 2), nullable=True)
+    secondary_deductible_waived = Column(Boolean, default=False, nullable=False)
     secondary_copay            = Column(Numeric(10, 2), nullable=True)
     secondary_coinsurance_pct  = Column(Numeric(5, 2),  nullable=True)
     secondary_oop_max          = Column(Numeric(10, 2), nullable=True)
