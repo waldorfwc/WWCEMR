@@ -113,6 +113,35 @@ def claim_slot_for_patient(
             status_code=409,
         )
 
+    # Patient self-scheduling FREEZE + WINDOW — applies to BOTH a first-time
+    # booking and a reschedule so a crafted request can't bypass the picker's
+    # "online booking opens on" freeze or the booking-window ceiling. The
+    # 5-business-day floor is intentionally NOT applied here for first-time
+    # bookings (that's enforced on reschedules below + by the picker). Staff
+    # coordinator scheduling does not go through this path.
+    from app.services.surgery.date_picker import (
+        patient_booking_freeze_date, patient_max_pickable_date,
+    )
+    _bd_window = (db.query(BlockDay)
+                    .filter(BlockDay.id == block_day_id).first())
+    if _bd_window:
+        _freeze = patient_booking_freeze_date(db)
+        if _freeze and _bd_window.block_date < _freeze:
+            raise SelfScheduleError(
+                f"Online booking is not available until "
+                f"{_freeze.strftime('%B %d, %Y')}. Please call our office "
+                "at 240-252-2140.",
+                status_code=409,
+            )
+        _ceiling = patient_max_pickable_date(db)
+        if _bd_window.block_date > _ceiling:
+            raise SelfScheduleError(
+                f"That date is beyond our online booking window "
+                f"(through {_ceiling.strftime('%B %d, %Y')}). Please call our "
+                "office at 240-252-2140.",
+                status_code=409,
+            )
+
     # Reschedule-window guard (audit #24). When the surgery ALREADY has a
     # scheduled_date, claiming a slot is effectively a RESCHEDULE — and a
     # reschedule must honour the same window floors that /reschedule and
@@ -129,15 +158,11 @@ def claim_slot_for_patient(
                 "us at 240-252-2140.",
                 status_code=409,
             )
-        # 5-business-day floor on the NEW date being claimed.
+        # 5-business-day floor on the NEW reschedule date (reschedules only;
+        # first-time bookings skip this, the freeze/window above still applies).
         from app.services.surgery.date_picker import patient_min_pickable_date
         floor = patient_min_pickable_date(db)
-        # bd is loaded below under the row lock; resolve block_date here for
-        # the floor check without holding the lock yet.
-        _bd_for_floor = (db.query(BlockDay)
-                           .filter(BlockDay.id == block_day_id)
-                           .first())
-        if _bd_for_floor and _bd_for_floor.block_date < floor:
+        if _bd_window and _bd_window.block_date < floor:
             raise SelfScheduleError(
                 "Online scheduling requires at least 5 business days notice. "
                 f"The earliest date you can pick is "

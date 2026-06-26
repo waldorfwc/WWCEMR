@@ -225,10 +225,72 @@ function AlertsTab() {
           <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>
         )}
       </section>
+      <PatientSchedulingSection />
       <AlertRecipientsSection />
       <ReminderLeadDaysSection />
       <BoardingSlipEmailSection />
     </div>
+  )
+}
+
+
+function PatientSchedulingSection() {
+  const qc = useQueryClient()
+  const { data } = useQuery({
+    queryKey: ['surgery-config'],
+    queryFn: () => api.get('/surgery/config').then(r => r.data),
+  })
+  const [draft, setDraft] = useState({})
+  const save = useMutation({
+    mutationFn: (body) => api.put('/surgery/config', body).then(r => r.data),
+    onSuccess: () => { setDraft({}); qc.invalidateQueries({ queryKey: ['surgery-config'] }) },
+  })
+  if (!data) return null
+  const window = draft.patient_booking_window_days ?? data.patient_booking_window_days ?? 180
+  // `?? ` would mask a deliberate clear-to-null, so check key presence.
+  const earliest = ('patient_earliest_booking_date' in draft)
+    ? draft.patient_earliest_booking_date
+    : data.patient_earliest_booking_date
+  const dirty = Object.keys(draft).length > 0
+  return (
+    <section className="card p-4">
+      <h2 className="font-medium mb-1">Patient Self-Scheduling</h2>
+      <p className="text-[12px] text-muted mb-3">
+        Controls patient online booking only — coordinator/staff scheduling is unaffected.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label className="block text-[13px]">
+          <span className="font-medium">Booking Window (Days)</span>
+          <input type="number" min="1" max="730" className="input mt-1 w-28"
+                 value={window}
+                 onChange={e => setDraft(d => ({ ...d, patient_booking_window_days: Number(e.target.value) }))} />
+          <p className="text-[11px] text-muted mt-0.5">How far ahead patients can self-book (e.g. 90 or 180).</p>
+        </label>
+        <label className="block text-[13px]">
+          <span className="font-medium">Don&rsquo;t Allow Booking Before</span>
+          <div className="flex items-center gap-2 mt-1">
+            <input type="date" className="input"
+                   value={earliest || ''}
+                   onChange={e => setDraft(d => ({ ...d, patient_earliest_booking_date: e.target.value || null }))} />
+            {earliest && (
+              <button type="button" className="text-[11px] text-plum-700 underline"
+                      onClick={() => setDraft(d => ({ ...d, patient_earliest_booking_date: null }))}>
+                Clear
+              </button>
+            )}
+          </div>
+          <p className="text-[11px] text-muted mt-0.5">
+            Freeze patient online booking until this date (leave blank for no freeze).
+          </p>
+        </label>
+      </div>
+      <button className="btn-primary text-xs mt-4"
+              disabled={!dirty || save.isPending}
+              onClick={() => save.mutate(draft)}>
+        {save.isPending ? 'Saving…' : 'Save Changes'}
+      </button>
+      {save.isError && <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>}
+    </section>
   )
 }
 

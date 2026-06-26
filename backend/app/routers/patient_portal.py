@@ -571,7 +571,7 @@ from app.services.surgery.self_schedule import (
 
 
 @router.get("/{surgery_id}/slots")
-def portal_slots(surgery_id: str, days_ahead: int = 180,
+def portal_slots(surgery_id: str, days_ahead: Optional[int] = None,
                    db: Session = Depends(get_db),
                    _: str = Depends(require_portal_token)):
     """Available block days for this surgery. When the schedule gate is

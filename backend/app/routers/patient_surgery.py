@@ -296,11 +296,18 @@ def patient_status(surgery_id: str, db: Session = Depends(get_db),
 # ─── Available slots ────────────────────────────────────────────────
 
 @router.get("/{surgery_id}/slots")
-def patient_slots(surgery_id: str, days_ahead: int = 180,
+def patient_slots(surgery_id: str, days_ahead: Optional[int] = None,
                    db: Session = Depends(get_db),
                    _token: str = Depends(require_patient_token)):
     """Return upcoming block days that can fit this surgery's procedure
-    classification, grouped by facility. Default window: 6 months out."""
+    classification, grouped by facility. The window end defaults to the
+    configurable `patient_booking_window_days` setting (180 days)."""
+    from app.services.surgery.settings import cfg
+    if days_ahead is None:
+        try:
+            days_ahead = int(cfg(db, "patient_booking_window_days") or 180)
+        except (ValueError, TypeError):
+            days_ahead = 180
     s = (db.query(Surgery)
            .filter(Surgery.id == surgery_id)
            .first())

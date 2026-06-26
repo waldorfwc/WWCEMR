@@ -54,10 +54,49 @@ def add_business_days(start: _date, n: int, blackouts: set[_date]) -> _date:
 def patient_min_pickable_date(db: Session,
                                 today: Optional[_date] = None,
                                 n_business_days: int = PATIENT_MIN_BUSINESS_DAYS_AHEAD) -> _date:
-    """The earliest date a patient may self-book. Scheduler bypasses this."""
+    """The earliest date a patient may self-book. Scheduler bypasses this.
+
+    The floor is the LATER of (a) the 5-business-day notice rule and (b) the
+    configurable `patient_earliest_booking_date` setting — so staff can freeze
+    patient self-booking until a future date without touching coordinator
+    scheduling.
+    """
     today = today or _date.today()
     blackouts = {b.blackout_date for b in db.query(SurgeryBlackoutDay).all()}
-    return add_business_days(today, n_business_days, blackouts)
+    floor = add_business_days(today, n_business_days, blackouts)
+    freeze = patient_booking_freeze_date(db)
+    if freeze and freeze > floor:
+        floor = freeze
+    return floor
+
+
+def patient_booking_freeze_date(db: Session) -> Optional[_date]:
+    """The configured `patient_earliest_booking_date` floor (or None). Unlike
+    `patient_min_pickable_date` this does NOT include the 5-business-day rule —
+    it's the hard "online booking opens on" date that applies to every patient
+    self-booking (first-time and reschedule), used to freeze booking until a
+    future date. Returns None when unset/malformed."""
+    from app.services.surgery.settings import cfg
+    earliest = cfg(db, "patient_earliest_booking_date")
+    if not earliest:
+        return None
+    try:
+        return _date.fromisoformat(earliest)
+    except (ValueError, TypeError):
+        return None
+
+
+def patient_max_pickable_date(db: Session,
+                                today: Optional[_date] = None) -> _date:
+    """The latest date a patient may self-book — today + the configurable
+    `patient_booking_window_days`. Scheduler bypasses this."""
+    today = today or _date.today()
+    from app.services.surgery.settings import cfg
+    try:
+        window = int(cfg(db, "patient_booking_window_days") or 180)
+    except (ValueError, TypeError):
+        window = 180
+    return today + timedelta(days=window)
 
 
 class DatePickerError(Exception):
@@ -291,9 +330,16 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
         floor = patient_min_pickable_date(db)
         if bd.block_date < floor:
             raise DatePickerError(
-                f"Online scheduling requires at least 5 business days notice. "
-                f"The earliest date you can pick is {floor.strftime('%A, %B %d, %Y')}. "
+                f"The earliest date you can book online is "
+                f"{floor.strftime('%A, %B %d, %Y')}. "
                 "Please call our office at 240-252-2140 for sooner availability."
+            )
+        ceiling = patient_max_pickable_date(db)
+        if bd.block_date > ceiling:
+            raise DatePickerError(
+                f"That date is beyond our online booking window "
+                f"(through {ceiling.strftime('%B %d, %Y')}). "
+                "Please call our office at 240-252-2140."
             )
 
     # Release the existing slot (if any) BEFORE recomputing capacity for the

@@ -32,6 +32,9 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "preop_valid_days":        180,    # was PREOP_VALID_DAYS
     "schedule_horizon_days":   180,    # block_schedule materialization window
     "completed_window_days":    30,    # dashboard "completed last N days"
+    # Patient self-scheduling window (staff/coordinator booking is unaffected):
+    "patient_booking_window_days":  180,   # how far out a patient may self-book
+    "patient_earliest_booking_date": None, # ISO "YYYY-MM-DD" floor; None = no floor
 
     # ── cancellation fee (previously hardcoded $351 / 14 days) ──
     "cancellation_fee_amount":      351,   # dollars charged on a late cancel
