@@ -39,3 +39,37 @@ def test_secondary_deductible_waived(client, db):
     assert float(r.json()["patient_responsibility"]) == 0.0
     db.expire_all()
     assert db.query(Surgery).get(s.id).secondary_deductible_waived is True
+
+
+def test_waiver_flag_returned_by_surgery_get(client, db):
+    # The card reads surgery.deductible_waived to initialize the checkbox on
+    # reload — so the GET must surface it.
+    s = _mk(db)
+    client.post(f"/api/surgery/{s.id}/benefits",
+                json={"allowed_amount": 5000, "deductible": 1000,
+                      "coinsurance_pct": 10, "deductible_waived": True, "save": True})
+    got = client.get(f"/api/surgery/{s.id}").json()
+    assert got["deductible_waived"] is True
+    assert got["secondary_deductible_waived"] is False
+
+
+def test_waiver_still_capped_by_oop_max(client, db):
+    s = _mk(db)
+    # Waived deductible: 20% of 10000 = 2000, but OOP-max remaining is 800 → 800.
+    r = client.post(f"/api/surgery/{s.id}/benefits",
+                    json={"allowed_amount": 10000, "deductible": 2000,
+                          "coinsurance_pct": 20, "oop_max": 800, "oop_met": 0,
+                          "deductible_waived": True, "save": False})
+    assert float(r.json()["patient_responsibility"]) == 800.0
+
+
+def test_toggle_waiver_off_restores_deductible(client, db):
+    s = _mk(db)
+    base = {"allowed_amount": 10000, "deductible": 2000, "coinsurance_pct": 20,
+            "oop_max": 0, "save": True}
+    client.post(f"/api/surgery/{s.id}/benefits", json={**base, "deductible_waived": True})
+    r = client.post(f"/api/surgery/{s.id}/benefits", json={**base, "deductible_waived": False})
+    # waiver off → deductible back in play: 2000 + 20% of 8000 = 3600.
+    assert float(r.json()["patient_responsibility"]) == 3600.0
+    db.expire_all()
+    assert db.query(Surgery).get(s.id).deductible_waived is False
