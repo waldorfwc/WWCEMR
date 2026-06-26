@@ -237,7 +237,7 @@ function AlertsTab() {
 const FREEZE_FACILITIES = [
   { code: 'medstar', label: 'MedStar SMHC' },
   { code: 'crmc',    label: 'UM Charles Regional' },
-  { code: 'office',  label: 'Office' },
+  { code: 'office',  label: 'White Plains (Office)' },
 ]
 
 function PatientSchedulingSection() {
