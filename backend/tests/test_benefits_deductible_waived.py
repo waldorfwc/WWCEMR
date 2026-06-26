@@ -95,3 +95,38 @@ def test_estimate_pdf_renders_with_waiver():
     }
     pdf = generate_bytes(s, breakdown)
     assert pdf[:4] == b"%PDF" and len(pdf) > 1000
+
+
+def _pr_to_float(v):
+    return float(str(v).replace("$", "").replace(",", "")) if v is not None else None
+
+
+def test_patient_portal_dashboard_reflects_waiver(client, db):
+    # The patient sees the WAIVED responsibility in the portal dashboard.
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _mk(db)
+    # 20% of 10000 = 2000 when waived (vs 2000 ded + 20% of 8000 = 3600 normally).
+    client.post(f"/api/surgery/{s.id}/benefits",
+                json={"allowed_amount": 10000, "deductible": 2000,
+                      "coinsurance_pct": 20, "deductible_waived": True, "save": True})
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard",
+                   headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200, r.text
+    pr = _pr_to_float(r.json()["surgery"]["patient_responsibility"])
+    assert pr == 2000.0, f"portal showed {pr}, expected the waived 2000"
+    import json as _json
+    assert "3600" not in _json.dumps(r.json())   # un-waived amount never shown
+
+
+def test_patient_portal_dashboard_without_waiver(client, db):
+    # Control: same inputs, no waiver → patient sees 3600.
+    from app.services.patient_portal_auth import issue_portal_token
+    s = _mk(db)
+    client.post(f"/api/surgery/{s.id}/benefits",
+                json={"allowed_amount": 10000, "deductible": 2000,
+                      "coinsurance_pct": 20, "deductible_waived": False, "save": True})
+    token = issue_portal_token(s)
+    r = client.get(f"/api/patient/portal/{s.id}/dashboard",
+                   headers={"Authorization": f"Bearer {token}"})
+    assert _pr_to_float(r.json()["surgery"]["patient_responsibility"]) == 3600.0
