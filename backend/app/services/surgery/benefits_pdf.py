@@ -214,9 +214,17 @@ def generate_bytes(s: Surgery, breakdown: dict) -> bytes:
         ["", "Amount", "Notes"],
         ["Insurance allowed amount", _money(s.allowed_amount),
          "What insurance considers reasonable for this procedure"],
-        ["Annual deductible",        _money(s.deductible), ""],
-        ["Deductible already met",   _money(s.deductible_met),
-         f"Remaining: {_money(breakdown.get('deductible_remaining'))}"],
+    ]
+    if s.deductible_waived:
+        breakdown_rows.append(
+            ["Annual deductible", "Does not apply",
+             "Deductible waived — not applied to this procedure"])
+    else:
+        breakdown_rows.append(["Annual deductible", _money(s.deductible), ""])
+        breakdown_rows.append(
+            ["Deductible already met",   _money(s.deductible_met),
+             f"Remaining: {_money(breakdown.get('deductible_remaining'))}"])
+    breakdown_rows += [
         ["Your deductible portion",  _money(breakdown.get('deductible_portion')),
          "What you pay before insurance shares the cost"],
         ["Coinsurance %",            (f"{float(s.coinsurance_pct):.0f}%" if s.coinsurance_pct else "—"),
@@ -260,9 +268,17 @@ def generate_bytes(s: Surgery, breakdown: dict) -> bytes:
             ["", "Amount", "Notes"],
             ["Amount sent to secondary", _money(breakdown.get("primary_patient_owed")),
              "What was left after primary processed"],
-            ["Secondary annual deductible", _money(s.secondary_deductible), ""],
-            ["Secondary deductible met",    _money(s.secondary_deductible_met),
-             f"Remaining: {_money(secondary.get('deductible_remaining'))}"],
+        ]
+        if s.secondary_deductible_waived:
+            sec_rows.append(
+                ["Secondary annual deductible", "Does not apply",
+                 "Deductible waived — not applied to this procedure"])
+        else:
+            sec_rows.append(["Secondary annual deductible", _money(s.secondary_deductible), ""])
+            sec_rows.append(
+                ["Secondary deductible met",    _money(s.secondary_deductible_met),
+                 f"Remaining: {_money(secondary.get('deductible_remaining'))}"])
+        sec_rows += [
             ["Secondary deductible portion", _money(secondary.get("deductible_portion")), ""],
             ["Secondary coinsurance %",
              (f"{float(s.secondary_coinsurance_pct):.0f}%"

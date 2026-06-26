@@ -73,3 +73,25 @@ def test_toggle_waiver_off_restores_deductible(client, db):
     assert float(r.json()["patient_responsibility"]) == 3600.0
     db.expire_all()
     assert db.query(Surgery).get(s.id).deductible_waived is False
+
+
+def test_estimate_pdf_renders_with_waiver():
+    # The estimate PDF must render (no crash) when the deductible is waived,
+    # for both primary and secondary.
+    from app.services.surgery.benefits_pdf import generate_bytes
+    s = Surgery(chart_number="PDF1", patient_name="Doe, J", status="new",
+                allowed_amount=10000, deductible=2000, coinsurance_pct=20,
+                deductible_waived=True,
+                secondary_insurance="Aetna 2nd", secondary_deductible=500,
+                secondary_deductible_waived=True)
+    breakdown = {
+        "deductible_remaining": 0, "deductible_portion": 0, "after_deductible": 10000,
+        "coinsurance_portion": 2000, "copay_portion": 0, "oop_remaining": None,
+        "raw_responsibility": 2000, "primary_patient_owed": 2000,
+        "capped_by_oop_max": False,
+        "secondary": {"deductible_remaining": 0, "deductible_portion": 0,
+                      "coinsurance_portion": 0, "patient_owed": 2000},
+        "patient_responsibility": 2000,
+    }
+    pdf = generate_bytes(s, breakdown)
+    assert pdf[:4] == b"%PDF" and len(pdf) > 1000
