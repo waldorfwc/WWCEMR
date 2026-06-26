@@ -120,15 +120,15 @@ def claim_slot_for_patient(
     # bookings (that's enforced on reschedules below + by the picker). Staff
     # coordinator scheduling does not go through this path.
     from app.services.surgery.date_picker import (
-        patient_booking_freeze_date, patient_max_pickable_date,
+        patient_freeze_date_for_facility, patient_max_pickable_date,
     )
     _bd_window = (db.query(BlockDay)
                     .filter(BlockDay.id == block_day_id).first())
     if _bd_window:
-        _freeze = patient_booking_freeze_date(db)
+        _freeze = patient_freeze_date_for_facility(db, _bd_window.facility)
         if _freeze and _bd_window.block_date < _freeze:
             raise SelfScheduleError(
-                f"Online booking is not available until "
+                f"Online booking for this location is not available until "
                 f"{_freeze.strftime('%B %d, %Y')}. Please call our office "
                 "at 240-252-2140.",
                 status_code=409,

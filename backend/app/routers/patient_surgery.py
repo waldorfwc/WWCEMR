@@ -328,8 +328,12 @@ def patient_slots(surgery_id: str, days_ahead: Optional[int] = None,
     end = today + timedelta(days=days_ahead)
 
     # Patients can't self-book within 5 business days. Scheduler bypasses this.
-    from app.services.surgery.date_picker import patient_min_pickable_date
+    from app.services.surgery.date_picker import (
+        patient_min_pickable_date, patient_freeze_map,
+    )
     min_date = patient_min_pickable_date(db, today=today)
+    # Per-facility "booking opens on" freeze (read once). "*" = legacy global.
+    freeze_map = patient_freeze_map(db)
 
     # Pull all upcoming block days for eligible facilities (with slots eager-loaded)
     block_days = (db.query(BlockDay)
@@ -341,6 +345,10 @@ def patient_slots(surgery_id: str, days_ahead: Optional[int] = None,
 
     out = []
     for bd in block_days:
+        # Per-facility booking freeze — hide days before this location reopens.
+        _freeze = freeze_map.get("*") or freeze_map.get(bd.facility)
+        if _freeze and bd.block_date < _freeze:
+            continue
         ok, _ = can_fit(db, bd, proc_kind)
         if not ok:
             continue

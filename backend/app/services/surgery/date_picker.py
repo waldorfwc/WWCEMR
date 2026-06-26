@@ -54,36 +54,53 @@ def add_business_days(start: _date, n: int, blackouts: set[_date]) -> _date:
 def patient_min_pickable_date(db: Session,
                                 today: Optional[_date] = None,
                                 n_business_days: int = PATIENT_MIN_BUSINESS_DAYS_AHEAD) -> _date:
-    """The earliest date a patient may self-book. Scheduler bypasses this.
-
-    The floor is the LATER of (a) the 5-business-day notice rule and (b) the
-    configurable `patient_earliest_booking_date` setting — so staff can freeze
-    patient self-booking until a future date without touching coordinator
-    scheduling.
-    """
+    """The 5-business-day notice floor for patient self-booking. Scheduler
+    bypasses this. The per-FACILITY 'booking opens on' freeze is applied
+    separately (it needs the facility) via patient_freeze_date_for_facility()."""
     today = today or _date.today()
     blackouts = {b.blackout_date for b in db.query(SurgeryBlackoutDay).all()}
-    floor = add_business_days(today, n_business_days, blackouts)
-    freeze = patient_booking_freeze_date(db)
-    if freeze and freeze > floor:
-        floor = freeze
-    return floor
+    return add_business_days(today, n_business_days, blackouts)
 
 
-def patient_booking_freeze_date(db: Session) -> Optional[_date]:
-    """The configured `patient_earliest_booking_date` floor (or None). Unlike
-    `patient_min_pickable_date` this does NOT include the 5-business-day rule —
-    it's the hard "online booking opens on" date that applies to every patient
-    self-booking (first-time and reschedule), used to freeze booking until a
-    future date. Returns None when unset/malformed."""
+def patient_freeze_map(db: Session) -> dict:
+    """Parse `patient_earliest_booking_date` into {facility_code: date}.
+
+    Two stored shapes are supported:
+      - dict  {"medstar": "2026-09-01", "crmc": null, ...}  — per-facility
+      - str   "2026-09-01" (legacy global) — returned under the "*" key, which
+              patient_freeze_date_for_facility treats as applying to ALL
+              facilities.
+    Unset / malformed entries are dropped. Returns {} when no freeze is set.
+    """
     from app.services.surgery.settings import cfg
-    earliest = cfg(db, "patient_earliest_booking_date")
-    if not earliest:
-        return None
-    try:
-        return _date.fromisoformat(earliest)
-    except (ValueError, TypeError):
-        return None
+    raw = cfg(db, "patient_earliest_booking_date")
+    if not raw:
+        return {}
+    if isinstance(raw, str):
+        try:
+            return {"*": _date.fromisoformat(raw)}
+        except (ValueError, TypeError):
+            return {}
+    out: dict = {}
+    if isinstance(raw, dict):
+        for fac, v in raw.items():
+            if not v:
+                continue
+            try:
+                out[fac] = _date.fromisoformat(v)
+            except (ValueError, TypeError):
+                continue
+    return out
+
+
+def patient_freeze_date_for_facility(db: Session,
+                                       facility: Optional[str]) -> Optional[_date]:
+    """The 'online booking opens on' freeze date for one facility, or None.
+    A legacy global value (key '*') applies to every facility."""
+    m = patient_freeze_map(db)
+    if "*" in m:
+        return m["*"]
+    return m.get(facility)
 
 
 def patient_max_pickable_date(db: Session,
@@ -333,6 +350,13 @@ def pick_or_reschedule(db: Session, s: Surgery, *, block_day_id: str,
                 f"The earliest date you can book online is "
                 f"{floor.strftime('%A, %B %d, %Y')}. "
                 "Please call our office at 240-252-2140 for sooner availability."
+            )
+        freeze = patient_freeze_date_for_facility(db, bd.facility)
+        if freeze and bd.block_date < freeze:
+            raise DatePickerError(
+                f"Online booking for this location is not available until "
+                f"{freeze.strftime('%B %d, %Y')}. "
+                "Please call our office at 240-252-2140."
             )
         ceiling = patient_max_pickable_date(db)
         if bd.block_date > ceiling:

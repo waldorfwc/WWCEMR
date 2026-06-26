@@ -125,7 +125,8 @@ class ConfigPayload(BaseModel):
     completed_window_days:     Optional[int] = Field(default=None, ge=1, le=365)
     # Patient self-scheduling window (patient-only; coordinator booking unaffected)
     patient_booking_window_days:    Optional[int] = Field(default=None, ge=1, le=730)
-    patient_earliest_booking_date:  Optional[str] = None   # ISO "YYYY-MM-DD" or null
+    # Per-facility "booking opens on" freeze: {facility_code: "YYYY-MM-DD"|null}
+    patient_earliest_booking_date:  Optional[dict] = None
     # cancellation fee (plain scalars, full-replace)
     cancellation_fee_amount:      Optional[int] = Field(default=None, ge=0, le=100000)
     cancellation_fee_days_before: Optional[int] = Field(default=None, ge=0, le=365)
@@ -222,16 +223,28 @@ class ConfigPayload(BaseModel):
     @field_validator("patient_earliest_booking_date")
     @classmethod
     def patient_earliest_booking_date_valid(cls, v):
-        # Null clears the floor; otherwise must be an ISO calendar date.
-        if v is None or v == "":
+        # A per-facility map {facility: "YYYY-MM-DD"|null}. Null/empty clears a
+        # facility's freeze; each non-null value must be an ISO calendar date.
+        if v is None:
             return None
+        if not isinstance(v, dict):
+            raise ValueError("patient_earliest_booking_date must be a "
+                             "{facility: date} map or null")
         from datetime import date as _date
-        try:
-            _date.fromisoformat(v)
-        except (ValueError, TypeError):
-            raise ValueError("patient_earliest_booking_date must be null or an "
-                             "ISO date (YYYY-MM-DD)")
-        return v
+        from app.models.surgery import SURGERY_FACILITY_VALUES
+        clean: dict = {}
+        for fac, val in v.items():
+            if fac not in SURGERY_FACILITY_VALUES:
+                raise ValueError(f"unknown facility: {fac}")
+            if val in (None, ""):
+                clean[fac] = None
+                continue
+            try:
+                _date.fromisoformat(val)
+            except (ValueError, TypeError):
+                raise ValueError(f"{fac} date must be null or ISO YYYY-MM-DD")
+            clean[fac] = val
+        return clean
 
     @field_validator("clearance_types", "surgery_device_types", "assistant_surgeons")
     @classmethod
@@ -349,7 +362,7 @@ _DEEP_MERGE_KEYS = (
     "step_titles_hospital",
     "step_titles_office",
 )
-_FACILITY_MERGE_KEYS = ("capacity_rules",)
+_FACILITY_MERGE_KEYS = ("capacity_rules", "patient_earliest_booking_date")
 
 
 @router.put("/config")

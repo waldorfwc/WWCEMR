@@ -34,7 +34,9 @@ SETTINGS_DEFAULTS: dict[str, Any] = {
     "completed_window_days":    30,    # dashboard "completed last N days"
     # Patient self-scheduling window (staff/coordinator booking is unaffected):
     "patient_booking_window_days":  180,   # how far out a patient may self-book
-    "patient_earliest_booking_date": None, # ISO "YYYY-MM-DD" floor; None = no floor
+    # Per-facility booking freeze: {facility_code: "YYYY-MM-DD" | null}. None/{}
+    # = no freeze. A legacy plain ISO string is read as a global freeze.
+    "patient_earliest_booking_date": None,
 
     # ── cancellation fee (previously hardcoded $351 / 14 days) ──
     "cancellation_fee_amount":      351,   # dollars charged on a late cancel

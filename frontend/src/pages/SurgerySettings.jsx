@@ -234,6 +234,12 @@ function AlertsTab() {
 }
 
 
+const FREEZE_FACILITIES = [
+  { code: 'medstar', label: 'MedStar SMHC' },
+  { code: 'crmc',    label: 'UM Charles Regional' },
+  { code: 'office',  label: 'Office' },
+]
+
 function PatientSchedulingSection() {
   const qc = useQueryClient()
   const { data } = useQuery({
@@ -247,46 +253,63 @@ function PatientSchedulingSection() {
   })
   if (!data) return null
   const window = draft.patient_booking_window_days ?? data.patient_booking_window_days ?? 180
-  // `?? ` would mask a deliberate clear-to-null, so check key presence.
-  const earliest = ('patient_earliest_booking_date' in draft)
-    ? draft.patient_earliest_booking_date
-    : data.patient_earliest_booking_date
-  const dirty = Object.keys(draft).length > 0
+  // Saved freeze is a {facility: date} map (tolerate a legacy string/null).
+  const savedFreeze = (data.patient_earliest_booking_date
+    && typeof data.patient_earliest_booking_date === 'object')
+    ? data.patient_earliest_booking_date : {}
+  const freezeFor = (code) => (draft.freeze && code in draft.freeze)
+    ? draft.freeze[code] : (savedFreeze[code] || '')
+  const setFreeze = (code, v) => setDraft(d => ({
+    ...d, freeze: { ...(d.freeze || {}), [code]: v || null },
+  }))
+  const dirty = ('patient_booking_window_days' in draft)
+    || (draft.freeze && Object.keys(draft.freeze).length > 0)
+
+  const onSave = () => {
+    const body = {}
+    if ('patient_booking_window_days' in draft) body.patient_booking_window_days = draft.patient_booking_window_days
+    if (draft.freeze && Object.keys(draft.freeze).length) body.patient_earliest_booking_date = draft.freeze
+    save.mutate(body)
+  }
+
   return (
     <section className="card p-4">
       <h2 className="font-medium mb-1">Patient Self-Scheduling</h2>
       <p className="text-[12px] text-muted mb-3">
         Controls patient online booking only — coordinator/staff scheduling is unaffected.
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label className="block text-[13px]">
-          <span className="font-medium">Booking Window (Days)</span>
-          <input type="number" min="1" max="730" className="input mt-1 w-28"
-                 value={window}
-                 onChange={e => setDraft(d => ({ ...d, patient_booking_window_days: Number(e.target.value) }))} />
-          <p className="text-[11px] text-muted mt-0.5">How far ahead patients can self-book (e.g. 90 or 180).</p>
-        </label>
-        <label className="block text-[13px]">
-          <span className="font-medium">Don&rsquo;t Allow Booking Before</span>
-          <div className="flex items-center gap-2 mt-1">
-            <input type="date" className="input"
-                   value={earliest || ''}
-                   onChange={e => setDraft(d => ({ ...d, patient_earliest_booking_date: e.target.value || null }))} />
-            {earliest && (
-              <button type="button" className="text-[11px] text-plum-700 underline"
-                      onClick={() => setDraft(d => ({ ...d, patient_earliest_booking_date: null }))}>
-                Clear
-              </button>
-            )}
-          </div>
-          <p className="text-[11px] text-muted mt-0.5">
-            Freeze patient online booking until this date (leave blank for no freeze).
-          </p>
-        </label>
+      <label className="block text-[13px] mb-4">
+        <span className="font-medium">Booking Window (Days)</span>
+        <input type="number" min="1" max="730" className="input mt-1 w-28"
+               value={window}
+               onChange={e => setDraft(d => ({ ...d, patient_booking_window_days: Number(e.target.value) }))} />
+        <p className="text-[11px] text-muted mt-0.5">How far ahead patients can self-book (e.g. 90 or 180).</p>
+      </label>
+
+      <div className="text-[13px] font-medium mb-1">Don&rsquo;t Allow Booking Before (per location)</div>
+      <p className="text-[11px] text-muted mb-2">
+        Freeze patient online booking at a location until its date. Leave blank for no freeze.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {FREEZE_FACILITIES.map(f => (
+          <label key={f.code} className="block text-[13px]">
+            <span className="font-medium">{f.label}</span>
+            <div className="flex items-center gap-2 mt-1">
+              <input type="date" className="input"
+                     value={freezeFor(f.code) || ''}
+                     onChange={e => setFreeze(f.code, e.target.value)} />
+              {freezeFor(f.code) && (
+                <button type="button" className="text-[11px] text-plum-700 underline"
+                        onClick={() => setFreeze(f.code, null)}>Clear</button>
+              )}
+            </div>
+          </label>
+        ))}
       </div>
+
       <button className="btn-primary text-xs mt-4"
               disabled={!dirty || save.isPending}
-              onClick={() => save.mutate(draft)}>
+              onClick={onSave}>
         {save.isPending ? 'Saving…' : 'Save Changes'}
       </button>
       {save.isError && <p className="text-xs text-red-700 mt-2">{saveErrorMessage(save.error)}</p>}
