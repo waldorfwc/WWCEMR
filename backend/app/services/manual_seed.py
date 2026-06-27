@@ -1086,7 +1086,7 @@ INSURANCE_DOCS_MANUAL_SECTIONS = [
 insurance documents — paper EOBs, patient payments, denial letters, and other
 correspondence.
 
-Each document has a **Classification** (Paper EOB, Patient Payment, Insurance
+Each document has a **Classification** (ModMed EOB, Patient Payment, Insurance
 Letter, Denial, Other), a **Status** (New → In Progress → Worked), and an optional
 **Assignee**. Unassigned documents are visible to everyone with billing access.
 
@@ -1126,7 +1126,7 @@ pencil icon that appears next to the filename.
 | Filter | Options |
 |---|---|
 | Status | New · In Progress · Worked (multi-select toggles) |
-| Classification | Paper EOB · Patient Payment · Insurance Letter · Denial · Other |
+| Classification | ModMed EOB · Patient Payment · Insurance Letter · Denial · Other |
 | Assigned to me | Shows only your documents |
 | Unassigned only | Shows documents no one has claimed yet |
 

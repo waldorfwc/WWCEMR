@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 
 LABELS = {
-    "paper_eob":         "Paper EOB — explanation of benefits from an insurance payer",
+    "paper_eob":         "ModMed EOB — explanation of benefits from an insurance payer",
     "patient_payment":   "Patient payment — check, money order, or copy of payment from the patient",
     "insurance_letter":  "Insurance letter — auth determination, request for records, refund request (NOT a denial)",
     "denial":            "Denial — a payer letter specifically denying a claim or appeal (often references denial codes, appeal-rights language, or 'we have denied your claim')",

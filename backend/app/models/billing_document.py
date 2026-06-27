@@ -24,7 +24,7 @@ from app.models.mixins import SoftDeleteMixin
 # Allowed classification values. Editable here (UI dropdown is driven
 # by /billing/documents/picklists).
 CLASSIFICATIONS = [
-    ("paper_eob",        "Paper EOB"),
+    ("paper_eob",        "ModMed EOB"),
     ("greenway_eob",     "Greenway EOB"),
     ("patient_payment",  "Patient Payment"),
     ("insurance_letter", "Insurance Letter"),
