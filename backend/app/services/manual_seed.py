@@ -1096,16 +1096,25 @@ Letter, Denial, Other), a **Status** (New → In Progress → Worked), and an op
 
     ("upload", "Uploading & Classifying Documents", 20, """\
 1. Click **+ Upload document** in the header.
-2. Pick a PDF or image file (JPEG, PNG, etc.).
+2. Pick one or more PDF/image files (JPEG, PNG, etc.). Selecting several at
+   once groups them into **a single row** — the first file is the row's
+   primary, the rest are attached to it.
 3. Set the **Classification** — or leave it at *Other* and tick
    **Auto-classify with AI** to let the system guess.
 4. Optionally assign the document to one or more staff members; leave blank
    to make it visible to all billing users.
-5. Click **Upload**.
+5. Click **Upload** (the button shows how many files will be added).
+
+> **One row, multiple files.** Use multi-select when several scans belong
+> together (e.g. a multi-page EOB split across files, or an EOB plus its
+> remittance). The list shows a **+N** badge on rows that hold extra files;
+> open the row to view or download each file individually. The
+> Classification, Status, Assignee and Notes apply to the whole row.
 
 > If the system detects an identical file already on record, it shows a
 > **Possible duplicate** warning with the existing document's name, date and
-> uploader. Click **Upload anyway** to force-add it, or cancel.
+> uploader. Click **Upload anyway** to force-add it, or cancel. Within a single
+> row, an exact-duplicate extra file is skipped automatically.
 
 **To rename a file** without opening the viewer: hover the row and click the
 pencil icon that appears next to the filename.
@@ -1131,6 +1140,10 @@ Sort by **Type** or **Uploaded** date by clicking the column header.
 4. Add **Notes** to record what you did or what's outstanding.
 5. Click **Mark in progress** while you're working it, then **Mark as Worked**
    when done.
+
+**Files in a row:** the panel's **Files** section lists every file attached to
+the row (primary first). Click **View** to open any one, or use **Add files**
+to attach more scans to the same row later.
 
 The **Access log** at the bottom of the panel records every open, status change
 and note by user and timestamp.

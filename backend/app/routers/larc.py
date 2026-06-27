@@ -19,6 +19,7 @@ import logging
 import os
 from datetime import date as _date, datetime, timedelta
 from app.utils.dt import now_utc_naive
+from app.utils.http import content_disposition
 from typing import Optional
 
 from typing import Annotated
@@ -2224,7 +2225,7 @@ def enrollment_document(envelope_id: str,
     except LarcEnrollmentError:
         raise HTTPException(status_code=502, detail="document_unavailable")
     return Response(content=pdf, media_type="application/pdf",
-                    headers={"Content-Disposition": f'inline; filename="{filename}"'})
+                    headers={"Content-Disposition": content_disposition(filename, "inline")})
 
 
 _INSURANCE_CARD_ALLOWED_MIME = {

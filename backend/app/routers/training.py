@@ -10,6 +10,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.utils.http import content_disposition
 from app.models.checklist import TaskTemplate
 from app.models.training import TrainerAuthorization, TrainingCertification
 from app.models.user import User
@@ -556,5 +557,5 @@ def my_responsibilities_pdf(db: Session = Depends(get_db),
     return Response(
         content=pdf,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{fname}"'},
+        headers={"Content-Disposition": content_disposition(fname, "inline")},
     )

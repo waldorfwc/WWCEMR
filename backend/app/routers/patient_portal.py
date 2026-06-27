@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 from app.utils.dt import now_utc_naive
+from app.utils.http import content_disposition
 from decimal import Decimal
 from typing import Optional
 
@@ -830,7 +831,7 @@ def portal_consent_signed_pdf(
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{label}.pdf"'},
+        headers={"Content-Disposition": content_disposition(f"{label}.pdf", "attachment")},
     )
 
 

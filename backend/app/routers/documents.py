@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from fastapi.responses import FileResponse
 from app.services.storage import serve_blob, using_gcs
+from app.utils.http import content_disposition
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct
 
@@ -448,7 +449,7 @@ def download_document(
         path=path,
         media_type="application/pdf",
         filename=doc.filename,
-        headers={"Content-Disposition": f'attachment; filename="{doc.filename}"'},
+        headers={"Content-Disposition": content_disposition(doc.filename, "attachment")},
     )
 
 
@@ -495,7 +496,7 @@ def view_document(
         path=path,
         media_type="application/pdf",
         filename=doc.filename,
-        headers={"Content-Disposition": f'inline; filename="{doc.filename}"'},
+        headers={"Content-Disposition": content_disposition(doc.filename, "inline")},
     )
 
 

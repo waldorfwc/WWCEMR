@@ -102,7 +102,7 @@ def serve_blob(
         path=local_path,
         media_type=media_type,
         filename=filename,
-        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+        headers={"Content-Disposition": _content_disposition(disposition, filename)},
     )
 
 

@@ -10,6 +10,7 @@ import logging
 import os
 from datetime import date as _date, datetime, time as _time, timedelta
 from app.utils.dt import now_utc_naive
+from app.utils.http import content_disposition
 from decimal import Decimal
 from typing import Annotated, Any, Optional
 
@@ -5447,7 +5448,7 @@ def view_consent_document(
     )
     return Response(
         content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{label}.pdf"'},
+        headers={"Content-Disposition": content_disposition(f"{label}.pdf", "inline")},
     )
 
 
