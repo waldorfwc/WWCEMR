@@ -66,6 +66,15 @@ class BillingDocument(Base, SoftDeleteMixin):
     worked_by         = Column(String(120), nullable=True)
     worked_at         = Column(DateTime, nullable=True)
 
+    # Additional files attached to this row (the document's own storage_filename
+    # is file #1 / the primary; these are files #2+). Lets one row hold several
+    # scanned documents.
+    files_rel = relationship(
+        "BillingDocumentFile",
+        cascade="all, delete-orphan",
+        order_by="BillingDocumentFile.uploaded_at.asc()",
+        backref="document",
+    )
     notes_rel = relationship(
         "BillingDocumentNote",
         cascade="all, delete-orphan",
@@ -78,6 +87,24 @@ class BillingDocument(Base, SoftDeleteMixin):
         order_by="BillingDocumentAccess.at.desc()",
         backref="document",
     )
+
+
+class BillingDocumentFile(Base):
+    """An additional file under a BillingDocument 'row'. The parent's own
+    storage_filename is the primary (file #1); these are the extra files."""
+    __tablename__ = "billing_document_files"
+
+    id                = Column(GUID(), primary_key=True, default=new_uuid)
+    document_id       = Column(GUID(), ForeignKey("billing_documents.id"),
+                               nullable=False, index=True)
+    original_filename = Column(String(255), nullable=False)
+    storage_filename  = Column(String(255), nullable=False, unique=True)
+    file_size_bytes   = Column(Integer, nullable=True)
+    page_count        = Column(Integer, nullable=True)
+    mime_type         = Column(String(80), default="application/pdf")
+    content_hash      = Column(String(64), nullable=True, index=True)
+    uploaded_by       = Column(String(120), nullable=False)
+    uploaded_at       = Column(DateTime, default=now_utc_naive, nullable=False)
 
 
 class BillingDocumentNote(Base):

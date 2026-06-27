@@ -271,6 +271,12 @@ export default function InsuranceDocuments() {
                     <div className="flex items-center gap-1">
                       <FileText size={12} className="text-gray-400 shrink-0" />
                       <span className="truncate max-w-[280px]">{d.original_filename}</span>
+                      {d.file_count > 1 && (
+                        <span className="text-[10px] bg-plum-100 text-plum-700 px-1 rounded shrink-0"
+                              title={`${d.file_count} files in this row`}>
+                          + {d.file_count - 1}
+                        </span>
+                      )}
                       <button
                         onClick={e => startRename(d, e)}
                         title="Rename"
@@ -322,7 +328,7 @@ export default function InsuranceDocuments() {
 function UploadDrawer({ picks, onClose }) {
   const qc = useQueryClient()
   const fileRef = useRef(null)
-  const [file, setFile] = useState(null)
+  const [files, setFiles] = useState([])
   const [classification, setClassification] = useState('other')
   const [autoClassify, setAutoClassify] = useState(true)
   const [assignedTo, setAssignedTo] = useState([])
@@ -341,7 +347,7 @@ function UploadDrawer({ picks, onClose }) {
   const upload = useMutation({
     mutationFn: async ({ force = false } = {}) => {
       const fd = new FormData()
-      fd.append('file', file)
+      files.forEach(f => fd.append('files', f))
       fd.append('classification', classification)
       fd.append('auto_classify', autoClassify ? 'true' : 'false')
       fd.append('assigned_to', assignedTo.join(','))
@@ -383,13 +389,26 @@ function UploadDrawer({ picks, onClose }) {
         </div>
         <div className="p-5 space-y-3 text-sm">
           <div>
-            <label className="text-[11px] uppercase text-gray-500 block mb-1">File (PDF preferred)</label>
+            <label className="text-[11px] uppercase text-gray-500 block mb-1">
+              Files (PDF preferred) — select one or more
+            </label>
             <input ref={fileRef} type="file" accept="application/pdf,image/*"
+                   multiple
                    className="text-[12px] w-full"
-                   onChange={e => setFile(e.target.files?.[0] || null)} />
-            {file && (
-              <div className="text-[11px] text-gray-500 mt-1">
-                {file.name} — {(file.size / 1024 / 1024).toFixed(2)} MB
+                   onChange={e => setFiles(Array.from(e.target.files || []))} />
+            {files.length > 0 && (
+              <div className="text-[11px] text-gray-500 mt-1 space-y-0.5">
+                {files.map((f, i) => (
+                  <div key={i}>
+                    {i === 0 && <span className="text-plum-700 mr-1">▸ primary</span>}
+                    {f.name} — {(f.size / 1024 / 1024).toFixed(2)} MB
+                  </div>
+                ))}
+                {files.length > 1 && (
+                  <div className="text-[10px] text-gray-400 mt-0.5">
+                    All {files.length} files group under one row (shared classification + assignment).
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -461,8 +480,9 @@ function UploadDrawer({ picks, onClose }) {
           ) : (
             <button className="btn-primary text-sm flex items-center gap-1"
                     onClick={() => upload.mutate()}
-                    disabled={!file || upload.isPending}>
-              <Upload size={12} /> {upload.isPending ? 'Uploading…' : 'Upload'}
+                    disabled={files.length === 0 || upload.isPending}>
+              <Upload size={12} /> {upload.isPending ? 'Uploading…'
+                : files.length > 1 ? `Upload ${files.length} files` : 'Upload'}
             </button>
           )}
         </div>
@@ -508,6 +528,30 @@ function DocumentDrawer({ docId, onClose, picks }) {
     },
     onError: (e) => alert(e?.response?.data?.detail || 'Delete failed'),
   })
+
+  const addMut = useMutation({
+    mutationFn: (fs) => {
+      const fd = new FormData()
+      fs.forEach(f => fd.append('files', f))
+      return api.post(`/billing/documents/${docId}/files`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['billing-doc', docId] })
+      qc.invalidateQueries({ queryKey: ['billing-docs'] })
+    },
+    onError: (e) => alert(e?.response?.data?.detail || 'Add files failed'),
+  })
+
+  async function viewFile(url) {
+    try {
+      const r = await api.get(url, { responseType: 'blob' })
+      window.open(URL.createObjectURL(r.data), '_blank', 'noopener,noreferrer')
+    } catch {
+      alert('Could not open file.')
+    }
+  }
 
   function saveRename() {
     const name = newName.trim()
@@ -607,6 +651,40 @@ function DocumentDrawer({ docId, onClose, picks }) {
 
           {/* Right: workflow (1/3) */}
           <div className="col-span-1 overflow-y-auto p-4 space-y-4">
+            {/* Files in this row */}
+            <section>
+              <label className="text-[11px] uppercase text-gray-500 flex items-center gap-1 mb-1.5 font-semibold">
+                <FileText size={12} /> Files
+                {doc.file_count > 1 && (
+                  <span className="text-gray-400 font-normal">({doc.file_count})</span>
+                )}
+              </label>
+              <div className="space-y-1">
+                {(doc.files || []).map(f => (
+                  <div key={f.id}
+                       className="flex items-center gap-2 text-[12px] border border-border-subtle rounded px-2 py-1">
+                    <FileText size={11} className="text-gray-400 shrink-0" />
+                    <span className="truncate flex-1">{f.original_filename}</span>
+                    {f.is_primary && (
+                      <span className="text-[9px] uppercase bg-plum-100 text-plum-700 px-1 rounded shrink-0">primary</span>
+                    )}
+                    <button className="text-plum-700 hover:underline text-[11px] shrink-0"
+                            onClick={() => viewFile(f.download_url)}>View</button>
+                  </div>
+                ))}
+              </div>
+              <label className="btn-secondary text-[11px] inline-flex items-center gap-1 mt-2 cursor-pointer">
+                <Upload size={11} /> {addMut.isPending ? 'Adding…' : 'Add files'}
+                <input type="file" accept="application/pdf,image/*" multiple className="hidden"
+                       disabled={addMut.isPending}
+                       onChange={e => {
+                         const fs = Array.from(e.target.files || [])
+                         if (fs.length) addMut.mutate(fs)
+                         e.target.value = ''
+                       }} />
+              </label>
+            </section>
+
             {/* Classification */}
             <section>
               <label className="text-[11px] uppercase text-gray-500 block mb-1">Classification</label>

@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.database import get_db
 from app.models.billing_document import (
     BillingDocument, BillingDocumentAccess, BillingDocumentNote,
-    CLASSIFICATIONS, STATUSES,
+    BillingDocumentFile, CLASSIFICATIONS, STATUSES,
 )
 from app.routers.auth import get_current_user
 from app.permissions.catalog import Module, Tier
@@ -90,6 +90,29 @@ def _doc_dict(d: BillingDocument, include_notes: bool = False,
         "worked_by":          d.worked_by,
         "worked_at":          d.worked_at.isoformat() if d.worked_at else None,
     }
+    # Every file under this row — the primary (file #1) plus any extras. Each
+    # carries a download URL so the viewer can page through all of them.
+    files = [{
+        "id":                "primary",
+        "original_filename": d.original_filename,
+        "page_count":        d.page_count,
+        "file_size_bytes":   d.file_size_bytes,
+        "mime_type":         d.mime_type,
+        "is_primary":        True,
+        "download_url":      f"/billing/documents/{d.id}/file",
+    }]
+    for f in (d.files_rel or []):
+        files.append({
+            "id":                str(f.id),
+            "original_filename": f.original_filename,
+            "page_count":        f.page_count,
+            "file_size_bytes":   f.file_size_bytes,
+            "mime_type":         f.mime_type,
+            "is_primary":        False,
+            "download_url":      f"/billing/documents/{d.id}/files/{f.id}/file",
+        })
+    out["files"] = files
+    out["file_count"] = len(files)
     if include_notes:
         out["notes"] = [
             {"id": str(n.id), "author": n.author,
@@ -150,10 +173,32 @@ def _validated_mime(filename: str, body: bytes) -> str:
     return canonical_mime
 
 
+async def _read_validate_store(file: UploadFile) -> dict:
+    """Read one upload, enforce the per-file size cap, validate extension +
+    magic bytes, hash the bytes, and store to disk. Returns the metadata a
+    row/child needs. Raises HTTPException (413/422/503) on bad input."""
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=422, detail="empty file")
+    if len(contents) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413,
+            detail=f"file >{_MAX_UPLOAD_BYTES // (1024 * 1024)}MB; split it up")
+    canonical_mime = _validated_mime(file.filename or "", contents)
+    content_hash = hashlib.sha256(contents).hexdigest()
+    try:
+        storage_name, size = storage.save(contents, file.filename or "upload.pdf")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    pages = storage.page_count_pdf(contents) if canonical_mime == "application/pdf" else None
+    return {"contents": contents, "mime": canonical_mime, "hash": content_hash,
+            "storage_name": storage_name, "size": size, "pages": pages,
+            "filename": file.filename or "upload.pdf"}
+
+
 @router.post("", status_code=201)
 async def upload_document(
     request: Request,
-    file: UploadFile = File(...),
+    files: list[UploadFile] = File(...),
     classification: str = Form("other"),
     auto_classify: bool = Form(True),
     assigned_to: str = Form(""),     # comma-separated email list
@@ -161,47 +206,41 @@ async def upload_document(
     db: Session = Depends(get_db),
     current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW)),
 ):
-    """Upload a scanned document. Anyone with Insurance Docs:View can upload.
-    If `auto_classify=true` (default) AND the uploader leaves classification
-    at the default 'other', we ask Claude to suggest a better label.
+    """Upload one OR MORE scanned documents as a single row. The first file is
+    the row's primary document; any additional files attach under the same row
+    (sharing its classification + assignees). Anyone with Insurance Docs:View
+    can upload.
 
-    Duplicate detection: we SHA-256 the uploaded bytes and refuse if a
-    document with the same hash already exists, returning 409 with the
-    existing doc's metadata. Pass force=true to upload anyway."""
+    If `auto_classify=true` (default) AND the uploader leaves classification at
+    the default 'other', we ask Claude to suggest a better label from the first
+    file. Duplicate detection (SHA-256) applies to the primary file — a match
+    returns 409 with the existing doc's metadata unless force=true."""
     if not _classification_valid(classification):
         raise HTTPException(status_code=422,
                             detail=f"unknown classification: {classification}")
+    if not files:
+        raise HTTPException(status_code=422, detail="no files")
 
-    # Reject the request before reading the body if Content-Length already
-    # exceeds the cap — a 5GB POST would otherwise be buffered into memory
-    # before the post-read size check fires, OOM-killing the container.
-    # (Fable intake audit #3.)
+    # Reject before buffering if the request body is implausibly large — a 5GB
+    # POST would otherwise be read into memory. The per-file cap is enforced in
+    # _read_validate_store; allow up to (file count × cap) total. (Fable #3.)
     cl = request.headers.get("content-length")
     if cl is not None:
         try:
-            if int(cl) > _MAX_UPLOAD_BYTES:
+            if int(cl) > _MAX_UPLOAD_BYTES * len(files):
                 raise HTTPException(
                     status_code=413,
-                    detail=f"file >{_MAX_UPLOAD_BYTES // (1024 * 1024)}MB; split it up")
+                    detail=f"each file must be <{_MAX_UPLOAD_BYTES // (1024 * 1024)}MB; split it up")
         except ValueError:
             pass
 
-    contents = await file.read()
-    if not contents:
-        raise HTTPException(status_code=422, detail="empty file")
-    if len(contents) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"file >{_MAX_UPLOAD_BYTES // (1024 * 1024)}MB; split it up")
+    actor = current_user.get("email") or "system"
 
-    # Allowlist extension + magic bytes; replaces client-supplied mime.
-    canonical_mime = _validated_mime(file.filename or "", contents)
-
-    # Hash first so we can short-circuit dup uploads before writing to disk.
-    content_hash = hashlib.sha256(contents).hexdigest()
+    # ── First file → the row's primary document (with global dedup) ──
+    primary = await _read_validate_store(files[0])
     if not force:
         existing = (db.query(BillingDocument)
-                      .filter(BillingDocument.content_hash == content_hash)
+                      .filter(BillingDocument.content_hash == primary["hash"])
                       .filter(BillingDocument.deleted_at.is_(None))
                       .order_by(BillingDocument.uploaded_at.desc())
                       .first())
@@ -223,57 +262,66 @@ async def upload_document(
                 },
             )
 
-    try:
-        storage_name, size = storage.save(contents, file.filename or "upload.pdf")
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-
-    pages = storage.page_count_pdf(contents) if canonical_mime == "application/pdf" else None
-
-    # AI auto-classify — only override when uploader didn't pick a specific
-    # category (i.e. left it at 'other'). Safe no-op if Claude isn't configured.
+    # AI auto-classify from the primary file when left at 'other'.
     ai_suggested = None
     if auto_classify and classification == "other":
-        ai_suggested = classifier.classify_pdf(contents, canonical_mime)
+        ai_suggested = classifier.classify_pdf(primary["contents"], primary["mime"])
         if ai_suggested:
             classification = ai_suggested
 
     assignees = [a.strip().lower() for a in (assigned_to or "").split(",") if a.strip()]
 
     d = BillingDocument(
-        original_filename=file.filename or "upload.pdf",
-        storage_filename=storage_name,
-        file_size_bytes=size,
-        page_count=pages,
-        mime_type=canonical_mime,
-        content_hash=content_hash,
+        original_filename=primary["filename"],
+        storage_filename=primary["storage_name"],
+        file_size_bytes=primary["size"],
+        page_count=primary["pages"],
+        mime_type=primary["mime"],
+        content_hash=primary["hash"],
         classification=classification,
-        # STATUSES = ('new','in_progress','worked'). Earlier versions of
-        # this endpoint set 'open' which is unrecognized — those rows
-        # were hidden from the default Insurance Docs view (filter
-        # defaults to [new, in_progress]) and rendered with no tone.
         status="new",
-        uploaded_by=current_user.get("email") or "system",
+        uploaded_by=actor,
         assigned_to=assignees,
     )
     db.add(d); db.flush()
-    _log_access(db, d, current_user.get("email") or "system", "uploaded",
-                {"filename": d.original_filename, "size": size,
+
+    # ── Remaining files → extra files under this row ──
+    # Skip an exact-content duplicate within the same row; a cross-row dup is
+    # fine for an attachment (the unique index is on the primary table only).
+    seen_hashes = {primary["hash"]}
+    extra_count = 0
+    for uf in files[1:]:
+        finfo = await _read_validate_store(uf)
+        if finfo["hash"] in seen_hashes:
+            continue
+        seen_hashes.add(finfo["hash"])
+        db.add(BillingDocumentFile(
+            document_id=d.id,
+            original_filename=finfo["filename"],
+            storage_filename=finfo["storage_name"],
+            file_size_bytes=finfo["size"],
+            page_count=finfo["pages"],
+            mime_type=finfo["mime"],
+            content_hash=finfo["hash"],
+            uploaded_by=actor,
+        ))
+        extra_count += 1
+
+    _log_access(db, d, actor, "uploaded",
+                {"filename": d.original_filename, "size": primary["size"],
                  "classification": classification,
                  "ai_classified": bool(ai_suggested),
-                 "assigned_to": assignees})
+                 "assigned_to": assignees, "extra_files": extra_count})
     try:
         db.commit(); db.refresh(d)
     except IntegrityError:
-        # Race: another upload with the same content_hash committed
-        # between our app-level check above and our commit. Roll back
-        # and surface the existing row. Backed by the partial unique
-        # index ix_billing_documents_content_hash_unique. (Fable #7.)
+        # Race: another upload of the same primary content_hash committed
+        # concurrently. Backed by ix_billing_documents_content_hash_unique.
         db.rollback()
         if force:
             raise
         existing = (db.query(BillingDocument)
-                      .filter(BillingDocument.content_hash == content_hash)
+                      .filter(BillingDocument.content_hash == primary["hash"])
                       .filter(BillingDocument.deleted_at.is_(None))
                       .order_by(BillingDocument.uploaded_at.desc())
                       .first())
@@ -291,6 +339,43 @@ async def upload_document(
     out = _doc_dict(d)
     out["ai_classified"] = bool(ai_suggested)
     return out
+
+
+@router.post("/{doc_id}/files", status_code=201)
+async def add_files_to_document(
+    doc_id: str,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW)),
+):
+    """Attach one or more additional files to an existing row."""
+    d = _load(db, doc_id)
+    if not _visible_to(db, d, current_user):
+        raise HTTPException(status_code=403, detail="not authorized")
+    if not files:
+        raise HTTPException(status_code=422, detail="no files")
+    actor = current_user.get("email") or "system"
+    seen = {d.content_hash} | {f.content_hash for f in (d.files_rel or [])}
+    added = 0
+    for uf in files:
+        finfo = await _read_validate_store(uf)
+        if finfo["hash"] in seen:
+            continue
+        seen.add(finfo["hash"])
+        db.add(BillingDocumentFile(
+            document_id=d.id,
+            original_filename=finfo["filename"],
+            storage_filename=finfo["storage_name"],
+            file_size_bytes=finfo["size"],
+            page_count=finfo["pages"],
+            mime_type=finfo["mime"],
+            content_hash=finfo["hash"],
+            uploaded_by=actor,
+        ))
+        added += 1
+    _log_access(db, d, actor, "files_added", {"added": added})
+    db.commit(); db.refresh(d)
+    return _doc_dict(d)
 
 
 # ─── List ───────────────────────────────────────────────────────────
@@ -388,6 +473,47 @@ def get_document_file(doc_id: str,
     return Response(
         content=body,
         media_type=d.mime_type or "application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{safe_name}"',
+            "Content-Length": str(len(body)),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.get("/{doc_id}/files/{file_id}/file")
+def get_extra_file(doc_id: str, file_id: str,
+                    db: Session = Depends(get_db),
+                    current_user: dict = Depends(requires_tier(Module.INSURANCE_DOCS, Tier.VIEW))):
+    """Stream one of a row's ADDITIONAL files (the primary is /{doc_id}/file)."""
+    d = _load(db, doc_id)
+    if not _visible_to(db, d, current_user):
+        raise HTTPException(status_code=403, detail="not authorized")
+    f = (db.query(BillingDocumentFile)
+           .filter(BillingDocumentFile.id == file_id,
+                   BillingDocumentFile.document_id == d.id)
+           .first())
+    if not f:
+        raise HTTPException(status_code=404, detail="file not found")
+    try:
+        fh = storage.open_for_read(f.storage_filename)
+        body = fh.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="file missing on disk")
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    finally:
+        try:
+            fh.close()
+        except Exception:
+            pass
+    _log_access(db, d, current_user.get("email") or "system", "downloaded",
+                {"file_id": str(f.id), "filename": f.original_filename})
+    db.commit()
+    safe_name = (f.original_filename or "document").replace('"', '').replace("\n", "").replace("\r", "")
+    return Response(
+        content=body,
+        media_type=f.mime_type or "application/pdf",
         headers={
             "Content-Disposition": f'inline; filename="{safe_name}"',
             "Content-Length": str(len(body)),
