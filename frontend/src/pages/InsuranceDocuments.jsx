@@ -849,12 +849,13 @@ function ImageViewer({ docId, filename }) {
   const [error, setError] = useState(null)
   const [scale, setScale] = useState(1)
   const [rotation, setRotation] = useState(0)   // degrees, multiples of 90
+  const [nat, setNat] = useState(null)          // natural {w,h} once the image loads
 
   // Fetch with the auth header (img tags can't carry it) → blob URL
   useEffect(() => {
     let revoked = false
     let createdUrl = null
-    setBlobUrl(null); setError(null)
+    setBlobUrl(null); setError(null); setNat(null)
     fetch(`/api/billing/documents/${docId}/file`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('session_token') || ''}` },
     })
@@ -911,25 +912,44 @@ function ImageViewer({ docId, filename }) {
         <div className="ml-auto text-[11px] text-muted truncate">{filename}</div>
       </div>
 
-      {/* Image area */}
-      <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-gray-200">
+      {/* Image area. The inner box is sized to the *scaled & rotated* image so
+          the layout grows and overflow-auto can scroll to every edge; margin
+          auto keeps it centered when small yet fully scrollable when zoomed
+          (justify-center would trap the overflow and clip the right/bottom). */}
+      <div className="flex-1 overflow-auto bg-gray-200 flex">
         {error && (
-          <div className="text-red-600 text-[12px]">Failed to load image: {error}</div>
+          <div className="m-auto text-red-600 text-[12px]">Failed to load image: {error}</div>
         )}
         {!error && !blobUrl && (
-          <div className="text-gray-400 text-[12px]">Loading image…</div>
+          <div className="m-auto text-gray-400 text-[12px]">Loading image…</div>
         )}
         {blobUrl && (
-          <img src={blobUrl}
-                alt={filename || 'Document image'}
-                style={{
-                  transform: `rotate(${rotation}deg) scale(${scale})`,
-                  transformOrigin: 'center center',
-                  transition: 'transform 80ms ease-out',
-                  // Container overflow handles scrolling for large/rotated images
-                  maxWidth: 'none', maxHeight: 'none',
-                }}
-                draggable={false} />
+          <div className="m-auto p-4" style={{ flex: 'none' }}>
+            <div style={{
+                   position: 'relative',
+                   width:  nat ? `${(rotation % 180 ? nat.h : nat.w) * scale}px` : 'auto',
+                   height: nat ? `${(rotation % 180 ? nat.w : nat.h) * scale}px` : 'auto',
+                 }}>
+              <img src={blobUrl}
+                    alt={filename || 'Document image'}
+                    onLoad={e => setNat({ w: e.currentTarget.naturalWidth,
+                                          h: e.currentTarget.naturalHeight })}
+                    style={{
+                      position: nat ? 'absolute' : 'static',
+                      left: nat ? '50%' : undefined,
+                      top:  nat ? '50%'  : undefined,
+                      width:  nat ? `${nat.w}px` : 'auto',
+                      height: nat ? `${nat.h}px` : 'auto',
+                      transform: `${nat ? 'translate(-50%, -50%) ' : ''}`
+                                 + `rotate(${rotation}deg) scale(${scale})`,
+                      transformOrigin: 'center center',
+                      transition: 'transform 80ms ease-out',
+                      maxWidth: 'none', maxHeight: 'none',
+                      display: 'block',
+                    }}
+                    draggable={false} />
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -1095,28 +1115,33 @@ function PdfViewer({ docId, totalPages }) {
         </button>
       </div>
 
-      <div ref={scrollAreaRef} className="flex-1 overflow-auto p-4 flex flex-col items-center gap-4">
-        {loadError && (
-          <div className="text-red-600 mt-8">{loadError}</div>
-        )}
-        {!loadError && !pdfData && (
-          <div className="text-gray-400 mt-8">Loading PDF…</div>
-        )}
-        <Document file={fileProp}
-                  onLoadSuccess={({ numPages: n }) => setNumPages(n)}
-                  loading={<div className="text-gray-400 mt-8">Rendering…</div>}
-                  error={<div className="text-red-600 mt-8">Failed to render PDF.</div>}>
-          {Array.from({ length: numPages || 0 }, (_, i) => i + 1).map(p => (
-            <div key={p}
-                  data-pagenum={p}
-                  ref={el => { pageRefs.current[p] = el }}
-                  className="shadow-sm bg-white">
-              <Page pageNumber={p} width={width} scale={scale} rotate={rotation}
-                     renderAnnotationLayer={false}
-                     renderTextLayer={false} />
-            </div>
-          ))}
-        </Document>
+      {/* mx-auto + w-max centers the page stack when it fits, yet keeps both
+          left and right edges scrollable once a zoomed page is wider than the
+          viewport (flex items-center would trap the left edge). */}
+      <div ref={scrollAreaRef} className="flex-1 overflow-auto p-4">
+        <div className="mx-auto w-max flex flex-col items-center gap-4">
+          {loadError && (
+            <div className="text-red-600 mt-8">{loadError}</div>
+          )}
+          {!loadError && !pdfData && (
+            <div className="text-gray-400 mt-8">Loading PDF…</div>
+          )}
+          <Document file={fileProp}
+                    onLoadSuccess={({ numPages: n }) => setNumPages(n)}
+                    loading={<div className="text-gray-400 mt-8">Rendering…</div>}
+                    error={<div className="text-red-600 mt-8">Failed to render PDF.</div>}>
+            {Array.from({ length: numPages || 0 }, (_, i) => i + 1).map(p => (
+              <div key={p}
+                    data-pagenum={p}
+                    ref={el => { pageRefs.current[p] = el }}
+                    className="shadow-sm bg-white">
+                <Page pageNumber={p} width={width} scale={scale} rotate={rotation}
+                       renderAnnotationLayer={false}
+                       renderTextLayer={false} />
+              </div>
+            ))}
+          </Document>
+        </div>
       </div>
     </div>
   )
