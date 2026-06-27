@@ -48,3 +48,39 @@ def test_duplicate_extra_file_skipped_within_row(client, db, tmp_path, monkeypat
                          ("files", ("a-copy.png", same, "image/png"))])
     assert r.status_code == 201, r.text
     assert r.json()["file_count"] == 1   # exact-content dup not attached twice
+
+
+def test_primary_and_detail_after_multifile(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("BILLING_DOCS_STORAGE_PATH", str(tmp_path))
+    r = _upload(client, [("files", ("p.png", _PNG + b"PRIMARY", "image/png")),
+                         ("files", ("e.png", _PNG + b"EXTRA", "image/png"))])
+    assert r.status_code == 201, r.text
+    doc_id = r.json()["id"]
+    # primary download (the left ImageViewer path) still works
+    rr = client.get(f"/api/billing/documents/{doc_id}/file")
+    assert rr.status_code == 200, rr.text
+    assert rr.content == _PNG + b"PRIMARY"
+    # detail GET returns the files array
+    det = client.get(f"/api/billing/documents/{doc_id}").json()
+    assert det["file_count"] == 2
+    assert det["files"][0]["download_url"] == f"/billing/documents/{doc_id}/file"
+
+
+def test_content_disposition_handles_nonlatin1_filename():
+    # The   narrow no-break space (and any non-latin-1 char) must not crash
+    # the HTTP header encoding (was a 500 UnicodeEncodeError).
+    from app.routers.billing_documents import _content_disposition
+    cd = _content_disposition("EOB 12 345.pdf")
+    cd.encode("latin-1")                      # must NOT raise
+    assert "filename*=UTF-8''" in cd
+    assert 'filename="EOB' in cd              # ascii fallback present
+
+
+def test_download_with_nonlatin1_filename(client, db, tmp_path, monkeypatch):
+    monkeypatch.setenv("BILLING_DOCS_STORAGE_PATH", str(tmp_path))
+    r = _upload(client, [("files", ("EOB 1234.png", _PNG + b"NB", "image/png"))])
+    assert r.status_code == 201, r.text
+    doc_id = r.json()["id"]
+    rr = client.get(f"/api/billing/documents/{doc_id}/file")
+    assert rr.status_code == 200, rr.text     # was 500
+    assert rr.content == _PNG + b"NB"

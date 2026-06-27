@@ -12,6 +12,7 @@ Every read or mutation writes one row to billing_document_access.
 from __future__ import annotations
 
 import hashlib
+import urllib.parse
 from datetime import datetime
 from app.utils.dt import now_utc_naive
 from typing import Optional
@@ -126,6 +127,19 @@ def _doc_dict(d: BillingDocument, include_notes: bool = False,
             for a in (d.access_log or [])
         ]
     return out
+
+
+def _content_disposition(filename: str) -> str:
+    """Build a latin-1-safe Content-Disposition for a (possibly Unicode)
+    filename. HTTP header values are latin-1; a non-latin-1 char (e.g. the
+    narrow no-break space \\u202f some scanners/OSes inject) would raise
+    UnicodeEncodeError when the response is sent. We emit an ASCII fallback
+    `filename=` plus an RFC 5987 `filename*=UTF-8''…` that carries the real
+    name. (Fable #3 / 500 fix.)"""
+    name = (filename or "document").replace('"', '').replace("\n", "").replace("\r", "")
+    ascii_name = name.encode("ascii", "ignore").decode().strip() or "document"
+    utf8_name = urllib.parse.quote(name, safe="")
+    return f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"
 
 
 # ─── Picklists ──────────────────────────────────────────────────────
@@ -465,16 +479,14 @@ def get_document_file(doc_id: str,
 
     _log_access(db, d, current_user.get("email") or "system", "downloaded")
     db.commit()
-    # original_filename can contain " or \n that breaks the header;
-    # strip those characters. nosniff blocks browsers from interpreting
-    # a stored doc as anything other than its declared mime type — the
-    # upload allowlist already guarantees the mime is safe. (Fable #3.)
-    safe_name = (d.original_filename or "document").replace('"', '').replace("\n", "").replace("\r", "")
+    # nosniff blocks browsers from interpreting a stored doc as anything other
+    # than its declared mime type — the upload allowlist already guarantees the
+    # mime is safe. (Fable #3.)
     return Response(
         content=body,
         media_type=d.mime_type or "application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{safe_name}"',
+            "Content-Disposition": _content_disposition(d.original_filename),
             "Content-Length": str(len(body)),
             "X-Content-Type-Options": "nosniff",
         },
@@ -510,12 +522,11 @@ def get_extra_file(doc_id: str, file_id: str,
     _log_access(db, d, current_user.get("email") or "system", "downloaded",
                 {"file_id": str(f.id), "filename": f.original_filename})
     db.commit()
-    safe_name = (f.original_filename or "document").replace('"', '').replace("\n", "").replace("\r", "")
     return Response(
         content=body,
         media_type=f.mime_type or "application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{safe_name}"',
+            "Content-Disposition": _content_disposition(f.original_filename),
             "Content-Length": str(len(body)),
             "X-Content-Type-Options": "nosniff",
         },
