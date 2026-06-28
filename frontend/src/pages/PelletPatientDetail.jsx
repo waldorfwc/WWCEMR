@@ -1224,7 +1224,7 @@ function RevertControl({ visit, patient, qc }) {
   let target =
     visit.status === 'billed'                          ? { verb: 'Un-bill',   to: 'inserted' }  :
     visit.status === 'inserted'                        ? { verb: 'Un-insert', to: 'bagged' }    :
-    (visit.status === 'in_progress' && bagged)         ? { verb: 'Un-bag',    to: 'scheduled' } :
+    (visit.status === 'in_progress' && bagged)         ? { verb: 'Un-bag',    to: 'in progress' } :
     null
   // Un-bill / Un-insert require pellet:manage on the backend; un-bag needs only
   // pellet:work. Hide the manager-only steps from non-managers so they don't see
