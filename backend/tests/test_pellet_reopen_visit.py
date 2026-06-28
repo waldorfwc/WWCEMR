@@ -542,3 +542,45 @@ def test_missing_lot_count_and_view(client_factory, db):
     rows = lst if isinstance(lst, list) else lst.get("patients", lst.get("items", []))
     names = [row["patient_name"] for row in rows]
     assert "Tober, Catrina" in names and "Ok, Pat" not in names
+
+
+def test_edit_mammo_entry(client_factory, db):
+    p = _patient(db); client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/patients/{p.id}/verify-mammo",
+                    json={"mammo_date": "2026-01-15", "mammo_result": "BI-RADS 1"})
+    assert r.status_code == 200, r.text
+    mid = r.json()["mammos"][0]["id"]
+    r2 = client.patch(f"/api/pellets/patients/{p.id}/mammos/{mid}",
+                      json={"mammo_date": "2026-02-20", "mammo_result": "BI-RADS 2",
+                            "facility_name": "Charles Regional", "notes": "corrected"})
+    assert r2.status_code == 200, r2.text
+    m = r2.json()["mammos"][0]
+    assert m["result"] == "BI-RADS 2"
+    assert m["mammo_date"] == "2026-02-20"
+    assert m["facility_name"] == "Charles Regional"
+    db.refresh(p)
+    assert p.mammo_result == "BI-RADS 2"          # cached scalar refreshed
+
+
+def test_edit_lab_entry(client_factory, db):
+    p = _patient(db); client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/patients/{p.id}/verify-labs",
+                    json={"labs_date": "2026-01-10", "labs_fsh": "40",
+                          "labs_tsh": "2.0", "labs_estradiol": "30"})
+    assert r.status_code == 200, r.text
+    lid = r.json()["labs"][0]["id"]
+    r2 = client.patch(f"/api/pellets/patients/{p.id}/labs/{lid}",
+                      json={"labs_date": "2026-01-12", "labs_fsh": "45",
+                            "labs_tsh": "2.4", "labs_estradiol": "35", "notes": "fix"})
+    assert r2.status_code == 200, r2.text
+    l = r2.json()["labs"][0]
+    assert l["fsh"] == "45" and l["estradiol"] == "35"
+    db.refresh(p)
+    assert p.labs_fsh == "45"
+
+
+def test_edit_mammo_404_bad_id(client_factory, db):
+    p = _patient(db); client = _client(client_factory, db)
+    r = client.patch(f"/api/pellets/patients/{p.id}/mammos/00000000-0000-0000-0000-000000000000",
+                     json={"mammo_date": "2026-01-15", "mammo_result": "BI-RADS 1"})
+    assert r.status_code == 404

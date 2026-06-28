@@ -40,7 +40,8 @@ function pickActiveVisit(visits) {
 export default function PelletPatientDetail() {
   const { id } = useParams()
   const qc = useQueryClient()
-  const [editingPrereq, setEditingPrereq] = useState(null)  // 'mammo' | 'labs' | null
+  const [editingPrereq, setEditingPrereq] = useState(null)  // 'mammo' | 'labs' | null (add)
+  const [editEntry, setEditEntry] = useState(null)          // { type, entry } (edit existing)
   const [creatingVisit, setCreatingVisit] = useState(false)
 
   const { data: p, isLoading } = useQuery({
@@ -142,9 +143,11 @@ export default function PelletPatientDetail() {
       {/* History per type */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
         <MammoHistoryCard patient={p} qc={qc}
-                            onAdd={() => setEditingPrereq('mammo')} />
+                            onAdd={() => setEditingPrereq('mammo')}
+                            onEdit={(m) => setEditEntry({ type: 'mammo', entry: m })} />
         <LabsHistoryCard patient={p} qc={qc}
-                          onAdd={() => setEditingPrereq('labs')} />
+                          onAdd={() => setEditingPrereq('labs')}
+                          onEdit={(l) => setEditEntry({ type: 'labs', entry: l })} />
       </div>
 
       {/* Pellet Dosing — proposed dose flow + confirmed history,
@@ -177,11 +180,15 @@ export default function PelletPatientDetail() {
       {/* Patient-level notes */}
       <PatientNotesCard patient={p} qc={qc} />
 
-      {editingPrereq === 'mammo' && (
-        <MammoDrawer patient={p} qc={qc} onClose={() => setEditingPrereq(null)} />
+      {(editingPrereq === 'mammo' || editEntry?.type === 'mammo') && (
+        <MammoDrawer patient={p} qc={qc}
+                     entry={editEntry?.type === 'mammo' ? editEntry.entry : null}
+                     onClose={() => { setEditingPrereq(null); setEditEntry(null) }} />
       )}
-      {editingPrereq === 'labs' && (
-        <LabsDrawer patient={p} qc={qc} onClose={() => setEditingPrereq(null)} />
+      {(editingPrereq === 'labs' || editEntry?.type === 'labs') && (
+        <LabsDrawer patient={p} qc={qc}
+                    entry={editEntry?.type === 'labs' ? editEntry.entry : null}
+                    onClose={() => { setEditingPrereq(null); setEditEntry(null) }} />
       )}
       {creatingVisit && (
         <NewVisitDrawer patient={p} qc={qc} onClose={() => setCreatingVisit(false)} />
@@ -569,7 +576,7 @@ function MammoFacilityPicker({ patient, qc, onClose }) {
 
 // ── Mammogram history ──
 
-function MammoHistoryCard({ patient, qc, onAdd }) {
+function MammoHistoryCard({ patient, qc, onAdd, onEdit }) {
   const mammos = patient.mammos || []
   const del = useMutation({
     mutationFn: (id) => api.delete(`/pellets/patients/${patient.id}/mammos/${id}`),
@@ -617,6 +624,10 @@ function MammoHistoryCard({ patient, qc, onAdd }) {
                 {m.verified_by && (
                   <span className="text-[10px] text-gray-400">{m.verified_by.split('@')[0]}</span>
                 )}
+                <button onClick={() => onEdit(m)} title="Edit"
+                         className="text-plum-700 hover:bg-plum-50 p-0.5 rounded">
+                  <Edit3 size={10}/>
+                </button>
                 <button onClick={() => { if (window.confirm('Delete this mammo entry?')) del.mutate(m.id) }}
                          className="text-red-600 hover:bg-red-50 p-0.5 rounded">
                   <Trash2 size={10}/>
@@ -633,7 +644,7 @@ function MammoHistoryCard({ patient, qc, onAdd }) {
 
 // ── Labs history ──
 
-function LabsHistoryCard({ patient, qc, onAdd }) {
+function LabsHistoryCard({ patient, qc, onAdd, onEdit }) {
   const labs = patient.labs || []
   const notRequired = !!patient.labs_not_required
   const del = useMutation({
@@ -695,6 +706,10 @@ function LabsHistoryCard({ patient, qc, onAdd }) {
                 {l.verified_by && (
                   <span className="text-[10px] text-gray-400">{l.verified_by.split('@')[0]}</span>
                 )}
+                <button onClick={() => onEdit(l)} title="Edit"
+                         className="text-plum-700 hover:bg-plum-50 p-0.5 rounded">
+                  <Edit3 size={10}/>
+                </button>
                 <button onClick={() => { if (window.confirm('Delete this lab entry?')) del.mutate(l.id) }}
                          className="text-red-600 hover:bg-red-50 p-0.5 rounded">
                   <Trash2 size={10}/>
@@ -809,32 +824,42 @@ function RecallEditor({ patient, qc }) {
 }
 
 
-function MammoDrawer({ patient, qc, onClose }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [result, setResult] = useState('BI-RADS 1')
-  // Pre-fill from the patient's preferred mammo facility (single source
-  // of truth); fall back to whatever the last entry used.
+function MammoDrawer({ patient, qc, onClose, entry = null }) {
+  const isEdit = !!entry
+  const [date, setDate] = useState(entry?.mammo_date || new Date().toISOString().slice(0, 10))
+  const [result, setResult] = useState(entry?.result || 'BI-RADS 1')
+  // On add: pre-fill from the patient's preferred mammo facility (single source
+  // of truth), falling back to the last entry. On edit: use the entry's own values.
   const lastMammo = (patient.mammos || [])[0]
   const [facilityName, setFacilityName] = useState(
-    patient.preferred_mammo_facility_name || lastMammo?.facility_name || ''
+    isEdit ? (entry.facility_name || '')
+           : (patient.preferred_mammo_facility_name || lastMammo?.facility_name || '')
   )
   const [facilityPhone, setFacilityPhone] = useState(
-    patient.preferred_mammo_facility_phone || lastMammo?.facility_phone || ''
+    isEdit ? (entry.facility_phone || '')
+           : (patient.preferred_mammo_facility_phone || lastMammo?.facility_phone || '')
   )
   const [facilityAddress, setFacilityAddress] = useState(
-    patient.preferred_mammo_facility_address || lastMammo?.facility_address || ''
+    isEdit ? (entry.facility_address || '')
+           : (patient.preferred_mammo_facility_address || lastMammo?.facility_address || '')
   )
-  const [notes, setNotes] = useState('')
+  const [notes, setNotes] = useState(entry?.notes || '')
 
   const save = useMutation({
-    mutationFn: () => api.post(`/pellets/patients/${patient.id}/verify-mammo`, {
-      mammo_date: date,
-      mammo_result: result,
-      facility_name:    facilityName.trim() || null,
-      facility_phone:   facilityPhone.trim() || null,
-      facility_address: facilityAddress.trim() || null,
-      notes: notes || null,
-    }).then(r => r.data),
+    mutationFn: () => {
+      const body = {
+        mammo_date: date,
+        mammo_result: result,
+        facility_name:    facilityName.trim() || null,
+        facility_phone:   facilityPhone.trim() || null,
+        facility_address: facilityAddress.trim() || null,
+        notes: notes || null,
+      }
+      return (isEdit
+        ? api.patch(`/pellets/patients/${patient.id}/mammos/${entry.id}`, body)
+        : api.post(`/pellets/patients/${patient.id}/verify-mammo`, body)
+      ).then(r => r.data)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pellet-patient', patient.id] })
       onClose()
@@ -842,7 +867,7 @@ function MammoDrawer({ patient, qc, onClose }) {
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
   return (
-    <SimpleDrawer title="Add mammogram entry" onClose={onClose}>
+    <SimpleDrawer title={isEdit ? 'Edit mammogram entry' : 'Add mammogram entry'} onClose={onClose}>
       <div>
         <label className="text-[11px] uppercase text-gray-500 block mb-1">Date *</label>
         <input type="date" className="input text-sm w-full" required
@@ -902,17 +927,22 @@ function MammoDrawer({ patient, qc, onClose }) {
 }
 
 
-function LabsDrawer({ patient, qc, onClose }) {
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
-  const [fsh, setFsh] = useState('')
-  const [tsh, setTsh] = useState('')
-  const [e2, setE2] = useState('')
-  const [notes, setNotes] = useState('')
+function LabsDrawer({ patient, qc, onClose, entry = null }) {
+  const isEdit = !!entry
+  const [date, setDate] = useState(entry?.labs_date || new Date().toISOString().slice(0, 10))
+  const [fsh, setFsh] = useState(entry?.fsh || '')
+  const [tsh, setTsh] = useState(entry?.tsh || '')
+  const [e2, setE2] = useState(entry?.estradiol || '')
+  const [notes, setNotes] = useState(entry?.notes || '')
   const save = useMutation({
-    mutationFn: () => api.post(`/pellets/patients/${patient.id}/verify-labs`,
-                                 { labs_date: date, labs_fsh: fsh,
-                                   labs_tsh: tsh, labs_estradiol: e2,
-                                   notes: notes || null }).then(r => r.data),
+    mutationFn: () => {
+      const body = { labs_date: date, labs_fsh: fsh, labs_tsh: tsh,
+                     labs_estradiol: e2, notes: notes || null }
+      return (isEdit
+        ? api.patch(`/pellets/patients/${patient.id}/labs/${entry.id}`, body)
+        : api.post(`/pellets/patients/${patient.id}/verify-labs`, body)
+      ).then(r => r.data)
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pellet-patient', patient.id] })
       onClose()
@@ -920,7 +950,7 @@ function LabsDrawer({ patient, qc, onClose }) {
     onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
   })
   return (
-    <SimpleDrawer title="Add labs entry" onClose={onClose}>
+    <SimpleDrawer title={isEdit ? 'Edit labs entry' : 'Add labs entry'} onClose={onClose}>
       <div>
         <label className="text-[11px] uppercase text-gray-500 block mb-1">Date *</label>
         <input type="date" className="input text-sm w-full" required

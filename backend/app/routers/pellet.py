@@ -4172,6 +4172,36 @@ def _refresh_mammo_cache(db: Session, patient_id: str) -> None:
         p.mammo_result = None
 
 
+@router.patch("/patients/{patient_id}/mammos/{mammo_id}")
+def update_mammo(patient_id: str, mammo_id: str, payload: MammoIn,
+                   db: Session = Depends(get_db),
+                   current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    """Edit an existing mammo history entry, then re-sync the patient's cached
+    mammo scalars (the edited row may be — or may have changed — the latest)."""
+    row = (db.query(PelletPatientMammo)
+             .filter(PelletPatientMammo.id == mammo_id,
+                     PelletPatientMammo.patient_id == patient_id).first())
+    if not row:
+        raise HTTPException(status_code=404, detail="mammo entry not found")
+    by = current_user.get("email") or "system"
+    row.mammo_date = _parse_date(payload.mammo_date, "mammo_date")
+    row.result = payload.mammo_result.strip()
+    row.facility_name = payload.facility_name
+    row.facility_phone = payload.facility_phone
+    row.facility_fax = payload.facility_fax
+    row.facility_address = payload.facility_address
+    row.notes = payload.notes
+    db.flush()
+    _refresh_mammo_cache(db, patient_id)
+    _audit(db, actor=by, action="mammo_edited",
+            summary=f"Edited mammo entry {mammo_id}",
+            detail={"patient_id": patient_id, "result": row.result,
+                    "date": str(row.mammo_date)})
+    db.commit()
+    p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
+    return _patient_dict_with_history(db, p)
+
+
 class LabsIn(BaseModel):
     labs_date:      str
     labs_fsh:       Optional[str] = None
@@ -4257,6 +4287,33 @@ def _refresh_labs_cache(db: Session, patient_id: str) -> None:
         p.labs_verified = False
         p.labs_date = None
         p.labs_fsh = None; p.labs_tsh = None; p.labs_estradiol = None
+
+
+@router.patch("/patients/{patient_id}/labs/{lab_id}")
+def update_lab(patient_id: str, lab_id: str, payload: LabsIn,
+                 db: Session = Depends(get_db),
+                 current_user: dict = Depends(requires_tier(Module.PELLETS, Tier.WORK))):
+    """Edit an existing labs history entry, then re-sync the patient's cached
+    labs scalars."""
+    row = (db.query(PelletPatientLab)
+             .filter(PelletPatientLab.id == lab_id,
+                     PelletPatientLab.patient_id == patient_id).first())
+    if not row:
+        raise HTTPException(status_code=404, detail="lab entry not found")
+    by = current_user.get("email") or "system"
+    row.labs_date = _parse_date(payload.labs_date, "labs_date")
+    row.fsh = payload.labs_fsh
+    row.tsh = payload.labs_tsh
+    row.estradiol = payload.labs_estradiol
+    row.notes = payload.notes
+    db.flush()
+    _refresh_labs_cache(db, patient_id)
+    _audit(db, actor=by, action="labs_edited",
+            summary=f"Edited labs entry {lab_id}",
+            detail={"patient_id": patient_id})
+    db.commit()
+    p = db.query(PelletPatient).filter(PelletPatient.id == patient_id).first()
+    return _patient_dict_with_history(db, p)
 
 
 # ── Patient notes ──
