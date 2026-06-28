@@ -38,6 +38,13 @@ Device request and benefits checks arrive as ModMed Tasks (no integration).
 5. **Device checked out** — MA pulls from cabinet (see Check-out rules).
 6. **Device inserted** — record outcome (inserted, failed, no-show, etc.).
 7. **Billed** — record the ModMed claim # to close the assignment.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Benefits check]):::flow --> B([Pt responsibility]):::flow --> C([Notify to schedule]):::flow --> D([Appt scheduled]):::flow --> E([Checked out]):::flow --> F([Inserted]):::flow --> G([Billed]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
 """),
 
     ("enrollment-view-edit", "Viewing & Editing the Enrollment Form", 32, """\
@@ -110,6 +117,13 @@ The flow has **4 milestones** (vs LARC's 10):
 4. **Billed** — once the claim is submitted in ModMed, enter the claim # to
    close the assignment. Same as LARC.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Benefits verified]):::flow --> B([Device picked at surgery]):::flow --> C([Consumed in procedure]):::flow --> D([Billed]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
+
 **Dashboard buckets** (chip filters on `/larc`):
 
 - **OP — Pick Device** — surgery scheduled but no device chosen yet.
@@ -147,6 +161,13 @@ flagged on the dashboard so they can be used before they're scrapped.
    - Print the QR-coded label and put it on the box.
 6. **Patient notified** → schedule → check out → insert → bill (same as in-stock).
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Benefits check]):::flow --> B([Enrollment sent]):::flow --> C([Signed]):::flow --> D([Faxed · 14-day SLA]):::flow --> E([Device received]):::flow --> F([Notify · schedule]):::flow --> G([Checked out]):::flow --> H([Inserted]):::flow --> I([Billed]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
+
 > If a pharmacy order is more than 14 days past faxed and not received, it
 > shows up on the dashboard's **Overdue pharmacy orders** panel — call the
 > pharmacy to follow up.
@@ -181,6 +202,19 @@ to (often a provider). This is the chain of custody.
 | `patient_no_show` / `patient_canceled` / `office_canceled` | Device → unassigned. |
 | `lost` | Records the dollar-value loss. |
 | `other` | Notes are required. |
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart TD
+  CO([Checked out]):::flow --> OUT{Outcome}
+  OUT -- inserted --> BILL([Bill it]):::flow
+  OUT -- failed_unused --> STK([Back to stock]):::fix
+  OUT -- failed_used --> DEF([Defective]):::fix --> RET([Return to mfr]):::fix --> REP([Replacement]):::fix
+  OUT -- no-show / canceled --> UN([Unassigned]):::fix
+  OUT -- lost --> LOSS([Dollar loss]):::fix
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 
 > Checkouts not acknowledged within 24 hours surface on the dashboard's
 > **Unacknowledged checkouts** panel.
