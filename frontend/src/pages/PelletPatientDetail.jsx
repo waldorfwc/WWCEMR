@@ -1029,7 +1029,6 @@ function NewVisitDrawer({ patient, qc, onClose }) {
 
 function VisitCard({ visit, patient, qc }) {
   const [bagOpen, setBagOpen] = useState(false)
-  const [insertionOpen, setInsertionOpen] = useState(false)
   const [addMidOpen, setAddMidOpen] = useState(false)
   const [confirmInsertionOpen, setConfirmInsertionOpen] = useState(false)
   const [disposeDose, setDisposeDose] = useState(null)   // a dose obj
@@ -1160,20 +1159,13 @@ function VisitCard({ visit, patient, qc }) {
         <PaymentBox visit={visit} qc={qc} />
       )}
 
-      {/* Confirm-what-was-inserted (per-line) and Reschedule/Cancel outcome */}
+      {/* Confirm what was inserted (per-line) */}
       {(hasPlanned || hasPulled) && !['billed','cancelled'].includes(visit.status) && (
         <div className="mt-3 border-t border-border-subtle pt-3 flex flex-wrap gap-2">
           <button className="btn-primary text-sm flex items-center gap-1"
                   onClick={() => setConfirmInsertionOpen(true)}>
             <CheckCircle2 size={12}/> Confirm What Was Inserted…
           </button>
-          {hasPulled && visit.status === 'in_progress' && (
-            <button className="text-sm flex items-center gap-1 px-3 py-1.5 rounded border border-gray-300 bg-white hover:bg-gray-50 text-gray-700"
-                    onClick={() => setInsertionOpen(true)}
-                    title="Reschedule or cancel without confirming each line">
-              <RotateCcw size={12}/> Reschedule / Cancel
-            </button>
-          )}
         </div>
       )}
 
@@ -1194,10 +1186,6 @@ function VisitCard({ visit, patient, qc }) {
       {/* Drawers */}
       {bagOpen && (
         <BagFillDrawer visit={visit} qc={qc} onClose={() => setBagOpen(false)} />
-      )}
-      {insertionOpen && (
-        <InsertionOutcomeDrawer visit={visit} qc={qc}
-                                  onClose={() => setInsertionOpen(false)} />
       )}
       {confirmInsertionOpen && (
         <ConfirmInsertionDrawer visit={visit} qc={qc}
@@ -3333,65 +3321,6 @@ function LotPickerForType({ doseTypeId, location, minQty, selected, onSelect }) 
         </option>
       ))}
     </select>
-  )
-}
-
-
-function InsertionOutcomeDrawer({ visit, qc, onClose }) {
-  const [outcome, setOutcome] = useState('perfect')
-  const [notes, setNotes] = useState('')
-  const save = useMutation({
-    mutationFn: () => api.post(`/pellets/visits/${visit.id}/insert`,
-                                 { outcome, notes: notes || null }).then(r => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['pellet-patient', visit.patient_id] })
-      qc.invalidateQueries({ queryKey: ['pellet-dashboard'] })
-      qc.invalidateQueries({ queryKey: ['pellet-upcoming-calendar'] })
-      qc.invalidateQueries({ queryKey: ['pellet-patients'] })
-      onClose()
-    },
-    onError: (e) => alert(e?.response?.data?.detail || 'Save failed'),
-  })
-  return (
-    <SimpleDrawer title="Record insertion outcome" onClose={onClose}>
-      <div className="space-y-1">
-        <OutcomeOption value="perfect" current={outcome} setCurrent={setOutcome}
-                        label="Perfect insertion"
-                        sub="All pulled doses placed — close out and bill" />
-        <OutcomeOption value="rescheduled" current={outcome} setCurrent={setOutcome}
-                        label="Rescheduled"
-                        sub="Returns all pulled doses to stock; visit remains open" />
-        <OutcomeOption value="cancelled" current={outcome} setCurrent={setOutcome}
-                        label="Cancelled"
-                        sub="Returns all pulled doses to stock; closes visit" />
-      </div>
-      <div>
-        <label className="text-[11px] uppercase text-gray-500 block mb-1">Notes</label>
-        <textarea className="input text-[12px] w-full" rows={2}
-                  value={notes} onChange={e => setNotes(e.target.value)}
-                  placeholder="Optional explanation (esp. for reschedule / cancel)" />
-      </div>
-      <DrawerFooter onClose={onClose} onSave={() => save.mutate()}
-                     saving={save.isPending}
-                     label="Record outcome" />
-    </SimpleDrawer>
-  )
-}
-
-
-function OutcomeOption({ value, current, setCurrent, label, sub }) {
-  const active = current === value
-  return (
-    <label className={`flex items-baseline gap-2 cursor-pointer p-2 rounded border ${
-      active ? 'border-plum-400 bg-plum-50/50' : 'border-gray-200 hover:bg-gray-50'
-    }`}>
-      <input type="radio" name="outcome" value={value} checked={active}
-              onChange={() => setCurrent(value)} />
-      <div>
-        <div className="text-[13px] font-medium">{label}</div>
-        <div className="text-[11px] text-gray-500">{sub}</div>
-      </div>
-    </label>
   )
 }
 
