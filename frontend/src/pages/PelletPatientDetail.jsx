@@ -1217,12 +1217,21 @@ function RevertControl({ visit, patient, qc }) {
   const [reason, setReason] = useState('')
   const [showHistory, setShowHistory] = useState(false)
 
+  const { tier } = useCurrentUser()
+  const canManage = tier(MODULE.PELLETS, TIER.MANAGE)
+
   const bagged = (visit.milestones || []).some(m => m.kind === 'bagged' && m.status === 'done')
-  const target =
+  let target =
     visit.status === 'billed'                          ? { verb: 'Un-bill',   to: 'inserted' }  :
     visit.status === 'inserted'                        ? { verb: 'Un-insert', to: 'bagged' }    :
     (visit.status === 'in_progress' && bagged)         ? { verb: 'Un-bag',    to: 'scheduled' } :
     null
+  // Un-bill / Un-insert require pellet:manage on the backend; un-bag needs only
+  // pellet:work. Hide the manager-only steps from non-managers so they don't see
+  // a button that just 403s. (Un-bag stays visible for work-tier staff.)
+  if (target && (target.verb === 'Un-bill' || target.verb === 'Un-insert') && !canManage) {
+    target = null
+  }
 
   const revert = useMutation({
     mutationFn: () => api.post(`/pellets/visits/${visit.id}/revert`,
