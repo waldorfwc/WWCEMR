@@ -266,6 +266,32 @@ def test_append_dose_to_reopened_visit_requires_manager(client_factory, db):
     assert r.status_code == 403
 
 
+def test_revert_tier_split_work_user(client_factory, db):
+    # Backend enforcement behind the UI gate: a WORK-tier user is blocked from
+    # un-bill and un-insert (manager-only), but CAN un-bag (work-tier).
+    from app.models.pellet import PelletVisitMilestone
+    p = _patient(db)
+    work = client_factory(user=_work_user(db))
+
+    vb = _visit(db, p, status="billed")
+    r = work.post(f"/api/pellets/visits/{vb.id}/revert", json={"reason": "x"})
+    assert r.status_code == 403, r.text        # un-bill blocked
+
+    vi = _visit(db, p, status="inserted")
+    r = work.post(f"/api/pellets/visits/{vi.id}/revert", json={"reason": "x"})
+    assert r.status_code == 403, r.text        # un-insert blocked
+
+    vg = _visit(db, p, status="in_progress")
+    db.add(PelletVisitMilestone(visit_id=vg.id, kind="bagged", title="Bagged",
+                                position=1, status="done"))
+    db.commit()
+    r = work.post(f"/api/pellets/visits/{vg.id}/revert", json={"reason": "x"})
+    assert r.status_code == 200, r.text        # un-bag allowed for work tier
+    db.refresh(vg)
+    bag = next(m for m in vg.milestones if m.kind == "bagged")
+    assert bag.status == "pending" and vg.bagged_at is None   # bag step reverted
+
+
 def test_close_reopen_not_reopened_409(client_factory, db):
     p = _patient(db); v = _visit(db, p, status="inserted")
     client = _client(client_factory, db)
