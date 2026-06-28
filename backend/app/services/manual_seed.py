@@ -501,6 +501,32 @@ enough on hand to pull them back, the reopen is blocked until you receive stock.
 visits that were inserted or billed without a lot recorded.
 """),
 
+    ("revert-step-back", "Stepping a Visit Back", 67, """\
+Sometimes you don't want to reopen-and-edit — you just need to walk a visit back
+one stage because it was advanced too far. The visit card shows a single
+**step-back** action (amber, bottom of the card) that moves the visit back
+exactly one step and logs who did it and why. A reason is required, and every
+step-back is recorded in **Status history** on the same card.
+
+Which action appears depends on where the visit is now:
+
+| You see | Visit is | It does | Lands in | Who can |
+|---|---|---|---|---|
+| **Un-bill** | billed | Clears the claim # and billed date, so the re-bill box reappears | inserted | Manager |
+| **Un-insert** | inserted | Puts the inserted doses back to *pulled* (nothing returns to stock — they're still out of the safe) | in progress | Manager |
+| **Un-bag** | bagged (in progress) | Reverses the bag-fill: returns the pulled pellets to stock and clears the bag step | in progress | Any pellet staff |
+
+> **Un-bag stays *in progress*.** It undoes the bag-fill step (returning pellets
+> to stock), but the visit's status remains *in progress* — it doesn't drop back
+> to *scheduled*.
+
+**Reopen vs. step-back:** use **Reopen Visit** to *correct details* (fix a lot or
+quantity) and snap the visit back to where it was. Use a **step-back** when you
+actually need the visit at an earlier stage — e.g. **Un-bill** to redo a claim,
+or **Un-bag** to put pellets back. Un-bill and Un-insert are manager-only;
+Un-bag is available to any pellet staff.
+"""),
+
     ("audit", "Audit log", 70, """\
 Every state change writes one row to the pellet audit log:
 
