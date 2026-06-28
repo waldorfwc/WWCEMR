@@ -886,6 +886,13 @@ All claim data originates from file imports — nothing is entered by hand.
    on the linked Claim ID. Reversals, unmatched claims and already-posted
    checks are flagged before you commit.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Charge Analysis .xls]):::flow --> B([Claims Analysis .xls]):::flow --> C([ERA 835 .835]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
+
 > Order matters: Charge Analysis creates the claims, Claims Analysis links
 > the Claim IDs, then ERA 835 posts payments. ERAs only match claims that
 > already have a linked Claim ID.
@@ -982,6 +989,17 @@ Click a card to filter to that category.
 **Status filter:** Open · Appealing · Overturned · Upheld · Written Off.
 Tick **Urgent only (≤30 days)** or **Write-off recommended** to focus the list.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  O([Open]):::flow --> AP([Appealing]):::flow
+  AP --> OV([Overturned]):::flow
+  AP -. upheld .-> UP([Upheld]):::fix
+  O -. write off .-> WO([Written Off]):::fix
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
+
 **Denial codes:** each row shows its group code + CARC / RARC. Click any
 code or "Explain this denial" to open a drawer that decodes what the
 payer's reason means and what to do next.
@@ -1018,6 +1036,13 @@ deadline and creation date. Click any letter to read it.
 3. Mail or fax the downloaded copy to the payer.
 4. Click **Mark Submitted** to record that you sent it; the footer shows
    the submitted date and any decision notes.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Review draft]):::flow --> B([Download]):::flow --> C([Mail / fax to payer]):::flow --> D([Mark Submitted]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
 
 > Marking Submitted only logs that you sent it — actually mail or fax the
 > downloaded copy to the payer.
@@ -1104,6 +1129,13 @@ formatted file that ModMed's bank-recon importer accepts.
    that will be included. Clicking builds and auto-downloads the file for
    import into ModMed.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Set Bank / Account]):::flow --> B([Skip toggles]):::flow --> C([Upload Bank CSV]):::flow --> D([Review transactions]):::flow --> E([Generate BAI2]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
+
 **History & Excluded:**
 
 - **Generated BAI2 Files** — lists past runs; download or delete each; expand
@@ -1132,6 +1164,16 @@ or explained (no-show, canceled, or provider can't bill).
 | Provider can't bill | Provider flagged an error; reason in the drawer |
 | Billed | Claim # entered and confirmed |
 | No Show / Canceled | Closed — no charge expected |
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  NEW([New]):::flow --> NB([Needs to be billed]):::flow --> PB([Provider says billed]):::flow --> BILL([Billed]):::flow
+  NB -. can't bill .-> PC([Provider can't bill]):::fix
+  NEW -. no-show / canceled .-> NS([No Show / Canceled]):::fix
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 
 > Provider emails go out automatically every Monday at 8 AM. "Send Weekly
 > Emails Now" triggers an ad-hoc run.
@@ -1265,6 +1307,13 @@ Sort by **Type** or **Uploaded** date by clicking the column header.
 5. Click **Mark in progress** while you're working it, then **Mark as Worked**
    when done.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  N([New]):::flow --> IP([In Progress]):::flow --> W([Worked]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
+
 **Files in a row:** the panel's **Files** section lists every file attached to
 the row (primary first). Click **View** to open any one, or use **Add files**
 to attach more scans to the same row later.
@@ -1324,6 +1373,16 @@ documents, the document types, the destination fax number, status and who sent i
 | Sent | Transmitted; awaiting delivery confirmation |
 | Delivered | Confirmed received by the destination |
 | Failed | Transmission failed — action required |
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  Q([Queued]):::flow --> S([Sent]):::flow --> D([Delivered]):::flow
+  S -. fails .-> F([Failed]):::fix
+  F -. retry .-> Q
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 
 **Filter the fax log** by status (All / Queued / Sent / Delivered / Failed) and
 by time window (Last 7 / 30 / 90 days). The list auto-refreshes while any fax
@@ -1385,6 +1444,18 @@ already claimed that recall (soft-claim lock — configurable in Settings).
 4. **Log the outcome** — pick an outcome and add notes. Outcomes labeled
    **(permanent suppression)** or **(completes recall)** close the patient out
    permanently.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Find patient]):::flow --> B([Click-to-dial]):::flow --> C([Open drawer]):::flow --> D([Log outcome]):::flow
+  D -- neutral --> ACT([Active]):::flow
+  D -- cooldown --> CD([Hidden N days then Active]):::flow
+  D -- completed --> CP([Completed]):::flow
+  D -. permanent .-> SUP([Suppressed]):::fix
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 
 > A confirm dialog ("Confirm & Remove") guards against accidentally permanently
 > suppressing a patient — read the warning before confirming.
@@ -1450,6 +1521,14 @@ publicly.
 
 1. Confirm the patient consented to display.
 2. Tick **Show on website** on the card.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  A([Patient scans QR]):::flow --> B([Star rating + comment]):::flow --> C([Staff moderate]):::flow --> D([Confirm consent]):::flow --> E([Show on website]):::flow
+  B -. optional .-> G([Google review]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
 
 > Reviews without display consent cannot be shown on the website — the
 > checkbox stays disabled if consent was not given.
@@ -1541,6 +1620,15 @@ task title with "Filter tasks…".
 - **Pending** — awaiting trainee confirmation or trainer signoff.
 - **X missing** — click to expand the list of uncertified employees; click
   any email to certify that person immediately.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  M([Missing]):::flow --> P([Pending]):::flow --> C([Certified]):::flow --> E([Expiring within 30d]):::fix
+  E -. expires .-> M
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 
 **Add to a task (bottom of each card):**
 
