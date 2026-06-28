@@ -383,77 +383,43 @@ are used first. This minimizes expiration loss.
 """),
 
     ("full-workflow", "Full Workflow (Diagram)", 15, """\
-The end-to-end pellet process, from eligibility through billing and recall. The
-main path runs top to bottom; the correction paths walk a visit back when
-something needs fixing; and a daily compliance loop (DEA Schedule III) runs in
-parallel over the controlled inventory that the visit flow draws from.
+The end-to-end pellet process at a glance. **Color key:** green = main flow ·
+amber = corrections · blue = compliance. The detail behind each step is in the
+sections below.
 
-```
-ELIGIBILITY  (verify before scheduling)
-  - Mammogram BI-RADS 1 or 2        (or "Not Required - Testosterone Only")
-  - Labs: FSH / TSH / Estradiol     (or "labs not required")
-        |
-        v
-VISIT CREATED ....................... status: scheduled
-  - kind: initial / booster / repeat
-  - pick location + scheduled date
-        |
-        v
-BAG FILL ............................ status: in progress
-  - pull doses from inventory        doses: planned -> pulled
-        |
-        v
-INSERTION ........................... status: inserted
-  - "Confirm What Was Inserted"      doses: pulled -> inserted
-  - (mid-procedure: add or dispose a dose as needed)
-        |
-        v
-PAYMENT collected ................... new $500 / established $400
-        |
-        v
-BILLED .............................. enter claim #
-        |
-        v
-RECALL .............................. every N months -> start a repeat visit
-                                      (loops back to VISIT CREATED)
+#### Lifecycle
 
-
-CORRECTION & EXCEPTION PATHS
-----------------------------
-Reschedule   scheduled / in progress   ->  new date (pellets stay bagged)
-Cancel       scheduled / in progress   ->  doses returned to stock, visit closed
-Reopen       inserted / billed / cancelled -> edit lots & qty -> Done Editing
-               - a billed visit is UN-BILLED on reopen; lands in inserted to re-bill
-               - reopening a cancelled visit un-cancels it (re-pulls the doses)
-Step-back    Un-bill    billed         ->  inserted      (clears claim #, re-bill)
-             Un-insert  inserted       ->  in progress   (doses -> pulled)
-             Un-bag     bagged         ->  in progress   (pellets back to stock)
-
-
-DAILY COMPLIANCE LOOP  (DEA Schedule III)            repeats every day
-----------------------------------------------------------------------
-  START COUNT  (one location, or "all locations")
-    - system snapshots the expected balance for each lot x location
-        |
-        v
-  WALK THE SHELF  ->  enter the actual dose count per lot
-    - variance computed live; any non-zero variance needs a note
-        |
-        v
-  FINISH COUNT  ->  testosterone counts require a witness signature
-        |
-        v
-  AUDIT LOG  .........  then repeat next day  (loops back to START COUNT)
-
-  DISPOSAL (as needed, not daily)   dropped / broken / expired / other
-    ->  enter dose count  ->  witness (testosterone)  ->  decrements stock  ->  audit log
-
-  Counts & disposals reconcile the SAME inventory that BAG FILL pulls from.
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  E([Eligibility]):::flow --> V([Scheduled]):::flow --> B([Bag fill]):::flow --> I([Inserted]):::flow --> P([Payment]):::flow --> BL([Billed]):::flow --> RC([Recall]):::flow
+  RC -. repeat .-> V
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
 ```
 
-> **Eligibility is verified, not enforced at insertion** — the mammogram and labs
-> cards flag what's missing, but staff judgment governs whether to proceed. See
-> the per-step sections below for the detail behind each box.
+#### Corrections (step-back)
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  BL([Billed]):::fix -- Un-bill --> I([Inserted]):::fix -- Un-insert --> IP([In progress]):::fix
+  BG([Bagged]):::fix -- Un-bag --> IP
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
+
+#### Daily compliance loop (DEA Schedule III)
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  K1([Start count]):::comp --> K2([Walk shelf · variance]):::comp --> K3([Witness sign]):::comp --> K4([Audit]):::comp
+  K4 -. next day .-> K1
+  D([Disposal]):::comp --> K4
+  classDef comp fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+```
+
+> Eligibility is verified, not enforced at insertion — the mammogram and labs
+> cards flag what's missing, but staff judgment governs whether to proceed.
 """),
 
     ("ordering", "Ordering from Qualgen", 20, """\
