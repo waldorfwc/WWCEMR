@@ -744,6 +744,13 @@ their expected window (configurable in Settings → Workflow Steps).
 8. Welfare call recorded
 9. Bill surgery — record the ModMed claim #
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  M1([Info]):::flow --> M2([Benefits & Payment]):::flow --> M3([Consents]):::flow --> M4([Date + post-op]):::flow --> M5([Hospital posting]):::flow --> M6([ModMed confirmed]):::flow --> M7([Pre-op labs]):::flow --> M8([Welfare call]):::flow --> M9([Bill surgery]):::flow
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+```
+
 **Optional cards** (appear only when the case needs them):
 - Device (office-procedure device linked from LARC module)
 - Prior Auth
@@ -769,6 +776,17 @@ past its expected window.
 | `hold` | Hold | Deliberately paused (coordinator hold) |
 | `cancelled` | Canceled | Canceled; releases the block slot |
 | `unresponsive` | Unresponsive | Auto-set when no date picked past the window |
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart LR
+  INC([Incomplete]):::flow --> NEW([New]):::flow --> BC([Benefits Check]):::flow --> PRE([Pre-Surgery]):::flow --> POST([Post-Surgery]):::flow
+  BC -. no date past window .-> UNR([Unresponsive]):::warn
+  BC -. coordinator pause .-> HOLD([Hold]):::warn
+  PRE -. cancel · releases slot .-> CAN([Canceled]):::warn
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef warn fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 
 **Auto-transitions:**
 - A daily sweep moves a case to **Unresponsive** when no date is picked within
