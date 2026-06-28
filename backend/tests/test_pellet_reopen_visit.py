@@ -143,6 +143,23 @@ def test_reopen_billed_unbills_then_close_lands_inserted(client_factory, db):
     assert b2["reopened_at"] is None
 
 
+def test_unbill_revert_clears_claim_for_rebill(client_factory, db):
+    # Un-bill must clear the claim # (not just billed_at), or status=inserted +
+    # a lingering claim hides the re-bill box and you can't re-bill.
+    from app.utils.dt import now_utc_naive
+    p = _patient(db); v = _visit(db, p, status="billed")
+    v.claim_number = "CLM-9"; v.billed_at = now_utc_naive(); v.billed_by = "b@x.com"
+    db.add(v); db.commit()
+    client = _client(client_factory, db)
+    r = client.post(f"/api/pellets/visits/{v.id}/revert", json={"reason": "wrong claim"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "inserted"
+    assert body["claim_number"] is None
+    db.refresh(v)
+    assert v.billed_at is None and v.claim_number is None
+
+
 def test_close_reopen_inserted_returns_to_inserted(client_factory, db):
     p = _patient(db); v = _visit(db, p, status="inserted")
     client = _client(client_factory, db)

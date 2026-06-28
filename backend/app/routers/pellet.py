@@ -6066,6 +6066,7 @@ def revert_visit_status(visit_id: str, payload: RevertIn,
         v.status = "inserted"
         v.billed_at = None
         v.billed_by = None
+        v.claim_number = None   # clear the claim so the re-bill box reappears
         _reopen_milestone(v, "billed")
 
     elif v.status == "inserted":
