@@ -384,8 +384,9 @@ are used first. This minimizes expiration loss.
 
     ("full-workflow", "Full Workflow (Diagram)", 15, """\
 The end-to-end pellet process, from eligibility through billing and recall. The
-main path runs top to bottom; the correction paths below it walk a visit back
-when something needs fixing.
+main path runs top to bottom; the correction paths walk a visit back when
+something needs fixing; and a daily compliance loop (DEA Schedule III) runs in
+parallel over the controlled inventory that the visit flow draws from.
 
 ```
 ELIGIBILITY  (verify before scheduling)
@@ -427,6 +428,27 @@ Reopen       inserted / billed / cancelled -> edit lots & qty -> Done Editing
 Step-back    Un-bill    billed         ->  inserted      (clears claim #, re-bill)
              Un-insert  inserted       ->  in progress   (doses -> pulled)
              Un-bag     bagged         ->  in progress   (pellets back to stock)
+
+
+DAILY COMPLIANCE LOOP  (DEA Schedule III)            repeats every day
+----------------------------------------------------------------------
+  START COUNT  (one location, or "all locations")
+    - system snapshots the expected balance for each lot x location
+        |
+        v
+  WALK THE SHELF  ->  enter the actual dose count per lot
+    - variance computed live; any non-zero variance needs a note
+        |
+        v
+  FINISH COUNT  ->  testosterone counts require a witness signature
+        |
+        v
+  AUDIT LOG  .........  then repeat next day  (loops back to START COUNT)
+
+  DISPOSAL (as needed, not daily)   dropped / broken / expired / other
+    ->  enter dose count  ->  witness (testosterone)  ->  decrements stock  ->  audit log
+
+  Counts & disposals reconcile the SAME inventory that BAG FILL pulls from.
 ```
 
 > **Eligibility is verified, not enforced at insertion** — the mammogram and labs
