@@ -480,16 +480,22 @@ by a manager to fix mistakes such as a missing or wrong lot number.
 **Reopen:** On the visit, click **Reopen Visit** and enter a reason. The visit
 moves to an editable state (a banner shows who reopened it and why).
 
+> **Reopening a billed visit un-bills it.** To stop a dose change from silently
+> mismatching an existing claim, reopening a billed visit clears its claim # up
+> front. After you finish editing it lands in **inserted** with the billing box
+> showing, so you re-enter the claim # — confirming the bill matches what was
+> actually inserted.
+
 **Correct doses:** While reopened, each dose's lot and quantity are editable.
 Binding the correct lot pulls it from inventory (and returns the old lot if you
 swap) — so fixing a missing lot also corrects your on-hand counts. Historical
 (pre-system) visits are recorded only; they never move stock.
 
-**Close:** Click **Done Editing**. The visit returns to its prior status — a
-billed visit stays billed; an inserted visit stays inserted. Reopening a
-cancelled visit un-cancels it — the pellets it returned to stock are pulled back
-out, and it completes as inserted when you close. If there isn't enough on hand
-to pull them back, the reopen is blocked until you receive stock.
+**Close:** Click **Done Editing**. An inserted visit returns to inserted; a
+reopened **billed** visit lands in **inserted** ready to re-bill (see above).
+Reopening a cancelled visit un-cancels it — the pellets it returned to stock are
+pulled back out, and it completes as inserted when you close. If there isn't
+enough on hand to pull them back, the reopen is blocked until you receive stock.
 
 **Finding visits to fix:** the **Missing Lot** tab on the pellet dashboard lists
 visits that were inserted or billed without a lot recorded.

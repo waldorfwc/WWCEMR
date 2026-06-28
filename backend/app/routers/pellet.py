@@ -5963,15 +5963,28 @@ def reopen_visit(visit_id: str, payload: ReopenIn,
         except HTTPException:
             db.rollback()
             raise
-    v.pre_reopen_status = v.status
+    original_status = v.status
+    # Billing-drift guard: a billed visit must not stay claimed while it's open
+    # for edits — otherwise changing a dose lot/quantity would silently desync
+    # the existing claim. Un-bill it up front (mirror of the Un-bill revert):
+    # clear the claim + reopen the billed milestone, and record the close target
+    # as 'inserted' so "Done Editing" lands there with the re-bill box showing.
+    if v.status == "billed":
+        v.claim_number = None
+        v.billed_at = None
+        v.billed_by = None
+        _reopen_milestone(v, "billed")
+        v.pre_reopen_status = "inserted"
+    else:
+        v.pre_reopen_status = v.status
     v.reopened_at = now_utc_naive()
     v.reopened_by = by
     v.reopened_reason = reason
     v.status = "in_progress"
     _audit(db, actor=by, action="visit_reopened",
-           summary=f"Reopened visit (was {v.pre_reopen_status})",
-           detail={"visit_id": str(v.id), "pre_status": v.pre_reopen_status,
-                   "reason": reason})
+           summary=f"Reopened visit (was {original_status})",
+           detail={"visit_id": str(v.id), "pre_status": original_status,
+                   "close_target": v.pre_reopen_status, "reason": reason})
     db.commit(); db.refresh(v)
     return _visit_dict(v)
 

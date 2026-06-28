@@ -119,14 +119,28 @@ def test_reopen_twice_409(client_factory, db):
     assert r.status_code == 409
 
 
-def test_close_reopen_billed_returns_to_billed(client_factory, db):
+def test_reopen_billed_unbills_then_close_lands_inserted(client_factory, db):
+    # Billing-drift guard: reopening a billed visit clears the claim up front so
+    # dose edits can't silently desync it; "Done Editing" lands in inserted,
+    # ready to re-bill — NOT silently back in billed.
+    from app.utils.dt import now_utc_naive
     p = _patient(db); v = _visit(db, p, status="billed")
+    v.claim_number = "CLM-123"; v.billed_at = now_utc_naive(); v.billed_by = "biller@x.com"
+    db.add(v); db.commit()
     client = _client(client_factory, db)
-    client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "fix"})
-    r = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
+    r = client.post(f"/api/pellets/visits/{v.id}/reopen", json={"reason": "fix lot"})
     assert r.status_code == 200
-    assert r.json()["status"] == "billed"
-    assert r.json()["reopened_at"] is None
+    body = r.json()
+    assert body["status"] == "in_progress"
+    assert body["claim_number"] is None              # un-billed up front
+    assert body["pre_reopen_status"] == "inserted"   # close target
+
+    r2 = client.post(f"/api/pellets/visits/{v.id}/close-reopen")
+    assert r2.status_code == 200
+    b2 = r2.json()
+    assert b2["status"] == "inserted"                # ready to re-bill, not silently re-billed
+    assert b2["claim_number"] is None
+    assert b2["reopened_at"] is None
 
 
 def test_close_reopen_inserted_returns_to_inserted(client_factory, db):
