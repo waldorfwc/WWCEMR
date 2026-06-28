@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, BookOpen, ChevronRight, Edit3, Plus, Save, Trash2, X } from 'lucide-react'
+import { ArrowLeft, BookOpen, ChevronRight, Edit3, Plus, Save, Trash2, Workflow, X } from 'lucide-react'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import api, { fmt } from '../../utils/api'
@@ -115,6 +115,14 @@ export default function ModuleManual({
     [sections]
   )
 
+  // Diagram index: sections that contain at least one mermaid block.
+  const diagrams = useMemo(
+    () => sections
+      .filter(s => (s.body_md || '').includes('```mermaid'))
+      .map(s => ({ id: s.id, slug: s.slug, title: s.title })),
+    [sections]
+  )
+
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
@@ -157,6 +165,21 @@ export default function ModuleManual({
               </a>
             ))}
           </div>
+          {diagrams.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-plum-200/60">
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-1">
+                <Workflow size={11} /> Diagrams
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
+                {diagrams.map(d => (
+                  <a key={d.id} href={`#${d.slug}`}
+                     className="text-plum-700 hover:underline flex items-center gap-1">
+                    <ChevronRight size={11} /> {d.title}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
