@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, BookOpen, ChevronRight, Edit3, Plus, Save, Trash2, X } from 'lucide-react'
@@ -13,6 +13,63 @@ const MANUAL_STALE_AFTER_DAYS = 180
 function renderMarkdown(md) {
   const raw = marked.parse(md || '', { breaks: true, gfm: true })
   return DOMPurify.sanitize(raw)
+}
+
+// Lazy, one-time mermaid loader — only fetched when a manual page actually
+// contains a ```mermaid block, so it never bloats other routes.
+let _mermaidPromise = null
+function loadMermaid() {
+  if (!_mermaidPromise) {
+    _mermaidPromise = import('mermaid').then(m => {
+      const mermaid = m.default
+      mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', flowchart: { curve: 'basis' } })
+      return mermaid
+    })
+  }
+  return _mermaidPromise
+}
+
+let _mermaidSeq = 0
+
+// Render any ```mermaid code blocks inside `ref` to SVG after the markdown HTML
+// has been injected. On parse failure, leave the source visible (wrapped) rather
+// than showing mermaid's error box.
+function useMermaid(html) {
+  const ref = useRef(null)
+  useEffect(() => {
+    const root = ref.current
+    if (!root) return
+    const blocks = root.querySelectorAll('code.language-mermaid')
+    if (!blocks.length) return
+    let cancelled = false
+    loadMermaid().then(async mermaid => {
+      for (let i = 0; i < blocks.length; i++) {
+        if (cancelled) return
+        const codeEl = blocks[i]
+        const pre = codeEl.closest('pre') || codeEl
+        const src = codeEl.textContent || ''
+        try {
+          _mermaidSeq += 1
+          const { svg } = await mermaid.render(`mmd-${_mermaidSeq}`, src)
+          const wrap = document.createElement('div')
+          wrap.className = 'my-3 overflow-x-auto flex justify-center'
+          wrap.innerHTML = svg
+          pre.replaceWith(wrap)
+        } catch {
+          pre.classList.add('whitespace-pre-wrap')   // fallback: keep readable source
+        }
+      }
+    })
+    return () => { cancelled = true }
+  }, [html])
+  return ref
+}
+
+// One markdown body: sanitized HTML + mermaid post-render. Used by both the
+// published section and the editor preview.
+function MarkdownBody({ html, className }) {
+  const ref = useMermaid(html)
+  return <div ref={ref} className={className} dangerouslySetInnerHTML={{ __html: html }} />
 }
 
 function isStale(updated_at) {
@@ -179,7 +236,7 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
               && ` by ${section.updated_by.split('@')[0]}`}
           </div>
         )}
-        <div className="prose prose-sm max-w-none text-[13px] leading-relaxed text-gray-800
+        <MarkdownBody className="prose prose-sm max-w-none text-[13px] leading-relaxed text-gray-800
                           [&>h1]:font-serif [&>h2]:font-serif [&>h3]:font-serif
                           [&>blockquote]:border-l-4 [&>blockquote]:border-plum-300
                           [&>blockquote]:bg-plum-50/30 [&>blockquote]:py-1 [&>blockquote]:px-3 [&>blockquote]:my-2
@@ -192,7 +249,7 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
                           [&_strong]:font-semibold
                           [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2
                           [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2"
-             dangerouslySetInnerHTML={{ __html: renderMarkdown(section.body_md) }} />
+                    html={renderMarkdown(section.body_md)} />
       </section>
     )
   }
@@ -220,10 +277,10 @@ function Section({ section, canEdit, editing, onStartEdit, onCancel, onSaved, on
           </button>
         </div>
         {previewing ? (
-          <div className="border border-border-subtle rounded p-3 bg-white min-h-[200px]
+          <MarkdownBody className="border border-border-subtle rounded p-3 bg-white min-h-[200px]
                           prose prose-sm max-w-none text-[13px]
                           [&_table]:border-collapse [&_th]:bg-plum-50 [&_th]:px-2 [&_th]:py-1 [&_th]:border [&_td]:border [&_td]:px-2 [&_td]:py-1"
-               dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }} />
+                        html={renderMarkdown(body)} />
         ) : (
           <textarea className="input text-[12px] w-full font-mono"
                     rows={14}
