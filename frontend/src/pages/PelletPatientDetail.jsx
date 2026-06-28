@@ -4,7 +4,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, User, Plus, CheckCircle2, Circle, Edit3, Save, X,
   DollarSign, Calendar, Pill, Shield, Send, ExternalLink, Trash2,
-  PackageOpen, AlertTriangle, History, MessageSquare, Clock, RotateCcw,
+  PackageOpen, History, MessageSquare, Clock, RotateCcw,
   Replace, Eye,
 } from 'lucide-react'
 import api, { fmt } from '../utils/api'
@@ -318,8 +318,6 @@ function StatusBadge({ patient, qc }) {
   )
 }
 
-
-// ── Provider info card (latest mammo + preferred lab) ──
 
 // ── Preferences row (top-of-page, patient-level) ─────────────────
 
@@ -1335,7 +1333,7 @@ function RescheduleVisitDrawer({ visit, qc, onClose }) {
   }
 
   return (
-    <DrawerShell title="Reschedule visit" onClose={onClose}>
+    <SimpleDrawer title="Reschedule visit" onClose={onClose} bodyClassName="p-4">
       <div className="space-y-3 text-sm">
         <div>
           <div className="text-[11px] uppercase text-gray-500 mb-1">New date</div>
@@ -1359,7 +1357,7 @@ function RescheduleVisitDrawer({ visit, qc, onClose }) {
           </button>
         </div>
       </div>
-    </DrawerShell>
+    </SimpleDrawer>
   )
 }
 
@@ -1386,7 +1384,7 @@ function CancelVisitDrawer({ visit, qc, onClose }) {
   }
 
   return (
-    <DrawerShell title="Cancel visit" onClose={onClose}>
+    <SimpleDrawer title="Cancel visit" onClose={onClose} bodyClassName="p-4">
       <div className="space-y-3 text-sm">
         {pulledDoses.length > 0 && (
           <div className="text-xs bg-amber-50 border border-amber-200 rounded p-2 text-amber-800">
@@ -1410,24 +1408,7 @@ function CancelVisitDrawer({ visit, qc, onClose }) {
           </button>
         </div>
       </div>
-    </DrawerShell>
-  )
-}
-
-
-function DrawerShell({ title, onClose, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-4 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[15px]">{title}</h2>
-          <button onClick={onClose} className="text-muted hover:text-ink"><X size={16}/></button>
-        </div>
-        <div className="p-4">{children}</div>
-      </div>
-    </div>
+    </SimpleDrawer>
   )
 }
 
@@ -1651,19 +1632,8 @@ function EditProposedDoseDrawer({ visit, onClose }) {
   const validRows = rows.filter(r => r.dose_type_id && Number(r.quantity) > 0)
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-xl bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between z-10">
-          <h2 className="text-[15px] font-semibold text-gray-900">
-            Edit proposed dose
-          </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-5 space-y-3">
+    <SimpleDrawer title="Edit proposed dose" onClose={onClose}
+                  width="max-w-xl" bodyClassName="p-5 space-y-3">
           <p className="text-[12px] text-gray-600">
             Replace the proposed dose for this visit. Old planned/pulled
             doses return to inventory and the new combination is pulled.
@@ -1734,9 +1704,7 @@ function EditProposedDoseDrawer({ visit, onClose }) {
               {submit.isPending ? 'Saving…' : `Save (${validRows.length} dose${validRows.length === 1 ? '' : 's'})`}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </SimpleDrawer>
   )
 }
 
@@ -1774,19 +1742,8 @@ function LotSwapDrawer({ visit, dose, onClose }) {
     .filter(l => (l.balances?.[visit.location] || 0) >= dose.quantity)
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-gray-900">
-            Swap lot · {dose.quantity}× {dose.dose_label}
-          </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-5 space-y-3">
+    <SimpleDrawer onClose={onClose} bodyClassName="p-5 space-y-3"
+                  title={<>Swap lot · {dose.quantity}× {dose.dose_label}</>}>
           <div className="text-[12px] text-gray-600">
             Current lot: <strong className="font-mono">{dose.qualgen_lot || '—'}</strong>
             {dose.lot_expiration_date && <> · exp {fmt.date(dose.lot_expiration_date)}</>}
@@ -1827,9 +1784,7 @@ function LotSwapDrawer({ visit, dose, onClose }) {
               {error}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+    </SimpleDrawer>
   )
 }
 
@@ -1871,24 +1826,9 @@ function CorrectLotDrawer({ visit, dose, onClose }) {
   const reasonOk = reason.trim().length >= 6
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-[15px] font-semibold text-gray-900">
-              Correct lot · {dose.quantity}× {dose.dose_label}
-            </h2>
-            <div className="text-[11px] text-amber-700 uppercase tracking-wide">
-              Manager-only · retroactive
-            </div>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-5 space-y-3">
+    <SimpleDrawer onClose={onClose} bodyClassName="p-5 space-y-3"
+                  title={<>Correct lot · {dose.quantity}× {dose.dose_label}</>}
+                  subtitle="Manager-only · retroactive">
           <div className="text-[12px] bg-amber-50 border border-amber-200 rounded p-2 text-amber-900">
             This dose is already <strong className="font-mono">{dose.status}</strong>.
             Use this when the lot wasn't captured at pre-bag time or
@@ -1954,9 +1894,7 @@ function CorrectLotDrawer({ visit, dose, onClose }) {
               {error}
             </div>
           )}
-        </div>
-      </div>
-    </div>
+    </SimpleDrawer>
   )
 }
 
@@ -1995,24 +1933,9 @@ function ReopenDoseCorrectDrawer({ visit, dose, qc, onClose }) {
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-[15px] font-semibold text-gray-900">
-              Correct Dose · {dose.dose_label}
-            </h2>
-            <div className="text-[11px] text-amber-700 uppercase tracking-wide">
-              Reopen mode — manager only
-            </div>
-          </div>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-5 space-y-3">
+    <SimpleDrawer onClose={onClose} bodyClassName="p-5 space-y-3"
+                  title={<>Correct Dose · {dose.dose_label}</>}
+                  subtitle="Reopen mode — manager only">
           <div className="text-[12px] bg-amber-50 border border-amber-200 rounded p-2 text-amber-900">
             This visit is <strong>reopened</strong>. Change the lot and/or quantity
             to reconcile inventory — stock is rebalanced automatically.
@@ -2072,9 +1995,7 @@ function ReopenDoseCorrectDrawer({ visit, dose, qc, onClose }) {
               <Save size={12}/>{correctDose.isPending ? 'Saving…' : 'Save Correction'}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </SimpleDrawer>
   )
 }
 
@@ -3213,19 +3134,8 @@ function ConfirmInsertionDrawer({ visit, qc, onClose }) {
   })
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-2xl bg-white shadow-xl overflow-y-auto"
-           onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between z-10">
-          <h2 className="text-[15px] font-semibold text-gray-900">
-            Confirm what was inserted
-          </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-800">
-            <X size={16} />
-          </button>
-        </div>
-        <div className="p-5 space-y-4">
+    <SimpleDrawer title="Confirm what was inserted" onClose={onClose}
+                  width="max-w-2xl" bodyClassName="p-5 space-y-4">
           <p className="text-[12px] text-gray-600">
             For each bagged dose, choose what the provider actually did.
             Return/Swap automatically refunds the original pellet to stock.
@@ -3387,9 +3297,7 @@ function ConfirmInsertionDrawer({ visit, qc, onClose }) {
               {submit.isPending ? 'Confirming…' : 'Confirm insertion'}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </SimpleDrawer>
   )
 }
 
@@ -3652,17 +3560,23 @@ function MidProcedureDisposeDrawer({ visit, dose, qc, onClose }) {
 
 // Drawer scaffolding -------------------------------------------------
 
-function SimpleDrawer({ title, onClose, children }) {
+function SimpleDrawer({ title, subtitle, onClose, children,
+                       width = 'max-w-md', bodyClassName = 'p-5 space-y-3 text-sm' }) {
   return (
     <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/30" />
-      <div className="relative w-full max-w-md bg-white shadow-xl overflow-y-auto"
+      <div className={`relative w-full ${width} bg-white shadow-xl overflow-y-auto`}
            onClick={e => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
-          <h2 className="font-serif font-semibold text-ink text-[16px]">{title}</h2>
+        <div className="sticky top-0 z-10 bg-white border-b border-border-subtle px-5 py-3 flex items-center justify-between">
+          <div>
+            <h2 className="font-serif font-semibold text-ink text-[16px]">{title}</h2>
+            {subtitle && (
+              <div className="text-[11px] text-amber-700 uppercase tracking-wide">{subtitle}</div>
+            )}
+          </div>
           <button onClick={onClose} className="text-muted hover:text-ink"><X size={18} /></button>
         </div>
-        <div className="p-5 space-y-3 text-sm">
+        <div className={bodyClassName}>
           {children}
         </div>
       </div>
