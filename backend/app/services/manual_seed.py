@@ -382,6 +382,58 @@ needed; each transfer is logged.
 are used first. This minimizes expiration loss.
 """),
 
+    ("full-workflow", "Full Workflow (Diagram)", 15, """\
+The end-to-end pellet process, from eligibility through billing and recall. The
+main path runs top to bottom; the correction paths below it walk a visit back
+when something needs fixing.
+
+```
+ELIGIBILITY  (verify before scheduling)
+  - Mammogram BI-RADS 1 or 2        (or "Not Required - Testosterone Only")
+  - Labs: FSH / TSH / Estradiol     (or "labs not required")
+        |
+        v
+VISIT CREATED ....................... status: scheduled
+  - kind: initial / booster / repeat
+  - pick location + scheduled date
+        |
+        v
+BAG FILL ............................ status: in progress
+  - pull doses from inventory        doses: planned -> pulled
+        |
+        v
+INSERTION ........................... status: inserted
+  - "Confirm What Was Inserted"      doses: pulled -> inserted
+  - (mid-procedure: add or dispose a dose as needed)
+        |
+        v
+PAYMENT collected ................... new $500 / established $400
+        |
+        v
+BILLED .............................. enter claim #
+        |
+        v
+RECALL .............................. every N months -> start a repeat visit
+                                      (loops back to VISIT CREATED)
+
+
+CORRECTION & EXCEPTION PATHS
+----------------------------
+Reschedule   scheduled / in progress   ->  new date (pellets stay bagged)
+Cancel       scheduled / in progress   ->  doses returned to stock, visit closed
+Reopen       inserted / billed / cancelled -> edit lots & qty -> Done Editing
+               - a billed visit is UN-BILLED on reopen; lands in inserted to re-bill
+               - reopening a cancelled visit un-cancels it (re-pulls the doses)
+Step-back    Un-bill    billed         ->  inserted      (clears claim #, re-bill)
+             Un-insert  inserted       ->  in progress   (doses -> pulled)
+             Un-bag     bagged         ->  in progress   (pellets back to stock)
+```
+
+> **Eligibility is verified, not enforced at insertion** — the mammogram and labs
+> cards flag what's missing, but staff judgment governs whether to proceed. See
+> the per-step sections below for the detail behind each box.
+"""),
+
     ("ordering", "Ordering from Qualgen", 20, """\
 Orders are placed manually on the Qualgen website (no API integration).
 
