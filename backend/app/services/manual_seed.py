@@ -856,6 +856,20 @@ Workflow:
 3. Type your initials and click "Mark Posted" — stamps initials and time.
 4. Managers can "Un-mark" a row if posted by mistake.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart TD
+  subgraph CO [Close-out · Surgery Detail]
+    A([ModMed appt confirmed]):::flow --> B([Pre-op labs on file]):::flow --> C([Bill Surgery · enter claim #]):::flow --> D([Post-Surgery]):::flow
+  end
+  subgraph PP [Payment posting]
+    P([Stripe payment]):::flow --> G([How-To guide]):::flow --> Q([Post in ModMed]):::flow --> R([Mark Posted · initials + time]):::flow
+    R -. posted by mistake .-> U([Manager Un-mark]):::fix
+  end
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
+
 **Fee Schedule (Surgery → Fee Schedule):**
 Holds the contracted allowed dollar amount per Insurance + CPT that feeds the
 benefits calculator. Also contains CCI/MPR edit overrides for bundled CPT pairs.
