@@ -65,6 +65,22 @@ goes out empty.
   re-send in place. This is available until signing completes; once everyone has
   signed (or the form is voided/declined), Edit Form disappears — at that point
   void the envelope and send a fresh one.
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart TD
+  A([Fill patient / insurance / provider]):::flow --> P([Preview Form]):::flow
+  P -. blank fields flagged .-> FIX([Fix missing data]):::fix
+  FIX --> P
+  P --> S([Send via BoldSign]):::flow
+  S --> E([Edit Form · correct & re-send]):::flow
+  E --> S
+  S --> D([Signing complete]):::flow
+  S -. voided / declined .-> V([Void & send a fresh form]):::fix
+  V --> A
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 """),
 
     ("office-procedure-overview", "Office Procedure Devices — overview", 35, """\
