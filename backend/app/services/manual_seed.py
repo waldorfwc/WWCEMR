@@ -684,6 +684,19 @@ The **Consents** milestone card manages consent collection.
 - **Mark signed (manual)** — to record a consent signed outside the system.
 - **Reset consent** — clears the send record to start over.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart TD
+  C([Consents card]):::flow --> M{Method}
+  M -- BoldSign --> T([Match CPT / keywords to templates]):::flow
+  T --> S([Send primary + supplemental]):::flow --> E([Patient signs e-sign]):::flow --> V([View signed PDF]):::flow --> D([Signed on file]):::flow
+  T -. no template match .-> N([Nothing sends · check templates]):::fix
+  M -- Paper --> P([Mark sent · paper]):::flow --> MS([Mark signed · manual]):::flow --> D
+  D -. Reset consent .-> C
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
+
 > Medicaid sterilization consent must be signed at least 30 and no more
 > than 180 days before the procedure date.
 
