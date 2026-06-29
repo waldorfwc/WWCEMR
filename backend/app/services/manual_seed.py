@@ -663,6 +663,15 @@ The **Benefits & Payment** milestone card contains two sub-sections:
 **Payment:**
 - Request a Stripe payment link from this card and track the balance.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart TD
+  A([Pull allowed amount · Fee Schedule]):::flow --> B([Enter deductible / OOP / coinsurance / copay]):::flow --> C([System estimates patient owes]):::flow --> D([Save + generate estimate PDF]):::flow --> E([Request Stripe payment link]):::flow --> F([Track balance]):::flow
+  C -. secondary terms blank .-> W([Assumes $0 owed · amber warning]):::fix
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
+
 > If a secondary insurance is on file but its terms are blank, the
 > calculator assumes secondary covers everything and shows $0 owed —
 > an amber warning banner flags this case.
