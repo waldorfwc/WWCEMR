@@ -722,6 +722,22 @@ block day and time slot directly. The Calendar page also offers an
 **Post-op dates:** after a date is booked, set the post-op visit dates
 (Office and/or Telehealth) on the same card.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart TD
+  RS([Recurring schedule]):::flow --> BD([Materialize block days · 180d]):::flow
+  BL([Blackouts]):::fix -. remove dates .-> BD
+  BD --> AV([Available block days]):::flow
+  AV --> PS([Patient self-schedule]):::flow
+  AV --> CO([Coordinator · Schedule for patient]):::flow
+  PS --> SLOT([Pick day + time slot]):::flow
+  CO --> SLOT
+  SLOT --> BK([Date booked]):::flow --> PO([Set post-op dates]):::flow
+  WL([Waitlist]):::flow -. claim earlier slot .-> BK
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
+
 > The waitlist (Surgery → Waitlist) shows patients hoping for an earlier slot.
 > Click an open date chip to see matches ranked by wait time, then copy the
 > Klara blast and click "Patient claimed" to book.
