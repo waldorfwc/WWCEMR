@@ -295,8 +295,20 @@ Devices within **365 days of expiry** also get reallocated automatically
 (so we don't risk inserting near-expired product). This is checked by a
 daily sweep at 9:15 AM.
 
-> The **180-day** clock now runs from when the device was **received**, not
-> from when the request was created — see *Device ownership & WWC Claimed*.
+```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px'}}}%%
+flowchart TD
+  A([Assigned device]):::flow
+  A -. not inserted 180d .-> R([Reallocate · daily sweep]):::fix
+  A -. within 365d of expiry .-> R
+  R --> U([Device unassigned]):::flow
+  R --> O([Patient on Owed list]):::flow
+  O --> Q{Returns before expiry?}
+  Q -- yes --> N([New LARC request · resolved]):::flow
+  Q -- no --> D([Declined / auto-expired]):::fix
+  classDef flow fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef fix fill:#fef3c7,stroke:#d97706,color:#78350f;
+```
 """),
 
     ("device-ownership", "Device ownership & WWC Claimed", 65, """\
