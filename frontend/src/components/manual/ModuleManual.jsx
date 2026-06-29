@@ -168,7 +168,7 @@ export default function ModuleManual({
           {diagrams.length > 0 && (
             <div className="mt-3 pt-3 border-t border-plum-200/60">
               <div className="text-[11px] uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-1">
-                <Workflow size={11} /> Diagrams
+                <Workflow size={11} /> Diagrams ({diagrams.length})
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
                 {diagrams.map(d => (
